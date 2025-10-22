@@ -1,0 +1,50 @@
+[
+  {
+    "round": 1,
+    "datetime": "2025-10-21T20:00:00-03:00",
+    "team_home_id": "quadrilha",
+    "team_away_id": "porks"
+  },
+  {
+    "round": 1,
+    "datetime": "2025-10-21T21:00:00-03:00",
+    "team_home_id": "overdoso",
+    "team_away_id": "fiodental"
+  },
+  {
+    "round": 1,
+    "datetime": "2025-10-23T20:00:00-03:00",
+    "team_home_id": "intocaveis",
+    "team_away_id": "banha"
+  },
+  {
+    "round": 1,
+    "datetime": "2025-10-23T21:00:00-03:00",
+    "team_home_id": "cabeludos",
+    "team_away_id": "camisinha"
+  },
+  {
+    "round": 2,
+    "datetime": "2025-10-28T20:00:00-03:00",
+    "team_home_id": "camisinha",
+    "team_away_id": "intocaveis"
+  },
+  {
+    "round": 2,
+    "datetime": "2025-10-28T21:00:00-03:00",
+    "team_home_id": "overdoso",
+    "team_away_id": "banha"
+  },
+  {
+    "round": 2,
+    "datetime": "2025-10-30T20:00:00-03:00",
+    "team_home_id": "cabeludos",
+    "team_away_id": "quadrilha"
+  },
+  {
+    "round": 2,
+    "datetime": "2025-10-30T21:00:00-03:00",
+    "team_home_id": "porks",
+    "team_away_id": "fiodental"
+  }
+]

@@ -1,0 +1,42 @@
+{
+  "banha": {
+	"name": "Banha",
+	"short_name": "BAN",
+	"shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  },
+  "overdoso": {
+	"name": "Overdoso",
+	"short_name": "OVE",
+    "shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  },
+  "fiodental": {
+	"name": "Fio Dental",
+	"short_name": "FIO",
+	"shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  },
+  "intocaveis": {
+	"name": "Os Intocáveis",
+	"short_name": "INT",
+    "shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  },
+  "quadrilha": {
+	"name": "Quadrilha",
+	"short_name": "QUA",
+    "shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  },
+  "porks": {
+	"name": "Porks",
+	"short_name": "PKS",
+    "shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  },
+  "camisinha": {
+	"name": "Camisinha",
+	"short_name": "CAM",
+    "shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  },
+  "cabeludos": {
+	"name": "Os Cabeludos",
+	"short_name": "CAB",
+	"shield_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQONe4Sgt4fGG8FdayNVekkFEjw1YVlCYZiZg&s"
+  }
+ }

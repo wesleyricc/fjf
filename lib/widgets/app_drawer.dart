@@ -1,0 +1,135 @@
+// lib/widgets/app_drawer.dart
+import 'package:flutter/material.dart';
+// Precisamos importar as telas para onde vamos navegar
+import '../screens/fixtures_screen.dart';
+import '../screens/standings_screen.dart';
+import '../screens/scorers_screen.dart';
+import '../screens/assists_screen.dart';
+import '../screens/disciplinary_screen.dart';
+
+class AppDrawer extends StatelessWidget {
+  const AppDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      // A cor de fundo já é definida pelo tema no main.dart (drawerTheme)
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          // --- HEADER DO DRAWER (Com a Logo e Título) ---
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor, // Cor definida no main.dart
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/logo2_fjf.png', // Caminho da sua logo
+                  height: 80, 
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'FJF 2025',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'Taça Mary Neusa Espíndola Bif',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // --- FIM DO HEADER ---
+
+          // --- ITENS DO MENU (Com a lógica de navegação corrigida) ---
+          _buildDrawerItem(
+            context,
+            Icons.calendar_today,
+            'Tabela de Jogos',
+            () {
+              Navigator.of(context).pop(); // Fecha o drawer
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => const FixturesScreen()),
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.leaderboard,
+            'Classificação',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                // Removemos o 'const' pois StandingsScreen não é mais const
+                MaterialPageRoute(builder: (ctx) => StandingsScreen()), 
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.sports_soccer,
+            'Artilharia',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => const ScorersScreen()),
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.assistant,
+            'Assistências',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => const AssistsScreen()),
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.warning,
+            'Suspensos e Pendurados',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                // Removemos o 'const' pois DisciplinaryScreen não é mais const
+                MaterialPageRoute(builder: (ctx) => DisciplinaryScreen()),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Função auxiliar para construir os itens do Drawer
+  Widget _buildDrawerItem(
+      BuildContext context, IconData icon, String title, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white70),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+        ),
+      ),
+      onTap: onTap,
+    );
+  }
+}

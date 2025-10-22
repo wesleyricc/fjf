@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "211551139323",
+    "project_id": "fjfapp",
+    "storage_bucket": "fjfapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:211551139323:android:dc42f122d69b1c86adc75e",
+        "android_client_info": {
+          "package_name": "com.example.fjf_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB-DWvTPnrmER5pee2IiQ-D4DEHhFay0gQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
