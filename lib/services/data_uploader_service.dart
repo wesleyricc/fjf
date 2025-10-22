@@ -62,6 +62,9 @@ class DataUploaderService {
         playerInfo['assists'] = 0;
         playerInfo['yellow_cards'] = 0;
         playerInfo['red_cards'] = 0;
+        playerInfo['goals_conceded'] = 0;
+        playerInfo['is_goalkeeper'] = playerInfo['is_goalkeeper'] ?? false; // Se não existir no JSON, é false
+        playerInfo['man_of_the_match_awards'] = 0;
         playerInfo['is_suspended'] = false;
 
         batch.set(playerRef, playerInfo);

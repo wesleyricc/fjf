@@ -1,14 +1,30 @@
 [
-  {
-    "name": "Vitor Hugo",
-    "team_id": "cabeludos"
-  },
-  {
-    "name": "Mikael Tezza",
-    "team_id": "cabeludos"
-  },
-  {
-    "name": "Murilo Aguiar",
-    "team_id": "overdoso"
-  }
+  {"name": "João Pedro Garcia", "team_id": "banha", "is_goalkeeper": true},
+  {"name": "Vinicius Maccari", "team_id": "banha", "is_goalkeeper": false},
+
+
+  {"name": "Manoel Teixeira Patrício Neto", "team_id": "camisinha", "is_goalkeeper": true},
+  {"name": "Luiz Fernando Pucci", "team_id": "camisinha", "is_goalkeeper": false},
+ 
+  {"name": "Dhiego Beretta", "team_id": "fiodental", "is_goalkeeper": true},
+  {"name": "Gabriel Petroski", "team_id": "fiodental", "is_goalkeeper": false},
+
+
+  {"name": "Octavio Frasson", "team_id": "cabeludos", "is_goalkeeper": true},
+  {"name": "Adriel Esser da Silva", "team_id": "cabeludos", "is_goalkeeper": false},
+
+
+  {"name": "Rhuan Serafim Souza", "team_id": "intocaveis", "is_goalkeeper": true},
+  {"name": "Rayner dos Santos Hermenegildo", "team_id": "intocaveis", "is_goalkeeper": false},
+
+
+  {"name": "Henrique Francisconi", "team_id": "overdoso", "is_goalkeeper": true},
+  {"name": "Ryan Ayres de Souza", "team_id": "overdoso", "is_goalkeeper": false},
+
+  {"name": "Diogo Luiz Calegário Nazario", "team_id": "porks", "is_goalkeeper": true},
+  {"name": "Marco Aurelio Bertan Seolin", "team_id": "porks", "is_goalkeeper": false},
+
+  {"name": "Everton Martins Cucker", "team_id": "quadrilha", "is_goalkeeper": false},
+  {"name": "Michel da Silva", "team_id": "quadrilha", "is_goalkeeper": false}
+
 ]

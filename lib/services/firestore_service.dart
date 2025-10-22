@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Função auxiliar para criar deltas de JOGADOR (ainda precisamos dela)
+  // Função auxiliar para criar deltas de JOGADOR (continua igual)
   Map<String, int> _calculateDelta(Map<String, int> oldMap, Map<String, int> newMap) {
     Map<String, int> delta = {};
     newMap.forEach((key, newValue) {
@@ -22,7 +22,7 @@ class FirestoreService {
     return delta;
   }
 
-  // --- FUNÇÃO DE REBUILD TOTAL ---
+  // --- FUNÇÃO DE ATUALIZAÇÃO (COM NOVOS CAMPOS) ---
   Future<String> updateMatchStats({
     required DocumentSnapshot matchSnapshot,
     required int newScoreHome,
@@ -31,6 +31,8 @@ class FirestoreService {
     required Map<String, int> newAssists,
     required Map<String, int> newYellows,
     required Map<String, int> newReds,
+    required Map<String, int> newGoalsConceded,
+    required String? newManOfTheMatchId,
   }) async {
     final String matchId = matchSnapshot.id;
     final matchData = matchSnapshot.data() as Map<String, dynamic>;
@@ -44,10 +46,12 @@ class FirestoreService {
         final DocumentSnapshot freshMatchSnap = await transaction.get(_firestore.collection('matches').doc(matchId));
         final matchData = freshMatchSnap.data() as Map<String, dynamic>;
         
-        // Pega as estatísticas antigas dos jogadores (para calcular o delta)
-        Map<String, dynamic> oldPlayerStats = (matchData.containsKey('stats_applied') && matchData['stats_applied'] != null)
-            ? (matchData['stats_applied']['player_stats'] ?? {})
+        Map<String, dynamic> oldStats = (matchData.containsKey('stats_applied') && matchData['stats_applied'] != null)
+            ? (matchData['stats_applied'] ?? {})
             : {};
+        Map<String, dynamic> oldPlayerStats = oldStats['player_stats'] ?? {};
+        String? oldManOfTheMatchId = oldStats['man_of_the_match'];
+        Map<String, int> oldGoalsConceded = Map<String, int>.from(oldPlayerStats['goals_conceded'] ?? {});
         
         // Pega todos os jogadores que podem ser afetados
         Set<String> playersToReadIds = {
@@ -55,7 +59,12 @@ class FirestoreService {
           ...newAssists.keys, ...oldPlayerStats['assists']?.keys ?? [],
           ...newYellows.keys, ...oldPlayerStats['yellows']?.keys ?? [],
           ...newReds.keys, ...oldPlayerStats['reds']?.keys ?? [],
+          ...newGoalsConceded.keys, ...oldGoalsConceded.keys,
+          if (newManOfTheMatchId != null) newManOfTheMatchId,
+          if (oldManOfTheMatchId != null) oldManOfTheMatchId,
         };
+        playersToReadIds.removeWhere((id) => id == null || id.isEmpty); // Limpa nulos
+
         Map<String, DocumentSnapshot> playerSnaps = {};
         for (String playerId in playersToReadIds) {
           if (playerId.isNotEmpty) {
@@ -64,43 +73,44 @@ class FirestoreService {
         }
 
         // --- 2. SALVAR O JOGO ATUAL (ESCRITA) ---
-        // Salva as novas estatísticas de JOGADOR neste jogo
         final Map<String, dynamic> newPlayerStats = {
           'goals': newGoals,
           'assists': newAssists,
           'yellows': newYellows,
           'reds': newReds,
+          'goals_conceded': newGoalsConceded, // <-- SALVA GOLS SOFRIDOS
         };
-        // Salva o placar, status e as estatísticas dos jogadores
+        
         transaction.update(_firestore.collection('matches').doc(matchId), {
           'score_home': newScoreHome,
           'score_away': newScoreAway,
           'status': 'finished',
-          'stats_applied': { 'player_stats': newPlayerStats } // Não salvamos mais team_stats
+          'stats_applied': { 
+            'player_stats': newPlayerStats,
+            'man_of_the_match': newManOfTheMatchId, // <-- SALVA CRAQUE DO JOGO
+          }
         });
 
 
         // --- 3. APLICAR DELTA NOS JOGADORES (ESCRITA) ---
-        // (Esta lógica está correta e não causa o bug da classificação)
-        
         int disciplinaryHomeDelta = 0;
         int disciplinaryAwayDelta = 0;
 
-        // Delta de Gols
+        // Delta de Gols (sem mudança)
         Map<String, int> goalDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['goals'] ?? {}), newGoals);
         goalDelta.forEach((playerId, delta) {
           if(delta != 0 && playerSnaps.containsKey(playerId)) {
             transaction.update(_firestore.collection('players').doc(playerId), {'goals': FieldValue.increment(delta)});
           }
         });
-        // Delta de Assistências
+        // Delta de Assistências (sem mudança)
         Map<String, int> assistDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['assists'] ?? {}), newAssists);
         assistDelta.forEach((playerId, delta) {
           if(delta != 0 && playerSnaps.containsKey(playerId)) {
             transaction.update(_firestore.collection('players').doc(playerId), {'assists': FieldValue.increment(delta)});
           }
         });
-        // Delta de Cartões Amarelos
+        // Delta de Cartões Amarelos (sem mudança)
         Map<String, int> yellowDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['yellows'] ?? {}), newYellows);
         yellowDelta.forEach((playerId, delta) {
           if(delta == 0 || !playerSnaps.containsKey(playerId)) return;
@@ -133,26 +143,50 @@ class FirestoreService {
           if (playerSnap.get('team_id') == homeTeamId) {
             disciplinaryHomeDelta += (delta * 21);
           } else if (playerSnap.get('team_id') == awayTeamId) {
-            disciplinaryHomeDelta += (delta * 21);
+            // *** BUG CORRIGIDO AQUI ***
+            disciplinaryAwayDelta += (delta * 21); // Antes estava 'disciplinaryHomeDelta'
           }
         });
 
-        // Aplica o DELTA de pontos disciplinares (Esta parte está correta)
+        // --- NOVO: Delta de Gols Sofridos ---
+        Map<String, int> goalsConcededDelta = _calculateDelta(oldGoalsConceded, newGoalsConceded);
+        goalsConcededDelta.forEach((playerId, delta) {
+          if(delta != 0 && playerSnaps.containsKey(playerId)) {
+            // Atualiza o campo 'goals_conceded' no documento do jogador
+            transaction.update(_firestore.collection('players').doc(playerId), {'goals_conceded': FieldValue.increment(delta)});
+          }
+        });
+        // --- FIM DO DELTA ---
+        
+        // --- NOVO: Delta de Craque do Jogo ---
+        if (oldManOfTheMatchId != newManOfTheMatchId) {
+          // Remove do antigo
+          if (oldManOfTheMatchId != null && playerSnaps.containsKey(oldManOfTheMatchId)) {
+            transaction.update(
+              _firestore.collection('players').doc(oldManOfTheMatchId),
+              {'man_of_the_match_awards': FieldValue.increment(-1)}
+            );
+          }
+          // Adiciona ao novo
+          if (newManOfTheMatchId != null && playerSnaps.containsKey(newManOfTheMatchId)) {
+            transaction.update(
+              _firestore.collection('players').doc(newManOfTheMatchId),
+              {'man_of_the_match_awards': FieldValue.increment(1)}
+            );
+          }
+        }
+        // --- FIM DO DELTA ---
+
+        // Aplica o DELTA de pontos disciplinares (sem mudança)
         final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
         final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
         transaction.update(homeTeamRef, {'disciplinary_points': FieldValue.increment(disciplinaryHomeDelta)});
         transaction.update(awayTeamRef, {'disciplinary_points': FieldValue.increment(disciplinaryAwayDelta)});
 
-        // --- 4. RECALCULAR ESTATÍSTICAS DOS TIMES (A GRANDE MUDANÇA) ---
-        // Esta parte agora acontece FORA da transação principal, pois
-        // ler muitos documentos dentro de uma transação pode falhar.
-        // Chamaremos uma função separada.
-
-      });
+      }); // Fim da Transação
 
       // --- PÓS-TRANSAÇÃO: RECALCULAR OS DOIS TIMES ---
-      // Como a transação foi bem-sucedida, agora disparamos o recálculo.
-      // Isso é "eventualmente consistente", mas muito mais seguro.
+      // (Esta parte continua igual)
       await _recalculateTeamStats(homeTeamId);
       await _recalculateTeamStats(awayTeamId);
       
@@ -163,7 +197,8 @@ class FirestoreService {
     }
   }
 
-  // --- NOVA FUNÇÃO DE RECALCULO TOTAL (POR TIME) ---
+  // --- FUNÇÃO DE RECALCULO TOTAL (POR TIME) ---
+  // (Esta função permanece idêntica à que você forneceu, pois está correta)
   Future<void> _recalculateTeamStats(String teamId) async {
     // 1. Inicializa os totais
     int totalPoints = 0;
@@ -228,7 +263,7 @@ class FirestoreService {
       }
     }
     
-    // --- 4. ATUALIZA O DOCUMENTO DO TIME (CORRIGIDO) ---
+    // 4. ATUALIZA O DOCUMENTO DO TIME
     await _firestore.collection('teams').doc(teamId).update({
       'points': totalPoints,
       'games_played': totalGames,

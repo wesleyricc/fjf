@@ -23,28 +23,54 @@
     "team_home_id": "cabeludos",
     "team_away_id": "camisinha"
   },
+  
   {
     "round": 2,
     "datetime": "2025-10-28T20:00:00-03:00",
-    "team_home_id": "camisinha",
-    "team_away_id": "intocaveis"
+    "team_home_id": "intocaveis",
+    "team_away_id": "cabeludos"
   },
   {
     "round": 2,
     "datetime": "2025-10-28T21:00:00-03:00",
-    "team_home_id": "overdoso",
-    "team_away_id": "banha"
+    "team_home_id": "banha",
+    "team_away_id": "camisinha"
   },
   {
     "round": 2,
     "datetime": "2025-10-30T20:00:00-03:00",
-    "team_home_id": "cabeludos",
-    "team_away_id": "quadrilha"
+    "team_home_id": "quadrilha",
+    "team_away_id": "overdoso"
   },
   {
     "round": 2,
     "datetime": "2025-10-30T21:00:00-03:00",
     "team_home_id": "porks",
     "team_away_id": "fiodental"
+  },
+
+  {
+    "round": 3,
+    "datetime": "2025-11-04T20:00:00-03:00",
+    "team_home_id": "porks",
+    "team_away_id": "overdoso"
+  },
+  {
+    "round": 3,
+    "datetime": "2025-11-04T21:00:00-03:00",
+    "team_home_id": "quadrilha",
+    "team_away_id": "fiodental"
+  },
+  {
+    "round": 3,
+    "datetime": "2025-11-06T20:00:00-03:00",
+    "team_home_id": "intocaveis",
+    "team_away_id": "camisinha"
+  },
+  {
+    "round": 3,
+    "datetime": "2025-11-06T21:00:00-03:00",
+    "team_home_id": "banha",
+    "team_away_id": "cabeludos"
   }
 ]

@@ -6,6 +6,8 @@ import '../screens/standings_screen.dart';
 import '../screens/scorers_screen.dart';
 import '../screens/assists_screen.dart';
 import '../screens/disciplinary_screen.dart';
+import '../screens/least_conceded_gk_screen.dart'; // <-- NOVO
+import '../screens/man_of_the_match_screen.dart'; // <-- NOVO
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -109,6 +111,28 @@ class AppDrawer extends StatelessWidget {
               Navigator.of(context).pushReplacement(
                 // Removemos o 'const' pois DisciplinaryScreen não é mais const
                 MaterialPageRoute(builder: (ctx) => DisciplinaryScreen()),
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.shield, // Ícone de escudo/goleiro
+            'Goleiro Menos Vazado',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => const LeastConcededGkScreen()),
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.star, // Ícone de estrela
+            'Craque do Jogo',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => const ManOfTheMatchScreen()),
               );
             },
           ),

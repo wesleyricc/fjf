@@ -1,3 +1,4 @@
+//backup
 // lib/screens/admin_match_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -29,6 +30,8 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   Map<String, int> _assists = {};
   Map<String, int> _yellowCards = {};
   Map<String, int> _redCards = {};
+  String? _selectedManOfTheMatchId; // <-- NOVO ESTADO
+  Map<String, int> _goalsConceded = {};
 
   @override
   void initState() {
@@ -50,6 +53,8 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       _assists = Map<String, int>.from(stats['assists'] ?? {});
       _yellowCards = Map<String, int>.from(stats['yellows'] ?? {});
       _redCards = Map<String, int>.from(stats['reds'] ?? {});
+      _selectedManOfTheMatchId = data['stats_applied']['man_of_the_match'];
+      _goalsConceded = Map<String, int>.from(stats['goals_conceded'] ?? {});
     }
 
     _fetchPlayers();
@@ -95,6 +100,8 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       newAssists: _assists,
       newYellows: _yellowCards,
       newReds: _redCards,
+      newGoalsConceded: _goalsConceded,
+      newManOfTheMatchId: _selectedManOfTheMatchId,
     );
 
     setState(() { _isSaving = false; });
@@ -123,6 +130,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     int tempAssists = _assists[playerId] ?? 0;
     int tempYellows = _yellowCards[playerId] ?? 0;
     int tempReds = _redCards[playerId] ?? 0;
+    int tempGoalsConceded = _goalsConceded[playerId] ?? 0;
 
     return showDialog<void>(
       context: context,
@@ -206,6 +214,17 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                       onAdd: () => setDialogState(() => tempReds = 1),
                       onRemove: () => setDialogState(() => tempReds = 0),
                     ),
+                    if (data['is_goalkeeper'] == true) // Só mostra se for goleiro
+                      buildStatCounter(
+                        icon: Icons.shield_outlined, // Ícone de defesa/escudo
+                        label: "GS", // Gols Sofridos
+                        count: tempGoalsConceded,
+                        // Por enquanto, vamos fazer manual. Uma lógica
+                        // mais avançada poderia ligar isso ao placar do oponente.
+                        onAdd: () => setDialogState(() => tempGoalsConceded++),
+                        onRemove: () => setDialogState(() => tempGoalsConceded = (tempGoalsConceded > 0) ? tempGoalsConceded - 1 : 0),
+                        color: Colors.blueGrey, // Cor diferente
+                      ),
                   ],
                 ),
               ),
@@ -225,6 +244,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                       _assists[playerId] = tempAssists;
                       _yellowCards[playerId] = tempYellows;
                       _redCards[playerId] = tempReds;
+                      _goalsConceded[playerId] = tempGoalsConceded;
                     });
                     Navigator.of(context).pop();
                   },
@@ -240,7 +260,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // (O build do Scaffold continua o mesmo)
+    // Combina as listas de jogadores para o Dropdown
+    final List<DocumentSnapshot> allPlayers = [..._homePlayers, ..._awayPlayers];
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -264,11 +286,44 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                 children: [
                   _buildScoreCard(),
                   const SizedBox(height: 16),
-                  Text('Time da Casa: ${widget.match['team_home_name']}', style: Theme.of(context).textTheme.headlineSmall),
+                  Text('Time da Casa: ...'),
                   _buildPlayerList(_homePlayers),
                   const SizedBox(height: 16),
-                  Text('Time Visitante: ${widget.match['team_away_name']}', style: Theme.of(context).textTheme.headlineSmall),
+                  Text('Time Visitante: ...'),
                   _buildPlayerList(_awayPlayers),
+
+                  // --- WIDGET DO CRAQUE DO JOGO ---
+                  const SizedBox(height: 24),
+                  Text('Craque do Jogo', style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  if (allPlayers.isNotEmpty)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedManOfTheMatchId,
+                          hint: const Text('Selecione o jogador'),
+                          isExpanded: true,
+                          items: allPlayers.map((player) {
+                            final data = player.data() as Map<String, dynamic>;
+                            return DropdownMenuItem<String>(
+                              value: player.id,
+                              child: Text('${data['name']} (${data['team_name']})'),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedManOfTheMatchId = value;
+                            });
+                          },
+                          decoration: const InputDecoration(border: InputBorder.none),
+                        ),
+                      ),
+                    )
+                  else 
+                    const Text('Carregando jogadores...'),
+                  // --- FIM DO WIDGET ---
+
                 ],
               ),
             ),
