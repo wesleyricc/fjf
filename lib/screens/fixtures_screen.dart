@@ -31,6 +31,94 @@ class _FixturesScreenState extends State<FixturesScreen> {
   
   bool _isAdmin = AdminService.isAdmin;
 
+  Future<void> _showChangeVideoIdDialog() async {
+    final videoIdController = TextEditingController();
+    bool isLoading = false;
+    String currentVideoId = ''; // Para mostrar o ID atual
+
+    // Busca o ID atual para preencher o campo
+    try {
+      final docSnap = await _firestore.collection('config').doc('app_settings').get();
+      if (docSnap.exists) {
+        currentVideoId = docSnap.get('live_video_id') ?? '';
+        videoIdController.text = currentVideoId;
+      }
+    } catch (e) {
+      debugPrint("Erro ao buscar ID de vídeo atual: $e");
+      // Continua mesmo se não conseguir buscar o ID atual
+    }
+
+    if (!mounted) return; // Verifica se a tela ainda existe
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Alterar ID do Vídeo/Live'),
+              content: TextField(
+                controller: videoIdController,
+                decoration: const InputDecoration(
+                  labelText: 'ID do Vídeo do YouTube',
+                  hintText: 'Ex: dQw4w9WgXcQ',
+                ),
+                enabled: !isLoading,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: isLoading ? null : () async {
+                    final newVideoId = videoIdController.text.trim(); // Remove espaços extras
+
+                    if (newVideoId.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('O ID do vídeo não pode ser vazio.')));
+                      return;
+                    }
+                    // Validação simples (IDs do YouTube geralmente têm 11 caracteres)
+                    if (newVideoId.length < 10 || newVideoId.contains(' ')) {
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ID do vídeo parece inválido.')));
+                       return;
+                    }
+
+                    setDialogState(() { isLoading = true; });
+
+                    try {
+                      // Atualiza no Firestore
+                      await _firestore.collection('config').doc('app_settings').update({
+                        'live_video_id': newVideoId
+                      });
+
+                      if(mounted) Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ID do vídeo atualizado com sucesso!')));
+
+                    } catch (e) {
+                       if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Erro ao atualizar ID: ${e.toString()}')),
+                          );
+                       }
+                    } finally {
+                       if (mounted) {
+                         setDialogState(() { isLoading = false; });
+                       }
+                    }
+                  },
+                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Salvar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+
   // Diálogo de confirmação para o upload
   Future<void> _showUploadConfirmDialog(BuildContext context) async {
     return showDialog<void>(
@@ -223,6 +311,15 @@ class _FixturesScreenState extends State<FixturesScreen> {
               },
             ),
           
+          if (_isAdmin)
+            IconButton(
+              icon: const Icon(Icons.live_tv), // Ícone de TV
+              tooltip: 'Alterar Vídeo Ao Vivo',
+              onPressed: () {
+                _showChangeVideoIdDialog(); // Chama a nova função
+              },
+            ),
+
           IconButton(
             icon: Icon(_isAdmin ? Icons.lock_open : Icons.lock),
             onPressed: () {

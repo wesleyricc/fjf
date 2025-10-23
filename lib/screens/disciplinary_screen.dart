@@ -24,7 +24,7 @@ class DisciplinaryScreen extends StatelessWidget {
       // --- FIM DA ATUALIZAÇÃO ---
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Controle Disciplinar'),
+          title: const Text('Controle de Cartões'),
           bottom: TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,

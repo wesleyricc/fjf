@@ -8,6 +8,7 @@ import '../screens/assists_screen.dart';
 import '../screens/disciplinary_screen.dart';
 import '../screens/least_conceded_gk_screen.dart'; // <-- NOVO
 import '../screens/man_of_the_match_screen.dart'; // <-- NOVO
+import '../screens/splash_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -59,6 +60,18 @@ class AppDrawer extends StatelessWidget {
           // --- ITENS DO MENU (Com a lógica de navegação corrigida) ---
           _buildDrawerItem(
             context,
+            Icons.live_tv, // Ícone de TV ao vivo
+            'Início / Ao Vivo',
+            () {
+              Navigator.of(context).pop();
+              // Use pushReplacement para não empilhar a tela inicial
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => const SplashScreen()),
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
             Icons.calendar_today,
             'Tabela de Jogos',
             () {
@@ -83,7 +96,7 @@ class AppDrawer extends StatelessWidget {
           _buildDrawerItem(
             context,
             Icons.sports_soccer,
-            'Artilharia',
+            'Artilheiros',
             () {
               Navigator.of(context).pop();
               Navigator.of(context).pushReplacement(
