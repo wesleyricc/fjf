@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/admin_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'extra_points_log_screen.dart'; // <-- Tela de log que vamos criar
+import 'package:cached_network_image/cached_network_image.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc; // Recebe o documento do time selecionado
@@ -225,9 +226,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  teamShieldUrl.isNotEmpty
-                      ? Image.network(teamShieldUrl, height: 60, width: 60, fit: BoxFit.contain, errorBuilder: (c, e, s) => const Icon(Icons.shield, size: 60))
-                      : const Icon(Icons.shield, size: 60),
+                  SizedBox( // Garante tamanho
+                    width: 60,
+                    height: 60,
+                    child: CachedNetworkImage(
+                      imageUrl: teamShieldUrl,
+                      placeholder: (context, url) => const Center(child: Icon(Icons.shield, size: 50, color: Colors.grey)),
+                      errorWidget: (context, url, error) => const Icon(Icons.shield, size: 60, color: Colors.grey),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Text(
@@ -235,6 +243,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
+
                 ],
               ),
             ),

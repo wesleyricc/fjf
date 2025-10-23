@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'team_detail_screen.dart'; // <-- Tela de detalhes que vamos criar
+import 'package:cached_network_image/cached_network_image.dart';
 
 class TeamsListScreen extends StatelessWidget {
   const TeamsListScreen({super.key});
@@ -51,12 +52,16 @@ class TeamsListScreen extends StatelessWidget {
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                         child: ListTile(
-                          leading: shieldUrl.isNotEmpty
-                              ? Image.network(
-                                  shieldUrl, width: 40, height: 40, fit: BoxFit.contain,
-                                  errorBuilder: (c, e, s) => const Icon(Icons.shield, size: 40, color: Colors.grey),
-                                )
-                              : const Icon(Icons.shield, size: 40, color: Colors.grey),
+                          leading: SizedBox( // Garante tamanho fixo
+                            width: 40,
+                            height: 40,
+                            child: CachedNetworkImage(
+                              imageUrl: shieldUrl, // shieldUrl já é pego acima
+                              placeholder: (context, url) => const Center(child: Icon(Icons.shield, size: 30, color: Colors.grey)),
+                              errorWidget: (context, url, error) => const Icon(Icons.shield, size: 40, color: Colors.grey),
+                              fit: BoxFit.contain,
+                            ),
+                          ),
                           title: Text(data['name'] ?? 'Nome Indisponível', style: const TextStyle(fontWeight: FontWeight.bold)),
                           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                           onTap: () {

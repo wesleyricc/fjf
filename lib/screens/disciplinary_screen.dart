@@ -3,113 +3,158 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
 import '../services/admin_service.dart';
-import '../widgets/sponsor_banner_rotator.dart'; // <-- Banner importado
+import '../widgets/sponsor_banner_rotator.dart'; // Banner importado
+import 'package:cached_network_image/cached_network_image.dart'; // Import for cached image
 
 class DisciplinaryScreen extends StatelessWidget {
   DisciplinaryScreen({super.key});
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Função _showClearSuspensionDialog (sem mudanças)
+  // --- Função _showClearSuspensionDialog COMPLETA ---
   Future<void> _showClearSuspensionDialog(
       BuildContext context, DocumentSnapshot player) async {
-     // ... (código como antes) ...
+    final playerName = player['name'] ?? 'Jogador desconhecido'; // Use ?? for safety
+
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Limpar Suspensão'),
+          content: Text(
+              'Você tem certeza que deseja remover a suspensão de $playerName? (Assumindo que cumpriu a suspensão automática).'), // Adjusted text
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancelar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('Confirmar'),
+              onPressed: () async {
+                try {
+                  // Atualiza o jogador no banco de dados
+                  await _firestore
+                      .collection('players')
+                      .doc(player.id)
+                      .update({'is_suspended': false});
+
+                  Navigator.of(context).pop(); // Fecha o diálogo ANTES do SnackBar
+                  // Use 'mounted' check if in StatefulWidget, good practice anyway
+                  if (Navigator.of(context).canPop()) { // Check if context is still valid
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       SnackBar(content: Text('$playerName liberado da suspensão.')),
+                     );
+                  }
+
+                } catch (e) {
+                   Navigator.of(context).pop(); // Fecha o diálogo ANTES do SnackBar
+                   if (Navigator.of(context).canPop()) { // Check if context is still valid
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       SnackBar(content: Text('Erro ao liberar jogador: $e')),
+                     );
+                  }
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
+  // --- FIM _showClearSuspensionDialog ---
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      // --- 1. ATUALIZAR LENGTH ---
-      length: 4, // Agora são 4 abas
-      // --- FIM DA ATUALIZAÇÃO ---
+      length: 4, // 4 abas
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Controle de Cartões'),
+          title: const Text('Controle de Cartões'), // Título Ajustado
           bottom: TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
             indicatorColor: Colors.white,
-            // --- Permite rolar as abas se não couberem ---
             isScrollable: true,
-            // --- FIM ---
-            // --- 2. ATUALIZAR TABS ---
             tabs: const [
-              Tab(text: 'Pendurados'),
-              Tab(text: 'Suspensos'),
-              Tab(text: 'Amarelos'), // Nova Aba
-              Tab(text: 'Vermelhos'), // Nova Aba
+              Tab(text: 'Pendurados'), // 2 Amarelos
+              Tab(text: 'Suspensos'), // is_suspended = true
+              Tab(text: 'Amarelos'), // Total CA
+              Tab(text: 'Vermelhos'), // Total CV
             ],
-            // --- FIM DA ATUALIZAÇÃO ---
           ),
         ),
         drawer: const AppDrawer(),
         body: TabBarView(
-          // --- 4. ATUALIZAR CHILDREN ---
           children: [
-            // Aba Pendurados (usa a função antiga)
+            // Aba Pendurados
             _buildPlayersListWithBanner(
               context: context,
               query: _firestore
                   .collection('players')
                   .where('yellow_cards', isEqualTo: 2)
-                  .orderBy('name'), // Ordena por nome
+                  .orderBy('name'),
               emptyMessage: 'Nenhum jogador pendurado.',
               isSuspendedList: false,
             ),
-            // Aba Suspensos (usa a função antiga)
+            // Aba Suspensos
             _buildPlayersListWithBanner(
               context: context,
               query: _firestore
                   .collection('players')
                   .where('is_suspended', isEqualTo: true)
-                  .orderBy('name'), // Ordena por nome
+                  .orderBy('name'),
               emptyMessage: 'Nenhum jogador suspenso.',
               isSuspendedList: true,
             ),
-            // Aba Total Amarelos (usa a nova função)
+            // Aba Total Amarelos
             _buildCardTotalList(
               context: context,
               query: _firestore
                   .collection('players')
-                  .where('yellow_cards', isGreaterThan: 0) // Só quem tem amarelo
-                  .orderBy('yellow_cards', descending: true) // Ordena por mais amarelos
-                  .orderBy('name'), // Desempate por nome
+                  .where('yellow_cards', isGreaterThan: 0)
+                  .orderBy('yellow_cards', descending: true)
+                  .orderBy('name'),
               emptyMessage: 'Nenhum jogador com cartão amarelo.',
-              countField: 'yellow_cards', // Campo a ser exibido
-              countLabel: 'CA', // Rótulo
+              countField: 'yellow_cards',
+              countLabel: 'CA',
             ),
-            // Aba Total Vermelhos (usa a nova função)
+            // Aba Total Vermelhos
              _buildCardTotalList(
               context: context,
               query: _firestore
                   .collection('players')
-                  .where('red_cards', isGreaterThan: 0) // Só quem tem vermelho
-                  .orderBy('red_cards', descending: true) // Ordena por mais vermelhos
-                  .orderBy('name'), // Desempate por nome
+                  .where('red_cards', isGreaterThan: 0)
+                  .orderBy('red_cards', descending: true)
+                  .orderBy('name'),
               emptyMessage: 'Nenhum jogador com cartão vermelho.',
-              countField: 'red_cards', // Campo a ser exibido
-              countLabel: 'CV', // Rótulo
+              countField: 'red_cards',
+              countLabel: 'CV',
             ),
           ],
-          // --- FIM DA ATUALIZAÇÃO ---
         ),
       ),
     );
   }
 
-  // Função _buildPlayersListWithBanner (sem mudanças funcionais, apenas parâmetros não usados)
+  // --- Função _buildPlayersListWithBanner COMPLETA ---
   Widget _buildPlayersListWithBanner({
     required BuildContext context,
     required Query query,
     required String emptyMessage,
     required bool isSuspendedList,
-    // String? trailingField, // Não mais usado diretamente aqui
-    // String? trailingLabel, // Não mais usado diretamente aqui
   }) {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
-        // ... (Verificações de estado como antes) ...
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          debugPrint("Erro no StreamBuilder (Disciplina - Lista): ${snapshot.error}");
+          return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
+        }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(child: Text(emptyMessage));
         }
@@ -118,7 +163,7 @@ class DisciplinaryScreen extends StatelessWidget {
 
         return SingleChildScrollView(
            padding: const EdgeInsets.only(bottom: 16.0),
-          child: Column(
+            child: Column(
             children: [
               ListView.builder(
                 shrinkWrap: true,
@@ -128,24 +173,99 @@ class DisciplinaryScreen extends StatelessWidget {
                    final player = players[index];
                    try {
                      final data = player.data() as Map<String, dynamic>;
+                     final String shieldUrl = data['team_shield_url'] ?? '';
                      String status = '';
                      Color statusColor = Colors.black;
-                     if (isSuspendedList) { /* ... lógica de cor/status ... */ }
-                     else { /* ... lógica de cor/status ... */ }
+
+                     // --- Lógica de Cor/Status COMPLETA ---
+                     if (isSuspendedList) {
+                       // Estamos na aba "Suspensos"
+                       if ((data['red_cards'] ?? 0) > 0) {
+                         status = "Cartão Vermelho";
+                         statusColor = Colors.red[700]!;
+                       } else {
+                         // Se não tem vermelho, a suspensão é por 3 amarelos (ou outro motivo futuro)
+                         // Verifica se tem amarelos para ter certeza
+                         if ((data['yellow_cards'] ?? 0) > 0 && (data['yellow_cards'] % 3 == 0)) {
+                           status = "${data['yellow_cards']}º Amarelo"; // Mostra qual amarelo causou
+                         } else {
+                            status = "Suspenso"; // Genérico se não for por cartão conhecido
+                         }
+                         statusColor = Colors.yellow[800]!; // Amarelo escuro para suspensão por CA
+                       }
+                     } else {
+                       // Estamos na aba "Pendurados"
+                       status = "${data['yellow_cards'] ?? 0} amarelos";
+                       statusColor = Colors.orange[700]!;
+                     }
+                     // --- FIM da Lógica ---
 
                      return ListTile(
-                       title: Text(data['name'] ?? '...'),
-                       subtitle: Text(data['team_name'] ?? '...'),
+                       leading: const Icon(Icons.person),
+                       title: Text(data['name'] ?? 'Nome Indisponível'),
+                       subtitle: Row( // Subtitle vira Row
+                         children: [
+                           if (shieldUrl.isNotEmpty)
+                             Padding(
+                               padding: const EdgeInsets.only(right: 6.0), // Espaço escudo-nome
+                               child: SizedBox(
+                                 width: 18, height: 18, // Tamanho menor no subtitle
+                                 child: CachedNetworkImage(
+                                   imageUrl: shieldUrl,
+                                   placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
+                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                   fit: BoxFit.contain,
+                                 ),
+                               ),
+                             ),
+                           Flexible( // Para nome do time não estourar
+                             child: Text(
+                                data['team_name'] ?? 'Time Indisponível',
+                                overflow: TextOverflow.ellipsis,
+                             ),
+                           ),
+                         ],
+                       ),
                        trailing: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
-                       onTap: () { /* ... lógica do onTap ... */ },
+                       // --- Lógica do onTap COMPLETA ---
+                       onTap: () {
+                         if (isSuspendedList && AdminService.isAdmin) {
+                           _showClearSuspensionDialog(context, player);
+                         } else if (isSuspendedList && !AdminService.isAdmin) {
+                           ScaffoldMessenger.of(context).showSnackBar(
+                             const SnackBar(
+                                 content: Text('Apenas o admin pode liberar jogadores.')),
+                           );
+                         }
+                         // Nenhuma ação ao clicar em pendurados
+                       },
+                       // --- FIM do onTap ---
                      );
-                   } catch (e) { /* ... ListTile de erro ... */ }
+                   } catch (e) {
+                      // --- ListTile de erro COMPLETO ---
+                      debugPrint("Erro ao processar jogador ${player.id} (Lista Susp/Pend): $e");
+                      return ListTile(
+                        leading: const Icon(Icons.error_outline, color: Colors.red),
+                        title: Text('Erro ao carregar jogador ${player.id}'),
+                        subtitle: Text(e.toString()),
+                      );
+                      // --- FIM do ListTile de erro ---
+                   }
                 },
               ), // Fim ListView
 
-              // Banner (como antes)
+              // Banner
               const SizedBox(height: 24),
-              /* ... Padding com Título Patrocinadores ... */
+              // --- Padding com Título Patrocinadores COMPLETO ---
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  'Patrocinadores',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center, // Centraliza
+                ),
+              ),
+              // --- FIM do Padding ---
               const SizedBox(height: 8),
               const SponsorBannerRotator(),
             ],
@@ -154,9 +274,10 @@ class DisciplinaryScreen extends StatelessWidget {
       },
     );
   }
+  // --- FIM _buildPlayersListWithBanner ---
 
 
-  // --- 3. NOVA FUNÇÃO AUXILIAR PARA LISTAS DE TOTAL ---
+  // --- Função _buildCardTotalList COMPLETA ---
   Widget _buildCardTotalList({
     required BuildContext context,
     required Query query,
@@ -167,7 +288,6 @@ class DisciplinaryScreen extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
-        // --- Verificações de Estado ---
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -178,62 +298,83 @@ class DisciplinaryScreen extends StatelessWidget {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(child: Text(emptyMessage));
         }
-        // --- Fim Verificações ---
 
         final players = snapshot.data!.docs;
 
-        // --- Estrutura com Banner ---
         return SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 16.0),
           child: Column(
             children: [
-              // Lista de Jogadores
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: players.length,
                 itemBuilder: (context, index) {
                   final player = players[index];
+                  final rank = index + 1; // Rank definido aqui
                   try {
                     final data = player.data() as Map<String, dynamic>;
-                    final rank = index + 1; // Rank baseado na ordenação do Firestore
                     final String shieldUrl = data['team_shield_url'] ?? '';
-                    final int count = data[countField] ?? 0; // Pega o total do campo especificado
+                    final int count = data[countField] ?? 0;
 
                     return ListTile(
-                      // Usar o widget RankIndicator para consistência visual
-                      leading: Text('${rank}.', style: const TextStyle(fontSize: 16, color: Colors.grey)), // Rank simples
-                      title: Row(
-                        children: [
-                          if (shieldUrl.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8.0),
-                              child: Image.network(
-                                shieldUrl, width: 20, height: 20, fit: BoxFit.contain,
-                                errorBuilder: (c, e, s) => const Icon(Icons.shield, size: 20, color: Colors.grey),
-                              ),
-                            ),
-                          Expanded(child: Text(data['name'] ?? '...', overflow: TextOverflow.ellipsis)),
-                        ],
-                      ),
-                      subtitle: Text(data['team_name'] ?? '...'),
-                      // Exibe o total no trailing
+                      //leading: CircleAvatar(child: Text(rank.toString())),
+                      leading: const Icon(Icons.person),
+                      title: Text(data['name'] ?? 'Nome Indisponível'), // Title só com nome
+                      subtitle: Row( // Subtitle vira Row
+                         children: [
+                           if (shieldUrl.isNotEmpty)
+                             Padding(
+                               padding: const EdgeInsets.only(right: 6.0),
+                               child: SizedBox(
+                                 width: 18, height: 18,
+                                 child: CachedNetworkImage(
+                                   imageUrl: shieldUrl,
+                                   placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
+                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                   fit: BoxFit.contain,
+                                 ),
+                               ),
+                             ),
+                           Flexible(
+                             child: Text(
+                                data['team_name'] ?? 'Time Indisponível',
+                                overflow: TextOverflow.ellipsis,
+                             ),
+                           ),
+                         ],
+                       ),
                       trailing: Text(
-                        '$count $countLabel', // Ex: "5 CA" ou "1 CV"
+                        '$count $countLabel',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
-                      // Sem onTap especial para estas listas
                     );
-                  } catch (e) { /* ... ListTile de erro ... */ }
+                  } catch (e) {
+                    // --- ListTile de erro COMPLETO ---
+                    debugPrint("Erro ao processar jogador ${player.id} (Total $countLabel): $e");
+                    return ListTile(
+                      //leading: CircleAvatar(child: Text('${index + 1}')),
+                      leading: const Icon(Icons.person),
+                      title: Text('Erro ao carregar jogador ${player.id}'),
+                      subtitle: Text(e.toString()),
+                    );
+                    // --- FIM do ListTile de erro ---
+                  }
                 },
               ), // Fim ListView
 
               // Banner
               const SizedBox(height: 24),
+              // --- Padding com Título Patrocinadores COMPLETO ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text('Patrocinadores', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                child: Text(
+                  'Patrocinadores',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center, // Centraliza
+                ),
               ),
+              // --- FIM do Padding ---
               const SizedBox(height: 8),
               const SponsorBannerRotator(),
             ],
@@ -242,6 +383,4 @@ class DisciplinaryScreen extends StatelessWidget {
       },
     );
   }
-  // --- FIM DA NOVA FUNÇÃO ---
-
-} // Fim da classe DisciplinaryScreen
+}

@@ -61,8 +61,8 @@ class AppDrawer extends StatelessWidget {
           // --- ITENS DO MENU (Com a lógica de navegação corrigida) ---
           _buildDrawerItem(
             context,
-            Icons.live_tv, // Ícone de TV ao vivo
-            'Início / Ao Vivo',
+            Icons.home, // Ícone de TV ao vivo
+            'Início',
             () {
               Navigator.of(context).pop();
               // Use pushReplacement para não empilhar a tela inicial
@@ -186,7 +186,8 @@ class AppDrawer extends StatelessWidget {
   Widget _buildDrawerItem(
       BuildContext context, IconData icon, String title, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white70),
+      dense: true,
+      leading: Icon(icon, color: Colors.white70, size: 24),
       title: Text(
         title,
         style: const TextStyle(

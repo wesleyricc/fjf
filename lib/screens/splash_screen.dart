@@ -107,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('FJF App - Início'), // Título mais curto
+        title: const Text('FJF App - Página Inicial'), // Título mais curto
       ),
       drawer: const AppDrawer(),
       body: SingleChildScrollView(

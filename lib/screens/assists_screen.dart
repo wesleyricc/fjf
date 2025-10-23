@@ -119,7 +119,7 @@ class AssistsScreen extends StatelessWidget {
                 ), // Fim do ListView.builder
 
                 // --- 5. ÁREA DO BANNER ---
-                const SizedBox(height: 24),
+                const SizedBox(height: 5),
                  Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(

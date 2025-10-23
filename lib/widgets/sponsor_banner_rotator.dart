@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class SponsorBannerRotator extends StatefulWidget {
   const SponsorBannerRotator({super.key});
@@ -122,28 +123,34 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                 _launchURL(targetUrl); // Chama a função para abrir a URL
               },
               child: imageUrl != null
-                  ? Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover, // Ou BoxFit.cover, dependendo do design
-                      // Placeholder enquanto a imagem carrega
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const Center(child: CircularProgressIndicator());
-                      },
-                      // Placeholder em caso de erro ao carregar a imagem
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
+                  ? CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover, // ou contain
+
+                      placeholder: (context, url) => SizedBox( 
+                        height: 120, // <-- USE A MESMA ALTURA DO SIZEDBOX EXTERNO
+                        width: double.infinity,
+                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      ),
+                      errorWidget: (context, url, error) => SizedBox(
+                        height: 120, // <-- USE A MESMA ALTURA DO SIZEDBOX EXTERNO
+                        width: double.infinity,
+                        child: Container(
                           color: Colors.grey[300],
                           alignment: Alignment.center,
                           child: const Text('Erro Banner', style: TextStyle(color: Colors.grey)),
-                        );
-                      },
+                        ),
+                      ),
                     )
-                  : Container( // Placeholder se a URL for nula
-                      color: Colors.grey[300],
-                      alignment: Alignment.center,
-                      child: const Text('Banner Inválido', style: TextStyle(color: Colors.grey)),
-                    ),
+                  : SizedBox(
+                      height: 120, // <-- USE A MESMA ALTURA DO SIZEDBOX EXTERNO
+                      width: double.infinity,
+                      child: Container( // Placeholder se a URL for nula
+                        color: Colors.grey[300],
+                        alignment: Alignment.center,
+                        child: const Text('Banner Inválido', style: TextStyle(color: Colors.grey)),
+                      ),
+                  ),
             ),
           ),
         );

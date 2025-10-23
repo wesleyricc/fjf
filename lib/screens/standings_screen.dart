@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
 import 'team_detail_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 // Classe auxiliar TeamStanding (sem mudanças)
 class TeamStanding {
@@ -190,7 +191,16 @@ class _StandingsScreenState extends State<StandingsScreen> {
                             },
                             child: Row(
                               children: [
-                                Image.network(data['shield_url'], width: 18, errorBuilder: (c,o,s)=>const SizedBox(width:18)), // Escudo menor
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CachedNetworkImage(
+                                    imageUrl: data['shield_url'] ?? '',
+                                    placeholder: (context, url) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                    errorWidget: (context, url, error) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
                                 const SizedBox(width: 6),
                                 // Limita a largura do nome do time para não estourar
                                 Flexible(child: Text(data['name'] ?? '', overflow: TextOverflow.ellipsis)),
@@ -242,15 +252,16 @@ class _StandingsScreenState extends State<StandingsScreen> {
                 ),
 
                 // --- 2. ÁREA DO BANNER ---
-                const SizedBox(height: 24),
+                const SizedBox(height: 5),
                  Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 140.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(
                     'Patrocinadores',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 1),
                 const SponsorBannerRotator(), // <-- O Widget do Banner
                 // --- FIM DA ÁREA DO BANNER ---
               ],

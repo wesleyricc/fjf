@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. VERIFIQUE SE ESTE IMPORT ESTÁ AQUI
 import '../widgets/rank_indicator.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ScorersScreen extends StatelessWidget {
   const ScorersScreen({super.key});
@@ -71,14 +72,15 @@ class ScorersScreen extends StatelessWidget {
                             if (shieldUrl.isNotEmpty) // Mostra só se tiver URL
                               Padding(
                                 padding: const EdgeInsets.only(right: 3.0),
-                                child: Image.network(
-                                  shieldUrl,
+                                child: SizedBox( // Garante tamanho
                                   width: 20,
                                   height: 20,
-                                  fit: BoxFit.contain,
-                                  // Placeholder em caso de erro
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                  child: CachedNetworkImage(
+                                    imageUrl: shieldUrl,
+                                    placeholder: (context, url) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                    errorWidget: (context, url, error) => const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                               ),
                             Expanded( // Para o nome não estourar
@@ -114,7 +116,7 @@ class ScorersScreen extends StatelessWidget {
                 ), // Fim do ListView.builder
 
                 // --- 5. ÁREA DO BANNER (Exatamente como em fixtures_screen) ---
-                const SizedBox(height: 24),
+                const SizedBox(height: 5),
                  Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Text(
