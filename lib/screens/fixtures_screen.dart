@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'admin_match_screen.dart';
 import '../services/admin_service.dart';
 import '../services/data_uploader_service.dart';
+import '../widgets/sponsor_banner_rotator.dart';
 
 class FixturesScreen extends StatefulWidget {
   const FixturesScreen({super.key});
@@ -159,19 +160,21 @@ class _FixturesScreenState extends State<FixturesScreen> {
           const SizedBox(width: 10), 
 
           // Botões de admin existentes
-          IconButton(
-            icon: const Icon(Icons.upload_file),
-            tooltip: 'Carregar Dados Iniciais (Admin)',
-            onPressed: () {
-              if (_isAdmin) {
-                _showUploadConfirmDialog(context);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Você deve estar logado como admin.')),
-                );
-              }
-            },
-          ),
+          if (_isAdmin)
+            IconButton(
+              icon: const Icon(Icons.upload_file),
+              tooltip: 'Carregar Dados Iniciais (Admin)',
+              onPressed: () {
+                if (_isAdmin) {
+                  _showUploadConfirmDialog(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Você deve estar logado como admin.')),
+                  );
+                }
+              },
+            ),
+          
           IconButton(
             icon: Icon(_isAdmin ? Icons.lock_open : Icons.lock),
             onPressed: () {
@@ -208,55 +211,87 @@ class _FixturesScreenState extends State<FixturesScreen> {
 
           final matches = snapshot.data!.docs;
 
-          return ListView.builder(
-            itemCount: matches.length,
-            itemBuilder: (context, index) {
-              final match = matches[index];
-              final data = match.data() as Map<String, dynamic>;
+          // --- 1. ENVOLVE TUDO EM UM SingleChildScrollView ---
+          return SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 16.0), // Espaço extra no final
+            child: Column(
+              children: [
+                
+                // --- 2. A LISTA DE JOGOS (agora dentro do Column) ---
+                ListView.builder(
+                  // --- ESSENCIAL PARA LISTVIEW DENTRO DE COLUMN ---
+                  shrinkWrap: true, 
+                  physics: const NeverScrollableScrollPhysics(), 
+                  // --- FIM DA PARTE ESSENCIAL ---
+                  itemCount: matches.length,
+                  itemBuilder: (context, index) {
+                    final match = matches[index];
+                    final data = match.data() as Map<String, dynamic>;
 
-              // Verifica se o placar é nulo
-              final String scoreHome = data['score_home']?.toString() ?? '-';
-              final String scoreAway = data['score_away']?.toString() ?? '-';
-               
-              // --- LÓGICA DE FORMATAÇÃO DE DATA ---
-              String formattedDate = 'Data a definir';
-              if (data['datetime'] != null) {
-                // O Firestore nos devolve um Timestamp, convertemos para DateTime
-                final DateTime date = (data['datetime'] as Timestamp).toDate();
-                // Agora formatamos para o padrão brasileiro
-                formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(date);
-              }
-              // --- FIM DA LÓGICA ---
+                    final String scoreHome = data['score_home']?.toString() ?? '-';
+                    final String scoreAway = data['score_away']?.toString() ?? '-';
 
-              return Card(
-                margin: const EdgeInsets.all(8.0),
-                child: ListTile(
-                  leading: Image.network(data['team_home_shield'], width: 40),
-                  title: Center(
-                    child: Text(
-                      '${data['team_home_name']} $scoreHome x $scoreAway ${data['team_away_name']}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  trailing: Image.network(data['team_away_shield'], width: 40),
-                  subtitle: Center(child: Text(formattedDate)),
-                  onTap: () {
-                    if (_isAdmin) {
-                      // ABRIMOS A TELA DE ADMIN, INDEPENDENTE DO STATUS
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (ctx) => AdminMatchScreen(match: match),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Você precisa estar no modo admin para alterar placares.')),
-                      );
+                    String formattedDate = 'Data a definir';
+                    if (data['datetime'] != null && data['datetime'] is Timestamp) {
+                      final DateTime date = (data['datetime'] as Timestamp).toDate();
+                      formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(date);
+                    } else if (data['datetime'] != null && data['datetime'] is String) {
+                       try {
+                         final DateTime date = DateTime.parse(data['datetime']);
+                         formattedDate = DateFormat('dd/MM/yyyy HH:mm').format(date);
+                       } catch (e) { /* Mantém 'Data a definir' */ }
                     }
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0), // Ajuste a margem se necessário
+                      child: ListTile(
+                        leading: Image.network(data['team_home_shield'], width: 40, errorBuilder: (c, o, s) => const Icon(Icons.shield)),
+                        title: Center(
+                          child: Text(
+                            '${data['team_home_name']} $scoreHome x $scoreAway ${data['team_away_name']}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        trailing: Image.network(data['team_away_shield'], width: 40, errorBuilder: (c, o, s) => const Icon(Icons.shield)),
+                        subtitle: Center(child: Text(formattedDate)), 
+                        onTap: () {
+                          if (_isAdmin) {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (ctx) => AdminMatchScreen(match: match),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Você precisa estar no modo admin para editar jogos.')),
+                            );
+                          }
+                        },
+                      ),
+                    );
                   },
+                ), // Fim do ListView.builder
+
+                // --- 3. ÁREA DE PATROCINADORES (Tela Cheia) ---
+                const SizedBox(height: 50), // Espaço antes dos banners
+                
+                // Título ainda pode ter padding lateral
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(
+                    'Patrocinadores',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                 ),
-              );
-            },
+                const SizedBox(height: 1),
+
+                // --- COLOCA O ROTATOR DIRETAMENTE NO COLUMN ---
+                // Sem Padding horizontal envolvendo ele
+                const SponsorBannerRotator(), 
+                // --- FIM DA ÁREA DE PATROCINADORES ---
+              ],
+            ),
           );
         },
       ),

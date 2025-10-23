@@ -2,8 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
 
-// Classe auxiliar para guardar os dados de um time
+// Classe auxiliar TeamStanding (sem mudanças)
 class TeamStanding {
   final DocumentSnapshot teamDoc;
   int points;
@@ -31,9 +32,8 @@ class TeamStanding {
   Map<String, dynamic> get data => teamDoc.data() as Map<String, dynamic>;
 }
 
-// Classe principal da tela (agora é StatefulWidget)
+// Classe principal da tela (StatefulWidget - sem mudanças)
 class StandingsScreen extends StatefulWidget {
-  // Removemos o const
   StandingsScreen({super.key});
 
   @override
@@ -42,113 +42,71 @@ class StandingsScreen extends StatefulWidget {
 
 class _StandingsScreenState extends State<StandingsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
-  // O 'Future' que vai carregar nossos dados
   late Future<List<TeamStanding>> _standingsFuture;
-  
-  // A lista de todos os jogos finalizados (para o confronto direto)
   List<DocumentSnapshot> _finishedMatches = [];
 
   @override
   void initState() {
     super.initState();
-    // Inicia o carregamento quando a tela é aberta
     _standingsFuture = _loadStandings();
   }
 
-  // --- 1. FUNÇÃO PRINCIPAL DE CARREGAMENTO ---
+  // Função _loadStandings (sem mudanças)
   Future<List<TeamStanding>> _loadStandings() async {
-    // Busca todos os times
     final teamsSnapshot = await _firestore.collection('teams').get();
-    
-    // Busca TODOS os jogos finalizados
     final matchesSnapshot = await _firestore
         .collection('matches')
         .where('status', isEqualTo: 'finished')
         .get();
-        
     _finishedMatches = matchesSnapshot.docs;
-
-    // Converte os times para a nossa classe auxiliar
     List<TeamStanding> standings = teamsSnapshot.docs
         .map((doc) => TeamStanding(doc))
         .toList();
-
-    // --- 2. A ORDENAÇÃO COMPLEXA ---
-    // A função sort() do Dart usa nossa lógica personalizada
     standings.sort(_customSort);
-
     return standings;
   }
 
-  // --- 3. A LÓGICA DE ORDENAÇÃO PERSONALIZADA ---
+  // Função _customSort (sem mudanças)
   int _customSort(TeamStanding a, TeamStanding b) {
-    // Critério 0: Pontos
     int pointsComparison = b.points.compareTo(a.points);
     if (pointsComparison != 0) return pointsComparison;
-
-    // Critério 1: Confronto Direto
-    // (Só é válido se *apenas* 2 times estiverem empatados. 
-    // Uma regra de 3+ times é muito mais complexa)
-    // Vamos assumir que, se os pontos são iguais, checamos o H2H.
     int h2hComparison = _getHeadToHeadResult(a, b);
     if (h2hComparison != 0) return h2hComparison;
-
-    // Critério 2: Pontos Disciplinares
     int disciplinaryComparison = a.disciplinaryPoints.compareTo(b.disciplinaryPoints);
     if (disciplinaryComparison != 0) return disciplinaryComparison;
-
-    // Critério 3: Vitórias
     int winsComparison = b.wins.compareTo(a.wins);
     if (winsComparison != 0) return winsComparison;
-
-    // Critério 4: Saldo de Gols
     int sgComparison = b.goalDifference.compareTo(a.goalDifference);
     if (sgComparison != 0) return sgComparison;
-
-    // Critério 5: Gols Contra
     int gCComparison = a.goalsAgainst.compareTo(b.goalsAgainst);
     if (gCComparison != 0) return gCComparison;
-    
-    // Critério 6 (Sorteio): desempata por nome
     return a.data['name'].compareTo(b.data['name']);
   }
 
-  // --- 4. FUNÇÃO DO CONFRONTO DIRETO (H2H) ---
+  // Função _getHeadToHeadResult (sem mudanças)
   int _getHeadToHeadResult(TeamStanding a, TeamStanding b) {
     int pointsA = 0;
     int pointsB = 0;
-
-    // Filtra a lista de jogos para achar SÓ os jogos entre A e B
     List<DocumentSnapshot> h2hMatches = _finishedMatches.where((match) {
       final homeId = match.get('team_home_id');
       final awayId = match.get('team_away_id');
       return (homeId == a.id && awayId == b.id) || (homeId == b.id && awayId == a.id);
     }).toList();
-    
-    // Se não jogaram, não há desempate
-    if (h2hMatches.isEmpty) return 0; 
-
+    if (h2hMatches.isEmpty) return 0;
     for (var match in h2hMatches) {
       final data = match.data() as Map<String, dynamic>;
       final scoreHome = (data['score_home'] ?? 0) as int;
       final scoreAway = (data['score_away'] ?? 0) as int;
-
       if (scoreHome == scoreAway) {
-        // Empate
-        pointsA += 1;
-        pointsB += 1;
+        pointsA += 1; pointsB += 1;
       } else if (match.get('team_home_id') == a.id) {
-        // Time A é o time da casa
         if (scoreHome > scoreAway) pointsA += 3; else pointsB += 3;
       } else {
-        // Time B é o time da casa
         if (scoreAway > scoreHome) pointsA += 3; else pointsB += 3;
       }
     }
-    
-    // Compara os pontos H2H. Retorna -1 se A for melhor, 1 se B for melhor
-    return b.points.compareTo(a.points);
+    // Corrigido para comparar os pontos H2H calculados (pointsA vs pointsB)
+    return pointsB.compareTo(pointsA);
   }
 
 
@@ -158,9 +116,9 @@ class _StandingsScreenState extends State<StandingsScreen> {
       appBar: AppBar(
         title: const Text('Classificação'),
         actions: [
-          // Botão para recarregar os dados manualmente
           IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Recarregar Classificação',
             onPressed: () {
               setState(() {
                 _standingsFuture = _loadStandings();
@@ -171,8 +129,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
       ),
       drawer: const AppDrawer(),
       body: FutureBuilder<List<TeamStanding>>(
-        // O FutureBuilder agora usa nossa variável
-        future: _standingsFuture, 
+        future: _standingsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -184,20 +141,22 @@ class _StandingsScreenState extends State<StandingsScreen> {
             return const Center(child: Text('Sem dados de classificação.'));
           }
 
-          // A lista de times agora vem do 'snapshot' do Future
           final teams = snapshot.data!;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(8.0), 
+            // Padding ajustado para ter espaço extra no final para o banner
+            padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Tabela de Classificação
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
                     columnSpacing: 10.0,
-                    dataRowMinHeight: 40.0,
-                    dataRowMaxHeight: 40.0,
+                    dataRowMinHeight: 38.0, // Altura ligeiramente reduzida
+                    dataRowMaxHeight: 38.0, // Altura ligeiramente reduzida
+                    headingRowHeight: 44, // Altura do cabeçalho
                     columns: const [
                       DataColumn(label: Text('Pos')),
                       DataColumn(label: Text('Time')),
@@ -211,7 +170,6 @@ class _StandingsScreenState extends State<StandingsScreen> {
                       DataColumn(label: Text('GC')),
                       DataColumn(label: Text('PD')),
                     ],
-                    // Mapeia a lista de 'TeamStanding'
                     rows: teams.map((teamStanding) {
                       final data = teamStanding.data;
                       final index = teams.indexOf(teamStanding) + 1;
@@ -221,9 +179,10 @@ class _StandingsScreenState extends State<StandingsScreen> {
                         DataCell(
                           Row(
                             children: [
-                              Image.network(data['shield_url'], width: 20),
-                              const SizedBox(width: 8),
-                              Text(data['name']),
+                              Image.network(data['shield_url'], width: 18, errorBuilder: (c,o,s)=>const SizedBox(width:18)), // Escudo menor
+                              const SizedBox(width: 6),
+                              // Limita a largura do nome do time para não estourar
+                              Flexible(child: Text(data['name'] ?? '', overflow: TextOverflow.ellipsis)),
                             ],
                           ),
                         ),
@@ -240,35 +199,48 @@ class _StandingsScreenState extends State<StandingsScreen> {
                     }).toList(),
                   ),
                 ),
-                
-                // Legenda (código de antes)
-                const SizedBox(height: 12),
+
+                // Legenda (Menor)
+                const SizedBox(height: 10), // Espaço reduzido
                 Card(
                   color: Colors.white,
-                  elevation: 2,
+                  elevation: 1, // Menor elevação
                   child: Padding(
-                    padding: const EdgeInsets.all(10.0), 
+                    padding: const EdgeInsets.all(8.0), // Padding menor
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Legenda',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold), // Tamanho titleSmall
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4), // Espaço menor
                         _buildLegendRow('P', 'Pontos'),
-                        _buildLegendRow('J', 'Jogos Disputados'),
+                        _buildLegendRow('J', 'Jogos'),
                         _buildLegendRow('V', 'Vitórias'),
                         _buildLegendRow('E', 'Empates'),
                         _buildLegendRow('D', 'Derrotas'),
                         _buildLegendRow('SG', 'Saldo de Gols'),
-                        _buildLegendRow('GP', 'Gols Pró (Marcados)'),
-                        _buildLegendRow('GC', 'Gols Contra (Sofridos)'),
-                        _buildLegendRow('PD', 'Pontos Disciplinares (Amarelo=10, Vermelho=21)'),
+                        _buildLegendRow('GP', 'Gols Pró'),
+                        _buildLegendRow('GC', 'Gols Contra'),
+                        _buildLegendRow('PD', 'Pontos Disciplinares (10 - Amarelo / 21  - Vermelho)'),
                       ],
                     ),
                   ),
                 ),
+
+                // --- 2. ÁREA DO BANNER ---
+                const SizedBox(height: 24),
+                 Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(
+                    'Patrocinadores',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const SponsorBannerRotator(), // <-- O Widget do Banner
+                // --- FIM DA ÁREA DO BANNER ---
               ],
             ),
           );
@@ -277,25 +249,27 @@ class _StandingsScreenState extends State<StandingsScreen> {
     );
   }
 
-  // Widget auxiliar da legenda (código de antes)
+  // --- Widget Auxiliar da Legenda (MENOR AINDA) ---
   Widget _buildLegendRow(String abbreviation, String description) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.0), 
+      padding: const EdgeInsets.symmetric(vertical: 1.5), // Padding vertical mínimo
       child: Row(
         children: [
           Text(
             '$abbreviation:',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            // Fonte bem pequena
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6), // Espaço menor
           Expanded(
             child: Text(
               description,
-              style: const TextStyle(fontSize: 13),
+              // Fonte bem pequena
+              style: const TextStyle(fontSize: 11),
             ),
           ),
         ],
       ),
     );
   }
-}
+} // Fim da classe _StandingsScreenState

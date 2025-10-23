@@ -2,16 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
-import '../services/admin_service.dart'; // <-- 1. IMPORTAR O SERVIÇO
+import '../services/admin_service.dart';
+import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
 
 class DisciplinaryScreen extends StatelessWidget {
   DisciplinaryScreen({super.key});
 
-  // --- 2. ADICIONAR A INSTÂNCIA DO FIRESTORE ---
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-
-  // --- 3. ADICIONAR O DIÁLOGO DE CONFIRMAÇÃO ---
   Future<void> _showClearSuspensionDialog(
       BuildContext context, DocumentSnapshot player) async {
     final playerName = player['name'];
@@ -34,7 +32,6 @@ class DisciplinaryScreen extends StatelessWidget {
               child: const Text('Confirmar'),
               onPressed: () async {
                 try {
-                  // Atualiza o jogador no banco de dados
                   await _firestore
                       .collection('players')
                       .doc(player.id)
@@ -61,43 +58,39 @@ class DisciplinaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2, // Duas abas: Pendurados e Suspensos
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Controle Disciplinar'),
-          bottom: TabBar(
-            labelColor: Colors.black54,
-            unselectedLabelColor: Colors.black,
-            tabs: [
+          bottom: TabBar( // Removido 'const' para adicionar cores
+            labelColor: Colors.white, // Cor texto selecionado (ajuste se necessário)
+            unselectedLabelColor: Colors.white70, // Cor texto não selecionado
+            indicatorColor: Colors.white, // Cor indicador
+            tabs: const [
               Tab(text: 'Pendurados'),
               Tab(text: 'Suspensos'),
             ],
           ),
         ),
-        
-        drawer: const AppDrawer(), 
-
+        drawer: const AppDrawer(),
         body: TabBarView(
           children: [
-            _buildPlayersList(
+            // --- Cada filho da TabBarView agora chama a função que retorna a estrutura completa ---
+            _buildPlayersListWithBanner( // Nome da função atualizado para clareza
               context: context,
               query: FirebaseFirestore.instance
                   .collection('players')
-                  .where('yellow_cards', isEqualTo: 2), // Regra do "pendurado"
+                  .where('yellow_cards', isEqualTo: 2), // Pendurados
               emptyMessage: 'Nenhum jogador pendurado.',
-              trailingField: 'yellow_cards',
-              trailingLabel: 'amarelos',
-              isSuspendedList: false, // Flag
+              isSuspendedList: false,
             ),
-            _buildPlayersList(
+            _buildPlayersListWithBanner( // Nome da função atualizado para clareza
               context: context,
               query: FirebaseFirestore.instance
                   .collection('players')
-                  .where('is_suspended', isEqualTo: true), // Regra do "suspenso"
+                  .where('is_suspended', isEqualTo: true), // Suspensos
               emptyMessage: 'Nenhum jogador suspenso.',
-              trailingField: 'red_cards', // Apenas para mostrar um motivo
-              trailingLabel: 'susp.',
-              isSuspendedList: true, // Flag
+              isSuspendedList: true,
             ),
           ],
         ),
@@ -105,81 +98,117 @@ class DisciplinaryScreen extends StatelessWidget {
     );
   }
 
-  // Em lib/screens/disciplinary_screen.dart
-
-  // --- 4. MODIFICAR _buildPlayersList (com lógica de cor) ---
-  Widget _buildPlayersList({
-    required BuildContext context, 
+  // --- Função _buildPlayersList RENOMEADA e ESTRUTURA MODIFICADA ---
+  Widget _buildPlayersListWithBanner({ // Nome mudou
+    required BuildContext context,
     required Query query,
     required String emptyMessage,
-    required String trailingField, // Este parâmetro não é mais tão necessário, mas mantemos
-    required String trailingLabel, // Este parâmetro não é mais tão necessário, mas mantemos
-    required bool isSuspendedList, 
+    required bool isSuspendedList,
+    // Os parâmetros trailingField e trailingLabel não são mais usados diretamente aqui
   }) {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
+        // --- Verificações de Estado ---
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          debugPrint("Erro no StreamBuilder (Disciplina): ${snapshot.error}");
+          // Crie o índice se for FAILED_PRECONDITION
+          return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(child: Text(emptyMessage));
         }
+        // --- Fim das Verificações ---
 
         final players = snapshot.data!.docs;
 
-        return ListView.builder(
-          itemCount: players.length,
-          itemBuilder: (context, index) {
-            final player = players[index];
-            final data = player.data() as Map<String, dynamic>;
+        // --- 2. ESTRUTURA PARA ROLAGEM + BANNER ---
+        return SingleChildScrollView(
+           padding: const EdgeInsets.only(bottom: 16.0), // Espaço no final
+          child: Column(
+            children: [
+              // --- 3. A LISTA DE JOGADORES ---
+              ListView.builder(
+                // --- 4. Ajustes Essenciais ---
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                // --- Fim dos Ajustes ---
+                itemCount: players.length,
+                itemBuilder: (context, index) {
+                  final player = players[index];
+                  try {
+                    final data = player.data() as Map<String, dynamic>;
 
-            // --- LÓGICA DE COR E STATUS ---
-            String status = '';
-            Color statusColor = Colors.black; // Cor padrão
+                    // --- Lógica de Cor e Status ---
+                    String status = '';
+                    Color statusColor = Colors.black;
 
-            if (isSuspendedList) {
-              // Estamos na aba "Suspensos"
-              if (data['red_cards'] > 0) {
-                status = "Cartão Vermelho";
-                statusColor = Colors.red[700]!; // Vermelho forte
-              } else {
-                // Se não tem vermelho, a suspensão é por 3 amarelos
-                status = "3º Amarelo"; 
-                // Amarelo escuro para ser legível em fundo branco
-                statusColor = Colors.yellow[800]!; 
-              }
-            } else {
-              // Estamos na aba "Pendurados"
-              status = "${data['yellow_cards']} amarelos";
-              statusColor = Colors.orange[700]!; // Laranja
-            }
-            // --- FIM DA LÓGICA ---
+                    if (isSuspendedList) {
+                      if ((data['red_cards'] ?? 0) > 0) { // Usa ?? 0 para segurança
+                        status = "Cartão Vermelho";
+                        statusColor = Colors.red[700]!;
+                      } else {
+                        status = "3º Amarelo";
+                        statusColor = Colors.yellow[800]!;
+                      }
+                    } else {
+                      status = "${data['yellow_cards'] ?? 0} amarelos"; // Usa ?? 0
+                      statusColor = Colors.orange[700]!;
+                    }
+                    // --- Fim da Lógica ---
 
-            return ListTile(
-              title: Text(data['name']),
-              subtitle: Text(data['team_name']),
-              trailing: Text(
-                status,
-                style: TextStyle( // 'const' removido
-                  color: statusColor, // <-- Usa a cor dinâmica
-                  fontWeight: FontWeight.bold,
+                    return ListTile(
+                      title: Text(data['name'] ?? 'Nome Indisponível'),
+                      subtitle: Text(data['team_name'] ?? 'Time Indisponível'),
+                      trailing: Text(
+                        status,
+                        style: TextStyle( // 'const' removido
+                          color: statusColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onTap: () {
+                        if (isSuspendedList && AdminService.isAdmin) {
+                          _showClearSuspensionDialog(context, player);
+                        } else if (isSuspendedList && !AdminService.isAdmin) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Apenas o admin pode liberar jogadores.')),
+                          );
+                        }
+                      },
+                    );
+                  } catch (e) {
+                     debugPrint("Erro ao processar jogador ${player.id}: $e");
+                    return ListTile(
+                      leading: Text('${index + 1}'), // Simplificado
+                      title: Text('Erro ao carregar jogador ${player.id}'),
+                      subtitle: Text(e.toString()),
+                    );
+                  }
+                },
+              ), // Fim do ListView.builder
+
+              // --- 5. ÁREA DO BANNER ---
+              const SizedBox(height: 24),
+               Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  'Patrocinadores',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
-              onTap: () {
-                if (isSuspendedList && AdminService.isAdmin) {
-                  _showClearSuspensionDialog(context, player);
-                } else if (isSuspendedList && !AdminService.isAdmin) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Apenas o admin pode liberar jogadores.')),
-                  );
-                }
-              },
-            );
-          },
+              const SizedBox(height: 8),
+              const SponsorBannerRotator(), // <-- O Widget do Banner
+              // --- FIM DA ÁREA DO BANNER ---
+            ],
+          ),
         );
+        // --- FIM DA ESTRUTURA ---
       },
     );
   }
-}
+} // Fim da classe DisciplinaryScreen

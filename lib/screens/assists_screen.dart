@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
 
 class AssistsScreen extends StatelessWidget {
   const AssistsScreen({super.key});
@@ -16,44 +17,91 @@ class AssistsScreen extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('players')
-            .where('assists', isGreaterThan: 0)
-            .orderBy('assists', descending: true) // Apenas muda aqui
-            .limit(20)
+            .where('assists', isGreaterThan: 0) // Só quem tem assistência
+            .orderBy('assists', descending: true) // Ordena por assistências
+            // -- ÍNDICE NECESSÁRIO --
+            // Você precisará de um índice composto para esta consulta:
+            // Coleção: players
+            // Campos: assists (Descendente), name (Ascendente)
+            .orderBy('name') // Adiciona desempate por nome
+            // -- FIM ÍNDICE --
+            .limit(20) // Top 20
             .snapshots(),
         builder: (context, snapshot) {
-          // ... (O resto do builder é idêntico ao ScorersScreen)
+          // --- Verificações de Estado ---
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            debugPrint("Erro no StreamBuilder (Assistências): ${snapshot.error}");
+            return Center(child: Text('Erro ao carregar assistências: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text('Nenhum líder em assistências.'));
           }
+          // --- Fim das Verificações ---
 
           final players = snapshot.data!.docs;
 
-          return ListView.builder(
-            itemCount: players.length,
-            itemBuilder: (context, index) {
-              final player = players[index];
-              final data = player.data() as Map<String, dynamic>;
-              final rank = index + 1;
+          // --- 2. ESTRUTURA PARA ROLAGEM + BANNER ---
+          return SingleChildScrollView(
+             padding: const EdgeInsets.only(bottom: 16.0), // Espaço no final
+            child: Column(
+              children: [
+                // --- 3. A LISTA DE LÍDERES EM ASSISTÊNCIAS ---
+                ListView.builder(
+                  // --- 4. Ajustes Essenciais ---
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  // --- Fim dos Ajustes ---
+                  itemCount: players.length,
+                  itemBuilder: (context, index) {
+                    final player = players[index];
+                    try {
+                      final data = player.data() as Map<String, dynamic>;
+                      final rank = index + 1;
 
-              return ListTile(
-                leading: CircleAvatar(
-                  child: Text(rank.toString()),
-                ),
-                title: Text(data['name']),
-                subtitle: Text(data['team_name']),
-                trailing: Text(
-                  data['assists'].toString(), // E aqui
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                      return ListTile(
+                        leading: CircleAvatar(
+                          child: Text(rank.toString()),
+                        ),
+                        title: Text(data['name'] ?? 'Nome Indisponível'),
+                        subtitle: Text(data['team_name'] ?? 'Time Indisponível'),
+                        trailing: Text(
+                          (data['assists'] ?? 0).toString(), // Usa ?? 0
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                      );
+                    } catch (e) {
+                       debugPrint("Erro ao processar jogador ${player.id}: $e");
+                      return ListTile(
+                        leading: CircleAvatar(child: Text('${index + 1}')),
+                        title: Text('Erro ao carregar jogador ${player.id}'),
+                        subtitle: Text(e.toString()),
+                      );
+                    }
+                  },
+                ), // Fim do ListView.builder
+
+                // --- 5. ÁREA DO BANNER ---
+                const SizedBox(height: 24),
+                 Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(
+                    'Patrocinadores',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
-              );
-            },
+                const SizedBox(height: 8),
+                const SponsorBannerRotator(), // <-- O Widget do Banner
+                // --- FIM DA ÁREA DO BANNER ---
+              ],
+            ),
           );
+          // --- FIM DA ESTRUTURA ---
         },
       ),
     );
