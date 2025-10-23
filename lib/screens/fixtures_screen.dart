@@ -7,6 +7,9 @@ import 'admin_match_screen.dart';
 import '../services/admin_service.dart';
 import '../services/data_uploader_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert'; // Para utf8
+import '../services/admin_service.dart';
 
 class FixturesScreen extends StatefulWidget {
   const FixturesScreen({super.key});
@@ -15,7 +18,12 @@ class FixturesScreen extends StatefulWidget {
   State<FixturesScreen> createState() => _FixturesScreenState();
 }
 
-
+// Função para gerar o hash SHA-256 de uma string
+String _hashPassword(String password) {
+  final bytes = utf8.encode(password); // Converte para bytes UTF-8
+  final digest = sha256.convert(bytes); // Calcula o hash
+  return digest.toString(); // Retorna a representação hexadecimal
+}
 
 class _FixturesScreenState extends State<FixturesScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -77,45 +85,85 @@ class _FixturesScreenState extends State<FixturesScreen> {
 
   Future<void> _showAdminLoginDialog() async {
     final TextEditingController passwordController = TextEditingController();
+    bool isLoading = false; // Estado para mostrar loading no diálogo
 
     return showDialog<void>(
       context: context,
+      barrierDismissible: false, // Não fechar clicando fora
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Acesso Admin'),
-          content: TextField(
-            controller: passwordController,
-            obscureText: true, // Esconde a senha
-            decoration: const InputDecoration(labelText: 'Senha'),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancelar'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: const Text('Entrar'),
-              onPressed: () {
-                // SENHA "SECRETA" - Mude isso para sua senha
-                if (passwordController.text == 'admin123') {
-                  setState(() {
-                    _isAdmin = true; // Libera o modo admin
-                  });
-                  AdminService.isAdmin = true; // Seta o global
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Modo Admin ativado!')),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Senha incorreta.')),
-                  );
-                }
-              },
-            ),
-          ],
+        return StatefulBuilder( // Para atualizar o estado do diálogo (loading)
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Acesso Admin'),
+              content: TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Senha'),
+                enabled: !isLoading, // Desabilita enquanto carrega
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancelar'),
+                  onPressed: isLoading ? null : () => Navigator.of(context).pop(),
+                ),
+                TextButton(
+                  // Mostra loading ou texto
+                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Entrar'),
+                  onPressed: isLoading ? null : () async {
+                    final enteredPassword = passwordController.text;
+                    if (enteredPassword.isEmpty) {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         const SnackBar(content: Text('Por favor, digite a senha.')),
+                       );
+                       return;
+                    }
+
+                    setDialogState(() { isLoading = true; }); // Inicia loading
+
+                    try {
+                      // 1. Calcula o hash da senha digitada
+                      final enteredHash = _hashPassword(enteredPassword);
+
+                      // 2. Busca o hash armazenado no Firestore
+                      final docRef = _firestore.collection('config').doc('admin_credentials');
+                      final docSnap = await docRef.get();
+
+                      if (!docSnap.exists || !docSnap.data()!.containsKey('password_hash')) {
+                         throw Exception('Configuração de senha admin não encontrada no Firestore.');
+                      }
+                      final storedHash = docSnap.get('password_hash');
+
+                      // 3. Compara os hashes
+                      if (enteredHash == storedHash) {
+                        // Senha correta!
+                        setState(() { _isAdmin = true; });
+                        AdminService.isAdmin = true;
+                        if (mounted) Navigator.of(context).pop(); // Fecha o diálogo
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Modo Admin ativado!')),
+                        );
+                      } else {
+                        // Senha incorreta
+                        throw Exception('Senha incorreta.');
+                      }
+                    } catch (e) {
+                      // Mostra erro (senha incorreta ou problema no Firestore)
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Erro ao logar: ${e.toString().replaceFirst("Exception: ", "")}')),
+                        );
+                      }
+                    } finally {
+                      // Garante que o loading termine mesmo se der erro
+                      if (mounted) {
+                         setDialogState(() { isLoading = false; });
+                      }
+                    }
+                  },
+                ),
+              ],
+            );
+          }
         );
       },
     );

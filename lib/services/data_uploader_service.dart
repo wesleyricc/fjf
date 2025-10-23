@@ -56,6 +56,7 @@ class DataUploaderService {
         
         // Injeta o nome do time vindo do cache
         playerInfo['team_name'] = teamInfo['name'];
+        playerInfo['team_shield_url'] = teamInfo['shield_url'];
         // --- FIM DA LÓGICA DE BUSCA ---
 
         playerInfo['goals'] = 0;

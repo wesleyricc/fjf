@@ -105,7 +105,7 @@ class AppDrawer extends StatelessWidget {
           _buildDrawerItem(
             context,
             Icons.warning,
-            'Suspensos e Pendurados',
+            'Cartões',
             () {
               Navigator.of(context).pop();
               Navigator.of(context).pushReplacement(

@@ -165,9 +165,9 @@ class _StandingsScreenState extends State<StandingsScreen> {
                       DataColumn(label: Text('V')),
                       DataColumn(label: Text('E')),
                       DataColumn(label: Text('D')),
-                      DataColumn(label: Text('SG')),
                       DataColumn(label: Text('GP')),
                       DataColumn(label: Text('GC')),
+                      DataColumn(label: Text('SG')),
                       DataColumn(label: Text('PD')),
                     ],
                     rows: teams.map((teamStanding) {
@@ -191,9 +191,9 @@ class _StandingsScreenState extends State<StandingsScreen> {
                         DataCell(Text(teamStanding.wins.toString())),
                         DataCell(Text(teamStanding.draws.toString())),
                         DataCell(Text(teamStanding.losses.toString())),
-                        DataCell(Text(teamStanding.goalDifference.toString())),
                         DataCell(Text(teamStanding.goalsFor.toString())),
                         DataCell(Text(teamStanding.goalsAgainst.toString())),
+                        DataCell(Text(teamStanding.goalDifference.toString())),
                         DataCell(Text(teamStanding.disciplinaryPoints.toString())),
                       ]);
                     }).toList(),
@@ -232,7 +232,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                 // --- 2. ÁREA DO BANNER ---
                 const SizedBox(height: 24),
                  Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 140.0),
                   child: Text(
                     'Patrocinadores',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),

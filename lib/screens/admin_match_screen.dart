@@ -286,10 +286,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                 children: [
                   _buildScoreCard(),
                   const SizedBox(height: 16),
-                  Text('Time da Casa: ...'),
+                  Text('Time da Casa:'),
                   _buildPlayerList(_homePlayers),
                   const SizedBox(height: 16),
-                  Text('Time Visitante: ...'),
+                  Text('Time Visitante:'),
                   _buildPlayerList(_awayPlayers),
 
                   // --- WIDGET DO CRAQUE DO JOGO ---

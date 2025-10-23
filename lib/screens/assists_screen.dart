@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
+import '../widgets/rank_indicator.dart';
 
 class AssistsScreen extends StatelessWidget {
   const AssistsScreen({super.key});
@@ -60,13 +61,44 @@ class AssistsScreen extends StatelessWidget {
                     try {
                       final data = player.data() as Map<String, dynamic>;
                       final rank = index + 1;
+                      final String shieldUrl = data['team_shield_url'] ?? '';
 
                       return ListTile(
-                        leading: CircleAvatar(
-                          child: Text(rank.toString()),
-                        ),
+                        leading: RankIndicator(rank: rank),
                         title: Text(data['name'] ?? 'Nome Indisponível'),
-                        subtitle: Text(data['team_name'] ?? 'Time Indisponível'),
+
+                        // --- AJUSTE NO TITLE PARA INCLUIR ESCUDO ---
+                        subtitle: Row(
+                          children: [
+                            if (shieldUrl.isNotEmpty) // Mostra só se tiver URL
+                              Padding(
+                                padding: const EdgeInsets.only(right: 3.0),
+                                child: Image.network(
+                                  shieldUrl,
+                                  width: 20,
+                                  height: 20,
+                                  fit: BoxFit.contain,
+                                  // Placeholder em caso de erro
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                ),
+                              ),
+                            Expanded( // Para o nome não estourar
+                              child: Text(
+                                data['team_name'] ?? 'Time Indisponível',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // --- FIM DO AJUSTE ---
+
+
+                        
+
+
+
+
                         trailing: Text(
                           (data['assists'] ?? 0).toString(), // Usa ?? 0
                           style: const TextStyle(
