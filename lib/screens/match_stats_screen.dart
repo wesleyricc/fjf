@@ -165,9 +165,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
         // Mostra o nome do time alinhado
         Padding(
           padding: const EdgeInsets.only(bottom: 8.0),
-          child: Text(teamName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          child: SizedBox( // Garante que o Text possa ocupar a largura necessária para centralizar
+            width: double.infinity,
+            child: Text(
+              teamName,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center, // <-- ADICIONA CENTRALIZAÇÃO AQUI
+            ),
         ),
-
+        ),
         // --- GOLS ---
         if (goalWidgets.isNotEmpty) ...[
           _buildStatHeader('Gols', Icons.sports_soccer, alignment), // Passa alinhamento
@@ -197,63 +203,77 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
 
   // --- FUNÇÃO ATUALIZADA PARA ACEITAR ALINHAMENTO ---
   Widget _buildStatHeader(String title, IconData icon, CrossAxisAlignment alignment, [Color? iconColor]) {
-     // A Row agora ocupa o espaço, o alinhamento da Column externa controla a posição
-     return Padding(
-       padding: const EdgeInsets.only(bottom: 4.0),
-       child: Row(
-          // O MainAxisAlignment depende do alinhamento geral da coluna
-          mainAxisAlignment: alignment == CrossAxisAlignment.start ? MainAxisAlignment.start : MainAxisAlignment.end,
-          children: [
-            // Reordena ícone e texto para o alinhamento à direita
-            if (alignment == CrossAxisAlignment.end) ...[
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                const SizedBox(width: 6),
-                Icon(icon, color: iconColor ?? Colors.black54, size: 18),
-            ] else ...[
-                Icon(icon, color: iconColor ?? Colors.black54, size: 18),
-                const SizedBox(width: 6),
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            ]
-          ],
-        ),
+     // Usa Align para controlar a posição do conteúdo (Row)
+     return Align(
+       alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
+       child: Padding(
+         padding: const EdgeInsets.only(bottom: 4.0, left: 8.0, right: 8.0), // Padding lateral
+         child: Row(
+            mainAxisSize: MainAxisSize.min, // Row encolhe para o conteúdo
+            children: [
+              // Ordem Ícone/Texto baseada no alinhamento
+              if (alignment == CrossAxisAlignment.end) ...[
+                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 6),
+                  Icon(icon, color: iconColor ?? Colors.black54, size: 16),
+              ] else ...[
+                  Icon(icon, color: iconColor ?? Colors.black54, size: 16),
+                  const SizedBox(width: 6),
+                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              ]
+            ],
+          ),
+       ),
      );
   }
 
   // --- FUNÇÃO ATUALIZADA PARA ACEITAR ALINHAMENTO ---
   Widget _buildStatItem(String playerName, int count, CrossAxisAlignment alignment, [IconData? cardIcon, Color? cardColor]) {
     String text = playerName;
-    if (count > 1 && cardIcon == null) { // Só adiciona (count) para gols/assists
+    // Só adiciona contagem para Gols/Assist (quando não há ícone de cartão)
+    if (count > 1 && cardIcon == null) {
       text += ' ($count)';
     }
 
     // Para cartões, mostra ícone e nome
     if (cardIcon != null) {
-      return Padding(
-        padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 2.0),
-        child: Row(
-          mainAxisAlignment: alignment == CrossAxisAlignment.start ? MainAxisAlignment.start : MainAxisAlignment.end,
-          children: [
-            // Reordena para alinhamento à direita
-            if (alignment == CrossAxisAlignment.end) ...[
-              Flexible(child: Text(text, style: const TextStyle(fontSize: 14), textAlign: TextAlign.end)), // Garante quebra de linha à direita
-              const SizedBox(width: 4),
-              Icon(cardIcon, color: cardColor, size: 16),
-            ] else ...[
-              Icon(cardIcon, color: cardColor, size: 16),
-              const SizedBox(width: 4),
-              Flexible(child: Text(text, style: const TextStyle(fontSize: 14))), // Garante quebra de linha à esquerda
-            ]
-          ]),
+      // Usa Align para forçar o alinhamento da Row interna
+      return Align(
+         alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
+         child: Padding(
+          padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 2.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min, // Row encolhe para o conteúdo
+            children: [
+              // Ordem Ícone/Texto baseada no alinhamento
+              if (alignment == CrossAxisAlignment.end) ...[
+                // Usar Flexible aqui é importante caso o nome seja muito longo
+                Flexible(child: Text(text, style: const TextStyle(fontSize: 14), textAlign: TextAlign.end)),
+                const SizedBox(width: 4),
+                //Icon(cardIcon, color: cardColor, size: 16),
+              ] else ...[
+                //Icon(cardIcon, color: cardColor, size: 16),
+                const SizedBox(width: 4),
+                Flexible(child: Text(text, style: const TextStyle(fontSize: 14), textAlign: TextAlign.start)),
+              ]
+            ]),
+         ),
       );
     }
 
-    // Para gols e assists, só o texto, alinhado
-    return Padding(
-       padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 2.0),
-       // Define a largura máxima e alinha o texto
-       child: Container(
-         alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
-         child: Text(text, style: const TextStyle(fontSize: 14)),
+    // Para gols e assists, só o texto, alinhado com Align
+    return Align(
+       alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
+       child: Padding(
+         padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 2.0),
+         // Usar Flexible + Text com textAlign garante alinhamento correto mesmo com quebra de linha
+         child: Flexible(
+             child: Text(
+               text,
+               style: const TextStyle(fontSize: 14),
+               textAlign: alignment == CrossAxisAlignment.start ? TextAlign.start : TextAlign.end,
+             )
+         ),
        ),
     );
   }
@@ -261,6 +281,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+
     // ... (extração de dados como antes: scoreHome, scoreAway, ids, nomes, escudos, data) ...
     final data = widget.match.data() as Map<String, dynamic>;
     final scoreHome = data['score_home']?.toString() ?? '-';
@@ -271,6 +292,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     final awayTeamName = data['team_away_name'] ?? 'Time Visitante';
     final homeShield = data['team_home_shield'] ?? '';
     final awayShield = data['team_away_shield'] ?? '';
+    final String location = data['location'] ?? '';
     String formattedDate = 'Data Indisponível';
     if (data['datetime'] != null && data['datetime'] is Timestamp) {
       formattedDate = DateFormat('dd/MM/yyyy HH:mm').format((data['datetime'] as Timestamp).toDate());
@@ -305,7 +327,11 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                     ],
                   ),
                    const SizedBox(height: 8),
-                   Text(formattedDate, style: Theme.of(context).textTheme.bodySmall),
+                   Text(
+                     '$formattedDate - $location', // Combina as duas
+                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                     textAlign: TextAlign.center,
+                    ),
                 ],
               ),
             ),

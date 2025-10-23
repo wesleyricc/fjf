@@ -32,6 +32,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   Map<String, int> _redCards = {};
   String? _selectedManOfTheMatchId; // <-- NOVO ESTADO
   Map<String, int> _goalsConceded = {};
+  String _selectedStatus = 'pending';
 
   @override
   void initState() {
@@ -55,6 +56,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       _redCards = Map<String, int>.from(stats['reds'] ?? {});
       _selectedManOfTheMatchId = data['stats_applied']['man_of_the_match'];
       _goalsConceded = Map<String, int>.from(stats['goals_conceded'] ?? {});
+      _selectedStatus = data['status'] ?? 'pending';
     }
 
     _fetchPlayers();
@@ -92,10 +94,20 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     final int scoreHome = int.tryParse(_homeScoreController.text) ?? 0;
     final int scoreAway = int.tryParse(_awayScoreController.text) ?? 0;
 
+    if (_selectedStatus == 'finished' && (_homeScoreController.text.isEmpty || _awayScoreController.text.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Placar é obrigatório para jogos finalizados.')),
+      );
+      return; // Impede salvar
+    } 
+
+    setState(() { _isSaving = true; });
+
     String result = await _firestoreService.updateMatchStats(
       matchSnapshot: widget.match,
       newScoreHome: scoreHome,
       newScoreAway: scoreAway,
+      newStatus: _selectedStatus,
       newGoals: _goals,
       newAssists: _assists,
       newYellows: _yellowCards,
@@ -285,6 +297,39 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               child: Column(
                 children: [
                   _buildScoreCard(),
+
+                  // --- SELETOR DE STATUS (NOVO) ---
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedStatus,
+                        items: const [
+                          DropdownMenuItem(value: 'pending', child: Text('Pendente')),
+                          DropdownMenuItem(value: 'in_progress', child: Text('Em Andamento')), // Ícone simples de live
+                          DropdownMenuItem(value: 'finished', child: Text('Finalizado')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _selectedStatus = value;
+                              // Se mudar para 'Finalizado', preenche placar 0x0 se vazio? (Opcional)
+                              // if(value == 'finished' && _homeScoreController.text.isEmpty) _homeScoreController.text = '0';
+                              // if(value == 'finished' && _awayScoreController.text.isEmpty) _awayScoreController.text = '0';
+                            });
+                          }
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Status da Partida',
+                          border: InputBorder.none, // Remove linha inferior
+                        ),
+                      ),
+                    ),
+                  ),
+                  // --- FIM DO SELETOR ---
+
+
                   const SizedBox(height: 16),
                   Text('Time da Casa:'),
                   _buildPlayerList(_homePlayers),

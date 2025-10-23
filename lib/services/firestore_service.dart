@@ -27,6 +27,7 @@ class FirestoreService {
     required DocumentSnapshot matchSnapshot,
     required int newScoreHome,
     required int newScoreAway,
+    required String newStatus,
     required Map<String, int> newGoals,
     required Map<String, int> newAssists,
     required Map<String, int> newYellows,
@@ -84,7 +85,8 @@ class FirestoreService {
         transaction.update(_firestore.collection('matches').doc(matchId), {
           'score_home': newScoreHome,
           'score_away': newScoreAway,
-          'status': 'finished',
+          'status': newStatus,
+          //'status': 'finished',
           'stats_applied': { 
             'player_stats': newPlayerStats,
             'man_of_the_match': newManOfTheMatchId, // <-- SALVA CRAQUE DO JOGO
