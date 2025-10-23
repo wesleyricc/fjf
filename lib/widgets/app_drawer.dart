@@ -9,6 +9,7 @@ import '../screens/disciplinary_screen.dart';
 import '../screens/least_conceded_gk_screen.dart'; // <-- NOVO
 import '../screens/man_of_the_match_screen.dart'; // <-- NOVO
 import '../screens/splash_screen.dart';
+import '../screens/teams_list_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -70,6 +71,8 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
           _buildDrawerItem(
             context,
             Icons.calendar_today,
@@ -81,6 +84,8 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
           _buildDrawerItem(
             context,
             Icons.leaderboard,
@@ -93,6 +98,21 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
+          _buildDrawerItem(
+            context,
+            Icons.group, // Ícone de grupo/times
+            'Equipes',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => const TeamsListScreen()), // <-- Vai para a nova tela
+              );
+            },
+          ),
+
+          const Divider(color: Colors.white54), // Separador visual
           _buildDrawerItem(
             context,
             Icons.sports_soccer,
@@ -104,6 +124,8 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
           _buildDrawerItem(
             context,
             Icons.assistant,
@@ -115,6 +137,8 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
           _buildDrawerItem(
             context,
             Icons.warning,
@@ -127,6 +151,8 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
           _buildDrawerItem(
             context,
             Icons.shield, // Ícone de escudo/goleiro
@@ -138,6 +164,8 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
           _buildDrawerItem(
             context,
             Icons.star, // Ícone de estrela

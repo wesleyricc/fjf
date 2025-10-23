@@ -10,6 +10,7 @@ import '../widgets/sponsor_banner_rotator.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert'; // Para utf8
 import '../services/admin_service.dart';
+import 'match_stats_screen.dart';
 
 class FixturesScreen extends StatefulWidget {
   const FixturesScreen({super.key});
@@ -401,17 +402,29 @@ class _FixturesScreenState extends State<FixturesScreen> {
                         trailing: Image.network(data['team_away_shield'], width: 40, errorBuilder: (c, o, s) => const Icon(Icons.shield)),
                         subtitle: Center(child: Text(formattedDate)), 
                         onTap: () {
+
+                          final gameStatus = data['status'] ?? 'pending';
+
                           if (_isAdmin) {
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (ctx) => AdminMatchScreen(match: match),
                               ),
                             );
+                          } else if (gameStatus == 'finished') {
+                            // Não-Admin SÓ PODE ver stats de jogo FINALIZADO
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (ctx) => MatchStatsScreen(match: match), // <-- Vai para a nova tela
+                              ),
+                            );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Você precisa estar no modo admin para editar jogos.')),
+                              const SnackBar(content: Text('As estatísticas estarão disponíveis após o fim do jogo.')),
                             );
                           }
+
+
                         },
                       ),
                     );

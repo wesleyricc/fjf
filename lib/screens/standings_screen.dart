@@ -215,7 +215,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                           style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold), // Tamanho titleSmall
                         ),
                         const SizedBox(height: 4), // Espaço menor
-                        _buildLegendRow('P', 'Pontos'),
+                        _buildLegendRow('P', 'Pontos (Partida + Extras)'),
                         _buildLegendRow('J', 'Jogos'),
                         _buildLegendRow('V', 'Vitórias'),
                         _buildLegendRow('E', 'Empates'),
