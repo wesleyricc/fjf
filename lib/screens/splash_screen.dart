@@ -67,8 +67,8 @@ class _SplashScreenState extends State<SplashScreen> {
               _ytController = YoutubePlayerController(
                 initialVideoId: _videoId,
                 flags: const YoutubePlayerFlags(
-                  autoPlay: false,
-                  mute: false,
+                  autoPlay: true,
+                  mute: true,
                   isLive: true, // Ajuste conforme necessário
                 ),
               );

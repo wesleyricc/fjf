@@ -29,16 +29,97 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     _extractStatsAndFetchPlayers();
   }
 
-  // Função _extractStatsAndFetchPlayers (sem mudanças)
+  // --- FUNÇÃO QUE FALTAVA ---
   Future<void> _extractStatsAndFetchPlayers() async {
-    // ... (código como antes) ...
-  }
+    // Garante que o estado de loading está ativo
+    if (mounted) {
+      setState(() {
+        _isLoadingPlayerData = true;
+      });
+    }
 
-  // Função _fetchPlayerData (sem mudanças)
+    // 1. Extrai as estatísticas do documento do jogo
+    final data = widget.match.data() as Map<String, dynamic>;
+    Map<String, dynamic> statsApplied = {};
+    if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
+       statsApplied = data['stats_applied'];
+    }
+    Map<String, dynamic> playerStats = statsApplied['player_stats'] ?? {};
+    _manOfTheMatchId = statsApplied['man_of_the_match']; // Define o ID do MotM
+
+    // Preenche os mapas de estatísticas da tela
+    _goals = Map<String, int>.from(playerStats['goals'] ?? {});
+    _assists = Map<String, int>.from(playerStats['assists'] ?? {});
+    _yellows = Map<String, int>.from(playerStats['yellows'] ?? {});
+    _reds = Map<String, int>.from(playerStats['reds'] ?? {});
+    // Adicionar _goalsConceded se for usar:
+    // _goalsConceded = Map<String, int>.from(playerStats['goals_conceded'] ?? {});
+
+
+    // 2. Coleta todos os IDs de jogadores únicos mencionados
+    Set<String> playerIds = {};
+    playerIds.addAll(_goals.keys);
+    playerIds.addAll(_assists.keys);
+    playerIds.addAll(_yellows.keys);
+    playerIds.addAll(_reds.keys);
+    // playerIds.addAll(_goalsConceded.keys); // Se usar GS
+    if (_manOfTheMatchId != null) {
+      playerIds.add(_manOfTheMatchId!);
+    }
+    playerIds.removeWhere((id) => id.isEmpty); // Remove IDs vazios
+
+    // 3. Chama a função para buscar os dados desses jogadores
+    // _fetchPlayerData atualizará _isLoadingPlayerData para false no final
+    await _fetchPlayerData(playerIds);
+  }
+  // --- FIM DA FUNÇÃO QUE FALTAVA ---
+
+  // Função para extrair stats do jogo e buscar dados dos jogadores
   Future<void> _fetchPlayerData(Set<String> playerIds) async {
-    // ... (código como antes) ...
-  }
+    if (playerIds.isEmpty) {
+      if (mounted) setState(() => _isLoadingPlayerData = false);
+      return;
+    }
 
+    try {
+      // Busca documentos dos jogadores cujos IDs estão na lista
+      // Firestore limita 'whereIn' a 10 itens por consulta,
+      // então dividimos em lotes se necessário.
+      List<String> idList = playerIds.toList();
+      Map<String, Map<String, dynamic>> fetchedData = {};
+
+      for (int i = 0; i < idList.length; i += 10) {
+        int end = (i + 10 < idList.length) ? i + 10 : idList.length;
+        List<String> subList = idList.sublist(i, end);
+
+        final snapshot = await _firestore
+            .collection('players')
+            .where(FieldPath.documentId, whereIn: subList)
+            .get();
+
+        for (var doc in snapshot.docs) {
+          fetchedData[doc.id] = doc.data();
+        }
+      }
+       _playerDataCache = fetchedData;
+
+       // Busca o nome do Craque do Jogo separadamente se houver ID
+       if (_manOfTheMatchId != null && _playerDataCache.containsKey(_manOfTheMatchId)) {
+         _manOfTheMatchName = _playerDataCache[_manOfTheMatchId]?['name'] ?? 'Não encontrado';
+       }
+
+
+    } catch (e) {
+      debugPrint("Erro ao buscar dados dos jogadores: $e");
+      // Tratar erro, talvez mostrando uma mensagem
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingPlayerData = false;
+        });
+      }
+    }
+  }
 
   // --- FUNÇÃO ATUALIZADA PARA ACEITAR ALINHAMENTO ---
   Widget _buildTeamStatsColumn(String teamId, String teamName, CrossAxisAlignment alignment) {

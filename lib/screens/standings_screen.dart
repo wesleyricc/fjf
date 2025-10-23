@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
+import 'team_detail_screen.dart';
 
 // Classe auxiliar TeamStanding (sem mudanças)
 class TeamStanding {
@@ -177,13 +178,24 @@ class _StandingsScreenState extends State<StandingsScreen> {
                       return DataRow(cells: [
                         DataCell(Text(index.toString())),
                         DataCell(
-                          Row(
-                            children: [
-                              Image.network(data['shield_url'], width: 18, errorBuilder: (c,o,s)=>const SizedBox(width:18)), // Escudo menor
-                              const SizedBox(width: 6),
-                              // Limita a largura do nome do time para não estourar
-                              Flexible(child: Text(data['name'] ?? '', overflow: TextOverflow.ellipsis)),
-                            ],
+                          InkWell(
+                            onTap: () {
+                              // --- 2. NAVEGAR AO CLICAR ---
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (ctx) => TeamDetailScreen(teamDoc: teamStanding.teamDoc), // Passa o doc do time
+                                ),
+                              );
+                              // --- FIM DA NAVEGAÇÃO ---
+                            },
+                            child: Row(
+                              children: [
+                                Image.network(data['shield_url'], width: 18, errorBuilder: (c,o,s)=>const SizedBox(width:18)), // Escudo menor
+                                const SizedBox(width: 6),
+                                // Limita a largura do nome do time para não estourar
+                                Flexible(child: Text(data['name'] ?? '', overflow: TextOverflow.ellipsis)),
+                              ],
+                            ),
                           ),
                         ),
                         DataCell(Text(teamStanding.points.toString())),
