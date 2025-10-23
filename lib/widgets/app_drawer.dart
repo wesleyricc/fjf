@@ -10,12 +10,16 @@ import '../screens/least_conceded_gk_screen.dart'; // <-- NOVO
 import '../screens/man_of_the_match_screen.dart'; // <-- NOVO
 import '../screens/splash_screen.dart';
 import '../screens/teams_list_screen.dart';
+import '../services/admin_service.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
   @override
   Widget build(BuildContext context) {
+
+    final AdminService adminService = AdminService();
+
     return Drawer(
       // A cor de fundo já é definida pelo tema no main.dart (drawerTheme)
       child: ListView(
@@ -177,6 +181,41 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
+
+          const Divider(color: Colors.white54), // Separador visual
+          _buildDrawerItem(
+            context,
+            AdminService.isAdmin ? Icons.admin_panel_settings : Icons.lock_outline, // Ícone muda se logado
+            AdminService.isAdmin ? 'Menu Admin' : 'Acesso Admin', // Texto muda
+            () {
+              Navigator.of(context).pop(); // Fecha o drawer ANTES de mostrar o diálogo
+              adminService.promptAdminPassword(context); // Chama a função do serviço
+            },
+            denseOverride: true, // Força compacto
+            contentPaddingOverride: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0), // Força compacto
+          ),
+
+          // --- ITEM DE LOGOUT (SÓ SE LOGADO) ---
+          if (AdminService.isAdmin)
+             _buildDrawerItem(
+               context,
+               Icons.logout,
+               'Sair do Modo Admin',
+               () {
+                 AdminService.logoutAdmin();
+                 Navigator.of(context).pop(); // Fecha o drawer
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text('Modo Admin desativado.')),
+                 );
+                 // Opcional: Navegar para a tela inicial para "resetar" visualmente
+                 // Navigator.of(context).pushReplacement(
+                 //    MaterialPageRoute(builder: (ctx) => const SplashScreen()),
+                 // );
+               },
+               denseOverride: true,
+               contentPaddingOverride: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+             ),
+          // --- FIM DO ITEM DE LOGOUT ---
         ],
       ),
     );
@@ -184,9 +223,11 @@ class AppDrawer extends StatelessWidget {
 
   // Função auxiliar para construir os itens do Drawer
   Widget _buildDrawerItem(
-      BuildContext context, IconData icon, String title, VoidCallback onTap) {
+        BuildContext context, IconData icon, String title, VoidCallback onTap,
+      {bool? denseOverride, EdgeInsets? contentPaddingOverride}) {
     return ListTile(
-      dense: true,
+      dense: denseOverride ?? true,
+      contentPadding: contentPaddingOverride ?? const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0), // Usa override ou o padrão
       leading: Icon(icon, color: Colors.white70, size: 24),
       title: Text(
         title,

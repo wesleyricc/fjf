@@ -5,10 +5,7 @@ import '../widgets/app_drawer.dart';
 import 'package:intl/intl.dart';
 import 'admin_match_screen.dart';
 import '../services/admin_service.dart';
-import '../services/data_uploader_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert'; // Para utf8
 import '../services/admin_service.dart';
 import 'match_stats_screen.dart';
 import 'team_detail_screen.dart';
@@ -21,18 +18,11 @@ class FixturesScreen extends StatefulWidget {
   State<FixturesScreen> createState() => _FixturesScreenState();
 }
 
-// Função para gerar o hash SHA-256 de uma string
-String _hashPassword(String password) {
-  final bytes = utf8.encode(password); // Converte para bytes UTF-8
-  final digest = sha256.convert(bytes); // Calcula o hash
-  return digest.toString(); // Retorna a representação hexadecimal
-}
-
 class _FixturesScreenState extends State<FixturesScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   int _selectedRound = 1; // Você pode buscar isso do 'config'
   
-  bool _isAdmin = AdminService.isAdmin;
+  //bool _isAdmin = AdminService.isAdmin;
 
   // --- 2. ADICIONE A FUNÇÃO AUXILIAR DE NAVEGAÇÃO ---
   Future<void> _navigateToTeamDetail(BuildContext context, String teamId) async {
@@ -64,232 +54,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
     }
   }
   // --- FIM DA FUNÇÃO AUXILIAR ---
-
-  Future<void> _showChangeVideoIdDialog() async {
-    final videoIdController = TextEditingController();
-    bool isLoading = false;
-    String currentVideoId = ''; // Para mostrar o ID atual
-
-    // Busca o ID atual para preencher o campo
-    try {
-      final docSnap = await _firestore.collection('config').doc('app_settings').get();
-      if (docSnap.exists) {
-        currentVideoId = docSnap.get('live_video_id') ?? '';
-        videoIdController.text = currentVideoId;
-      }
-    } catch (e) {
-      debugPrint("Erro ao buscar ID de vídeo atual: $e");
-      // Continua mesmo se não conseguir buscar o ID atual
-    }
-
-    if (!mounted) return; // Verifica se a tela ainda existe
-
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Alterar ID do Vídeo/Live'),
-              content: TextField(
-                controller: videoIdController,
-                decoration: const InputDecoration(
-                  labelText: 'ID do Vídeo do YouTube',
-                  hintText: 'Ex: dQw4w9WgXcQ',
-                ),
-                enabled: !isLoading,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: isLoading ? null : () async {
-                    final newVideoId = videoIdController.text.trim(); // Remove espaços extras
-
-                    if (newVideoId.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('O ID do vídeo não pode ser vazio.')));
-                      return;
-                    }
-                    // Validação simples (IDs do YouTube geralmente têm 11 caracteres)
-                    if (newVideoId.length < 10 || newVideoId.contains(' ')) {
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ID do vídeo parece inválido.')));
-                       return;
-                    }
-
-                    setDialogState(() { isLoading = true; });
-
-                    try {
-                      // Atualiza no Firestore
-                      await _firestore.collection('config').doc('app_settings').update({
-                        'live_video_id': newVideoId
-                      });
-
-                      if(mounted) Navigator.of(context).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ID do vídeo atualizado com sucesso!')));
-
-                    } catch (e) {
-                       if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Erro ao atualizar ID: ${e.toString()}')),
-                          );
-                       }
-                    } finally {
-                       if (mounted) {
-                         setDialogState(() { isLoading = false; });
-                       }
-                    }
-                  },
-                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Salvar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-
-  // Diálogo de confirmação para o upload
-  Future<void> _showUploadConfirmDialog(BuildContext context) async {
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        bool isLoading = false;
-        // Usamos um StatefulBuilder para atualizar o estado do diálogo
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Carregar Dados Iniciais'),
-              content: Text(
-                isLoading 
-                ? 'Carregando... Por favor, aguarde.'
-                : 'ATENÇÃO!\n\nIsso irá sobrescrever quaisquer times e jogadores com IDs correspondentes.\n\nUse apenas para a configuração inicial. Deseja continuar?',
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                ),
-                TextButton(
-                  child: isLoading 
-                        ? const CircularProgressIndicator() 
-                        : const Text('Confirmar Carga'),
-                  onPressed: isLoading ? null : () async {
-
-                    setDialogState(() { isLoading = true; });
-
-                    final uploader = DataUploaderService();
-                    final String result = await uploader.uploadInitialData();
-
-                    setDialogState(() { isLoading = false; });
-
-                    if (mounted) {
-                      Navigator.of(context).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(result), duration: const Duration(seconds: 5)),
-                      );
-                    }
-                  },
-                ),
-              ],
-            );
-          }
-        );
-      },
-    );
-  }
-
-  Future<void> _showAdminLoginDialog() async {
-    final TextEditingController passwordController = TextEditingController();
-    bool isLoading = false; // Estado para mostrar loading no diálogo
-
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false, // Não fechar clicando fora
-      builder: (BuildContext context) {
-        return StatefulBuilder( // Para atualizar o estado do diálogo (loading)
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Acesso Admin'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Senha'),
-                enabled: !isLoading, // Desabilita enquanto carrega
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                  // Mostra loading ou texto
-                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Entrar'),
-                  onPressed: isLoading ? null : () async {
-                    final enteredPassword = passwordController.text;
-                    if (enteredPassword.isEmpty) {
-                       ScaffoldMessenger.of(context).showSnackBar(
-                         const SnackBar(content: Text('Por favor, digite a senha.')),
-                       );
-                       return;
-                    }
-
-                    setDialogState(() { isLoading = true; }); // Inicia loading
-
-                    try {
-                      // 1. Calcula o hash da senha digitada
-                      final enteredHash = _hashPassword(enteredPassword);
-
-                      // 2. Busca o hash armazenado no Firestore
-                      final docRef = _firestore.collection('config').doc('admin_credentials');
-                      final docSnap = await docRef.get();
-
-                      if (!docSnap.exists || !docSnap.data()!.containsKey('password_hash')) {
-                         throw Exception('Configuração de senha admin não encontrada no Firestore.');
-                      }
-                      final storedHash = docSnap.get('password_hash');
-
-                      // 3. Compara os hashes
-                      if (enteredHash == storedHash) {
-                        // Senha correta!
-                        setState(() { _isAdmin = true; });
-                        AdminService.isAdmin = true;
-                        if (mounted) Navigator.of(context).pop(); // Fecha o diálogo
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Modo Admin ativado!')),
-                        );
-                      } else {
-                        // Senha incorreta
-                        throw Exception('Senha incorreta.');
-                      }
-                    } catch (e) {
-                      // Mostra erro (senha incorreta ou problema no Firestore)
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erro ao logar: ${e.toString().replaceFirst("Exception: ", "")}')),
-                        );
-                      }
-                    } finally {
-                      // Garante que o loading termine mesmo se der erro
-                      if (mounted) {
-                         setDialogState(() { isLoading = false; });
-                      }
-                    }
-                  },
-                ),
-              ],
-            );
-          }
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -327,49 +91,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
           ),
           
           // Espaçador para separar dos botões de admin
-          const SizedBox(width: 10), 
-
-          // Botões de admin existentes
-          if (_isAdmin)
-            IconButton(
-              icon: const Icon(Icons.upload_file),
-              tooltip: 'Carregar Dados Iniciais (Admin)',
-              onPressed: () {
-                if (_isAdmin) {
-                  _showUploadConfirmDialog(context);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Você deve estar logado como admin.')),
-                  );
-                }
-              },
-            ),
-          
-          if (_isAdmin)
-            IconButton(
-              icon: const Icon(Icons.live_tv), // Ícone de TV
-              tooltip: 'Alterar Vídeo Ao Vivo',
-              onPressed: () {
-                _showChangeVideoIdDialog(); // Chama a nova função
-              },
-            ),
-
-          IconButton(
-            icon: Icon(_isAdmin ? Icons.lock_open : Icons.lock),
-            onPressed: () {
-              if (_isAdmin) {
-                setState(() {
-                  _isAdmin = false;
-                });
-                AdminService.isAdmin = false; 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Modo Admin desativado.')),
-                );
-              } else {
-                _showAdminLoginDialog();
-              }
-            },
-          ),
+          const SizedBox(width: 10),
         ],
       ),
       drawer: const AppDrawer(), // Adiciona o menu lateral
@@ -484,7 +206,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
 
                           final gameStatus = data['status'] ?? 'pending';
 
-                          if (_isAdmin) {
+                          if (AdminService.isAdmin) {
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (ctx) => AdminMatchScreen(match: match),
