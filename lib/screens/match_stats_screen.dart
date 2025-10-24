@@ -121,48 +121,56 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     }
   }
 
-  // --- FUNÇÃO ATUALIZADA PARA ACEITAR ALINHAMENTO ---
+
+  // --- FUNÇÃO ATUALIZADA PARA CONSTRUIR COLUNA DE STATS ---
   Widget _buildTeamStatsColumn(String teamId, String teamName, CrossAxisAlignment alignment) {
-    // Listas para guardar os widgets de cada estatística
-    List<Widget> goalWidgets = [];
+    // Listas separadas para garantir que não haja mistura
+    List<Widget> goalItems = [];
     _goals.forEach((playerId, count) {
-      if (_playerDataCache[playerId]?['team_id'] == teamId) {
+      if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        goalWidgets.add(_buildStatItem(name, count, alignment)); // Passa o alinhamento
+        goalItems.add(_buildStatItem(name: name, count: count, alignment: alignment));
       }
     });
 
-    List<Widget> assistWidgets = [];
+    List<Widget> assistItems = [];
     _assists.forEach((playerId, count) {
-      if (_playerDataCache[playerId]?['team_id'] == teamId) {
+      if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        assistWidgets.add(_buildStatItem(name, count, alignment)); // Passa o alinhamento
+        assistItems.add(_buildStatItem(name: name, count: count, alignment: alignment));
       }
     });
 
-     List<Widget> yellowWidgets = [];
+    // --- LÓGICA UNIFICADA PARA CARTÕES ---
+    // 1. Coleta todos os jogadores com cartões neste time
+    Map<String, Map<String, int>> playersWithCards = {}; // { playerId: {'yellow': count, 'red': count} }
     _yellows.forEach((playerId, count) {
-      if (_playerDataCache[playerId]?['team_id'] == teamId) {
-        String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        yellowWidgets.add(_buildStatItem(name, count, alignment, Icons.style, Colors.yellow[700])); // Passa o alinhamento
+      if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
+        playersWithCards.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
+        playersWithCards[playerId]!['yellow'] = count;
+      }
+    });
+     _reds.forEach((playerId, count) {
+      if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
+        playersWithCards.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
+        playersWithCards[playerId]!['red'] = count; // Geralmente 1, mas usamos o valor
       }
     });
 
-     List<Widget> redWidgets = [];
-    _reds.forEach((playerId, count) {
-      if (_playerDataCache[playerId]?['team_id'] == teamId) {
-        String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        redWidgets.add(_buildStatItem(name, 0, alignment, Icons.style, Colors.red[700])); // Passa o alinhamento
-      }
+    // 2. Cria os widgets para a lista de cartões
+    List<Widget> cardItems = [];
+    playersWithCards.forEach((playerId, cardCounts) {
+       String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
+       // Chama a nova função auxiliar para cartões
+       cardItems.add(_buildCardStatItem(name: name, cardCounts: cardCounts, alignment: alignment));
     });
+    // --- FIM DA LÓGICA UNIFICADA ---
 
 
+    // Constrói a coluna
     return Column(
-      // --- USA O PARÂMETRO DE ALINHAMENTO ---
       crossAxisAlignment: alignment,
-      // --- FIM ---
       children: [
-        // Mostra o nome do time alinhado
         Padding(
           padding: const EdgeInsets.only(bottom: 8.0),
           child: SizedBox( // Garante que o Text possa ocupar a largura necessária para centralizar
@@ -172,36 +180,33 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center, // <-- ADICIONA CENTRALIZAÇÃO AQUI
             ),
+          ),
         ),
-        ),
-        // --- GOLS ---
-        if (goalWidgets.isNotEmpty) ...[
-          _buildStatHeader('Gols', Icons.sports_soccer, alignment), // Passa alinhamento
-          ...goalWidgets,
+        if (goalItems.isNotEmpty) ...[
+          _buildStatHeader('Gols', Icons.sports_soccer, alignment),
+          ...goalItems,
           const SizedBox(height: 12),
         ],
-        // --- ASSISTÊNCIAS ---
-        if (assistWidgets.isNotEmpty) ...[
-          _buildStatHeader('Assistências', Icons.assistant, alignment), // Passa alinhamento
-          ...assistWidgets,
+        if (assistItems.isNotEmpty) ...[
+          _buildStatHeader('Assistências', Icons.assistant, alignment),
+          ...assistItems,
            const SizedBox(height: 12),
         ],
-         // --- AMARELOS ---
-        if (yellowWidgets.isNotEmpty) ...[
-          _buildStatHeader('Cartões Amarelos', Icons.style, alignment, Colors.yellow[700]), // Passa alinhamento
-          ...yellowWidgets,
-           const SizedBox(height: 12),
+
+        // --- SEÇÃO ÚNICA DE CARTÕES ---
+        if (cardItems.isNotEmpty) ...[
+          // Usando ícone genérico de cartão no header
+          _buildStatHeader('Cartões', Icons.style_outlined, alignment),
+          ...cardItems, // Adiciona a lista de widgets de cartões
         ],
-         // --- VERMELHOS ---
-        if (redWidgets.isNotEmpty) ...[
-          _buildStatHeader('Cartões Vermelhos', Icons.style, alignment, Colors.red[700]), // Passa alinhamento
-          ...redWidgets,
-        ],
+        // --- FIM DA SEÇÃO ---
       ],
     );
   }
+  // --- FIM _buildTeamStatsColumn ---
 
-  // --- FUNÇÃO ATUALIZADA PARA ACEITAR ALINHAMENTO ---
+
+  // Função _buildStatHeader (sem mudanças)
   Widget _buildStatHeader(String title, IconData icon, CrossAxisAlignment alignment, [Color? iconColor]) {
      // Usa Align para controlar a posição do conteúdo (Row)
      return Align(
@@ -227,56 +232,91 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
      );
   }
 
-  // --- FUNÇÃO ATUALIZADA PARA ACEITAR ALINHAMENTO ---
-  Widget _buildStatItem(String playerName, int count, CrossAxisAlignment alignment, [IconData? cardIcon, Color? cardColor]) {
-    String text = playerName;
-    // Só adiciona contagem para Gols/Assist (quando não há ícone de cartão)
-    if (count > 1 && cardIcon == null) {
-      text += ' ($count)';
+
+  // --- FUNÇÃO _buildStatItem SIMPLIFICADA (só para Gols/Assists) ---
+  Widget _buildStatItem({
+    required String name,
+    required int count,
+    required CrossAxisAlignment alignment,
+  }) {
+    String displayText = name;
+    if (count > 1) {
+      displayText += ' ($count)';
     }
 
-    // Para cartões, mostra ícone e nome
-    if (cardIcon != null) {
-      // Usa Align para forçar o alinhamento da Row interna
-      return Align(
-         alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
-         child: Padding(
-          padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 2.0),
-          child: Row(
-            mainAxisSize: MainAxisSize.min, // Row encolhe para o conteúdo
-            children: [
-              // Ordem Ícone/Texto baseada no alinhamento
-              if (alignment == CrossAxisAlignment.end) ...[
-                // Usar Flexible aqui é importante caso o nome seja muito longo
-                Flexible(child: Text(text, style: const TextStyle(fontSize: 14), textAlign: TextAlign.end)),
-                const SizedBox(width: 4),
-                //Icon(cardIcon, color: cardColor, size: 16),
-              ] else ...[
-                //Icon(cardIcon, color: cardColor, size: 16),
-                const SizedBox(width: 4),
-                Flexible(child: Text(text, style: const TextStyle(fontSize: 14), textAlign: TextAlign.start)),
-              ]
-            ]),
-         ),
-      );
-    }
+    EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
+      ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
+      : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
 
-    // Para gols e assists, só o texto, alinhado com Align
+    // Retorna apenas o texto alinhado
     return Align(
        alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
        child: Padding(
-         padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 2.0),
-         // Usar Flexible + Text com textAlign garante alinhamento correto mesmo com quebra de linha
-         child: Flexible(
-             child: Text(
-               text,
+         padding: itemPadding,
+         child: Text( // Removido Flexible, pode não ser necessário aqui
+               displayText,
                style: const TextStyle(fontSize: 14),
                textAlign: alignment == CrossAxisAlignment.start ? TextAlign.start : TextAlign.end,
              )
-         ),
        ),
     );
   }
+  // --- FIM _buildStatItem ---
+
+
+  // --- NOVA FUNÇÃO AUXILIAR PARA ITEM DE CARTÃO ---
+  Widget _buildCardStatItem({
+    required String name,
+    required Map<String, int> cardCounts, // {'yellow': count, 'red': count}
+    required CrossAxisAlignment alignment,
+  }) {
+     int yellowCount = cardCounts['yellow'] ?? 0;
+     int redCount = cardCounts['red'] ?? 0;
+
+     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
+      ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
+      : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
+
+     // Cria a lista de ícones/contadores de cartões
+     List<Widget> cardIndicators = [];
+     if (yellowCount > 0) {
+       cardIndicators.add(Icon(Icons.style, size: 16, color: Colors.yellow[700]));
+       if (yellowCount > 1) { // Adiciona contador se for mais de 1 amarelo
+         cardIndicators.add(const SizedBox(width: 2));
+         cardIndicators.add(Text('($yellowCount)', style: const TextStyle(fontSize: 12, color: Colors.black54)));
+       }
+     }
+     if (redCount > 0) {
+       if (cardIndicators.isNotEmpty) { // Adiciona espaço se já tiver amarelo
+         cardIndicators.add(const SizedBox(width: 5));
+       }
+       cardIndicators.add(Icon(Icons.style, size: 16, color: Colors.red[700]));
+       // Vermelho geralmente é só 1, não precisa de contador
+     }
+
+     return Align(
+       alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
+       child: Padding(
+         padding: itemPadding,
+         child: Row(
+           mainAxisSize: MainAxisSize.min,
+           children: [
+             // Ordem Nome / Indicadores baseada no alinhamento
+             if (alignment == CrossAxisAlignment.end) ...[
+               Flexible(child: Text(name, style: const TextStyle(fontSize: 14), textAlign: TextAlign.end)),
+               const SizedBox(width: 6),
+               Row(mainAxisSize: MainAxisSize.min, children: cardIndicators), // Agrupa indicadores
+             ] else ...[
+               Row(mainAxisSize: MainAxisSize.min, children: cardIndicators), // Agrupa indicadores
+               const SizedBox(width: 6),
+               Flexible(child: Text(name, style: const TextStyle(fontSize: 14), textAlign: TextAlign.start)),
+             ]
+           ],
+         ),
+       ),
+     );
+  }
+  // --- FIM _buildCardStatItem ---
 
 
   @override
