@@ -1,9 +1,9 @@
-//backup
 // lib/screens/admin_match_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import '../services/firestore_service.dart';
+// import '../services/admin_service.dart'; // Não é mais necessário aqui, a menos que use para outra verificação
 
 class AdminMatchScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -25,45 +25,42 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   bool _isLoadingPlayers = true;
   bool _isSaving = false;
 
-  // Mapas para contar as estatísticas (ID do Jogador -> Quantidade)
+  // Mapas de Stats (como antes)
   Map<String, int> _goals = {};
   Map<String, int> _assists = {};
   Map<String, int> _yellowCards = {};
   Map<String, int> _redCards = {};
-  String? _selectedManOfTheMatchId; // <-- NOVO ESTADO
   Map<String, int> _goalsConceded = {};
+  String? _selectedManOfTheMatchId;
   String _selectedStatus = 'pending';
+
+  // Estado para seleção (como antes)
+  String? _selectedPlayerId;
+  
+  // DocumentSnapshot? _selectedPlayerData; // Não precisamos mais guardar o Doc inteiro aqui
 
   @override
   void initState() {
-    super.initState();
-    
-    final data = widget.match.data() as Map<String, dynamic>;
-
-    _homeScoreController = TextEditingController(
-      text: data['score_home']?.toString() ?? '0',
-    );
-    _awayScoreController = TextEditingController(
-      text: data['score_away']?.toString() ?? '0',
-    );
-
-    // Carrega estatísticas antigas se existirem
-    if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
+     // ... (initState como antes, carregando dados) ...
+     super.initState();
+     final data = widget.match.data() as Map<String, dynamic>;
+     _homeScoreController = TextEditingController(text: data['score_home']?.toString() ?? '');
+     _awayScoreController = TextEditingController(text: data['score_away']?.toString() ?? '');
+     _selectedStatus = data['status'] ?? 'pending';
+     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
       final stats = data['stats_applied']['player_stats'];
       _goals = Map<String, int>.from(stats['goals'] ?? {});
       _assists = Map<String, int>.from(stats['assists'] ?? {});
       _yellowCards = Map<String, int>.from(stats['yellows'] ?? {});
       _redCards = Map<String, int>.from(stats['reds'] ?? {});
-      _selectedManOfTheMatchId = data['stats_applied']['man_of_the_match'];
       _goalsConceded = Map<String, int>.from(stats['goals_conceded'] ?? {});
-      _selectedStatus = data['status'] ?? 'pending';
+      _selectedManOfTheMatchId = data['stats_applied']['man_of_the_match'];
     }
-
-    _fetchPlayers();
+     _fetchPlayers();
   }
 
   Future<void> _fetchPlayers() async {
-    // (Esta função continua idêntica)
+    // Busca jogadores (como antes)
     try {
       final String homeTeamId = widget.match['team_home_id'];
       final String awayTeamId = widget.match['team_away_id'];
@@ -85,29 +82,23 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       debugPrint('Erro ao buscar jogadores: $e');
       setState(() { _isLoadingPlayers = false; });
     }
+    finally { if (mounted) setState(() => _isLoadingPlayers = false); }
   }
-
   Future<void> _saveStats() async {
-    // (Esta função continua idêntica)
-    setState(() { _isSaving = true; });
-
+    // Validação de Status vs Placar (como antes)
+     if (_selectedStatus == 'finished' && (_homeScoreController.text.isEmpty || _awayScoreController.text.isEmpty || int.tryParse(_homeScoreController.text) == null || int.tryParse(_awayScoreController.text) == null )) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Placar válido é obrigatório para jogos finalizados.')));
+       return;
+    }
     final int scoreHome = int.tryParse(_homeScoreController.text) ?? 0;
     final int scoreAway = int.tryParse(_awayScoreController.text) ?? 0;
 
-    if (_selectedStatus == 'finished' && (_homeScoreController.text.isEmpty || _awayScoreController.text.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Placar é obrigatório para jogos finalizados.')),
-      );
-      return; // Impede salvar
-    } 
-
     setState(() { _isSaving = true; });
-
     String result = await _firestoreService.updateMatchStats(
       matchSnapshot: widget.match,
+      newStatus: _selectedStatus,
       newScoreHome: scoreHome,
       newScoreAway: scoreAway,
-      newStatus: _selectedStatus,
       newGoals: _goals,
       newAssists: _assists,
       newYellows: _yellowCards,
@@ -115,7 +106,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       newGoalsConceded: _goalsConceded,
       newManOfTheMatchId: _selectedManOfTheMatchId,
     );
-
     setState(() { _isSaving = false; });
 
     if(result == "Sucesso") {
@@ -132,154 +122,126 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
   }
 
-  // --- NOVO: Função que abre o pop-up de edição ---
-  Future<void> _showPlayerStatEditor(DocumentSnapshot player) async {
-    final playerId = player.id;
-    final data = player.data() as Map<String, dynamic>;
+  // --- WIDGET EDITOR (AGORA RECEBE playerDoc) ---
+  Widget _buildStatEditor(DocumentSnapshot playerDoc) {
+    // Não precisa mais verificar _selectedPlayerData == null
+    final playerId = playerDoc.id;
+    final data = playerDoc.data() as Map<String, dynamic>;
+    final bool isGoalkeeper = data['is_goalkeeper'] ?? false;
 
-    // Copia os valores atuais para um estado temporário do diálogo
-    int tempGoals = _goals[playerId] ?? 0;
-    int tempAssists = _assists[playerId] ?? 0;
-    int tempYellows = _yellowCards[playerId] ?? 0;
-    int tempReds = _redCards[playerId] ?? 0;
-    int tempGoalsConceded = _goalsConceded[playerId] ?? 0;
+    int currentGoals = _goals[playerId] ?? 0;
+    int currentAssists = _assists[playerId] ?? 0;
+    int currentYellows = _yellowCards[playerId] ?? 0;
+    int currentReds = _redCards[playerId] ?? 0;
+    int currentGoalsConceded = _goalsConceded[playerId] ?? 0;
 
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false, // Usuário deve clicar em Cancelar ou Confirmar
-      builder: (BuildContext context) {
-        // Usamos um StatefulBuilder para que o diálogo
-        // possa ter seu próprio estado e se atualizar
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-
-            // Função auxiliar para o contador (agora vive dentro do diálogo)
-            Widget buildStatCounter({
-              required IconData icon,
-              required String label,
-              required int count,
-              required VoidCallback onAdd,
-              required VoidCallback onRemove,
-              Color? color,
-            }) {
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Icon(icon, size: 24, color: color),
-                      const SizedBox(width: 12),
-                      Text('$label:', style: const TextStyle(fontSize: 16)),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle, size: 28, color: Colors.red),
-                        onPressed: onRemove,
-                      ),
-                      Text(count.toString(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle, size: 28, color: Colors.green),
-                        onPressed: onAdd,
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            }
-
-            return AlertDialog(
-              title: Text(data['name']), // Nome do jogador no título
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    buildStatCounter(
-                      icon: Icons.sports_soccer,
-                      label: "Gols",
-                      count: tempGoals,
-                      // Atualiza o estado do *diálogo*
-                      onAdd: () => setDialogState(() => tempGoals++),
-                      onRemove: () => setDialogState(() => tempGoals = (tempGoals > 0) ? tempGoals - 1 : 0),
-                    ),
-                    buildStatCounter(
-                      icon: Icons.assistant,
-                      label: "Assist.",
-                      count: tempAssists,
-                      onAdd: () => setDialogState(() => tempAssists++),
-                      onRemove: () => setDialogState(() => tempAssists = (tempAssists > 0) ? tempAssists - 1 : 0),
-                    ),
-                    buildStatCounter(
-                      icon: Icons.style,
-                      label: "CA",
-                      color: Colors.yellow[700],
-                      count: tempYellows,
-                      onAdd: () => setDialogState(() => tempYellows++),
-                      onRemove: () => setDialogState(() => tempYellows = (tempYellows > 0) ? tempYellows - 1 : 0),
-                    ),
-                    buildStatCounter(
-                      icon: Icons.style,
-                      label: "CV",
-                      color: Colors.red[700],
-                      count: tempReds,
-                      onAdd: () => setDialogState(() => tempReds = 1),
-                      onRemove: () => setDialogState(() => tempReds = 0),
-                    ),
-                    if (data['is_goalkeeper'] == true) // Só mostra se for goleiro
-                      buildStatCounter(
-                        icon: Icons.shield_outlined, // Ícone de defesa/escudo
-                        label: "GS", // Gols Sofridos
-                        count: tempGoalsConceded,
-                        // Por enquanto, vamos fazer manual. Uma lógica
-                        // mais avançada poderia ligar isso ao placar do oponente.
-                        onAdd: () => setDialogState(() => tempGoalsConceded++),
-                        onRemove: () => setDialogState(() => tempGoalsConceded = (tempGoalsConceded > 0) ? tempGoalsConceded - 1 : 0),
-                        color: Colors.blueGrey, // Cor diferente
-                      ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                ),
-                TextButton(
-                  child: const Text('Confirmar'),
-                  onPressed: () {
-                    // Atualiza o estado PRINCIPAL da tela (fora do diálogo)
-                    setState(() {
-                      _goals[playerId] = tempGoals;
-                      _assists[playerId] = tempAssists;
-                      _yellowCards[playerId] = tempYellows;
-                      _redCards[playerId] = tempReds;
-                      _goalsConceded[playerId] = tempGoalsConceded;
-                    });
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
+    // Retorna o Card diretamente
+    return Card(
+      margin: const EdgeInsets.only(top: 0, left: 8.0, right: 8.0, bottom: 8.0), // Margem ajustada
+      elevation: 2,
+      color: Colors.blueGrey[50]?.withOpacity(0.8), // Fundo levemente transparente
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Não precisa mais do cabeçalho com nome e botão fechar
+            _buildStatCounter(
+              icon: Icons.sports_soccer, label: "Gols",
+              count: currentGoals,
+              onAdd: () => setState(() => _goals[playerId] = currentGoals + 1),
+              onRemove: () => setState(() => _goals[playerId] = (currentGoals > 0) ? currentGoals - 1 : 0),
+            ),
+              _buildStatCounter(
+              icon: Icons.assistant, label: "Assist.",
+              count: currentAssists,
+              onAdd: () => setState(() => _assists[playerId] = currentAssists + 1),
+              onRemove: () => setState(() => _assists[playerId] = (currentAssists > 0) ? currentAssists - 1 : 0),
+            ),
+             _buildStatCounter(
+              icon: Icons.style, label: "CA", color: Colors.yellow[700],
+              count: currentYellows,
+              onAdd: () => setState(() => _yellowCards[playerId] = currentYellows + 1),
+              onRemove: () => setState(() => _yellowCards[playerId] = (currentYellows > 0) ? currentYellows - 1 : 0),
+            ),
+             _buildStatCounter(
+              icon: Icons.style, label: "CV", color: Colors.red[700],
+              count: currentReds,
+              onAdd: () => setState(() => _redCards[playerId] = 1), // Só pode ter 1 vermelho
+              onRemove: () => setState(() => _redCards[playerId] = 0),
+            ),
+            // Contador GS (só para goleiro)
+            if (isGoalkeeper)
+               _buildStatCounter(
+                 icon: Icons.shield_outlined, label: "GS", color: Colors.blueGrey,
+                 count: currentGoalsConceded,
+                 onAdd: () => setState(() => _goalsConceded[playerId] = currentGoalsConceded + 1),
+                 onRemove: () => setState(() => _goalsConceded[playerId] = (currentGoalsConceded > 0) ? currentGoalsConceded - 1 : 0),
+               ),
+          ],
+        ),
+      ),
     );
   }
+  // --- FIM _buildStatEditor ---
+
+
+  // Função _buildStatCounter (como antes)
+  Widget _buildStatCounter({
+    required IconData icon, required String label, required int count,
+    required VoidCallback onAdd, required VoidCallback onRemove, Color? color,
+  }) {
+    return Padding( // Adiciona padding entre os contadores
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 22, color: color),
+              const SizedBox(width: 10),
+              Text('$label:', style: const TextStyle(fontSize: 15)),
+            ],
+          ),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove_circle, size: 26, color: Colors.red),
+                onPressed: onRemove, padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+              ),
+              SizedBox( // Largura mínima para o número
+                width: 30,
+                child: Text(count.toString(), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_circle, size: 26, color: Colors.green),
+                onPressed: onAdd, padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  // --- FIM _buildStatCounter ---
 
 
   @override
   Widget build(BuildContext context) {
-    // Combina as listas de jogadores para o Dropdown
+    // ... (allPlayers, data, team names) ...
     final List<DocumentSnapshot> allPlayers = [..._homePlayers, ..._awayPlayers];
+    final data = widget.match.data() as Map<String, dynamic>;
+    final homeTeamName = data['team_home_name'] ?? 'Casa';
+    final awayTeamName = data['team_away_name'] ?? 'Visitante';
+
+    // --- ORDENA AS LISTAS DE JOGADORES ---
+    _homePlayers.sort((a, b) => (a.data() as Map<String, dynamic>)['name'].compareTo((b.data() as Map<String, dynamic>)['name']));
+    _awayPlayers.sort((a, b) => (a.data() as Map<String, dynamic>)['name'].compareTo((b.data() as Map<String, dynamic>)['name']));
+    // --- FIM DA ORDENAÇÃO ---
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          '${widget.match['team_home_name']} x ${widget.match['team_away_name']}',
-        ),
+        title: Text('$homeTeamName x $awayTeamName'),
         actions: [
           if (_isSaving) const Padding(
             padding: EdgeInsets.all(16.0),
@@ -289,16 +251,15 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             onPressed: _saveStats,
           ),
         ],
-      ),
+      ),      
       body: _isLoadingPlayers
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildScoreCard(),
-
-                  // --- SELETOR DE STATUS (NOVO) ---
                   const SizedBox(height: 16),
                   Card(
                     child: Padding(
@@ -327,22 +288,23 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                       ),
                     ),
                   ),
-                  // --- FIM DO SELETOR ---
+                  const SizedBox(height: 24),
 
+                  // Listas de Jogadores
+                  Text(homeTeamName, style: Theme.of(context).textTheme.titleLarge),
+                  _buildPlayerSelectList(_homePlayers), // Chama a função modificada
+                  const SizedBox(height: 20),
+                  Text(awayTeamName, style: Theme.of(context).textTheme.titleLarge),
+                  _buildPlayerSelectList(_awayPlayers), // Chama a função modificada
 
-                  const SizedBox(height: 16),
-                  Text('Time da Casa:'),
-                  _buildPlayerList(_homePlayers),
-                  const SizedBox(height: 16),
-                  Text('Time Visitante:'),
-                  _buildPlayerList(_awayPlayers),
+                  // --- REMOVA O EDITOR CONDICIONAL DAQUI ---
+                  // if (_selectedPlayerId != null) _buildStatEditor(), // <-- APAGUE ESTA LINHA
+                  // --- FIM DA REMOÇÃO ---
 
-                  // --- WIDGET DO CRAQUE DO JOGO ---
                   const SizedBox(height: 24),
                   Text('Craque do Jogo', style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 8),
-                  if (allPlayers.isNotEmpty)
-                    Card(
+                  if (allPlayers.isNotEmpty) 
+                  Card(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                         child: DropdownButtonFormField<String>(
@@ -365,15 +327,13 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                         ),
                       ),
                     )
-                  else 
-                    const Text('Carregando jogadores...'),
-                  // --- FIM DO WIDGET ---
+                  else const Text('Carregando jogadores...'),
 
                 ],
               ),
             ),
     );
-  }
+  } // Fim build()
 
   // Widget para o placar (Idêntico)
   Widget _buildScoreCard() {
@@ -415,12 +375,15 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     );
   }
 
-  // --- ATUALIZADO: _buildPlayerList (Agora é uma lista simples) ---
-  Widget _buildPlayerList(List<DocumentSnapshot> players) {
+  // --- FUNÇÃO ATUALIZADA PARA LISTA COM EDITOR EMBUTIDO ---
+  Widget _buildPlayerSelectList(List<DocumentSnapshot> players) {
     if (players.isEmpty) {
-      return const Text('Nenhum jogador encontrado para este time.');
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8.0),
+        child: Text('Nenhum jogador encontrado para este time.', style: TextStyle(color: Colors.grey)),
+      );
     }
-    
+
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -429,31 +392,58 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
         final player = players[index];
         final playerId = player.id;
         final data = player.data() as Map<String, dynamic>;
+        final bool isSelected = _selectedPlayerId == playerId;
+        // Monta resumo de stats para o subtitle
+        final statsSummary = 'G:${_goals[playerId]??0} A:${_assists[playerId]??0} '
+                             'CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0}'
+                             '${(data['is_goalkeeper']??false)?' GS:${_goalsConceded[playerId]??0}':''}';
 
-        // Pega as estatísticas atuais do estado da tela
-        final int goals = _goals[playerId] ?? 0;
-        final int assists = _assists[playerId] ?? 0;
-        final int yellows = _yellowCards[playerId] ?? 0;
-        final int reds = _redCards[playerId] ?? 0;
+        // --- Retorna uma Column: ListTile + Editor (Condicional) ---
+        return Column(
+          children: [
+            // O ListTile clicável (como antes, mas ajusta a cor/elevação)
+            Card(
+              margin: const EdgeInsets.symmetric(vertical: 2.0), // Margem vertical menor
+              color: isSelected ? Colors.lightBlue[50] : null, // Cor de fundo mais sutil
+              elevation: isSelected ? 3 : 1,
+              child: ListTile(
+                dense: true,
+                leading: Icon(data['is_goalkeeper']==true ? Icons.shield_outlined : Icons.person_outline),
+                title: Text(data['name'] ?? '...', style: const TextStyle(fontWeight: FontWeight.w500)),
+                subtitle: Text(statsSummary, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+                // Não precisa mais do ícone de edição no trailing
+                // trailing: isSelected ? const Icon(Icons.edit, color: Colors.blue) : null,
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedPlayerId = null; // Deseleciona
+                    } else {
+                      _selectedPlayerId = playerId; // Seleciona
+                    }
+                     // _selectedPlayerData não é mais necessário aqui
+                  });
+                },
+              ),
+            ),
 
-        // Monta um subtítulo de resumo
-        String statsSummary = 'G: $goals, A: $assists, CA: $yellows, CV: $reds';
-
-        return Card(
-          child: ListTile(
-            title: Text(data['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(statsSummary), // Mostra o resumo
-            trailing: const Icon(Icons.edit_note), // Ícone de edição
-            onTap: () {
-              // Chama o novo pop-up
-              _showPlayerStatEditor(player);
-            },
-          ),
+            // --- Editor Condicional ---
+            // Usa AnimatedSize para uma transição suave ao aparecer/desaparecer
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: isSelected
+                  ? _buildStatEditor(player) // Chama o editor se selecionado
+                  : const SizedBox.shrink(), // Widget vazio se não selecionado
+            ),
+            // --- FIM Editor Condicional ---
+          ],
         );
+        // --- FIM da Column ---
       },
     );
   }
+  // --- FIM _buildPlayerSelectList ---
 
-  // --- REMOVIDO: A função _buildStatCounter foi removida daqui ---
-  // (Ela agora vive dentro do _showPlayerStatEditor)
-}
+} // Fim da classe _AdminMatchScreenState
+
+// Cole aqui as implementações de _buildScoreCard, Dropdown Craque do Jogo, etc.

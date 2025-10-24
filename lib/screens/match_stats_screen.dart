@@ -123,83 +123,99 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
 
 
   // --- FUNÇÃO ATUALIZADA PARA CONSTRUIR COLUNA DE STATS ---
+  // --- FUNÇÃO ATUALIZADA PARA ORDENAR E MOSTRAR NOME DO TIME ---
   Widget _buildTeamStatsColumn(String teamId, String teamName, CrossAxisAlignment alignment) {
-    // Listas separadas para garantir que não haja mistura
-    List<Widget> goalItems = [];
+    // Listas temporárias para guardar jogadores e permitir ordenação
+    List<Map<String, dynamic>> goalPlayers = []; // Guarda {'name': 'Nome', 'count': Qtd}
     _goals.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        goalItems.add(_buildStatItem(name: name, count: count, alignment: alignment));
+        goalPlayers.add({'name': name, 'count': count});
       }
     });
+    // Ordena alfabeticamente pelo nome
+    goalPlayers.sort((a, b) => a['name'].compareTo(b['name']));
 
-    List<Widget> assistItems = [];
+    List<Map<String, dynamic>> assistPlayers = [];
     _assists.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        assistItems.add(_buildStatItem(name: name, count: count, alignment: alignment));
+        assistPlayers.add({'name': name, 'count': count});
       }
     });
+    assistPlayers.sort((a, b) => a['name'].compareTo(b['name']));
 
-    // --- LÓGICA UNIFICADA PARA CARTÕES ---
-    // 1. Coleta todos os jogadores com cartões neste time
-    Map<String, Map<String, int>> playersWithCards = {}; // { playerId: {'yellow': count, 'red': count} }
+    // Lógica unificada para cartões (coleta dados)
+    Map<String, Map<String, int>> playersWithCardsData = {}; // { playerId: {'yellow': count, 'red': count} }
     _yellows.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
-        playersWithCards.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
-        playersWithCards[playerId]!['yellow'] = count;
+        playersWithCardsData.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
+        playersWithCardsData[playerId]!['yellow'] = count;
       }
     });
-     _reds.forEach((playerId, count) {
+    _reds.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
-        playersWithCards.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
-        playersWithCards[playerId]!['red'] = count; // Geralmente 1, mas usamos o valor
+        playersWithCardsData.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
+        playersWithCardsData[playerId]!['red'] = count;
       }
     });
-
-    // 2. Cria os widgets para a lista de cartões
-    List<Widget> cardItems = [];
-    playersWithCards.forEach((playerId, cardCounts) {
+    // Converte para lista ordenada para exibição
+    List<Map<String, dynamic>> cardPlayers = [];
+    playersWithCardsData.forEach((playerId, cardCounts) {
        String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-       // Chama a nova função auxiliar para cartões
-       cardItems.add(_buildCardStatItem(name: name, cardCounts: cardCounts, alignment: alignment));
+       cardPlayers.add({'name': name, 'counts': cardCounts}); // Guarda o mapa de contagens
     });
-    // --- FIM DA LÓGICA UNIFICADA ---
+    cardPlayers.sort((a, b) => a['name'].compareTo(b['name']));
 
 
     // Constrói a coluna
     return Column(
       crossAxisAlignment: alignment,
       children: [
+        // --- 2. MOSTRAR NOME DO TIME ---
         Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
-          child: SizedBox( // Garante que o Text possa ocupar a largura necessária para centralizar
+          padding: const EdgeInsets.only(bottom: 12.0), // Aumenta espaço abaixo do nome
+          child: SizedBox(
             width: double.infinity,
             child: Text(
-              teamName,
+              teamName, // Usa o nome do time passado como parâmetro
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center, // <-- ADICIONA CENTRALIZAÇÃO AQUI
+              textAlign: TextAlign.center,
             ),
           ),
         ),
-        if (goalItems.isNotEmpty) ...[
+        // --- FIM ---
+
+        // Seção Gols (Itera sobre a lista ordenada)
+        if (goalPlayers.isNotEmpty) ...[
           _buildStatHeader('Gols', Icons.sports_soccer, alignment),
-          ...goalItems,
+          ...goalPlayers.map((player) => _buildStatItem(
+              name: player['name'],
+              count: player['count'],
+              alignment: alignment)
+          ).toList(), // Constrói widgets a partir da lista ordenada
           const SizedBox(height: 12),
         ],
-        if (assistItems.isNotEmpty) ...[
+        // Seção Assists (Itera sobre a lista ordenada)
+        if (assistPlayers.isNotEmpty) ...[
           _buildStatHeader('Assistências', Icons.assistant, alignment),
-          ...assistItems,
-           const SizedBox(height: 12),
+           ...assistPlayers.map((player) => _buildStatItem(
+              name: player['name'],
+              count: player['count'],
+              alignment: alignment)
+          ).toList(),
+          const SizedBox(height: 12),
         ],
 
-        // --- SEÇÃO ÚNICA DE CARTÕES ---
-        if (cardItems.isNotEmpty) ...[
-          // Usando ícone genérico de cartão no header
+        // Seção Cartões (Itera sobre a lista ordenada)
+        if (cardPlayers.isNotEmpty) ...[
           _buildStatHeader('Cartões', Icons.style_outlined, alignment),
-          ...cardItems, // Adiciona a lista de widgets de cartões
+          ...cardPlayers.map((player) => _buildCardStatItem(
+              name: player['name'],
+              cardCounts: player['counts'] as Map<String, int>, // Pega o mapa de contagens
+              alignment: alignment)
+          ).toList(),
         ],
-        // --- FIM DA SEÇÃO ---
       ],
     );
   }
