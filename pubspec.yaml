@@ -77,5 +77,5 @@ flutter_launcher_icons:
   ios: true      # Gera ícones para iOS
   image_path: "assets/icon/icon.png" # <-- Caminho para sua imagem
   # Opcional: Para Android Adaptive Icons (recomendado)
-  adaptive_icon_background: "#C25F22" # Cor de fundo (use a cor do seu tema)
+  adaptive_icon_background: "#FFFFFF" # "#C25F22" # Cor de fundo (use a cor do seu tema)
   adaptive_icon_foreground: "assets/icon/icon_foreground.png" # Opcional: Uma imagem separada para a camada da frente (logo sem fundo)
