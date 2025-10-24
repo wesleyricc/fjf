@@ -5,6 +5,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
 import 'team_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../services/admin_service.dart';
 
 // Classe auxiliar TeamStanding (sem mudanças)
 class TeamStanding {
@@ -47,6 +48,19 @@ class _StandingsScreenState extends State<StandingsScreen> {
   late Future<List<TeamStanding>> _standingsFuture;
   List<DocumentSnapshot> _finishedMatches = [];
 
+  // --- 1. ADICIONAR MAPA DE NOMES DOS CRITÉRIOS ---
+  final Map<String, String> _tiebreakerNames = {
+    'head_to_head': 'Confronto Direto (CD)',
+    'disciplinary_points': 'Menor Pontuação Disciplinar (PD)',
+    'wins': 'Maior Número de Vitórias (V)',
+    'goal_difference': 'Melhor Saldo de Gols (SG)',
+    'goals_against': 'Menor Número de Gols Sofridos (GC)',
+    'draw_sort': 'Sorteio / Ordem Alfabética',
+    // Adicione outros mapeamentos se tiver mais critérios no futuro
+  };
+  // --- FIM DO MAPA ---
+
+
   @override
   void initState() {
     super.initState();
@@ -68,22 +82,60 @@ class _StandingsScreenState extends State<StandingsScreen> {
     return standings;
   }
 
-  // Função _customSort (sem mudanças)
+  // --- FUNÇÃO _customSort REESCRITA ---
   int _customSort(TeamStanding a, TeamStanding b) {
-    int pointsComparison = b.points.compareTo(a.points);
-    if (pointsComparison != 0) return pointsComparison;
-    int h2hComparison = _getHeadToHeadResult(a, b);
-    if (h2hComparison != 0) return h2hComparison;
-    int disciplinaryComparison = a.disciplinaryPoints.compareTo(b.disciplinaryPoints);
-    if (disciplinaryComparison != 0) return disciplinaryComparison;
-    int winsComparison = b.wins.compareTo(a.wins);
-    if (winsComparison != 0) return winsComparison;
-    int sgComparison = b.goalDifference.compareTo(a.goalDifference);
-    if (sgComparison != 0) return sgComparison;
-    int gCComparison = a.goalsAgainst.compareTo(b.goalsAgainst);
-    if (gCComparison != 0) return gCComparison;
-    return a.data['name'].compareTo(b.data['name']);
+    // 1. Critério Principal: Pontos (sempre primeiro)
+    int comparison = b.points.compareTo(a.points); // Descendente
+    if (comparison != 0) return comparison;
+
+    // 2. Itera sobre a ordem de desempate carregada do AdminService
+    for (String criterionKey in AdminService.tiebreakerOrder) {
+       comparison = _compareByCriterion(criterionKey, a, b);
+       if (comparison != 0) {
+          // debugPrint("Desempate entre ${a.data['name']} e ${b.data['name']} por $criterionKey: $comparison");
+          return comparison;
+       }
+    }
+
+    // 3. Fallback final (se todos os critérios configurados derem empate)
+    // Geralmente ordem alfabética, a menos que 'draw_sort' já tenha feito isso.
+     if (!AdminService.tiebreakerOrder.contains('draw_sort')) {
+        return a.data['name'].compareTo(b.data['name']); // Ascendente por nome
+     }
+     return 0; // Se chegou aqui, são idênticos ou draw_sort foi o último
   }
+  // --- FIM _customSort ---
+
+  // --- NOVA FUNÇÃO AUXILIAR PARA COMPARAR POR CRITÉRIO ---
+  int _compareByCriterion(String key, TeamStanding a, TeamStanding b) {
+    switch (key) {
+      case 'head_to_head':
+        // A função _getHeadToHeadResult já retorna -1 (A melhor), 1 (B melhor), 0 (empate H2H)
+        // Precisamos ajustar o retorno dela ou inverter aqui se necessário.
+        // Assumindo que _getHeadToHeadResult usa compareTo (b vs a):
+        return _getHeadToHeadResult(a, b);
+
+      case 'disciplinary_points':
+        return a.disciplinaryPoints.compareTo(b.disciplinaryPoints); // Ascendente (menor é melhor)
+
+      case 'wins':
+        return b.wins.compareTo(a.wins); // Descendente (maior é melhor)
+
+      case 'goal_difference':
+        return b.goalDifference.compareTo(a.goalDifference); // Descendente
+
+      case 'goals_against':
+        return a.goalsAgainst.compareTo(b.goalsAgainst); // Ascendente (menor é melhor)
+
+      case 'draw_sort': // Critério explícito para Sorteio/Alfabético
+        return a.data['name'].compareTo(b.data['name']); // Ascendente por nome
+
+      default:
+        debugPrint("Critério de desempate desconhecido: $key");
+        return 0; // Não sabe como comparar, considera empate
+    }
+  }
+  // --- FIM DA FUNÇÃO AUXILIAR ---
 
   // Função _getHeadToHeadResult (sem mudanças)
   int _getHeadToHeadResult(TeamStanding a, TeamStanding b) {
@@ -223,7 +275,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                 ),
 
                 // Legenda (Menor)
-                const SizedBox(height: 5), // Espaço reduzido
+                const SizedBox(height: 2), // Espaço reduzido
                 Card(
                   color: Colors.white,
                   elevation: 1, // Menor elevação
@@ -257,7 +309,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                   color: Colors.white,
                   elevation: 1,
                   child: Padding(
-                    padding: const EdgeInsets.all(8.0), // Padding igual à outra legenda
+                    padding: const EdgeInsets.all(8.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -266,15 +318,16 @@ class _StandingsScreenState extends State<StandingsScreen> {
                           style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 4),
-                        // Usa a mesma função _buildLegendRow
-                        _buildLegendRow('1º', 'Pontos (P)'), // Adiciona critério principal para clareza
-                        _buildLegendRow('2º', 'Confronto Direto (CD)'), // Sigla CD
-                        _buildLegendRow('3º', 'Menor Pontuação Disciplinar (PD)'), // Sigla PD
-                        _buildLegendRow('4º', 'Maior Número de Vitórias (V)'), // Sigla V
-                        _buildLegendRow('5º', 'Melhor Saldo de Gols (SG)'), // Sigla SG
-                        _buildLegendRow('6º', 'Menor Número de Gols Sofridos (GC)'), // Sigla GC
-                        _buildLegendRow('7º', 'Sorteio'),
 
+                        // --- Loop para construir a legenda dinamicamente ---
+                        _buildLegendRow('1º', 'Pontos (P)'), // Pontos é sempre o primeiro
+                        for (int i = 0; i < AdminService.tiebreakerOrder.length; i++)
+                          _buildLegendRow(
+                            '${i + 2}º', // A ordem começa do 2º critério
+                            // Busca o nome amigável no mapa _tiebreakerNames
+                            _tiebreakerNames[AdminService.tiebreakerOrder[i]] ?? AdminService.tiebreakerOrder[i], // Usa a chave se nome não encontrado
+                          ),
+                        // --- Fim do Loop ---
                       ],
                     ),
                   ),

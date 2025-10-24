@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
-import '../services/data_uploader_service.dart'; // Para o upload
-import 'dart:convert'; // Para utf8
-import 'package:crypto/crypto.dart';
 import '../services/data_uploader_service.dart';
 import 'disciplinary_rules_screen.dart';
+import 'tiebreaker_rules_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -19,13 +17,13 @@ class AdminMenuScreen extends StatefulWidget {
 class _AdminMenuScreenState extends State<AdminMenuScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // --- COPIE AS FUNÇÕES DE DIÁLOGO DA FIXTURESSCREEN PARA CÁ ---
+  // --- FUNÇÕES DE DIÁLOGO (MOVIDAS E ADAPTADAS) ---
 
   // Função para gerar o hash SHA-256 de uma string
   String _hashPassword(String password) {
-    final bytes = utf8.encode(password); // Converte para bytes UTF-8
-    final digest = sha256.convert(bytes); // Calcula o hash
-    return digest.toString(); // Retorna a representação hexadecimal
+    final bytes = utf8.encode(password); 
+    final digest = sha256.convert(bytes); 
+    return digest.toString();
   }
 
 // Diálogo de confirmação para o upload
@@ -47,37 +45,19 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
               actions: <Widget>[
                 TextButton(
                   child: const Text('Cancelar'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
+                  onPressed: isLoading ? null : () => Navigator.of(context).pop(),
                 ),
                 TextButton(
-                  child: isLoading
-                      ? const CircularProgressIndicator()
-                      : const Text('Confirmar Carga'),
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          setDialogState(() {
-                            isLoading = true;
-                          });
-
-                          final uploader = DataUploaderService();
-                          final String result = await uploader
-                              .uploadInitialData();
-
-                          setDialogState(() {
-                            isLoading = false;
-                          });
+                    child: isLoading ? const CircularProgressIndicator() : const Text('Confirmar Carga', style: TextStyle(color: Colors.red)),
+                    onPressed: isLoading ? null : () async {
+                      setDialogState(() { isLoading = true; });
+                      final uploader = DataUploaderService();
+                      final String result = await uploader.uploadInitialData();
+                      setDialogState(() { isLoading = false; });
 
                           if (mounted) {
                             Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(result),
-                                duration: const Duration(seconds: 5),
-                              ),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 5)));
                           }
                         },
                 ),
@@ -345,6 +325,75 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
+  // --- NOVA FUNÇÃO: VERIFICAR SENHA ADMIN ---
+  Future<bool> _verifyAdminPassword(BuildContext context) async {
+    final TextEditingController passwordController = TextEditingController();
+    bool isLoading = false;
+    final bool? passwordConfirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false, // Não fechar clicando fora
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Confirme a Senha Admin'),
+              content: TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Senha'),
+                enabled: !isLoading,
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancelar'),
+                  // Ao cancelar, fecha o diálogo retornando false
+                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(false),
+                ),
+                TextButton(
+                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Confirmar'),
+                  onPressed: isLoading ? null : () async {
+                    final enteredPassword = passwordController.text;
+                    if (enteredPassword.isEmpty) {
+                       ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Digite a senha.')));
+                       return;
+                    }
+                    setDialogState(() { isLoading = true; });
+                    try {
+                      final enteredHash = _hashPassword(enteredPassword);
+                      final docRef = _firestore.collection('config').doc('admin_credentials');
+                      final docSnap = await docRef.get();
+                      if (!docSnap.exists || !docSnap.data()!.containsKey('password_hash')) {
+                         throw Exception('Configuração de senha não encontrada.');
+                      }
+                      final storedHash = docSnap.get('password_hash');
+
+                      if (enteredHash == storedHash) {
+                        // Senha correta, fecha o diálogo retornando true
+                        Navigator.of(dialogContext).pop(true);
+                      } else {
+                        throw Exception('Senha incorreta.');
+                      }
+                    } catch (e) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')),
+                      );
+                      // Não fecha o diálogo em caso de erro, permite tentar de novo
+                      setDialogState(() { isLoading = false; });
+                      // Não retorna valor aqui, o usuário pode tentar de novo ou cancelar
+                    }
+                    // Não precisa de finally aqui
+                  },
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  
+  return passwordConfirmed ?? false;
+}
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -362,25 +411,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.upload_file, color: Colors.orange),
-            title: const Text('Carregar Dados Iniciais'),
-            subtitle: const Text(
-              'IMPORTANTE: Apaga e recarrega Times, Jogadores e Jogos!',
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: () =>
-                _showUploadConfirmDialog(context), // Chama a função movida
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.password),
-            title: const Text('Alterar Senha Admin'),
-            subtitle: const Text('Define uma nova senha de administrador'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _showChangePasswordDialog, // Chama a função movida
-          ),
-          const Divider(),
-          ListTile(
             leading: const Icon(Icons.rule_folder), // Ícone de regras
             title: const Text('Regras Disciplinares'),
             subtitle: const Text('Define limites de cartões para suspensão'),
@@ -392,7 +422,47 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             },
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.sort_by_alpha), // Ícone de ordenação
+            title: const Text('Ordem Critérios Desempate'),
+            subtitle: const Text('Define a ordem dos critérios na classificação'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (ctx) => const TiebreakerRulesScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.password),
+            title: const Text('Alterar Senha Admin'),
+            subtitle: const Text('Define uma nova senha de administrador'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: _showChangePasswordDialog, // Chama a função movida
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.upload_file, color: Colors.orange),
+            title: const Text('Carregar Dados Iniciais'),
+            subtitle: const Text('Apaga e recarrega Times, Jogadores e Jogos'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () async { // <-- Torna o onTap async
+              // 1. Pede a senha
+              final bool passwordConfirmed = await _verifyAdminPassword(context);
 
+              // 2. Se confirmada (e widget ainda montado), mostra diálogo de upload
+              if (passwordConfirmed && mounted) {
+                _showUploadConfirmDialog(context);
+              } else if (!passwordConfirmed && mounted) {
+                 // Opcional: Mostrar mensagem se a senha estiver errada ou cancelada
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text('Operação cancelada ou senha incorreta.')),
+                 );
+              }
+            },
+          ),
+          const Divider(),
           // Adicione mais opções administrativas aqui, se necessário
         ],
       ),

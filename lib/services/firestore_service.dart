@@ -26,9 +26,9 @@ class FirestoreService {
   // --- FUNÇÃO DE ATUALIZAÇÃO (COM NOVOS CAMPOS) ---
   Future<String> updateMatchStats({
     required DocumentSnapshot matchSnapshot,
+    required String newStatus,
     required int newScoreHome,
     required int newScoreAway,
-    required String newStatus,
     required Map<String, int> newGoals,
     required Map<String, int> newAssists,
     required Map<String, int> newYellows,
@@ -49,29 +49,30 @@ class FirestoreService {
         final matchData = freshMatchSnap.data() as Map<String, dynamic>;
         
         Map<String, dynamic> oldStats = (matchData.containsKey('stats_applied') && matchData['stats_applied'] != null)
-            ? (matchData['stats_applied'] ?? {})
-            : {};
+            ? (matchData['stats_applied'] ?? {}) : {};
         Map<String, dynamic> oldPlayerStats = oldStats['player_stats'] ?? {};
         String? oldManOfTheMatchId = oldStats['man_of_the_match'];
+        Map<String, int> oldGoals = Map<String, int>.from(oldPlayerStats['goals'] ?? {});
+        Map<String, int> oldAssists = Map<String, int>.from(oldPlayerStats['assists'] ?? {});
+        Map<String, int> oldYellows = Map<String, int>.from(oldPlayerStats['yellows'] ?? {});
+        Map<String, int> oldReds = Map<String, int>.from(oldPlayerStats['reds'] ?? {});
         Map<String, int> oldGoalsConceded = Map<String, int>.from(oldPlayerStats['goals_conceded'] ?? {});
         
-        // Pega todos os jogadores que podem ser afetados
+        // Pega todos os IDs de jogadores relevantes
         Set<String> playersToReadIds = {
-          ...newGoals.keys, ...oldPlayerStats['goals']?.keys ?? [],
-          ...newAssists.keys, ...oldPlayerStats['assists']?.keys ?? [],
-          ...newYellows.keys, ...oldPlayerStats['yellows']?.keys ?? [],
-          ...newReds.keys, ...oldPlayerStats['reds']?.keys ?? [],
+          ...newGoals.keys, ...oldGoals.keys,
+          ...newAssists.keys, ...oldAssists.keys,
+          ...newYellows.keys, ...oldYellows.keys,
+          ...newReds.keys, ...oldReds.keys,
           ...newGoalsConceded.keys, ...oldGoalsConceded.keys,
           if (newManOfTheMatchId != null) newManOfTheMatchId,
           if (oldManOfTheMatchId != null) oldManOfTheMatchId,
         };
-        playersToReadIds.removeWhere((id) => id == null || id.isEmpty); // Limpa nulos
+        playersToReadIds.removeWhere((id) => id == null || id.isEmpty);
 
         Map<String, DocumentSnapshot> playerSnaps = {};
         for (String playerId in playersToReadIds) {
-          if (playerId.isNotEmpty) {
-             playerSnaps[playerId] = await transaction.get(_firestore.collection('players').doc(playerId));
-          }
+          playerSnaps[playerId] = await transaction.get(_firestore.collection('players').doc(playerId));
         }
 
         // --- 2. SALVAR O JOGO ATUAL (ESCRITA) ---
@@ -80,103 +81,203 @@ class FirestoreService {
           'assists': newAssists,
           'yellows': newYellows,
           'reds': newReds,
-          'goals_conceded': newGoalsConceded, // <-- SALVA GOLS SOFRIDOS
+          'goals_conceded': newGoalsConceded,
         };
         
         transaction.update(_firestore.collection('matches').doc(matchId), {
           'score_home': newScoreHome,
           'score_away': newScoreAway,
           'status': newStatus,
-          //'status': 'finished',
           'stats_applied': { 
             'player_stats': newPlayerStats,
-            'man_of_the_match': newManOfTheMatchId, // <-- SALVA CRAQUE DO JOGO
+            'man_of_the_match': newManOfTheMatchId,
           }
         });
 
+        Map<String, int> goalDelta = _calculateDelta(oldGoals, newGoals);
+        Map<String, int> assistDelta = _calculateDelta(oldAssists, newAssists);
+        Map<String, int> goalsConcededDelta = _calculateDelta(oldGoalsConceded, newGoalsConceded);
+        // (Lógica do MotM delta como antes)
 
         // --- 3. APLICAR DELTA NOS JOGADORES (ESCRITA) ---
         int disciplinaryHomeDelta = 0;
         int disciplinaryAwayDelta = 0;
 
         // Delta de Gols (sem mudança)
-        Map<String, int> goalDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['goals'] ?? {}), newGoals);
         goalDelta.forEach((playerId, delta) {
           if(delta != 0 && playerSnaps.containsKey(playerId)) {
             transaction.update(_firestore.collection('players').doc(playerId), {'goals': FieldValue.increment(delta)});
           }
         });
         // Delta de Assistências (sem mudança)
-        Map<String, int> assistDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['assists'] ?? {}), newAssists);
+      
         assistDelta.forEach((playerId, delta) {
           if(delta != 0 && playerSnaps.containsKey(playerId)) {
             transaction.update(_firestore.collection('players').doc(playerId), {'assists': FieldValue.increment(delta)});
           }
         });
 
-        // Delta de Cartões Amarelos
-        Map<String, int> yellowDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['yellows'] ?? {}), newYellows);
-        yellowDelta.forEach((playerId, delta) {
-          if(delta == 0 || !playerSnaps.containsKey(playerId)) return;
-          final playerSnap = playerSnaps[playerId]!;
-          final int currentYellows = (playerSnap.data() as Map<String, dynamic>).containsKey('yellow_cards')
-                                      ? playerSnap.get('yellow_cards') : 0;
-          final int newTotalYellows = currentYellows + delta;
+        // --- LÓGICA REFEITA PARA CARTÕES (COM AJUSTE PARA TOTAIS E DEBUG) ---
+        Map<String, int> yellowDelta = _calculateDelta(oldYellows, newYellows);
+        Map<String, int> redDelta = _calculateDelta(oldReds, newReds);
+        Set<String> affectedPlayerIds = {...yellowDelta.keys, ...redDelta.keys};
+        
+        // Zera os acumuladores de delta ANTES do loop
+        disciplinaryHomeDelta = 0; // Garante que começa zerado nesta transação
+        disciplinaryAwayDelta = 0; // Garante que começa zerado nesta transação
+        debugPrint("[DISCIPLINA] Iniciando cálculo de delta disciplinar. Jogadores afetados: ${affectedPlayerIds.length}");
 
-          // --- LÓGICA DE SUSPENSÃO ATUALIZADA ---
-          // Suspende se cruzar o limite para cima
-          bool suspend = (currentYellows < AdminService.suspensionYellowCards &&
-                          newTotalYellows >= AdminService.suspensionYellowCards) && delta > 0;
-          // Remove suspensão se cair abaixo do limite (e não tiver vermelho ativo)
-          bool unsuspend = (currentYellows >= AdminService.suspensionYellowCards &&
-                            newTotalYellows < AdminService.suspensionYellowCards) && delta < 0;
-          // --- FIM ---
+        for (String playerId in affectedPlayerIds) {
+          debugPrint("[DISCIPLINA] Processando jogador: $playerId");
+           if (!playerSnaps.containsKey(playerId)) {
+               debugPrint("[DISCIPLINA] Jogador $playerId não encontrado no cache. Pulando.");
+               continue;
+           }
 
-          transaction.update(_firestore.collection('players').doc(playerId), {
-            'yellow_cards': FieldValue.increment(delta),
-            if (suspend) 'is_suspended': true,
-            // Só remove suspensão se não houver cartão vermelho E a condição unsuspend for true
-            if (unsuspend && (playerSnap.data() as Map<String, dynamic>?)?['red_cards'] == 0) 'is_suspended': false,
-          });
+           final playerSnap = playerSnaps[playerId]!;
+           final playerData = playerSnap.data() as Map<String, dynamic>? ?? {};
+           
+           // Pega os deltas para este jogador
+           int yDelta = yellowDelta[playerId] ?? 0;
+           int rDelta = redDelta[playerId] ?? 0;
+           debugPrint("[DISCIPLINA] Deltas para $playerId: yDelta=$yDelta, rDelta=$rDelta");
 
-          // Acumula pontos disciplinares (sem mudança)
-          if (playerSnap.get('team_id') == homeTeamId) {
-            disciplinaryHomeDelta += (delta * 10);
-          } else if (playerSnap.get('team_id') == awayTeamId) {
-            disciplinaryAwayDelta += (delta * 10);
-          }
-        });
 
-        // Delta de Cartões Vermelhos
-        Map<String, int> redDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['reds'] ?? {}), newReds);
-        redDelta.forEach((playerId, delta) {
-          if(delta == 0 || !playerSnaps.containsKey(playerId)) return;
-          final playerSnap = playerSnaps[playerId]!;
+           // Pega valores atuais do BD
+           int currentYellows = playerData['yellow_cards'] ?? 0;
+           int currentReds = playerData['red_cards'] ?? 0;
+           bool currentlySuspended = playerData['is_suspended'] ?? false;
 
-          // --- LÓGICA DE SUSPENSÃO ATUALIZADA ---
-          // Suspende se a regra permitir E estiver adicionando vermelho
-          bool shouldSuspend = AdminService.suspensionOnRed && delta > 0;
-          // Remove suspensão se estiver removendo vermelho E não estiver suspenso por amarelos
-           bool shouldUnsuspend = delta < 0 && ((playerSnap.data() as Map<String, dynamic>?)?['yellow_cards'] ?? 0 < AdminService.suspensionYellowCards);
-          // --- FIM ---
+           // Pega valores TOTAIS do BD
+           int currentTotalYellows = playerData['total_yellow_cards'] ?? 0;
+           int currentTotalReds = playerData['total_red_cards'] ?? 0;
 
-          transaction.update(_firestore.collection('players').doc(playerId), {
-            'red_cards': FieldValue.increment(delta),
-            if (shouldSuspend) 'is_suspended': true,
-            if (shouldUnsuspend) 'is_suspended': false,
-          });
+           // Calcula os novos totais TEÓRICOS (antes de aplicar zeramento)
+           int theoreticalNewYellows = currentYellows + yDelta;
+           int theoreticalNewReds = currentReds + rDelta;
+           // Garante que não fiquem negativos
+           if (theoreticalNewYellows < 0) theoreticalNewYellows = 0;
+           if (theoreticalNewReds < 0) theoreticalNewReds = 0;
 
-          // Acumula pontos disciplinares (sem mudança)
-          if (playerSnap.get('team_id') == homeTeamId) {
-            disciplinaryHomeDelta += (delta * 21);
-          } else if (playerSnap.get('team_id') == awayTeamId) {
-            disciplinaryAwayDelta += (delta * 21); 
-          }
-        });
+          // --- Calcula incrementos para os TOTAIS (Lógica Especial) ---
+           int yellowIncrementForTotal = yDelta; // Começa com o delta normal
+           int redIncrementForTotal = rDelta;   // Começa com o delta normal
 
+           // Verifica o cenário: expulsão por 2º amarelo NESTE JOGO
+           bool isSecondYellowRedScenario = (rDelta > 0 && yDelta == 2);
+           if (isSecondYellowRedScenario) {
+             yellowIncrementForTotal = 1; // Só incrementa 1 no total de amarelos
+             // redIncrementForTotal já é 1 (pois rDelta é 1)
+             debugPrint("Jogador $playerId: Cenário 2º Amarelo + Vermelho detectado. Incremento Total CA: $yellowIncrementForTotal, CV: $redIncrementForTotal");
+           }
+
+           // Calcula os novos totais ACUMULADOS FINAIS
+           int finalTotalYellows = currentTotalYellows + yellowIncrementForTotal;
+           int finalTotalReds = currentTotalReds + redIncrementForTotal;
+
+           if (finalTotalYellows < 0) finalTotalYellows = 0;
+           if (finalTotalReds < 0) finalTotalReds = 0;
+
+          // --- Fim do cálculo para totais ---
+
+
+           // --- Determina o estado final dos cartões CORRENTES e suspensão ---
+           // (Esta lógica permanece a mesma, usando theoreticalNewYellows e regras de zeramento)
+           int finalYellows = theoreticalNewYellows; // Contagem corrente final
+           int finalReds = theoreticalNewReds;       // Contagem corrente final
+           bool finalSuspension = currentlySuspended; 
+
+          // 1. Verifica suspensão/reset por AMARELOS (usa theoreticalNewYellows)
+           if (yDelta > 0 && theoreticalNewYellows >= AdminService.suspensionYellowCards && currentYellows < AdminService.suspensionYellowCards) {
+              finalSuspension = true;
+              if (AdminService.resetYellowsOnSuspension) {
+                 finalYellows = 0; // ZERA O CORRENTE
+                 debugPrint("Jogador $playerId: Zerando amarelos CORRENTES por suspensão CA");
+              }
+           }
+
+           // 2. Verifica suspensão/reset por VERMELHO (usa currentYellows e regras)
+           if (rDelta > 0 && AdminService.suspensionOnRed) {
+              finalSuspension = true;
+              //suspendedByRedThisTurn = true;
+              bool wasPending = currentYellows == AdminService.pendingYellowCards;
+
+              // Verifica se zera amarelos (com a regra especial 'while_pending')
+              bool shouldResetYellows = AdminService.resetYellowsOnRed;
+              if (wasPending && !AdminService.resetYellowsOnRedWhilePending) {
+                 shouldResetYellows = false; 
+                 debugPrint("Jogador $playerId: NÃO zerando amarelos CORRENTES por CV (Regra RedWhilePending)");
+              }
+
+              if (shouldResetYellows) {
+                 finalYellows = 0; // ZERA O CORRENTE
+                 debugPrint("Jogador $playerId: Zerando amarelos CORRENTES por CV (Regra ResetRed)");
+              }
+           }
+
+           // 3. Verifica REMOÇÃO de suspensão (usa finalYellows, finalReds)
+           if (rDelta < 0 && finalYellows < AdminService.suspensionYellowCards) { // Se removeu vermelho E corrente de amarelos está abaixo do limite
+              finalSuspension = false;
+           }
+           
+           if (yDelta < 0 && theoreticalNewYellows < AdminService.suspensionYellowCards && currentYellows >= AdminService.suspensionYellowCards && finalReds == 0) { // Se removeu amarelo caindo abaixo do limite E não tem vermelho corrente
+              finalSuspension = false;
+           }
+
+           // --- Prepara o update para este jogador ---
+           Map<String, dynamic> playerUpdateData = {
+              'yellow_cards': finalYellows,             // Salva contagem CORRENTE final
+              'red_cards': finalReds,                 // Salva contagem CORRENTE final
+              'total_yellow_cards': finalTotalYellows, // Salva contagem TOTAL final
+              'total_red_cards': finalTotalReds,     // Salva contagem TOTAL final
+              'is_suspended': finalSuspension,
+           };
+
+           // Atualiza no batch (usando SET, não increment)
+           transaction.update(_firestore.collection('players').doc(playerId), playerUpdateData);
+
+           // Calcula delta de pontos disciplinares (baseado nos DELTAS yDelta/rDelta)
+           int pointsDelta = 0;
+           if (isSecondYellowRedScenario) { // Usa a flag que calculamos antes
+             pointsDelta = (1 * 10) + (1 * 21); // Conta SÓ o 1º amarelo (10) + o vermelho (21) = 31
+             debugPrint("[DISCIPLINA] Jogador $playerId: Cenário 2º CA+CV. pointsDelta = $pointsDelta");
+           } else {
+             pointsDelta = (yDelta * 10) + (rDelta * 21);
+             debugPrint("[DISCIPLINA] Jogador $playerId: Caso padrão. pointsDelta = ($yDelta * 10) + ($rDelta * 21) = $pointsDelta");
+           }
+           // --- FIM DA LÓGICA ATUALIZADA ---
+
+           final String? playerTeamId = playerSnap.get('team_id'); // Pega o ID do time
+         
+           if (playerTeamId == homeTeamId) {
+            disciplinaryHomeDelta += pointsDelta;
+            debugPrint("[DISCIPLINA] Acumulado Casa: $disciplinaryHomeDelta (adicionado $pointsDelta de $playerId)");
+           
+           } else if (playerTeamId == awayTeamId) {
+             disciplinaryAwayDelta += pointsDelta;
+             debugPrint("[DISCIPLINA] Acumulado Visitante: $disciplinaryAwayDelta (adicionado $pointsDelta de $playerId)");
+           }else {
+              debugPrint("[DISCIPLINA] ERRO: Jogador $playerId não pertence a nenhum dos times da partida ($homeTeamId vs $awayTeamId). TeamID: $playerTeamId");
+           }
+        } // Fim do loop for playerId
+        debugPrint("[DISCIPLINA] Fim do loop. Delta Final Casa: $disciplinaryHomeDelta, Delta Final Visitante: $disciplinaryAwayDelta");
+
+        // Aplica o DELTA de pontos disciplinares
+        final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
+        final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
+        
+        // Só aplica se o delta for diferente de zero para evitar escritas desnecessárias
+        if (disciplinaryHomeDelta != 0) {
+            transaction.update(homeTeamRef, {'disciplinary_points': FieldValue.increment(disciplinaryHomeDelta)});
+            debugPrint("[DISCIPLINA] Aplicando Delta Casa: $disciplinaryHomeDelta");
+        }
+        if (disciplinaryAwayDelta != 0) {
+            transaction.update(awayTeamRef, {'disciplinary_points': FieldValue.increment(disciplinaryAwayDelta)});
+            debugPrint("[DISCIPLINA] Aplicando Delta Visitante: $disciplinaryAwayDelta");
+        }
 
         // --- NOVO: Delta de Gols Sofridos ---
-        Map<String, int> goalsConcededDelta = _calculateDelta(oldGoalsConceded, newGoalsConceded);
+        //Map<String, int> goalsConcededDelta = _calculateDelta(oldGoalsConceded, newGoalsConceded);
         goalsConcededDelta.forEach((playerId, delta) {
           if(delta != 0 && playerSnaps.containsKey(playerId)) {
             // Atualiza o campo 'goals_conceded' no documento do jogador
@@ -204,11 +305,7 @@ class FirestoreService {
         }
         // --- FIM DO DELTA ---
 
-        // Aplica o DELTA de pontos disciplinares (sem mudança)
-        final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
-        final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
-        transaction.update(homeTeamRef, {'disciplinary_points': FieldValue.increment(disciplinaryHomeDelta)});
-        transaction.update(awayTeamRef, {'disciplinary_points': FieldValue.increment(disciplinaryAwayDelta)});
+        
 
       }); // Fim da Transação
 

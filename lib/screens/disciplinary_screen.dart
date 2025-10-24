@@ -115,11 +115,11 @@ class DisciplinaryScreen extends StatelessWidget {
               context: context,
               query: _firestore
                   .collection('players')
-                  .where('yellow_cards', isGreaterThan: 0)
-                  .orderBy('yellow_cards', descending: true)
+                  .where('total_yellow_cards', isGreaterThan: 0)
+                  .orderBy('total_yellow_cards', descending: true)
                   .orderBy('name'),
               emptyMessage: 'Nenhum jogador com cartão amarelo.',
-              countField: 'yellow_cards',
+              countField: 'total_yellow_cards',
               countLabel: 'CA',
             ),
             // Aba Total Vermelhos
@@ -127,11 +127,11 @@ class DisciplinaryScreen extends StatelessWidget {
               context: context,
               query: _firestore
                   .collection('players')
-                  .where('red_cards', isGreaterThan: 0)
-                  .orderBy('red_cards', descending: true)
+                  .where('total_red_cards', isGreaterThan: 0)
+                  .orderBy('total_red_cards', descending: true)
                   .orderBy('name'),
               emptyMessage: 'Nenhum jogador com cartão vermelho.',
-              countField: 'red_cards',
+              countField: 'total_red_cards',
               countLabel: 'CV',
             ),
           ],
@@ -178,21 +178,23 @@ class DisciplinaryScreen extends StatelessWidget {
                      final String shieldUrl = data['team_shield_url'] ?? '';
                      String status = '';
                      Color statusColor = Colors.black;
+                     int currentYellows = data['yellow_cards'] ?? 0;
 
                      // --- Lógica de Cor/Status COMPLETA ---
                      if (isSuspendedList) {
                        // Aba Suspensos
-                       if ((data['red_cards'] ?? 0) > 0 && AdminService.suspensionOnRed) { // Verifica regra do vermelho
+                       int reds = data['red_cards'] ?? 0;
+                       
+                       if (reds > 0 && AdminService.suspensionOnRed) {
                          status = "Cartão Vermelho";
                          statusColor = Colors.red[700]!;
-                       } else {
-                         // Suspensão por Amarelos (usa a regra carregada)
-                         status = "${data['yellow_cards'] ?? 0}º Amarelo (Limite: ${AdminService.suspensionYellowCards})";
+                       } else{
+                         status = "Cartões Amarelos (Limite: ${AdminService.suspensionYellowCards})";
                          statusColor = Colors.yellow[800]!;
-                       }
+                       } 
                      } else {
-                       // Aba Pendurados (usa a regra carregada)
-                       status = "${data['yellow_cards'] ?? 0} amarelos (Limite: ${AdminService.pendingYellowCards})";
+                       // Aba Pendurados
+                       status = "$currentYellows amarelos (Limite: ${AdminService.pendingYellowCards})";
                        statusColor = Colors.orange[700]!;
                      }
                      // --- FIM da Lógica ---
@@ -279,7 +281,7 @@ class DisciplinaryScreen extends StatelessWidget {
     required BuildContext context,
     required Query query,
     required String emptyMessage,
-    required String countField, // 'yellow_cards' ou 'red_cards'
+    required String countField, // Será 'total_yellow_cards' ou 'total_red_cards'
     required String countLabel, // 'CA' ou 'CV'
   }) {
     return StreamBuilder<QuerySnapshot>(

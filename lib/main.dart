@@ -16,6 +16,7 @@ void main() async {
   );
 
   await AdminService.loadDisciplinaryRules();
+  await AdminService.loadTiebreakerRules();
   
   runApp(const MyApp());
 }
