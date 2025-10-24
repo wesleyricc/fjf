@@ -203,6 +203,7 @@ class FirestoreService {
   // (Esta função permanece idêntica à que você forneceu, pois está correta)
   Future<void> _recalculateTeamStats(String teamId) async {
     // 1. Inicializa os totais
+    int totalMatchPoints = 0;
     int totalPoints = 0;
     int totalGames = 0;
     int totalWins = 0;
@@ -228,12 +229,12 @@ class FirestoreService {
       totalGoalsAgainst += scoreAway;
 
       if (scoreHome > scoreAway) {
-        totalPoints += 3;
+        totalMatchPoints += 3;
         totalWins++;
       } else if (scoreHome < scoreAway) {
         totalLosses++;
       } else {
-        totalPoints += 1;
+        totalMatchPoints += 1;
         totalDraws++;
       }
     }
@@ -255,26 +256,42 @@ class FirestoreService {
       totalGoalsAgainst += scoreHome;
 
       if (scoreAway > scoreHome) {
-        totalPoints += 3;
+        totalMatchPoints += 3;
         totalWins++;
       } else if (scoreAway < scoreHome) {
         totalLosses++;
       } else {
-        totalPoints += 1;
+        totalMatchPoints += 1;
         totalDraws++;
       }
     }
     
-    // 4. ATUALIZA O DOCUMENTO DO TIME
-    await _firestore.collection('teams').doc(teamId).update({
-      'points': totalPoints,
-      'games_played': totalGames,
-      'wins': totalWins,
-      'draws': totalDraws,
-      'losses': totalLosses,
-      'goals_for': totalGoalsFor,
-      'goals_against': totalGoalsAgainst,
-      'goal_difference': totalGoalsFor - totalGoalsAgainst,
-    });
+   // --- 4. LER PONTOS EXTRAS ATUAIS E ATUALIZAR O TIME ---
+    try {
+      final teamRef = _firestore.collection('teams').doc(teamId);
+      final teamSnap = await teamRef.get(); // Lê o estado atual do time
+      final currentExtraPoints = (teamSnap.data()?['extra_points'] ?? 0) as int; // Pega extra_points
+
+      // Calcula o total final
+      final int finalTotalPoints = totalMatchPoints + currentExtraPoints;
+
+      // ATUALIZA o documento do time com valores absolutos
+      await teamRef.update({
+        'match_points': totalMatchPoints, // Define os pontos SÓ de jogos
+        'points': finalTotalPoints,     // Define o TOTAL (jogos + extras)
+        'games_played': totalGames,
+        'wins': totalWins,
+        'draws': totalDraws,
+        'losses': totalLosses,
+        'goals_for': totalGoalsFor,
+        'goals_against': totalGoalsAgainst,
+        'goal_difference': totalGoalsFor - totalGoalsAgainst,
+        // 'extra_points' NÃO é modificado aqui
+        // 'disciplinary_points' NÃO é modificado aqui
+      });
+    } catch (e) {
+       debugPrint("Erro ao atualizar time $teamId após recálculo: $e");
+       // Considerar como tratar esse erro (talvez tentar de novo?)
+    }
   }
 }

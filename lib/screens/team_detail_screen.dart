@@ -111,12 +111,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                     try {
                       final teamRef = _firestore.collection('teams').doc(widget.teamDoc.id);
-                      final logRef = teamRef.collection('extra_points_log').doc(); // Novo doc no log
-
+                      final logRef = teamRef.collection('extra_points_log').doc();
                       final WriteBatch batch = _firestore.batch();
 
-                      // 1. Atualiza os pontos do time
+                      // --- ATUALIZA AMBOS OS CAMPOS ---
+                      // 1. Atualiza os pontos EXTRAS do time
+                      batch.update(teamRef, {'extra_points': FieldValue.increment(points)});
+                      // 2. Atualiza os pontos TOTAIS do time
                       batch.update(teamRef, {'points': FieldValue.increment(points)});
+                      // --- FIM DA ATUALIZAÇÃO DUPLA ---
 
                       // 2. Cria o registro no log
                       batch.set(logRef, {

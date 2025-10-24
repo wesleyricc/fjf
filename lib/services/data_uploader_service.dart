@@ -26,6 +26,8 @@ class DataUploaderService {
 
         // Adiciona os campos de estatísticas zerados
         finalTeamData['points'] = 0;
+        finalTeamData['match_points'] = 0;
+        finalTeamData['extra_points'] = 0;
         finalTeamData['games_played'] = 0;
         finalTeamData['wins'] = 0;
         finalTeamData['draws'] = 0;
