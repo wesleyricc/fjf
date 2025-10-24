@@ -223,7 +223,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                 ),
 
                 // Legenda (Menor)
-                const SizedBox(height: 10), // Espaço reduzido
+                const SizedBox(height: 5), // Espaço reduzido
                 Card(
                   color: Colors.white,
                   elevation: 1, // Menor elevação
@@ -250,6 +250,36 @@ class _StandingsScreenState extends State<StandingsScreen> {
                     ),
                   ),
                 ),
+
+                // --- LEGENDA SIMPLIFICADA: Critérios de Desempate ---
+                const SizedBox(height: 2),
+                Card(
+                  color: Colors.white,
+                  elevation: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0), // Padding igual à outra legenda
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Critérios de Desempate (Ordem)',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        // Usa a mesma função _buildLegendRow
+                        _buildLegendRow('1º', 'Pontos (P)'), // Adiciona critério principal para clareza
+                        _buildLegendRow('2º', 'Confronto Direto (CD)'), // Sigla CD
+                        _buildLegendRow('3º', 'Menor Pontuação Disciplinar (PD)'), // Sigla PD
+                        _buildLegendRow('4º', 'Maior Número de Vitórias (V)'), // Sigla V
+                        _buildLegendRow('5º', 'Melhor Saldo de Gols (SG)'), // Sigla SG
+                        _buildLegendRow('6º', 'Menor Número de Gols Sofridos (GC)'), // Sigla GC
+                        _buildLegendRow('7º', 'Sorteio'),
+
+                      ],
+                    ),
+                  ),
+                ),
+                // --- FIM DA LEGENDA SIMPLIFICADA ---
 
                 // --- 2. ÁREA DO BANNER ---
                 const SizedBox(height: 5),
