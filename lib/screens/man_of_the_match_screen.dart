@@ -47,7 +47,6 @@ class ManOfTheMatchScreen extends StatelessWidget {
 
           // --- 2. ESTRUTURA PARA ROLAGEM + BANNER ---
           return SingleChildScrollView( // Permite rolar a lista E o banner
-             padding: const EdgeInsets.only(bottom: 16.0), // Espaço extra no final
             child: Column( // Organiza a lista e o banner verticalmente
               children: [
                 // --- 3. A LISTA DO RANKING ---
@@ -111,25 +110,13 @@ class ManOfTheMatchScreen extends StatelessWidget {
                     }
                   },
                 ), // Fim do ListView.builder
-
-                // --- 5. ÁREA DO BANNER ---
-                const SizedBox(height: 24),
-                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    'Patrocinadores',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const SponsorBannerRotator(), // <-- O Widget do Banner
-                // --- FIM DA ÁREA DO BANNER ---
               ],
             ),
           );
           // --- FIM DA ESTRUTURA ---
         },
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }

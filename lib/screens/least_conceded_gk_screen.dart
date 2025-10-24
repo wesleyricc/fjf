@@ -49,7 +49,6 @@ class LeastConcededGkScreen extends StatelessWidget {
 
           // --- 2. ESTRUTURA PARA ROLAGEM + BANNER ---
           return SingleChildScrollView(
-             padding: const EdgeInsets.only(bottom: 16.0), // Espaço no final
             child: Column(
               children: [
                 // --- 3. A LISTA DE GOLEIROS ---
@@ -112,25 +111,13 @@ class LeastConcededGkScreen extends StatelessWidget {
                     }
                   },
                 ), // Fim do ListView.builder
-
-                // --- 5. ÁREA DO BANNER ---
-                const SizedBox(height: 24),
-                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    'Patrocinadores',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const SponsorBannerRotator(), // <-- O Widget do Banner
-                // --- FIM DA ÁREA DO BANNER ---
               ],
             ),
           );
           // --- FIM DA ESTRUTURA ---
         },
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }

@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'admin_match_screen.dart';
 import '../services/admin_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../services/admin_service.dart';
 import 'match_stats_screen.dart';
 import 'team_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -127,9 +126,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
 
           // --- 1. ENVOLVE TUDO EM UM SingleChildScrollView ---
           return SingleChildScrollView(
-            padding: const EdgeInsets.only(
-              bottom: 16.0,
-            ), // Espaço extra no final
             child: Column(
               children: [
                 // --- 2. A LISTA DE JOGOS (agora dentro do Column) ---
@@ -429,29 +425,12 @@ class _FixturesScreenState extends State<FixturesScreen> {
                     ); // Fim do Card
                   },
                 ), // Fim do ListView.builder
-                // --- 3. ÁREA DE PATROCINADORES (Tela Cheia) ---
-                const SizedBox(height: 1), // Espaço antes dos banners
-                // Título ainda pode ter padding lateral
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    'Patrocinadores',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 1),
-
-                // --- COLOCA O ROTATOR DIRETAMENTE NO COLUMN ---
-                // Sem Padding horizontal envolvendo ele
-                const SponsorBannerRotator(),
-                // --- FIM DA ÁREA DE PATROCINADORES ---
               ],
             ),
           );
         },
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }

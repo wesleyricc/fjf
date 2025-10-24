@@ -269,7 +269,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             )
           : null, // Não mostra o botão se não for admin
       body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 80.0), // Espaço extra p/ FAB e Banner
         child: Column(
           children: [
             // --- Cabeçalho do Time ---
@@ -484,19 +483,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 // --- FIM DA SUBSTITUIÇÃO ---
               },
             ), // Fim StreamBuilder Jogadores
-
-            // --- Banner ---
-            const SizedBox(height: 32),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('Patrocinadores', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 8),
-            const SponsorBannerRotator(),
-
           ],
         ),
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }

@@ -198,8 +198,6 @@ class _StandingsScreenState extends State<StandingsScreen> {
           final teams = snapshot.data!;
 
           return SingleChildScrollView(
-            // Padding ajustado para ter espaço extra no final para o banner
-            padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -333,25 +331,12 @@ class _StandingsScreenState extends State<StandingsScreen> {
                   ),
                 ),
                 // --- FIM DA LEGENDA SIMPLIFICADA ---
-
-                // --- 2. ÁREA DO BANNER ---
-                const SizedBox(height: 5),
-                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    'Patrocinadores',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                const SponsorBannerRotator(), // <-- O Widget do Banner
-                // --- FIM DA ÁREA DO BANNER ---
               ],
             ),
           );
         },
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 

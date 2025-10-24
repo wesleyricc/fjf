@@ -136,6 +136,7 @@ class DisciplinaryScreen extends StatelessWidget {
             ),
           ],
         ),
+        bottomNavigationBar: const SponsorBannerRotator(),
       ),
     );
   }
@@ -361,21 +362,6 @@ class DisciplinaryScreen extends StatelessWidget {
                   }
                 },
               ), // Fim ListView
-
-              // Banner
-              const SizedBox(height: 24),
-              // --- Padding com Título Patrocinadores COMPLETO ---
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  'Patrocinadores',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center, // Centraliza
-                ),
-              ),
-              // --- FIM do Padding ---
-              const SizedBox(height: 8),
-              const SponsorBannerRotator(),
             ],
           ),
         );

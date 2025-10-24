@@ -196,7 +196,6 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
       drawer: const AppDrawer(),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0), // Padding inferior para banner
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch, // Estica filhos na horizontal
           children: [
@@ -281,7 +280,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ],
               ),
             ), // Fim Card Player
-            const SizedBox(height: 20),
+            const SizedBox(height: 70),
 
             // --- 3. Links de Redes Sociais ---
             Text(
@@ -305,20 +304,10 @@ class _SplashScreenState extends State<SplashScreen> {
                 }).toList(),
               ),
             ),
-            const SizedBox(height: 30),
-
-            // --- 4. Banner de Patrocinadores ---
-            Text(
-              'Patrocinadores',
-               style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-               textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            const SponsorBannerRotator(), // Widget do banner
-
           ],
         ),
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }

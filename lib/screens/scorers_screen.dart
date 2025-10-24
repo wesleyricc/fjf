@@ -13,7 +13,7 @@ class ScorersScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Artilharia'),
+        title: const Text('Artilheiros'),
       ),
       drawer: const AppDrawer(),
       body: StreamBuilder<QuerySnapshot>(
@@ -31,8 +31,8 @@ class ScorersScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            debugPrint("Erro no StreamBuilder (Artilharia): ${snapshot.error}");
-            return Center(child: Text('Erro ao carregar artilharia: ${snapshot.error}'));
+            debugPrint("Erro no StreamBuilder (Artilheiros): ${snapshot.error}");
+            return Center(child: Text('Erro ao carregar artilheiros: ${snapshot.error}'));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text('Nenhum artilheiro ainda.'));
@@ -43,7 +43,6 @@ class ScorersScreen extends StatelessWidget {
 
           // --- 2. ESTRUTURA PARA ROLAGEM + BANNER ---
           return SingleChildScrollView( // Permite rolar a lista E o banner
-             padding: const EdgeInsets.only(bottom: 16.0), // Espaço extra no final
             child: Column( // Organiza a lista e o banner verticalmente
               children: [
                 // --- 3. A LISTA DE ARTILHEIROS ---
@@ -114,25 +113,13 @@ class ScorersScreen extends StatelessWidget {
                     }
                   },
                 ), // Fim do ListView.builder
-
-                // --- 5. ÁREA DO BANNER (Exatamente como em fixtures_screen) ---
-                const SizedBox(height: 5),
-                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    'Patrocinadores',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const SponsorBannerRotator(), // <-- O Widget do Banner
-                // --- FIM DA ÁREA DO BANNER ---
               ],
             ),
           );
           // --- FIM DA ESTRUTURA ---
         },
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }

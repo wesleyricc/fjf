@@ -163,7 +163,7 @@ class ExtraPointsLogScreen extends StatelessWidget {
                   ),
                   // --- FIM DA MODIFICAÇÃO ---
                 );
-              } catch (e) { /* ... ListTile de erro ... */ }
+              } catch (e) { return ListTile(title: Text('Erro registro ${logDoc.id}')); }
             },
           );
         },

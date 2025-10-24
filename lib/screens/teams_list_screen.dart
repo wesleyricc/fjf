@@ -36,7 +36,6 @@ class TeamsListScreen extends StatelessWidget {
           final teams = snapshot.data!.docs;
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 16.0),
             child: Column(
               children: [
                 ListView.builder(
@@ -79,20 +78,12 @@ class TeamsListScreen extends StatelessWidget {
                     }
                   },
                 ), // Fim ListView
-
-                // Banner
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text('Patrocinadores', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 8),
-                const SponsorBannerRotator(),
               ],
             ),
           );
         },
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }

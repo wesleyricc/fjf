@@ -344,7 +344,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
         title: Text('$homeTeamName $scoreHome x $scoreAway $awayTeamName', overflow: TextOverflow.ellipsis),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 16.0),
         child: Column(
           children: [
             // --- Info Cabeçalho (sem mudanças) ---
@@ -446,18 +445,10 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               ),
             ],
             // --- FIM DA MOVIMENTAÇÃO ---
-
-             // --- Banner ---
-             const SizedBox(height: 32),
-             Padding(
-               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-               child: Text('Patrocinadores', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-             ),
-             const SizedBox(height: 8),
-             const SponsorBannerRotator(),
           ],
         ),
       ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 } // Fim da classe _MatchStatsScreenState
