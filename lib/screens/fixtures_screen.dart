@@ -144,9 +144,9 @@ class _FixturesScreenState extends State<FixturesScreen> {
                     final data = match.data() as Map<String, dynamic>;
 
                     final String scoreHome =
-                        data['score_home']?.toString() ?? '-';
+                        data['score_home']?.toString() ?? '';
                     final String scoreAway =
-                        data['score_away']?.toString() ?? '-';
+                        data['score_away']?.toString() ?? '';
 
                     String formattedDate = 'Data a definir';
                     final String location =data['location'] ?? 'Local a definir';
@@ -421,7 +421,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                                   // --- Fim Time Visitante ---
                                 ],
                               ), // --- FIM DA ROW PRINCIPAL ---
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 1),
                             ],
                           ), // Fim da Column interna
                         ), // Fim do Padding interno
@@ -430,7 +430,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                   },
                 ), // Fim do ListView.builder
                 // --- 3. ÁREA DE PATROCINADORES (Tela Cheia) ---
-                const SizedBox(height: 50), // Espaço antes dos banners
+                const SizedBox(height: 1), // Espaço antes dos banners
                 // Título ainda pode ter padding lateral
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),

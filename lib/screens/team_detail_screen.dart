@@ -5,6 +5,7 @@ import '../services/admin_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'extra_points_log_screen.dart'; // <-- Tela de log que vamos criar
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc; // Recebe o documento do time selecionado
@@ -23,23 +24,39 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     String? selectedReason;
     final pointsController = TextEditingController();
     bool isLoading = false;
+    DateTime selectedDate = DateTime.now(); // <-- Estado para a data (inicia com hoje)
 
-    // Definição dos pontos extras
     final Map<String, int> extraPointsOptions = {
       'Rainha FJF': 1,
       '1º Lugar Desfile': 1,
-      '2º Lugar Desfile': 1, // Ajuste se for diferente
-      '3º Lugar Desfile': 1, // Ajuste se for diferente
+      '2º Lugar Desfile': 1,
+      '3º Lugar Desfile': 1,
       'Falta Pgto Boleto': -1,
       'Ausência Reunião': -1,
-      'Outro (Positivo)': 0, // Permite valor customizado
-      'Outro (Negativo)': 0, // Permite valor customizado
+      'Outro (Positivo)': 0,
+      'Outro (Negativo)': 0,
     };
 
+    // --- Função auxiliar para mostrar o Date Picker ---
+    Future<void> _pickDate(BuildContext context, StateSetter setDialogState) async {
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: selectedDate, // Data inicial é a selecionada atualmente
+        firstDate: DateTime(2020), // Limite inferior (ajuste se necessário)
+        lastDate: DateTime.now(),   // Limite superior (não permite datas futuras)
+        locale: const Locale('pt', 'BR'), // Para português
+      );
+      if (picked != null && picked != selectedDate) {
+        setDialogState(() { // Atualiza o estado DENTRO do diálogo
+          selectedDate = picked;
+        });
+      }
+    }
+    // --- Fim da função auxiliar ---
     return showDialog<void>(
       context: context,
-      barrierDismissible: !isLoading, // Não pode fechar enquanto carrega
-      builder: (context) {
+      barrierDismissible: !isLoading,
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -65,7 +82,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           if (value != null && extraPointsOptions[value] != 0) {
                             pointsController.text = extraPointsOptions[value].toString();
                           } else {
-                            pointsController.text = ''; // Limpa para "Outro"
+                            pointsController.text = ''; 
                           }
                         });
                       },
@@ -87,25 +104,58 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         return null;
                       },
                     ),
+                    // --- SELETOR DE DATA ---
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                         Expanded( // Para o texto ocupar o espaço e poder quebrar linha
+                           child: Text(
+                            'Data do Evento:\n${DateFormat('dd/MM/yyyy').format(selectedDate)}', // Mostra a data
+                            style: const TextStyle(fontSize: 14),
+                           ),
+                         ),
+                        IconButton(
+                          icon: const Icon(Icons.calendar_today),
+                          tooltip: 'Selecionar Data',
+                          onPressed: isLoading ? null : () => _pickDate(dialogContext, setDialogState), // Chama o date picker
+                          color: Theme.of(context).primaryColor,
+                        ),
+                      ],
+                    ),
+                    // --- FIM DO SELETOR DE DATA ---
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: isLoading ? null : () => Navigator.of(context).pop(),
+                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(),
                   child: const Text('Cancelar'),
                 ),
                 TextButton(
                   onPressed: isLoading ? null : () async {
-                    if (selectedReason == null) {
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um motivo.')));
+                    if (selectedReason == null || pointsController.text.isEmpty) {
+                       ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Selecione o motivo e informe os pontos.')));
                        return;
                     }
                     final int points = int.tryParse(pointsController.text) ?? (extraPointsOptions[selectedReason] ?? 0);
-                    if (points == 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A quantidade de pontos não pode ser zero.')));
+                    
+                    if (points == 0 && !(selectedReason?.contains('Outro') ?? false)) {
+                        // Se não for 'Outro', pega o valor do mapa. Se ainda for 0, é erro.
+                        final mapPoints = extraPointsOptions[selectedReason] ?? 0;
+                        if(mapPoints == 0) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Pontos inválidos para o motivo selecionado.')));
+                          return;
+                        }
+                        // Se chegou aqui, usa mapPoints
+                         pointsController.text = mapPoints.toString(); // Atualiza o controller para consistência
+                         // Não precisa reatribuir 'points' pois ela será lida novamente abaixo
+                     }
+                     final finalPoints = int.tryParse(pointsController.text) ?? 0;
+                     if (finalPoints == 0) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('A quantidade de pontos não pode ser zero.')));
                       return;
                     }
+
 
                     setDialogState(() { isLoading = true; });
 
@@ -115,24 +165,22 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       final WriteBatch batch = _firestore.batch();
 
                       // --- ATUALIZA AMBOS OS CAMPOS ---
-                      // 1. Atualiza os pontos EXTRAS do time
-                      batch.update(teamRef, {'extra_points': FieldValue.increment(points)});
-                      // 2. Atualiza os pontos TOTAIS do time
-                      batch.update(teamRef, {'points': FieldValue.increment(points)});
+                      batch.update(teamRef, {'extra_points': FieldValue.increment(finalPoints)});
+                      batch.update(teamRef, {'points': FieldValue.increment(finalPoints)});
                       // --- FIM DA ATUALIZAÇÃO DUPLA ---
 
                       // 2. Cria o registro no log
                       batch.set(logRef, {
-                        'timestamp': FieldValue.serverTimestamp(), // Data/Hora do servidor
+                        'timestamp': Timestamp.fromDate(selectedDate),
                         'reason': selectedReason,
-                        'points': points,
+                        'points': finalPoints,
                       });
 
                       await batch.commit();
 
-                      if (mounted) Navigator.of(context).pop();
+                      if (mounted) Navigator.of(dialogContext).pop();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Pontos (${points > 0 ? '+' : ''}$points) aplicados a ${widget.teamDoc['name']}.')),
+                        SnackBar(content: Text('Pontos (${finalPoints > 0 ? '+' : ''}$finalPoints) aplicados a ${widget.teamDoc['name']}.')),
                       );
 
                     } catch (e) {

@@ -124,7 +124,7 @@ class ExtraPointsLogScreen extends StatelessWidget {
                 final reason = data['reason'] ?? 'Motivo desconhecido';
                 String formattedDate = 'Data indisponível';
                 if (data['timestamp'] != null) {
-                  formattedDate = DateFormat('dd/MM/yyyy HH:mm').format((data['timestamp'] as Timestamp).toDate());
+                  formattedDate = DateFormat('dd/MM/yyyy').format((data['timestamp'] as Timestamp).toDate());
                 }
 
                 return ListTile(

@@ -93,9 +93,11 @@ class DisciplinaryScreen extends StatelessWidget {
               context: context,
               query: _firestore
                   .collection('players')
-                  .where('yellow_cards', isEqualTo: 2)
+                  // Usa a regra carregada
+                  .where('yellow_cards', isEqualTo: AdminService.pendingYellowCards)
+                  .where('is_suspended', isEqualTo: false) // Garante que não esteja suspenso
                   .orderBy('name'),
-              emptyMessage: 'Nenhum jogador pendurado.',
+              emptyMessage: 'Nenhum jogador pendurado (${AdminService.pendingYellowCards} CA).', // Mostra a regra
               isSuspendedList: false,
             ),
             // Aba Suspensos
@@ -179,23 +181,18 @@ class DisciplinaryScreen extends StatelessWidget {
 
                      // --- Lógica de Cor/Status COMPLETA ---
                      if (isSuspendedList) {
-                       // Estamos na aba "Suspensos"
-                       if ((data['red_cards'] ?? 0) > 0) {
+                       // Aba Suspensos
+                       if ((data['red_cards'] ?? 0) > 0 && AdminService.suspensionOnRed) { // Verifica regra do vermelho
                          status = "Cartão Vermelho";
                          statusColor = Colors.red[700]!;
                        } else {
-                         // Se não tem vermelho, a suspensão é por 3 amarelos (ou outro motivo futuro)
-                         // Verifica se tem amarelos para ter certeza
-                         if ((data['yellow_cards'] ?? 0) > 0 && (data['yellow_cards'] % 3 == 0)) {
-                           status = "${data['yellow_cards']}º Amarelo"; // Mostra qual amarelo causou
-                         } else {
-                            status = "Suspenso"; // Genérico se não for por cartão conhecido
-                         }
-                         statusColor = Colors.yellow[800]!; // Amarelo escuro para suspensão por CA
+                         // Suspensão por Amarelos (usa a regra carregada)
+                         status = "${data['yellow_cards'] ?? 0}º Amarelo (Limite: ${AdminService.suspensionYellowCards})";
+                         statusColor = Colors.yellow[800]!;
                        }
                      } else {
-                       // Estamos na aba "Pendurados"
-                       status = "${data['yellow_cards'] ?? 0} amarelos";
+                       // Aba Pendurados (usa a regra carregada)
+                       status = "${data['yellow_cards'] ?? 0} amarelos (Limite: ${AdminService.pendingYellowCards})";
                        statusColor = Colors.orange[700]!;
                      }
                      // --- FIM da Lógica ---

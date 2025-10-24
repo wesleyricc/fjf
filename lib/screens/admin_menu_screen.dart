@@ -7,6 +7,7 @@ import '../services/data_uploader_service.dart'; // Para o upload
 import 'dart:convert'; // Para utf8
 import 'package:crypto/crypto.dart';
 import '../services/data_uploader_service.dart';
+import 'disciplinary_rules_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -379,6 +380,19 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             onTap: _showChangePasswordDialog, // Chama a função movida
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.rule_folder), // Ícone de regras
+            title: const Text('Regras Disciplinares'),
+            subtitle: const Text('Define limites de cartões para suspensão'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (ctx) => const DisciplinaryRulesScreen()),
+              );
+            },
+          ),
+          const Divider(),
+
           // Adicione mais opções administrativas aqui, se necessário
         ],
       ),

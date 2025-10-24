@@ -1,6 +1,7 @@
 // lib/services/firestore_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'admin_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -112,43 +113,67 @@ class FirestoreService {
             transaction.update(_firestore.collection('players').doc(playerId), {'assists': FieldValue.increment(delta)});
           }
         });
-        // Delta de Cartões Amarelos (sem mudança)
+
+        // Delta de Cartões Amarelos
         Map<String, int> yellowDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['yellows'] ?? {}), newYellows);
         yellowDelta.forEach((playerId, delta) {
           if(delta == 0 || !playerSnaps.containsKey(playerId)) return;
           final playerSnap = playerSnaps[playerId]!;
-          final int currentYellows = (playerSnap.data() as Map<String, dynamic>).containsKey('yellow_cards') 
+          final int currentYellows = (playerSnap.data() as Map<String, dynamic>).containsKey('yellow_cards')
                                       ? playerSnap.get('yellow_cards') : 0;
           final int newTotalYellows = currentYellows + delta;
-          bool suspend = (newTotalYellows % 3 == 0) && delta > 0;
-          bool unsuspend = (currentYellows % 3 == 0) && delta < 0; 
+
+          // --- LÓGICA DE SUSPENSÃO ATUALIZADA ---
+          // Suspende se cruzar o limite para cima
+          bool suspend = (currentYellows < AdminService.suspensionYellowCards &&
+                          newTotalYellows >= AdminService.suspensionYellowCards) && delta > 0;
+          // Remove suspensão se cair abaixo do limite (e não tiver vermelho ativo)
+          bool unsuspend = (currentYellows >= AdminService.suspensionYellowCards &&
+                            newTotalYellows < AdminService.suspensionYellowCards) && delta < 0;
+          // --- FIM ---
+
           transaction.update(_firestore.collection('players').doc(playerId), {
             'yellow_cards': FieldValue.increment(delta),
             if (suspend) 'is_suspended': true,
-            if (unsuspend) 'is_suspended': false,
+            // Só remove suspensão se não houver cartão vermelho E a condição unsuspend for true
+            if (unsuspend && (playerSnap.data() as Map<String, dynamic>?)?['red_cards'] == 0) 'is_suspended': false,
           });
+
+          // Acumula pontos disciplinares (sem mudança)
           if (playerSnap.get('team_id') == homeTeamId) {
             disciplinaryHomeDelta += (delta * 10);
           } else if (playerSnap.get('team_id') == awayTeamId) {
             disciplinaryAwayDelta += (delta * 10);
           }
         });
+
         // Delta de Cartões Vermelhos
         Map<String, int> redDelta = _calculateDelta(Map<String, int>.from(oldPlayerStats['reds'] ?? {}), newReds);
         redDelta.forEach((playerId, delta) {
           if(delta == 0 || !playerSnaps.containsKey(playerId)) return;
           final playerSnap = playerSnaps[playerId]!;
+
+          // --- LÓGICA DE SUSPENSÃO ATUALIZADA ---
+          // Suspende se a regra permitir E estiver adicionando vermelho
+          bool shouldSuspend = AdminService.suspensionOnRed && delta > 0;
+          // Remove suspensão se estiver removendo vermelho E não estiver suspenso por amarelos
+           bool shouldUnsuspend = delta < 0 && ((playerSnap.data() as Map<String, dynamic>?)?['yellow_cards'] ?? 0 < AdminService.suspensionYellowCards);
+          // --- FIM ---
+
           transaction.update(_firestore.collection('players').doc(playerId), {
             'red_cards': FieldValue.increment(delta),
-            'is_suspended': (delta > 0), 
+            if (shouldSuspend) 'is_suspended': true,
+            if (shouldUnsuspend) 'is_suspended': false,
           });
+
+          // Acumula pontos disciplinares (sem mudança)
           if (playerSnap.get('team_id') == homeTeamId) {
             disciplinaryHomeDelta += (delta * 21);
           } else if (playerSnap.get('team_id') == awayTeamId) {
-            // *** BUG CORRIGIDO AQUI ***
-            disciplinaryAwayDelta += (delta * 21); // Antes estava 'disciplinaryHomeDelta'
+            disciplinaryAwayDelta += (delta * 21); 
           }
         });
+
 
         // --- NOVO: Delta de Gols Sofridos ---
         Map<String, int> goalsConcededDelta = _calculateDelta(oldGoalsConceded, newGoalsConceded);

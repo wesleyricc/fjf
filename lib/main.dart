@@ -5,6 +5,8 @@ import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'screens/splash_screen.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'services/admin_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,6 +14,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  await AdminService.loadDisciplinaryRules();
+  
   runApp(const MyApp());
 }
 
@@ -46,6 +51,22 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const SplashScreen(),
+
+
+// --- 2. ADICIONAR DELEGATES E LOCALES ---
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate, // Para widgets Material
+        GlobalWidgetsLocalizations.delegate,  // Para direção do texto, etc.
+        GlobalCupertinoLocalizations.delegate, // Para widgets Cupertino (iOS style)
+      ],
+      supportedLocales: const [
+        Locale('pt', 'BR'), // Português (Brasil)
+        // Locale('en', ''), // Adicione outros idiomas se precisar
+      ],
+      // Define o locale padrão (opcional, mas bom ter)
+      locale: const Locale('pt', 'BR'),
+      // --- FIM DAS ADIÇÕES ---
+
     );
   }
 }

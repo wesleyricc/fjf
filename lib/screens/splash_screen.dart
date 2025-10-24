@@ -235,7 +235,7 @@ class _SplashScreenState extends State<SplashScreen> {
                             // Player (base)
                             YoutubePlayer(
                               controller: _ytController,
-                              showVideoProgressIndicator: false, // Desliga barra de progresso padrão
+                              showVideoProgressIndicator: true, // Desliga barra de progresso padrão
                               onReady: () => debugPrint('Player is ready.'),
                               onEnded: (metaData) { // Pausa o ícone no fim
                                  if (mounted) setState(() => _isPlaying = false);
@@ -250,7 +250,7 @@ class _SplashScreenState extends State<SplashScreen> {
                                  opacity: _showControls ? 1.0 : 0.0, // Anima visibilidade
                                  duration: const Duration(milliseconds: 300),
                                  child: Container( // Fundo escuro opcional
-                                 color: Colors.transparent,
+                                 //color: Colors.transparent,
                                    child: Center(
                                      child: Row(
                                        mainAxisAlignment: MainAxisAlignment.center,

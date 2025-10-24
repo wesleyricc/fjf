@@ -9,6 +9,38 @@ class AdminService {
   static bool isAdmin = false; // Estado global de login
   final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Instância do Firestore
 
+  // --- REGRAS DISCIPLINARES (com valores padrão) ---
+  static int pendingYellowCards = 2; // Padrão: Pendurado com 2
+  static int suspensionYellowCards = 3; // Padrão: Suspenso com 3
+  static bool suspensionOnRed = true; // Padrão: Vermelho suspende
+  // --- FIM REGRAS ---
+
+  // --- NOVA FUNÇÃO PARA CARREGAR REGRAS ---
+  static Future<void> loadDisciplinaryRules() async {
+    try {
+      final docSnap = await FirebaseFirestore.instance // Usa instância estática aqui
+          .collection('config')
+          .doc('disciplinary_rules')
+          .get();
+
+      if (docSnap.exists) {
+        final data = docSnap.data();
+        if (data != null) {
+          pendingYellowCards = data['pending_yellow_cards'] ?? pendingYellowCards; // Usa padrão se nulo
+          suspensionYellowCards = data['suspension_yellow_cards'] ?? suspensionYellowCards;
+          suspensionOnRed = data['suspension_on_red'] ?? suspensionOnRed;
+          debugPrint("Regras disciplinares carregadas: Pend: $pendingYellowCards, Susp CA: $suspensionYellowCards, Susp CV: $suspensionOnRed");
+        }
+      } else {
+        debugPrint("Documento 'disciplinary_rules' não encontrado. Usando regras padrão.");
+      }
+    } catch (e) {
+      debugPrint("Erro ao carregar regras disciplinares: $e. Usando regras padrão.");
+      // Mantém os valores padrão definidos acima
+    }
+  }
+  // --- FIM CARREGAR REGRAS ---
+
   // Função para hashear (pode ser estática ou não)
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
