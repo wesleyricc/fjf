@@ -422,23 +422,23 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
   // --- FIM ---
 
-  // --- NOVA FUNÇÃO PARA CHAMAR GERAÇÃO DA FINAL ---
-  Future<void> _triggerGenerateFinal() async {
+  // --- FUNÇÃO ATUALIZADA PARA CHAMAR generateFinals ---
+  Future<void> _triggerGenerateFinals() async { // Nome mudou
      final confirm = await showDialog<bool>(
        context: context,
        builder: (ctx) => AlertDialog(
-         title: const Text('Gerar Jogo da Final?'),
-         content: const Text('Isso buscará os vencedores das semifinais FINALIZADAS e criará o jogo da final. Tem certeza?\n(Verifique se AMBAS as semifinais estão com status "Finalizado" e sem empates).'),
+         title: const Text('Gerar Final e 3º Lugar?'), // Texto mudou
+         content: const Text('Isso buscará os VENCEDORES e PERDEDORES das semifinais FINALIZADAS e criará os jogos. Tem certeza?\n(Verifique se AMBAS as semifinais estão "Finalizadas" e SEM empates).'), // Texto mudou
          actions: [
            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.green))), // Cor diferente
+           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.green))),
          ],
        ),
      );
 
      if (confirm == true && mounted) {
        setState(() { _isSaving = true; });
-       final result = await _firestoreService.generateFinal(); // Chama a nova função
+       final result = await _firestoreService.generateFinals(); // Chama a nova função
        setState(() { _isSaving = false; });
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
      }
@@ -494,11 +494,11 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
            ListTile(
-            leading: Icon(Icons.emoji_events, color: Colors.amber[700]), // Ícone Troféu
-            title: const Text('Gerar Jogo da Final'),
-            subtitle: const Text('Cria o jogo final com os vencedores das semifinais'),
+            leading: Icon(Icons.emoji_events, color: Colors.amber[700]),
+            title: const Text('Gerar Final e 3º Lugar'), // Texto mudou
+            subtitle: const Text('Cria os jogos com vencedores e perdedores das semis'), // Texto mudou
             trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : _triggerGenerateFinal, // Chama a nova função
+            onTap: _isSaving ? null : _triggerGenerateFinals, // Chama a função atualizada
           ),
           const Divider(),
           ListTile(

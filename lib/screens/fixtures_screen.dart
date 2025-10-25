@@ -75,8 +75,8 @@ class _FixturesScreenState extends State<FixturesScreen> {
     if (_selectedPhase == 'first') {
       query = query
           .where('phase', isEqualTo: 'first')
-          .where('round', isEqualTo: _selectedRound);
-          //.orderBy('datetime', descending: false); // Mantém ordem por data aqui
+          .where('round', isEqualTo: _selectedRound)
+          .orderBy('datetime', descending: false);
     } else {
       // second phase
       query = query
@@ -100,66 +100,47 @@ class _FixturesScreenState extends State<FixturesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // 1. Título dinâmico
+        // --- ATUALIZA TÍTULO ---
         title: Text(
-          _selectedPhase == 'first'
-              ? '1ª Fase - Rodada $_selectedRound'
-              : (_selectedPlayoffStage == 'semifinal'
-                    ? '2ª Fase - Semifinais'
-                    : '2ª Fase - Final'),
+           _selectedPhase == 'first'
+             ? '1ª Fase - Rodada $_selectedRound'
+             : (_selectedPlayoffStage == 'semifinal' ? '2ª Fase - Semifinais'
+                : (_selectedPlayoffStage == 'third_place' ? '2ª Fase - 3º Lugar' : '2ª Fase - Final')) // Adiciona 3º Lugar
         ),
+        // --- FIM ---
         actions: [
-          // 2. Botões de navegação de rodada
-          if (_selectedPhase == 'first') ...[
-            IconButton(
-              icon: const Icon(Icons.arrow_back_ios),
-              tooltip: 'Rodada Anterior',
-              onPressed: () {
-                if (_selectedRound > 1) setState(() => _selectedRound--);
-              },
-            ),
-            Text(
-              'Rodada $_selectedRound', // Mostra a rodada atual entre as setas
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            IconButton(
-              icon: const Icon(Icons.arrow_forward_ios, size: 18),
-              tooltip: 'Próxima Rodada',
-              onPressed: () {
-                setState(() => _selectedRound++);
-              },
-            ),
-          ] else ...[
-            // Mostra botões de etapa playoff
-            TextButton(
-              onPressed: () =>
-                  setState(() => _selectedPlayoffStage = 'semifinal'),
-              child: Text(
-                'Semi',
-                style: TextStyle(
-                  color: _selectedPlayoffStage == 'semifinal'
-                      ? Colors.white
-                      : Colors.white70,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => setState(() => _selectedPlayoffStage = 'final'),
-              child: Text(
-                'Final',
-                style: TextStyle(
-                  color: _selectedPlayoffStage == 'final'
-                      ? Colors.white
-                      : Colors.white70,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+          // Navegação de Rodada (condicional como antes)
+          if (_selectedPhase == 'first') ...[ /* ... botões rodada ... */ ]
+          // --- ATUALIZA NAVEGAÇÃO DE ETAPA ---
+          else ...[ // Usa ToggleButtons para 3 opções
+             ToggleButtons(
+               isSelected: [
+                 _selectedPlayoffStage == 'semifinal',
+                 _selectedPlayoffStage == 'third_place',
+                 _selectedPlayoffStage == 'final',
+               ],
+               onPressed: (index) {
+                 setState(() {
+                   if (index == 0) _selectedPlayoffStage = 'semifinal';
+                   else if (index == 1) _selectedPlayoffStage = 'third_place';
+                   else _selectedPlayoffStage = 'final';
+                 });
+               },
+               borderRadius: BorderRadius.circular(8),
+               selectedColor: Theme.of(context).primaryColor,
+               color: Colors.white70,
+               fillColor: Colors.white,
+               constraints: const BoxConstraints(minHeight: 30.0, minWidth: 40.0), // Ajuste minWidth
+               children: const <Widget>[
+                 Padding(padding: EdgeInsets.symmetric(horizontal: 5), child: Text('Semi')),
+                 Padding(padding: EdgeInsets.symmetric(horizontal: 5), child: Text('3ºL')), // Abreviação 3º Lugar
+                 Padding(padding: EdgeInsets.symmetric(horizontal: 5), child: Text('Final')),
+               ],
+             ),
           ],
-          // --- FIM NAVEGAÇÃO ---
-          const SizedBox(width: 10), // Espaço antes do seletor de fase
-          // --- SELETOR DE FASE ---
+          // --- FIM ---
+          const SizedBox(width: 10),
+          // Seletor de Fase (1ªF / 2ªF) (como antes)
           ToggleButtons(
             isSelected: [_selectedPhase == 'first', _selectedPhase == 'second'],
             onPressed: (index) {
@@ -191,19 +172,12 @@ class _FixturesScreenState extends State<FixturesScreen> {
               ),
             ],
           ),
-          const SizedBox(width: 16), // Espaço final
-          // Botões de Admin foram movidos para AdminMenuScreen
+          const SizedBox(width: 16),
         ],
       ),
       drawer: const AppDrawer(), // Adiciona o menu lateral
       body: StreamBuilder<QuerySnapshot>(
-        stream: _buildStream(), // Chama a função para obter o stream correto
-        // Busca os jogos da rodada selecionada
-        //stream: _firestore
-        //.collection('matches')
-        //.where('round', isEqualTo: _selectedRound)
-        //.orderBy('datetime')
-        //.snapshots(),
+        stream: _buildStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -218,9 +192,9 @@ class _FixturesScreenState extends State<FixturesScreen> {
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             String message = _selectedPhase == 'first'
-                ? 'Nenhum jogo encontrado para a rodada $_selectedRound.'
-                : 'Nenhum jogo encontrado para: ${_selectedPlayoffStage == 'semifinal' ? 'Semifinais' : 'Final'}.';
-            //if (AdminService.isAdmin && _selectedPhase == 'second') {
+                ? 'Nenhum jogo para a rodada $_selectedRound.'
+                : 'Nenhum jogo para: ${_selectedPlayoffStage == 'semifinal' ? 'Semifinais' : (_selectedPlayoffStage == 'third_place' ? '3º Lugar' : 'Final')}.';
+              //if (AdminService.isAdmin && _selectedPhase == 'second') {
               //message += '\nUse o Menu Admin para gerar os jogos.';
             //}
             return Center(child: Text(message, textAlign: TextAlign.center));
