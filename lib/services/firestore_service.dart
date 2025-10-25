@@ -480,7 +480,7 @@ class FirestoreService {
         'order': 1,
         'round': null,
         'datetime': null,
-        'location': 'A definir',
+        'location': 'Ginásio de Esportes Jorge Silva',
         'status': 'pending',
         'score_home': null,
         'score_away': null,
@@ -500,7 +500,7 @@ class FirestoreService {
         'order': 2, // <-- ADICIONA ORDEM 2
         'round': null,
         'datetime': null,
-        'location': 'A definir',
+        'location': 'Ginásio de Esportes Jorge Silva',
         'status': 'pending',
         'score_home': null,
         'score_away': null,
@@ -644,7 +644,7 @@ class FirestoreService {
         'order': 1, // Ordem 1 para a final
         'round': null,
         'datetime': null,
-        'location': 'A definir',
+        'location': 'Ginásio de Esportes Jorge Silva',
         'status': 'pending',
         'score_home': null, 'score_away': null,
         'team_home_id': winner1Id,
@@ -662,7 +662,7 @@ class FirestoreService {
         'order': 1, // Ordem 1 (só tem um jogo nessa fase)
         'round': null,
         'datetime': null,
-        'location': 'A definir',
+        'location': 'Ginásio de Esportes Jorge Silva',
         'status': 'pending',
         'score_home': null, 'score_away': null,
         'team_home_id': loser1Id,
