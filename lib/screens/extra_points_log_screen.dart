@@ -72,10 +72,13 @@ class ExtraPointsLogScreen extends StatelessWidget {
 
      // 2. Reverte os pontos no documento do time
      // Subtrai os pontos (incrementa o valor negativo)
+     debugPrint("[PONTOS] Removendo Extra Points: Time=$teamId, Pontos a Reverter=$pointsToReverse (Incremento: ${-pointsToReverse})");
+     batch.update(teamRef, {'extra_points': FieldValue.increment(-pointsToReverse)}); // <-- LINHA ADICIONADA
      batch.update(teamRef, {'points': FieldValue.increment(-pointsToReverse)});
 
      try {
        await batch.commit();
+       debugPrint("[PONTOS] Extra Points Removidos com sucesso.");
        ScaffoldMessenger.of(context).showSnackBar(
          const SnackBar(content: Text('Registro de pontos extras excluído com sucesso!')),
        );

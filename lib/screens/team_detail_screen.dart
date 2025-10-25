@@ -165,6 +165,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       final WriteBatch batch = _firestore.batch();
 
                       // --- ATUALIZA AMBOS OS CAMPOS ---
+                      debugPrint("[PONTOS] Adicionando Extra Points: Time=${widget.teamDoc.id}, Pontos=$finalPoints");
                       batch.update(teamRef, {'extra_points': FieldValue.increment(finalPoints)});
                       batch.update(teamRef, {'points': FieldValue.increment(finalPoints)});
                       // --- FIM DA ATUALIZAÇÃO DUPLA ---
@@ -177,6 +178,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       });
 
                       await batch.commit();
+                      debugPrint("[PONTOS] Extra Points Adicionados com sucesso.");
 
                       if (mounted) Navigator.of(dialogContext).pop();
                       ScaffoldMessenger.of(context).showSnackBar(

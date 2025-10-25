@@ -260,7 +260,8 @@ class FirestoreService {
               debugPrint("[DISCIPLINA] ERRO: Jogador $playerId não pertence a nenhum dos times da partida ($homeTeamId vs $awayTeamId). TeamID: $playerTeamId");
            }
         } // Fim do loop for playerId
-        debugPrint("[DISCIPLINA] Fim do loop. Delta Final Casa: $disciplinaryHomeDelta, Delta Final Visitante: $disciplinaryAwayDelta");
+
+        debugPrint("[PONTOS] Antes Update Disc.: TimeCasa=$homeTeamId, Delta=$disciplinaryHomeDelta | TimeFora=$awayTeamId, Delta=$disciplinaryAwayDelta");
 
         // Aplica o DELTA de pontos disciplinares
         final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
@@ -310,6 +311,7 @@ class FirestoreService {
       }); // Fim da Transação
 
       // --- PÓS-TRANSAÇÃO: RECALCULAR OS DOIS TIMES ---
+      debugPrint("[PONTOS] Transação concluída. Iniciando recálculo para $homeTeamId e $awayTeamId...");
       // (Esta parte continua igual)
       await _recalculateTeamStats(homeTeamId);
       await _recalculateTeamStats(awayTeamId);
@@ -324,6 +326,7 @@ class FirestoreService {
   // --- FUNÇÃO DE RECALCULO TOTAL (POR TIME) ---
   // (Esta função permanece idêntica à que você forneceu, pois está correta)
   Future<void> _recalculateTeamStats(String teamId) async {
+    debugPrint("[PONTOS] Recalculando Time: $teamId");
     // 1. Inicializa os totais
     int totalMatchPoints = 0;
     int totalGames = 0;
@@ -360,6 +363,8 @@ class FirestoreService {
       }
     }
 
+    debugPrint("[PONTOS] Recalculo $teamId - Após jogos Casa: MP=$totalMatchPoints, J=$totalGames, V=$totalWins, E=$totalDraws, D=$totalLosses, GP=$totalGoalsFor, GC=$totalGoalsAgainst");
+
     // 3. Busca todos os jogos finalizados onde o time foi o TIME VISITANTE
     final awayMatches = await _firestore
         .collection('matches')
@@ -386,6 +391,8 @@ class FirestoreService {
         totalDraws++;
       }
     }
+
+    debugPrint("[PONTOS] Recalculo $teamId - Após jogos Fora: MP=$totalMatchPoints, J=$totalGames, V=$totalWins, E=$totalDraws, D=$totalLosses, GP=$totalGoalsFor, GC=$totalGoalsAgainst");
     
    // --- 4. LER PONTOS EXTRAS ATUAIS E ATUALIZAR O TIME ---
     try {
@@ -393,8 +400,13 @@ class FirestoreService {
       final teamSnap = await teamRef.get(); // Lê o estado atual do time
       final currentExtraPoints = (teamSnap.data()?['extra_points'] ?? 0) as int; // Pega extra_points
 
+      debugPrint("[PONTOS] Recalculo $teamId - Extra Points atuais lidos: $currentExtraPoints");
+
       // Calcula o total final
       final int finalTotalPoints = totalMatchPoints + currentExtraPoints;
+      final int finalGoalDifference = totalGoalsFor - totalGoalsAgainst;
+
+      debugPrint("[PONTOS] Recalculo $teamId - Update Final: MP=$totalMatchPoints, EP=$currentExtraPoints, P=$finalTotalPoints, J=$totalGames, V=$totalWins, E=$totalDraws, D=$totalLosses, GP=$totalGoalsFor, GC=$totalGoalsAgainst, SG=$finalGoalDifference");
 
       // ATUALIZA o documento do time com valores absolutos
       await teamRef.update({
@@ -406,12 +418,13 @@ class FirestoreService {
         'losses': totalLosses,
         'goals_for': totalGoalsFor,
         'goals_against': totalGoalsAgainst,
-        'goal_difference': totalGoalsFor - totalGoalsAgainst,
+        'goal_difference': finalGoalDifference,
         // 'extra_points' NÃO é modificado aqui
         // 'disciplinary_points' NÃO é modificado aqui
       });
+      debugPrint("[PONTOS] Recalculo $teamId - Update Concluído.");
     } catch (e) {
-       debugPrint("Erro ao atualizar time $teamId após recálculo: $e");
+       debugPrint("[PONTOS] ERRO Recalculo $teamId: $e");
        // Considerar como tratar esse erro (talvez tentar de novo?)
     }
   }
