@@ -7,6 +7,7 @@ import '../services/admin_service.dart'; // Para acessar a ordem dos critérios
 class TeamStanding {
   final DocumentSnapshot teamDoc;
   int points;
+  int matchPoints;
   int gamesPlayed;
   int wins;
   int draws;
@@ -18,6 +19,7 @@ class TeamStanding {
 
   TeamStanding(this.teamDoc)
       : points = (teamDoc.data() as Map<String, dynamic>?)?['points'] ?? 0,
+        matchPoints = (teamDoc.data() as Map<String, dynamic>?)?['match_points'] ?? 0,
         gamesPlayed = (teamDoc.data() as Map<String, dynamic>?)?['games_played'] ?? 0,
         wins = (teamDoc.data() as Map<String, dynamic>?)?['wins'] ?? 0,
         draws = (teamDoc.data() as Map<String, dynamic>?)?['draws'] ?? 0,

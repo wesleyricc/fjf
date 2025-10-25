@@ -1,9 +1,9 @@
 // lib/screens/scorers_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. VERIFIQUE SE ESTE IMPORT ESTÁ AQUI
-import '../widgets/rank_indicator.dart';
+import '../../widgets/app_drawer.dart';
+import '../../widgets/sponsor_banner_rotator.dart'; // <-- 1. VERIFIQUE SE ESTE IMPORT ESTÁ AQUI
+import '../../widgets/rank_indicator.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class ScorersScreen extends StatelessWidget {

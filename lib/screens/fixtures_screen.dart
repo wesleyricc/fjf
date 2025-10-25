@@ -141,17 +141,21 @@ class _FixturesScreenState extends State<FixturesScreen> {
           Padding(
             // Padding para afastar da borda
             padding: const EdgeInsets.only(right: 8.0),
-            child: ToggleButtons( // Usando ToggleButtons para AppBar
+            child: ToggleButtons(
+              // Usando ToggleButtons para AppBar
               isSelected: [
                 _selectedPhase == TournamentPhase.first,
-                _selectedPhase == TournamentPhase.second
+                _selectedPhase == TournamentPhase.second,
               ],
               onPressed: (index) {
                 setState(() {
-                  _selectedPhase = (index == 0) ? TournamentPhase.first : TournamentPhase.second;
+                  _selectedPhase = (index == 0)
+                      ? TournamentPhase.first
+                      : TournamentPhase.second;
                   // Resetar sub-seleção ao mudar de fase
                   if (_selectedPhase == TournamentPhase.second) {
-                     _selectedPlayoffStage = PlayoffStage.semifinal; // Sempre volta pra semi
+                    _selectedPlayoffStage =
+                        PlayoffStage.semifinal; // Sempre volta pra semi
                   }
                   // Opcional: Resetar rodada se voltar pra 1a fase?
                   // else { _selectedRound = 1; }
@@ -161,13 +165,24 @@ class _FixturesScreenState extends State<FixturesScreen> {
               selectedColor: Theme.of(context).primaryColor,
               color: Colors.white, // Cor do texto/ícone não selecionado
               fillColor: Colors.white, // Fundo do botão selecionado
-              selectedBorderColor: Theme.of(context).primaryColor, // Borda selecionada
+              selectedBorderColor: Theme.of(
+                context,
+              ).primaryColor, // Borda selecionada
               borderColor: Colors.white70, // Borda não selecionada
               borderWidth: 1,
-              constraints: const BoxConstraints(minHeight: 32.0, minWidth: 50.0), // Ajuste o tamanho
+              constraints: const BoxConstraints(
+                minHeight: 32.0,
+                minWidth: 50.0,
+              ), // Ajuste o tamanho
               children: const <Widget>[
-                Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('1ªF')),
-                Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('2ªF')),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('1ªF'),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('2ªF'),
+                ),
               ],
             ),
           ),
@@ -219,15 +234,34 @@ class _FixturesScreenState extends State<FixturesScreen> {
                     final match = matches[index];
                     final data = match.data() as Map<String, dynamic>;
 
-                    final String scoreHome =
-                        data['score_home']?.toString() ?? '';
-                    final String scoreAway =
-                        data['score_away']?.toString() ?? '';
+                    String scoreHomeStr = data['score_home']?.toString() ?? '-';
+                    String scoreAwayStr = data['score_away']?.toString() ?? '-';
+                    String? penaltyScoreStr; // Nullable string para pênaltis
+
+                    final String phase = data['phase'] ?? 'first';
+                    final String status = data['status'] ?? 'pending';
+                    final bool isPlayoff = [
+                      'semifinal',
+                      'third_place',
+                      'final',
+                    ].contains(phase);
+
+                    // Lógica para verificar e formatar placar de pênaltis
+                    if (isPlayoff && status == 'finished') {
+                      final int? penaltyHome = data['penalty_score_home'];
+                      final int? penaltyAway = data['penalty_score_away'];
+
+                      // Se ambos os placares de pênalti existem (são diferentes de null)
+                      if (penaltyHome != null && penaltyAway != null) {
+                        penaltyScoreStr =
+                            '($penaltyHome - $penaltyAway)'; // Formato: "(4-3)"
+                      }
+                    }
+                    // --- FIM DA LÓGICA ---
 
                     String formattedDate = 'Data a definir';
                     final String location =
                         data['location'] ?? 'Local a definir';
-                    final String status = data['status'] ?? 'pending';
 
                     Icon statusIcon;
                     String statusText;
@@ -368,149 +402,109 @@ class _FixturesScreenState extends State<FixturesScreen> {
                                 children: [
                                   // --- Time Casa (Logo Maior + Nome Maior + Clicável) ---
                                   Expanded(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
-                                      children: [
-                                        // --- 1. ENVOLVER COM InkWell PARA CLIQUE NA LOGO ---
-                                        InkWell(
-                                          onTap: () {
-                                            final String homeTeamId =
-                                                data['team_home_id'] ?? '';
-                                            if (homeTeamId.isNotEmpty) {
-                                              _navigateToTeamDetail(
-                                                context,
-                                                homeTeamId,
-                                              ); // Chama a função
-                                            }
-                                          },
-                                          // Usar forma circular para o efeito do InkWell
-                                          customBorder: const CircleBorder(),
-                                          child: SizedBox(
-                                            // --- 2. AUMENTAR TAMANHO DA LOGO ---
-                                            height: 50,
-                                            width:
-                                                50, // Ex: 50x50 (ajuste conforme necessário)
-                                            // --- FIM ---
-                                            child: CachedNetworkImage(
-                                              imageUrl:
-                                                  data['team_home_shield'] ??
-                                                  '',
-                                              placeholder: (c, u) => const Icon(
-                                                Icons.shield,
-                                                size: 40,
-                                                color: Colors.grey,
-                                              ),
-                                              errorWidget: (c, u, e) =>
-                                                  const Icon(
-                                                    Icons.shield,
-                                                    size: 50,
-                                                    color: Colors.grey,
-                                                  ),
-                                              fit: BoxFit.contain,
-                                            ),
+                                    child: GestureDetector(
+                                      onTap: () => _navigateToTeamDetail(
+                                        context,
+                                        data['team_home_id'],
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          CachedNetworkImage(
+                                            imageUrl:
+                                                data['team_home_shield'] ??
+                                                'assets/placeholder_shield.png',
+                                            placeholder: (context, url) =>
+                                                const CircularProgressIndicator(),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    const Icon(Icons.error),
+                                            width: 40,
+                                            height: 40,
                                           ),
-                                        ),
-                                        // --- FIM InkWell LOGO ---
-                                        const SizedBox(
-                                          height: 5,
-                                        ), // Espaço ajustado
-                                        Text(
-                                          data['team_home_name'] ?? '?',
-                                          textAlign: TextAlign.center,
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 1,
-                                          // --- 3. AUMENTAR FONTE DO NOME ---
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                          ), // Ex: 14 (ajuste)
-                                          // --- FIM ---
-                                        ),
-                                      ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            data['team_home_name'] ??
+                                                'Time Casa',
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  // --- Fim Time Casa ---
 
                                   // --- Placar Central (sem mudanças) ---
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 12.0,
                                     ),
-                                    child: Text(
-                                      '$scoreHome x $scoreAway',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 30,
-                                      ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          '$scoreHomeStr x $scoreAwayStr', // Placar normal maior
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 35, // Fonte maior
+                                          ),
+                                        ),
+                                        if (penaltyScoreStr !=
+                                            null) // Só exibe se houver pênaltis
+                                          Text(
+                                            penaltyScoreStr, // Placar de pênaltis menor
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 20, // Fonte menor
+                                              color: Colors.grey, // Cor sutil
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                   // --- Fim Placar ---
 
                                   // --- Time Visitante (Logo Maior + Nome Maior + Clicável) ---
                                   Expanded(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
-                                      children: [
-                                        // --- 1. ENVOLVER COM InkWell PARA CLIQUE NA LOGO ---
-                                        InkWell(
-                                          onTap: () {
-                                            final String awayTeamId =
-                                                data['team_away_id'] ?? '';
-                                            if (awayTeamId.isNotEmpty) {
-                                              _navigateToTeamDetail(
-                                                context,
-                                                awayTeamId,
-                                              ); // Chama a função
-                                            }
-                                          },
-                                          customBorder: const CircleBorder(),
-                                          child: SizedBox(
-                                            // --- 2. AUMENTAR TAMANHO DA LOGO ---
-                                            height: 50,
-                                            width: 50, // Mesmo tamanho da outra
-                                            // --- FIM ---
-                                            child: CachedNetworkImage(
-                                              imageUrl:
-                                                  data['team_away_shield'] ??
-                                                  '',
-                                              placeholder: (c, u) => const Icon(
-                                                Icons.shield,
-                                                size: 40,
-                                                color: Colors.grey,
-                                              ),
-                                              errorWidget: (c, u, e) =>
-                                                  const Icon(
-                                                    Icons.shield,
-                                                    size: 50,
-                                                    color: Colors.grey,
-                                                  ),
-                                              fit: BoxFit.contain,
-                                            ),
+                                    child: GestureDetector(
+                                      onTap: () => _navigateToTeamDetail(
+                                        context,
+                                        data['team_away_id'],
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          CachedNetworkImage(
+                                            imageUrl:
+                                                data['team_away_shield'] ??
+                                                'assets/placeholder_shield.png',
+                                            placeholder: (context, url) =>
+                                                const CircularProgressIndicator(),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    const Icon(Icons.error),
+                                            width: 40,
+                                            height: 40,
                                           ),
-                                        ),
-                                        // --- FIM InkWell LOGO ---
-                                        const SizedBox(height: 5),
-                                        Text(
-                                          data['team_away_name'] ?? '?',
-                                          textAlign: TextAlign.center,
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 1,
-                                          // --- 3. AUMENTAR FONTE DO NOME ---
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                          ), // Mesmo tamanho
-                                          // --- FIM ---
-                                        ),
-                                      ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            data['team_away_name'] ??
+                                                'Time Fora',
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  // --- Fim Time Visitante ---
                                 ],
-                              ), // --- FIM DA ROW PRINCIPAL ---
-                              const SizedBox(height: 1),
+                              ),
+                              const SizedBox(height: 8),
                             ],
                           ), // Fim da Column interna
                         ), // Fim do Padding interno
@@ -520,7 +514,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                 ); // Fim ListView
               },
             ),
-          ), 
+          ),
           // --- FIM LISTA DE JOGOS ---
         ], // Fim Column principal do body
       ),
@@ -535,7 +529,8 @@ class _FixturesScreenState extends State<FixturesScreen> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween, // Espaça botões e texto
+          mainAxisAlignment:
+              MainAxisAlignment.spaceBetween, // Espaça botões e texto
           children: [
             IconButton(
               icon: const Icon(Icons.arrow_left),
@@ -543,7 +538,9 @@ class _FixturesScreenState extends State<FixturesScreen> {
               color: Theme.of(context).primaryColor,
               tooltip: 'Rodada Anterior',
               // Desabilita se for a primeira rodada
-              onPressed: _selectedRound > 1 ? () => setState(() => _selectedRound--) : null,
+              onPressed: _selectedRound > 1
+                  ? () => setState(() => _selectedRound--)
+                  : null,
             ),
             Text(
               'Rodada $_selectedRound',
@@ -555,7 +552,9 @@ class _FixturesScreenState extends State<FixturesScreen> {
               color: Theme.of(context).primaryColor,
               tooltip: 'Próxima Rodada',
               // Desabilita se for a última rodada (se souber o total)
-              onPressed: _selectedRound < TOTAL_RODADAS ? () => setState(() => _selectedRound++) : null,
+              onPressed: _selectedRound < TOTAL_RODADAS
+                  ? () => setState(() => _selectedRound++)
+                  : null,
               //onPressed: () => setState(() => _selectedRound++), // Simplesmente incrementa
             ),
           ],
@@ -567,9 +566,18 @@ class _FixturesScreenState extends State<FixturesScreen> {
         padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
         child: SegmentedButton<PlayoffStage>(
           segments: const <ButtonSegment<PlayoffStage>>[
-            ButtonSegment<PlayoffStage>(value: PlayoffStage.semifinal, label: Text('Semifinais')),
-            ButtonSegment<PlayoffStage>(value: PlayoffStage.third_place, label: Text('3º Lugar')),
-            ButtonSegment<PlayoffStage>(value: PlayoffStage.final_game, label: Text('Final')),
+            ButtonSegment<PlayoffStage>(
+              value: PlayoffStage.semifinal,
+              label: Text('Semifinais'),
+            ),
+            ButtonSegment<PlayoffStage>(
+              value: PlayoffStage.third_place,
+              label: Text('3º Lugar'),
+            ),
+            ButtonSegment<PlayoffStage>(
+              value: PlayoffStage.final_game,
+              label: Text('Final'),
+            ),
           ],
           selected: {_selectedPlayoffStage},
           onSelectionChanged: (Set<PlayoffStage> newSelection) {
@@ -577,18 +585,22 @@ class _FixturesScreenState extends State<FixturesScreen> {
               _selectedPlayoffStage = newSelection.first;
             });
           },
-          style: SegmentedButton.styleFrom( // Estilo similar ao da Fase
-             backgroundColor: Colors.grey[200],
-             foregroundColor: Theme.of(context).primaryColor.withOpacity(0.7),
-             selectedForegroundColor: Theme.of(context).primaryColor, // Cor diferente para texto selecionado
-             selectedBackgroundColor: Theme.of(context).primaryColor.withOpacity(0.15), // Fundo mais sutil
+          style: SegmentedButton.styleFrom(
+            // Estilo similar ao da Fase
+            backgroundColor: Colors.grey[200],
+            foregroundColor: Theme.of(context).primaryColor.withOpacity(0.7),
+            selectedForegroundColor: Theme.of(
+              context,
+            ).primaryColor, // Cor diferente para texto selecionado
+            selectedBackgroundColor: Theme.of(
+              context,
+            ).primaryColor.withOpacity(0.15), // Fundo mais sutil
           ),
           showSelectedIcon: false, // Remove ícone de check padrão
         ),
       );
     }
   }
+
   // --- FIM _buildSubSelector ---
-
-
 }

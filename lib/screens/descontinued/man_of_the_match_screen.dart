@@ -1,30 +1,29 @@
-// lib/screens/least_conceded_gk_screen.dart
-import '../widgets/rank_indicator.dart';
+// lib/screens/man_of_the_match_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
+import '../../widgets/app_drawer.dart';
+import '../../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
+import '../../widgets/rank_indicator.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class LeastConcededGkScreen extends StatelessWidget {
-  const LeastConcededGkScreen({super.key});
+class ManOfTheMatchScreen extends StatelessWidget {
+  const ManOfTheMatchScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Goleiro Menos Vazado'),
+        title: const Text('Craque do Jogo (Ranking)'),
       ),
       drawer: const AppDrawer(),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('players')
-            .where('is_goalkeeper', isEqualTo: true)           // Filtra só goleiros
-            .where('goals_conceded', isGreaterThanOrEqualTo: 0) // Garante que o campo existe
-            .orderBy('goals_conceded', descending: false)       // Menos gols primeiro
+            .where('man_of_the_match_awards', isGreaterThan: 0) // Só quem já foi craque
+            .orderBy('man_of_the_match_awards', descending: true) // Mais vezes primeiro
             // -- ÍNDICE NECESSÁRIO --
             // Coleção: players
-            // Campos: is_goalkeeper (Asc), goals_conceded (Asc), name (Asc)
+            // Campos: man_of_the_match_awards (Desc), name (Asc)
             .orderBy('name') // Desempate por nome
             // -- FIM ÍNDICE --
             .limit(20)
@@ -35,40 +34,40 @@ class LeastConcededGkScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
            if (snapshot.hasError) {
-             debugPrint("Erro no StreamBuilder (Goleiros): ${snapshot.error}");
+             debugPrint("Erro no StreamBuilder (Craque do Jogo): ${snapshot.error}");
              // Crie o índice se for FAILED_PRECONDITION
-             return Center(child: Text('Erro ao carregar goleiros: ${snapshot.error}. Verifique o índice no Firestore.'));
+             return Center(child: Text('Erro ao carregar ranking: ${snapshot.error}.\nVerifique o índice no Firestore.'));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            // Ajusta a mensagem para ser mais clara se o filtro for o problema
-            return const Center(child: Text('Ranking de Goleiro menos vazado vazio.'));
+            return const Center(child: Text('Ranking de Craque do Jogo vazio.'));
           }
           // --- Fim das Verificações ---
 
-          final goalkeepers = snapshot.data!.docs;
+          final players = snapshot.data!.docs;
 
           // --- 2. ESTRUTURA PARA ROLAGEM + BANNER ---
-          return SingleChildScrollView(
-            child: Column(
+          return SingleChildScrollView( // Permite rolar a lista E o banner
+            child: Column( // Organiza a lista e o banner verticalmente
               children: [
-                // --- 3. A LISTA DE GOLEIROS ---
+                // --- 3. A LISTA DO RANKING ---
                 ListView.builder(
                   // --- 4. Ajustes Essenciais ---
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,       // Encolhe a lista para caber no Column
+                  physics: const NeverScrollableScrollPhysics(), // Desativa o scroll da lista interna
                   // --- Fim dos Ajustes ---
-                  itemCount: goalkeepers.length,
+                  itemCount: players.length,
                   itemBuilder: (context, index) {
-                    final gk = goalkeepers[index];
+                    final player = players[index];
                     try {
-                      final data = gk.data() as Map<String, dynamic>;
+                      final data = player.data() as Map<String, dynamic>;
                       final rank = index + 1;
                       final String shieldUrl = data['team_shield_url'] ?? '';
-                      
+
                       return ListTile(
                         leading: RankIndicator(rank: rank),
                         title: Text(data['name'] ?? 'Nome Indisponível'),
-                        
+
+
                         // --- AJUSTE NO TITLE PARA INCLUIR ESCUDO ---
                         subtitle: Row(
                           children: [
@@ -97,15 +96,15 @@ class LeastConcededGkScreen extends StatelessWidget {
                         // --- FIM DO AJUSTE ---
 
                         trailing: Text(
-                          '${data['goals_conceded'] ?? 0} GS', // Gols Sofridos
+                          '${data['man_of_the_match_awards'] ?? 0} vezes',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         ),
                       );
                     } catch (e) {
-                      debugPrint("Erro ao processar goleiro ${gk.id}: $e");
+                      debugPrint("Erro ao processar jogador ${player.id}: $e");
                       return ListTile(
                         leading: CircleAvatar(child: Text('${index + 1}')),
-                        title: Text('Erro ao carregar goleiro ${gk.id}'),
+                        title: Text('Erro ao carregar jogador ${player.id}'),
                         subtitle: Text(e.toString()),
                       );
                     }

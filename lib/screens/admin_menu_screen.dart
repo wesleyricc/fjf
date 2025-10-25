@@ -7,6 +7,7 @@ import '../services/data_uploader_service.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
 import '../services/firestore_service.dart';
+import 'playoff_rules_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -28,6 +29,42 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     final digest = sha256.convert(bytes); 
     return digest.toString();
   }
+
+  // --- NOVA FUNÇÃO PARA CHAMAR CÁLCULO DE RANKS ---
+  Future<void> _triggerCalculateRanks() async {
+     final confirm = await showDialog<bool>(
+       context: context,
+       builder: (ctx) => AlertDialog(
+         title: const Text('Calcular Ranks da 1ª Fase?'),
+         content: const Text(
+             'Isso ordenará todos os times com base nos resultados finais da 1ª Fase e salvará a posição (rank) em cada time. Execute APENAS após o fim da 1ª Fase.\n\nEste rank é usado para o desempate por "Melhor Classif." no mata-mata caso ocorra empate após a prorrogação.'
+         ), // Texto explicativo
+          actions: [
+           TextButton(
+             // Botão Cancelar: Fecha o diálogo retornando false
+             onPressed: () => Navigator.of(ctx).pop(false),
+             child: const Text('Cancelar'),
+           ),
+           TextButton(
+             // Botão Confirmar: Fecha o diálogo retornando true
+             onPressed: () => Navigator.of(ctx).pop(true),
+             child: const Text(
+                 'Confirmar e Calcular', // Texto mais explícito
+                 style: TextStyle(color: Colors.deepPurple) // Cor para destacar
+             ),
+           ),
+         ],
+       ),
+     );
+
+     if (confirm == true && mounted) {
+       setState(() { _isSaving = true; }); // Reusa flag _isSaving
+       final result = await _firestoreService.calculateAndStorePhase1Ranks(); // Chama a nova função
+       setState(() { _isSaving = false; });
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
+     }
+  }
+  // --- FIM ---
 
 // Diálogo de confirmação para o upload
   Future<void> _showUploadConfirmDialog(BuildContext context) async {
@@ -441,6 +478,11 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
        final result = await _firestoreService.generateFinals(); // Chama a nova função
        setState(() { _isSaving = false; });
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
+     }else if (mounted) {
+        // Opcional: Mensagem se o usuário cancelou
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   const SnackBar(content: Text('Cálculo de ranks cancelado.')),
+        // );
      }
   }
   // --- FIM ---
@@ -483,6 +525,26 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                 MaterialPageRoute(builder: (ctx) => const TiebreakerRulesScreen()),
               );
             },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.help_outline), // Ícone de interrogação/regra
+            title: const Text('Regras Desempate Mata-Mata'),
+            subtitle: const Text('Define Pênaltis, Prorrogação, etc.'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (ctx) => const PlayoffRulesScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.format_list_numbered, color: Colors.purple), // Ícone de lista numerada
+            title: const Text('Calcular Ranks da 1ª Fase'),
+            subtitle: const Text('Salva a posição final da 1ª Fase nos times (p/ desempate)'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: _isSaving ? null : _triggerCalculateRanks, // Chama a nova função
           ),
           const Divider(),
           ListTile(

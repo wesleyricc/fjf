@@ -116,6 +116,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                       DataColumn(label: Text('GP')),
                       DataColumn(label: Text('GC')),
                       DataColumn(label: Text('SG')),
+                      DataColumn(label: Text('APR %')),
                       DataColumn(label: Text('PD')),
                     ],
                     rows: teams.map((teamStanding) {
@@ -162,6 +163,28 @@ class _StandingsScreenState extends State<StandingsScreen> {
                         DataCell(Text(teamStanding.goalsFor.toString())),
                         DataCell(Text(teamStanding.goalsAgainst.toString())),
                         DataCell(Text(teamStanding.goalDifference.toString())),
+
+                        DataCell(
+                          Builder( // Usamos Builder para calcular aqui dentro
+                            builder: (context) {
+                              double aproveitamento = 0.0;
+                              int pontosPossiveis = teamStanding.gamesPlayed * 3; // J * 3
+
+                              // Evita divisão por zero se J = 0
+                              if (pontosPossiveis > 0) {
+                                aproveitamento = (teamStanding.matchPoints / pontosPossiveis) * 100;
+                              }
+                              
+                              // Formata para 1 casa decimal (ex: 83.3%)
+                              // Se preferir 0 casas decimais, use .toStringAsFixed(0)
+                              return Text(
+                                '${aproveitamento.toStringAsFixed(1)}%',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              );
+                            },
+                          )
+                        ),
+
                         DataCell(Text(teamStanding.disciplinaryPoints.toString())),
                       ]);
                     }).toList(),
@@ -191,6 +214,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                         _buildLegendRow('SG', 'Saldo de Gols'),
                         _buildLegendRow('GP', 'Gols Pró'),
                         _buildLegendRow('GC', 'Gols Contra'),
+                        _buildLegendRow('APR %', 'Aproveitamento (%)'),
                         _buildLegendRow('PD', 'Pontos Disciplinares (10 - Amarelo / 21  - Vermelho)'),
                       ],
                     ),

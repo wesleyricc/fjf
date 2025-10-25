@@ -1,85 +1,89 @@
-// lib/screens/assists_screen.dart
+// lib/screens/least_conceded_gk_screen.dart
+import '../../widgets/rank_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
-import '../widgets/rank_indicator.dart';
+import '../../widgets/app_drawer.dart';
+import '../../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
+import 'package:cached_network_image/cached_network_image.dart';
 
-class AssistsScreen extends StatelessWidget {
-  const AssistsScreen({super.key});
+class LeastConcededGkScreen extends StatelessWidget {
+  const LeastConcededGkScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Assistências'),
+        title: const Text('Goleiro Menos Vazado'),
       ),
       drawer: const AppDrawer(),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('players')
-            .where('assists', isGreaterThan: 0) // Só quem tem assistência
-            .orderBy('assists', descending: true) // Ordena por assistências
+            .where('is_goalkeeper', isEqualTo: true)           // Filtra só goleiros
+            .where('goals_conceded', isGreaterThanOrEqualTo: 0) // Garante que o campo existe
+            .orderBy('goals_conceded', descending: false)       // Menos gols primeiro
             // -- ÍNDICE NECESSÁRIO --
-            // Você precisará de um índice composto para esta consulta:
             // Coleção: players
-            // Campos: assists (Descendente), name (Ascendente)
-            .orderBy('name') // Adiciona desempate por nome
+            // Campos: is_goalkeeper (Asc), goals_conceded (Asc), name (Asc)
+            .orderBy('name') // Desempate por nome
             // -- FIM ÍNDICE --
-            .limit(20) // Top 20
+            .limit(20)
             .snapshots(),
         builder: (context, snapshot) {
           // --- Verificações de Estado ---
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError) {
-            debugPrint("Erro no StreamBuilder (Assistências): ${snapshot.error}");
-            return Center(child: Text('Erro ao carregar assistências: ${snapshot.error}'));
+           if (snapshot.hasError) {
+             debugPrint("Erro no StreamBuilder (Goleiros): ${snapshot.error}");
+             // Crie o índice se for FAILED_PRECONDITION
+             return Center(child: Text('Erro ao carregar goleiros: ${snapshot.error}. Verifique o índice no Firestore.'));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('Nenhum líder em assistências.'));
+            // Ajusta a mensagem para ser mais clara se o filtro for o problema
+            return const Center(child: Text('Ranking de Goleiro menos vazado vazio.'));
           }
           // --- Fim das Verificações ---
 
-          final players = snapshot.data!.docs;
+          final goalkeepers = snapshot.data!.docs;
 
           // --- 2. ESTRUTURA PARA ROLAGEM + BANNER ---
           return SingleChildScrollView(
             child: Column(
               children: [
-                // --- 3. A LISTA DE LÍDERES EM ASSISTÊNCIAS ---
+                // --- 3. A LISTA DE GOLEIROS ---
                 ListView.builder(
                   // --- 4. Ajustes Essenciais ---
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   // --- Fim dos Ajustes ---
-                  itemCount: players.length,
+                  itemCount: goalkeepers.length,
                   itemBuilder: (context, index) {
-                    final player = players[index];
+                    final gk = goalkeepers[index];
                     try {
-                      final data = player.data() as Map<String, dynamic>;
+                      final data = gk.data() as Map<String, dynamic>;
                       final rank = index + 1;
                       final String shieldUrl = data['team_shield_url'] ?? '';
-
+                      
                       return ListTile(
                         leading: RankIndicator(rank: rank),
                         title: Text(data['name'] ?? 'Nome Indisponível'),
-
+                        
                         // --- AJUSTE NO TITLE PARA INCLUIR ESCUDO ---
                         subtitle: Row(
                           children: [
                             if (shieldUrl.isNotEmpty) // Mostra só se tiver URL
                               Padding(
                                 padding: const EdgeInsets.only(right: 3.0),
-                                child: Image.network(
-                                  shieldUrl,
+                                child: SizedBox( // Garante tamanho
                                   width: 20,
                                   height: 20,
-                                  fit: BoxFit.contain,
-                                  // Placeholder em caso de erro
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                  child: CachedNetworkImage(
+                                    imageUrl: shieldUrl,
+                                    placeholder: (context, url) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                    errorWidget: (context, url, error) => const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                               ),
                             Expanded( // Para o nome não estourar
@@ -92,25 +96,16 @@ class AssistsScreen extends StatelessWidget {
                         ),
                         // --- FIM DO AJUSTE ---
 
-
-                        
-
-
-
-
                         trailing: Text(
-                          (data['assists'] ?? 0).toString(), // Usa ?? 0
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
+                          '${data['goals_conceded'] ?? 0} GS', // Gols Sofridos
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         ),
                       );
                     } catch (e) {
-                       debugPrint("Erro ao processar jogador ${player.id}: $e");
+                      debugPrint("Erro ao processar goleiro ${gk.id}: $e");
                       return ListTile(
                         leading: CircleAvatar(child: Text('${index + 1}')),
-                        title: Text('Erro ao carregar jogador ${player.id}'),
+                        title: Text('Erro ao carregar goleiro ${gk.id}'),
                         subtitle: Text(e.toString()),
                       );
                     }

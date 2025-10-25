@@ -3,14 +3,11 @@ import 'package:flutter/material.dart';
 // Precisamos importar as telas para onde vamos navegar
 import '../screens/fixtures_screen.dart';
 import '../screens/standings_screen.dart';
-import '../screens/scorers_screen.dart';
-import '../screens/assists_screen.dart';
-import '../screens/disciplinary_screen.dart';
-import '../screens/least_conceded_gk_screen.dart'; // <-- NOVO
-import '../screens/man_of_the_match_screen.dart'; // <-- NOVO
 import '../screens/splash_screen.dart';
 import '../screens/teams_list_screen.dart';
 import '../services/admin_service.dart';
+import '../screens/team_stats_screen.dart';
+import '../screens/player_stats_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -76,7 +73,7 @@ class AppDrawer extends StatelessWidget {
             },
           ),
 
-          const Divider(color: Colors.white54), // Separador visual
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
             Icons.calendar_today,
@@ -89,7 +86,7 @@ class AppDrawer extends StatelessWidget {
             },
           ),
 
-          const Divider(color: Colors.white54), // Separador visual
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
             Icons.leaderboard,
@@ -103,7 +100,7 @@ class AppDrawer extends StatelessWidget {
             },
           ),
 
-          const Divider(color: Colors.white54), // Separador visual
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
             Icons.group, // Ícone de grupo/times
@@ -116,73 +113,33 @@ class AppDrawer extends StatelessWidget {
             },
           ),
 
-          const Divider(color: Colors.white54), // Separador visual
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
-            Icons.sports_soccer,
-            'Artilheiros',
+            Icons.query_stats, // Ícone de estatísticas
+            'Estatísticas das Equipes',
             () {
               Navigator.of(context).pop();
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const ScorersScreen()),
+                MaterialPageRoute(builder: (ctx) => const TeamStatsScreen()),
+              );
+            },
+          ),
+          
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
+          _buildDrawerItem(
+            context,
+            Icons.person_search, // Ícone de stats individual
+            'Estatísticas dos Jogadores',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (ctx) => PlayerStatsScreen()),
               );
             },
           ),
 
-          const Divider(color: Colors.white54), // Separador visual
-          _buildDrawerItem(
-            context,
-            Icons.assistant,
-            'Assistências',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const AssistsScreen()),
-              );
-            },
-          ),
-
-          const Divider(color: Colors.white54), // Separador visual
-          _buildDrawerItem(
-            context,
-            Icons.warning,
-            'Cartões',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                // Removemos o 'const' pois DisciplinaryScreen não é mais const
-                MaterialPageRoute(builder: (ctx) => DisciplinaryScreen()),
-              );
-            },
-          ),
-
-          const Divider(color: Colors.white54), // Separador visual
-          _buildDrawerItem(
-            context,
-            Icons.shield, // Ícone de escudo/goleiro
-            'Goleiro Menos Vazado',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const LeastConcededGkScreen()),
-              );
-            },
-          ),
-
-          const Divider(color: Colors.white54), // Separador visual
-          _buildDrawerItem(
-            context,
-            Icons.star, // Ícone de estrela
-            'Craque do Jogo',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const ManOfTheMatchScreen()),
-              );
-            },
-          ),
-
-          const Divider(color: Colors.white54), // Separador visual
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
             AdminService.isAdmin ? Icons.admin_panel_settings : Icons.lock_outline, // Ícone muda se logado

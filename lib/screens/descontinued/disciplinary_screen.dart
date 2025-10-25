@@ -1,9 +1,9 @@
 // lib/screens/disciplinary_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../widgets/app_drawer.dart';
-import '../services/admin_service.dart';
-import '../widgets/sponsor_banner_rotator.dart'; // Banner importado
+import '../../widgets/app_drawer.dart';
+import '../../services/admin_service.dart';
+import '../../widgets/sponsor_banner_rotator.dart'; // Banner importado
 import 'package:cached_network_image/cached_network_image.dart'; // Import for cached image
 
 class DisciplinaryScreen extends StatelessWidget {
@@ -68,10 +68,10 @@ class DisciplinaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4, // 4 abas
+      length: 2, 
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Controle de Cartões'), // Título Ajustado
+          title: const Text('Status Disciplinar'), // Título Ajustado
           bottom: TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
@@ -80,8 +80,6 @@ class DisciplinaryScreen extends StatelessWidget {
             tabs: const [
               Tab(text: 'Pendurados'), // 2 Amarelos
               Tab(text: 'Suspensos'), // is_suspended = true
-              Tab(text: 'Amarelos'), // Total CA
-              Tab(text: 'Vermelhos'), // Total CV
             ],
           ),
         ),
@@ -91,48 +89,16 @@ class DisciplinaryScreen extends StatelessWidget {
             // Aba Pendurados
             _buildPlayersListWithBanner(
               context: context,
-              query: _firestore
-                  .collection('players')
-                  // Usa a regra carregada
-                  .where('yellow_cards', isEqualTo: AdminService.pendingYellowCards)
-                  .where('is_suspended', isEqualTo: false) // Garante que não esteja suspenso
-                  .orderBy('name'),
-              emptyMessage: 'Nenhum jogador pendurado (${AdminService.pendingYellowCards} CA).', // Mostra a regra
-              isSuspendedList: false,
+              query: _firestore.collection('players').where('yellow_cards', isEqualTo: AdminService.pendingYellowCards).where('is_suspended', isEqualTo: false).orderBy('name'),
+            emptyMessage: 'Nenhum jogador pendurado (${AdminService.pendingYellowCards} CA).',
+             isSuspendedList: false,
             ),
             // Aba Suspensos
             _buildPlayersListWithBanner(
               context: context,
-              query: _firestore
-                  .collection('players')
-                  .where('is_suspended', isEqualTo: true)
-                  .orderBy('name'),
+              query: _firestore.collection('players').where('is_suspended', isEqualTo: true).orderBy('name'),
               emptyMessage: 'Nenhum jogador suspenso.',
               isSuspendedList: true,
-            ),
-            // Aba Total Amarelos
-            _buildCardTotalList(
-              context: context,
-              query: _firestore
-                  .collection('players')
-                  .where('total_yellow_cards', isGreaterThan: 0)
-                  .orderBy('total_yellow_cards', descending: true)
-                  .orderBy('name'),
-              emptyMessage: 'Nenhum jogador com cartão amarelo.',
-              countField: 'total_yellow_cards',
-              countLabel: 'CA',
-            ),
-            // Aba Total Vermelhos
-             _buildCardTotalList(
-              context: context,
-              query: _firestore
-                  .collection('players')
-                  .where('total_red_cards', isGreaterThan: 0)
-                  .orderBy('total_red_cards', descending: true)
-                  .orderBy('name'),
-              emptyMessage: 'Nenhum jogador com cartão vermelho.',
-              countField: 'total_red_cards',
-              countLabel: 'CV',
             ),
           ],
         ),
@@ -268,99 +234,6 @@ class DisciplinaryScreen extends StatelessWidget {
               // --- FIM do Padding ---
               const SizedBox(height: 8),
               const SponsorBannerRotator(),
-            ],
-          ),
-        );
-      },
-    );
-  }
-  // --- FIM _buildPlayersListWithBanner ---
-
-
-  // --- Função _buildCardTotalList COMPLETA ---
-  Widget _buildCardTotalList({
-    required BuildContext context,
-    required Query query,
-    required String emptyMessage,
-    required String countField, // Será 'total_yellow_cards' ou 'total_red_cards'
-    required String countLabel, // 'CA' ou 'CV'
-  }) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: query.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-           debugPrint("Erro no StreamBuilder (Total $countLabel): ${snapshot.error}");
-           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text(emptyMessage));
-        }
-
-        final players = snapshot.data!.docs;
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 16.0),
-          child: Column(
-            children: [
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: players.length,
-                itemBuilder: (context, index) {
-                  final player = players[index];
-                  try {
-                    final data = player.data() as Map<String, dynamic>;
-                    final String shieldUrl = data['team_shield_url'] ?? '';
-                    final int count = data[countField] ?? 0;
-
-                    return ListTile(
-                      //leading: CircleAvatar(child: Text(rank.toString())),
-                      leading: const Icon(Icons.person),
-                      title: Text(data['name'] ?? 'Nome Indisponível'), // Title só com nome
-                      subtitle: Row( // Subtitle vira Row
-                         children: [
-                           if (shieldUrl.isNotEmpty)
-                             Padding(
-                               padding: const EdgeInsets.only(right: 6.0),
-                               child: SizedBox(
-                                 width: 18, height: 18,
-                                 child: CachedNetworkImage(
-                                   imageUrl: shieldUrl,
-                                   placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
-                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
-                                   fit: BoxFit.contain,
-                                 ),
-                               ),
-                             ),
-                           Flexible(
-                             child: Text(
-                                data['team_name'] ?? 'Time Indisponível',
-                                overflow: TextOverflow.ellipsis,
-                             ),
-                           ),
-                         ],
-                       ),
-                      trailing: Text(
-                        '$count $countLabel',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                    );
-                  } catch (e) {
-                    // --- ListTile de erro COMPLETO ---
-                    debugPrint("Erro ao processar jogador ${player.id} (Total $countLabel): $e");
-                    return ListTile(
-                      //leading: CircleAvatar(child: Text('${index + 1}')),
-                      leading: const Icon(Icons.person),
-                      title: Text('Erro ao carregar jogador ${player.id}'),
-                      subtitle: Text(e.toString()),
-                    );
-                    // --- FIM do ListTile de erro ---
-                  }
-                },
-              ), // Fim ListView
             ],
           ),
         );

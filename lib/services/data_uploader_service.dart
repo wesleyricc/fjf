@@ -36,6 +36,9 @@ class DataUploaderService {
         finalTeamData['goals_against'] = 0;
         finalTeamData['goal_difference'] = 0;
         finalTeamData['disciplinary_points'] = 0;
+        finalTeamData['phase1_rank'] = null;
+        finalTeamData['total_yellow_cards'] = 0;
+        finalTeamData['total_red_cards'] = 0;
 
         batch.set(teamRef, finalTeamData);
       });

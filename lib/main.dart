@@ -17,7 +17,8 @@ void main() async {
 
   await AdminService.loadDisciplinaryRules();
   await AdminService.loadTiebreakerRules();
-  
+  await AdminService.loadPlayoffRules();
+
   runApp(const MyApp());
 }
 

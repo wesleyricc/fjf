@@ -18,6 +18,13 @@ class AdminService {
   static bool resetYellowsOnRedWhilePending = false; // Se levar vermelho estando pendurado, zera os amarelos
   // --- FIM REGRAS ---
 
+  // --- REGRAS DE DESEMPATE PLAYOFF (com padrões) ---
+  static String semifinalTiebreaker = 'extra_time_penalties'; // Padrão
+  static String thirdPlaceTiebreaker = 'penalties';         // Padrão
+  static String finalTiebreaker = 'extra_time_penalties';      // Padrão
+  // Possíveis valores: 'penalties', 'extra_time_penalties', 'extra_time_standing'
+  // --- FIM REGRAS PLAYOFF ---
+
   // --- ORDEM DOS CRITÉRIOS DE DESEMPATE (com padrão) ---
   static List<String> tiebreakerOrder = [
     "head_to_head",
@@ -88,6 +95,31 @@ class AdminService {
     }
   }
   // --- FIM CARREGAR ORDEM ---
+
+  // --- NOVA FUNÇÃO PARA CARREGAR REGRAS PLAYOFF ---
+  static Future<void> loadPlayoffRules() async {
+     try {
+      final docSnap = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('playoff_rules')
+          .get();
+
+      if (docSnap.exists) {
+        final data = docSnap.data();
+        if (data != null) {
+          semifinalTiebreaker = data['semifinal_tiebreaker'] ?? semifinalTiebreaker;
+          thirdPlaceTiebreaker = data['third_place_tiebreaker'] ?? thirdPlaceTiebreaker;
+          finalTiebreaker = data['final_tiebreaker'] ?? finalTiebreaker;
+          debugPrint("Regras Playoff carregadas: Semi=$semifinalTiebreaker, 3rd=$thirdPlaceTiebreaker, Final=$finalTiebreaker");
+        }
+      } else {
+        debugPrint("Documento 'playoff_rules' não encontrado. Usando regras padrão.");
+      }
+    } catch (e) {
+      debugPrint("Erro ao carregar regras playoff: $e. Usando regras padrão.");
+    }
+  }
+  // --- FIM CARREGAR REGRAS PLAYOFF ---
 
 
   // Função para hashear (pode ser estática ou não)
