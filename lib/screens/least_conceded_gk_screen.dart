@@ -41,7 +41,7 @@ class LeastConcededGkScreen extends StatelessWidget {
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             // Ajusta a mensagem para ser mais clara se o filtro for o problema
-            return const Center(child: Text('Nenhum goleiro encontrado.\n(Verifique se há jogadores com is_goalkeeper=true e o campo goals_conceded).'));
+            return const Center(child: Text('Ranking de Goleiro menos vazado vazio.'));
           }
           // --- Fim das Verificações ---
 

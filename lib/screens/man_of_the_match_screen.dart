@@ -39,7 +39,7 @@ class ManOfTheMatchScreen extends StatelessWidget {
              return Center(child: Text('Erro ao carregar ranking: ${snapshot.error}.\nVerifique o índice no Firestore.'));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('Ranking de Craque do Jogo vazio.\n(Verifique se jogadores possuem o campo man_of_the_match_awards > 0).'));
+            return const Center(child: Text('Ranking de Craque do Jogo vazio.'));
           }
           // --- Fim das Verificações ---
 

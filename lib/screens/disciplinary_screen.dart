@@ -311,7 +311,6 @@ class DisciplinaryScreen extends StatelessWidget {
                 itemCount: players.length,
                 itemBuilder: (context, index) {
                   final player = players[index];
-                  final rank = index + 1; // Rank definido aqui
                   try {
                     final data = player.data() as Map<String, dynamic>;
                     final String shieldUrl = data['team_shield_url'] ?? '';

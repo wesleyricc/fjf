@@ -326,7 +326,6 @@ class FirestoreService {
   Future<void> _recalculateTeamStats(String teamId) async {
     // 1. Inicializa os totais
     int totalMatchPoints = 0;
-    int totalPoints = 0;
     int totalGames = 0;
     int totalWins = 0;
     int totalDraws = 0;
