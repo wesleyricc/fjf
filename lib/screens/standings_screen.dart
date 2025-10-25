@@ -6,34 +6,7 @@ import '../widgets/sponsor_banner_rotator.dart'; // <-- 1. Importe o banner
 import 'team_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/admin_service.dart';
-
-// Classe auxiliar TeamStanding (sem mudanças)
-class TeamStanding {
-  final DocumentSnapshot teamDoc;
-  int points;
-  int gamesPlayed;
-  int wins;
-  int draws;
-  int losses;
-  int goalDifference;
-  int goalsFor;
-  int goalsAgainst;
-  int disciplinaryPoints;
-
-  TeamStanding(this.teamDoc)
-      : points = teamDoc.get('points') ?? 0,
-        gamesPlayed = teamDoc.get('games_played') ?? 0,
-        wins = teamDoc.get('wins') ?? 0,
-        draws = teamDoc.get('draws') ?? 0,
-        losses = teamDoc.get('losses') ?? 0,
-        goalDifference = teamDoc.get('goal_difference') ?? 0,
-        goalsFor = teamDoc.get('goals_for') ?? 0,
-        goalsAgainst = teamDoc.get('goals_against') ?? 0,
-        disciplinaryPoints = teamDoc.get('disciplinary_points') ?? 0;
-
-  String get id => teamDoc.id;
-  Map<String, dynamic> get data => teamDoc.data() as Map<String, dynamic>;
-}
+import '../utils/standings_sorter.dart';
 
 // Classe principal da tela (StatefulWidget - sem mudanças)
 class StandingsScreen extends StatefulWidget {
@@ -60,7 +33,6 @@ class _StandingsScreenState extends State<StandingsScreen> {
   };
   // --- FIM DO MAPA ---
 
-
   @override
   void initState() {
     super.initState();
@@ -78,90 +50,14 @@ class _StandingsScreenState extends State<StandingsScreen> {
     List<TeamStanding> standings = teamsSnapshot.docs
         .map((doc) => TeamStanding(doc))
         .toList();
-    standings.sort(_customSort);
-    return standings;
+    // Cria o Sorter e ordena
+    final sorter = StandingsSorter(finishedMatches: _finishedMatches);
+    List<TeamStanding> sortedStandings = sorter.sort(standings); // Chama a função do utilitário
+
+    return sortedStandings;
   }
 
-  // --- FUNÇÃO _customSort REESCRITA ---
-  int _customSort(TeamStanding a, TeamStanding b) {
-    // 1. Critério Principal: Pontos (sempre primeiro)
-    int comparison = b.points.compareTo(a.points); // Descendente
-    if (comparison != 0) return comparison;
 
-    // 2. Itera sobre a ordem de desempate carregada do AdminService
-    for (String criterionKey in AdminService.tiebreakerOrder) {
-       comparison = _compareByCriterion(criterionKey, a, b);
-       if (comparison != 0) {
-          // debugPrint("Desempate entre ${a.data['name']} e ${b.data['name']} por $criterionKey: $comparison");
-          return comparison;
-       }
-    }
-
-    // 3. Fallback final (se todos os critérios configurados derem empate)
-    // Geralmente ordem alfabética, a menos que 'draw_sort' já tenha feito isso.
-     if (!AdminService.tiebreakerOrder.contains('draw_sort')) {
-        return a.data['name'].compareTo(b.data['name']); // Ascendente por nome
-     }
-     return 0; // Se chegou aqui, são idênticos ou draw_sort foi o último
-  }
-  // --- FIM _customSort ---
-
-  // --- NOVA FUNÇÃO AUXILIAR PARA COMPARAR POR CRITÉRIO ---
-  int _compareByCriterion(String key, TeamStanding a, TeamStanding b) {
-    switch (key) {
-      case 'head_to_head':
-        // A função _getHeadToHeadResult já retorna -1 (A melhor), 1 (B melhor), 0 (empate H2H)
-        // Precisamos ajustar o retorno dela ou inverter aqui se necessário.
-        // Assumindo que _getHeadToHeadResult usa compareTo (b vs a):
-        return _getHeadToHeadResult(a, b);
-
-      case 'disciplinary_points':
-        return a.disciplinaryPoints.compareTo(b.disciplinaryPoints); // Ascendente (menor é melhor)
-
-      case 'wins':
-        return b.wins.compareTo(a.wins); // Descendente (maior é melhor)
-
-      case 'goal_difference':
-        return b.goalDifference.compareTo(a.goalDifference); // Descendente
-
-      case 'goals_against':
-        return a.goalsAgainst.compareTo(b.goalsAgainst); // Ascendente (menor é melhor)
-
-      case 'draw_sort': // Critério explícito para Sorteio/Alfabético
-        return a.data['name'].compareTo(b.data['name']); // Ascendente por nome
-
-      default:
-        debugPrint("Critério de desempate desconhecido: $key");
-        return 0; // Não sabe como comparar, considera empate
-    }
-  }
-  // --- FIM DA FUNÇÃO AUXILIAR ---
-
-  // Função _getHeadToHeadResult (sem mudanças)
-  int _getHeadToHeadResult(TeamStanding a, TeamStanding b) {
-    int pointsA = 0;
-    int pointsB = 0;
-    List<DocumentSnapshot> h2hMatches = _finishedMatches.where((match) {
-      final homeId = match.get('team_home_id');
-      final awayId = match.get('team_away_id');
-      return (homeId == a.id && awayId == b.id) || (homeId == b.id && awayId == a.id);
-    }).toList();
-    if (h2hMatches.isEmpty) return 0;
-    for (var match in h2hMatches) {
-      final data = match.data() as Map<String, dynamic>;
-      final scoreHome = (data['score_home'] ?? 0) as int;
-      final scoreAway = (data['score_away'] ?? 0) as int;
-      if (scoreHome == scoreAway) {
-        pointsA += 1; pointsB += 1;
-      } else if (match.get('team_home_id') == a.id) {
-        if (scoreHome > scoreAway) pointsA += 3; else pointsB += 3;
-      } else {
-        if (scoreAway > scoreHome) pointsA += 3; else pointsB += 3;
-      }
-    }
-    // Corrigido para comparar os pontos H2H calculados (pointsA vs pointsB)
-    return pointsB.compareTo(pointsA);
-  }
 
 
   @override
@@ -199,7 +95,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
 
           return SingleChildScrollView(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              //crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Tabela de Classificação
                 SingleChildScrollView(

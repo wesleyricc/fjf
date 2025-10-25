@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'admin_service.dart';
+import '../utils/standings_sorter.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -322,6 +323,217 @@ class FirestoreService {
       return "Erro: ${e.toString()}";
     }
   }
+
+  // --- NOVA FUNÇÃO PARA GERAR SEMIFINAIS ---
+  Future<String> generateSemifinals() async {
+    debugPrint("Iniciando geração de semifinais...");
+    try {
+      // 1. Verificar se a primeira fase terminou (opcional, mas recomendado)
+      //    Você pode querer adicionar uma flag 'is_phase1_complete' no config/app_settings
+      //    ou verificar se todos os jogos 'phase: first' estão 'finished'.
+      //    Por simplicidade, pularemos essa verificação agora.
+
+      // 2. Buscar a classificação FINAL da primeira fase (Top 4)
+      //    IMPORTANTE: Esta query assume que os dados em 'teams' estão 100% atualizados
+      //    pela função _recalculateTeamStats. A lógica de confronto direto
+      //    NÃO é aplicada aqui, apenas os critérios do Firestore.
+      final teamsSnapshot = await _firestore.collection('teams').get();
+      final matchesSnapshot = await _firestore
+          .collection('matches')
+          .where('status', isEqualTo: 'finished')
+          // Adiciona filtro de fase para garantir que só conta jogos da 1a fase (IMPORTANTE!)
+          .where('phase', isEqualTo: 'first')
+          .get();
+
+      if (teamsSnapshot.docs.isEmpty) {
+         return "Erro: Nenhuma equipe encontrada para gerar classificação.";
+      }
+      debugPrint("Times (${teamsSnapshot.docs.length}) e Jogos Finalizados 1ª Fase (${matchesSnapshot.docs.length}) buscados.");
+
+      // 2. Converter times e Ordenar usando StandingsSorter
+      List<TeamStanding> standings = teamsSnapshot.docs
+          .map((doc) => TeamStanding(doc)) // Usa classe do utilitário
+          .toList();
+
+      final sorter = StandingsSorter(finishedMatches: matchesSnapshot.docs);
+      List<TeamStanding> sortedStandings = sorter.sort(standings); // Ordena com a lógica completa
+
+      // 3. Pegar os Top 4 da lista ordenada
+      if (sortedStandings.length < 4) {
+        return "Erro: Menos de 4 times classificados (${sortedStandings.length}). Não é possível gerar semifinais.";
+      }
+      final team1 = sortedStandings[0]; // 1º Colocado
+      final team2 = sortedStandings[1]; // 2º Colocado
+      final team3 = sortedStandings[2]; // 3º Colocado
+      final team4 = sortedStandings[3]; // 4º Colocado
+      debugPrint("Classificação final (Top 4): 1º-${team1.id}, 2º-${team2.id}, 3º-${team3.id}, 4º-${team4.id}");
+
+
+      // 3. Verificar se semifinais já existem
+      final existingSemis = await _firestore.collection('matches').where('phase', isEqualTo: 'semifinal').limit(1).get();
+
+      if (existingSemis.docs.isNotEmpty) {
+         debugPrint("Semifinais existentes encontradas. Elas serão sobrescritas.");
+         return "Aviso: Jogos da Semifinal já parecem existir.";
+      }
+
+      // 4. Criar os documentos das semifinais
+      final WriteBatch batch = _firestore.batch();
+      final semiFinalRef1 = _firestore.collection('matches').doc();
+      final semiFinalRef2 = _firestore.collection('matches').doc();
+
+      // Jogo 1: 1º vs 4º
+      batch.set(semiFinalRef1, {
+        'phase': 'semifinal',
+        'order': 1,
+        'round': null,
+        'datetime': null,
+        'location': 'A definir',
+        'status': 'pending',
+        'score_home': null,
+        'score_away': null,
+        'team_home_id': team1.id,
+        'team_home_name': team1.data['name'] ?? 'Time 1',
+        'team_home_shield': team1.data['shield_url'] ?? '',
+        'team_away_id': team4.id,
+        'team_away_name': team4.data['name'] ?? 'Time 4',
+        'team_away_shield': team4.data['shield_url'] ?? '',
+      });
+      
+      debugPrint("Jogo Semifinal 1 criado: ${team1.id} vs ${team4.id}");
+
+      // Jogo 2: 2º vs 3º
+       batch.set(semiFinalRef2, {
+        'phase': 'semifinal',
+        'order': 2, // <-- ADICIONA ORDEM 2
+        'round': null,
+        'datetime': null,
+        'location': 'A definir',
+        'status': 'pending',
+        'score_home': null,
+        'score_away': null,
+        'team_home_id': team2.id,
+        'team_home_name': team2.data['name'] ?? 'Time 2',
+        'team_home_shield': team2.data['shield_url'] ?? '',
+        'team_away_id': team3.id,
+        'team_away_name': team3.data['name'] ?? 'Time 3',
+        'team_away_shield': team3.data['shield_url'] ?? '',
+      });
+      debugPrint("Jogo Semifinal 2 criado: ${team2.id} vs ${team3.id}");
+
+      // 6. Commit
+      await batch.commit();
+      debugPrint("Batch commit para semifinais concluído.");
+      return "Sucesso! Jogos da Semifinal gerados (1ºx4º, 2ºx3º).";
+
+    } catch (e) {
+      debugPrint("Erro ao gerar semifinais: $e");
+      return "Erro ao gerar semifinais: ${e.toString()}";
+    }
+  }
+  // --- FIM DA FUNÇÃO ---
+
+  // --- NOVA FUNÇÃO PARA GERAR A FINAL ---
+  Future<String> generateFinal() async {
+    debugPrint("Iniciando geração da final...");
+    try {
+      // 1. Buscar os jogos da semifinal
+      final semisSnapshot = await _firestore
+          .collection('matches')
+          .where('phase', isEqualTo: 'semifinal')
+          .get();
+
+      if (semisSnapshot.docs.length != 2) {
+        return "Erro: Esperava encontrar 2 jogos de semifinal, mas encontrou ${semisSnapshot.docs.length}.";
+      }
+      debugPrint("Jogos da semifinal encontrados: ${semisSnapshot.docs.length}");
+
+      // 2. Validar status e placares e determinar vencedores
+      String? winner1Id, winner1Name, winner1Shield;
+      String? winner2Id, winner2Name, winner2Shield;
+      List<DocumentSnapshot> semis = semisSnapshot.docs;
+
+      for (int i = 0; i < semis.length; i++) {
+         final matchDoc = semis[i];
+         final data = matchDoc.data() as Map<String, dynamic>?;
+
+         // Validações essenciais
+         if (data == null) return "Erro: Dados inválidos na semifinal ${matchDoc.id}.";
+         if (data['status'] != 'finished') return "Erro: Semifinal ${matchDoc.id} (${data['team_home_name']} x ${data['team_away_name']}) ainda não foi finalizada.";
+         if (data['score_home'] == null || data['score_away'] == null) return "Erro: Placar não definido na semifinal ${matchDoc.id}.";
+         if (data['score_home'] == data['score_away']) return "Erro: Empate detectado na semifinal ${matchDoc.id}. Defina um vencedor (editando o placar ou adicionando lógica de pênaltis) antes de gerar a final.";
+
+         // Determina o vencedor da partida atual
+         String currentWinnerId, currentWinnerName, currentWinnerShield;
+         if (data['score_home'] > data['score_away']) {
+            currentWinnerId = data['team_home_id'];
+            currentWinnerName = data['team_home_name'];
+            currentWinnerShield = data['team_home_shield'];
+         } else {
+            currentWinnerId = data['team_away_id'];
+            currentWinnerName = data['team_away_name'];
+            currentWinnerShield = data['team_away_shield'];
+         }
+
+         // Atribui ao Vencedor 1 ou 2
+         if (i == 0) {
+            winner1Id = currentWinnerId; winner1Name = currentWinnerName; winner1Shield = currentWinnerShield;
+         } else {
+            winner2Id = currentWinnerId; winner2Name = currentWinnerName; winner2Shield = currentWinnerShield;
+         }
+         debugPrint("Vencedor da Semifinal ${i+1}: $currentWinnerName ($currentWinnerId)");
+      }
+
+      // Garante que ambos os vencedores foram encontrados
+      if (winner1Id == null || winner2Id == null) {
+          return "Erro: Não foi possível determinar ambos os vencedores das semifinais.";
+      }
+
+      // 3. Verificar se a final já existe
+      final existingFinal = await _firestore
+          .collection('matches')
+          .where('phase', isEqualTo: 'final')
+          .limit(1)
+          .get();
+
+      if (existingFinal.docs.isNotEmpty) {
+        debugPrint("Aviso: Jogo da Final já existe. Nenhuma ação realizada.");
+        return "Aviso: Jogo da Final já parece existir.";
+      }
+
+      // 4. Criar o documento da final
+      final WriteBatch batch = _firestore.batch();
+      final finalRef = _firestore.collection('matches').doc(); // ID automático
+
+      batch.set(finalRef, {
+        'phase': 'final',
+        'round': null, // Não aplicável
+        'datetime': null, // Admin define depois
+        'location': 'Local a definir',
+        'status': 'pending',
+        'score_home': null,
+        'score_away': null,
+        // Define Vencedor 1 como "casa" e Vencedor 2 como "fora" (ou vice-versa)
+        'team_home_id': winner1Id,
+        'team_home_name': winner1Name ?? 'Vencedor Semi 1',
+        'team_home_shield': winner1Shield ?? '',
+        'team_away_id': winner2Id,
+        'team_away_name': winner2Name ?? 'Vencedor Semi 2',
+        'team_away_shield': winner2Shield ?? '',
+      });
+      debugPrint("Jogo da Final criado: $winner1Name vs $winner2Name");
+
+      // 5. Commit
+      await batch.commit();
+      debugPrint("Batch commit para final concluído.");
+      return "Sucesso! Jogo da Final gerado entre os vencedores das semifinais.";
+
+    } catch (e) {
+      debugPrint("Erro ao gerar final: $e");
+      return "Erro ao gerar final: ${e.toString()}";
+    }
+  }
+  // --- FIM DA FUNÇÃO ---
 
   // --- FUNÇÃO DE RECALCULO TOTAL (POR TIME) ---
   // (Esta função permanece idêntica à que você forneceu, pois está correta)

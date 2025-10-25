@@ -6,6 +6,7 @@ import 'dart:convert';
 import '../services/data_uploader_service.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
+import '../services/firestore_service.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -16,7 +17,9 @@ class AdminMenuScreen extends StatefulWidget {
 
 class _AdminMenuScreenState extends State<AdminMenuScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService = FirestoreService(); // Instância do serviço
 
+  bool _isSaving = false;
   // --- FUNÇÕES DE DIÁLOGO (MOVIDAS E ADAPTADAS) ---
 
   // Função para gerar o hash SHA-256 de uma string
@@ -391,8 +394,56 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
       },
     );
   
-  return passwordConfirmed ?? false;
-}
+    return passwordConfirmed ?? false;
+  }
+
+
+  // --- NOVA FUNÇÃO PARA CHAMAR GERAÇÃO ---
+  Future<void> _triggerGenerateSemifinals() async {
+     // Diálogo de confirmação extra
+     final confirm = await showDialog<bool>(
+       context: context,
+       builder: (ctx) => AlertDialog(
+         title: const Text('Gerar Semifinais?'),
+         content: const Text('Isso buscará os 4 primeiros da classificação ATUAL e criará os jogos da semifinal. Tem certeza?\n(Verifique se a 1ª Fase realmente terminou).'),
+         actions: [
+           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.orange))),
+         ],
+       ),
+     );
+
+     if (confirm == true && mounted) {
+       setState(() { _isSaving = true; }); // Reutiliza flag de saving
+       final result = await _firestoreService.generateSemifinals();
+       setState(() { _isSaving = false; });
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+     }
+  }
+  // --- FIM ---
+
+  // --- NOVA FUNÇÃO PARA CHAMAR GERAÇÃO DA FINAL ---
+  Future<void> _triggerGenerateFinal() async {
+     final confirm = await showDialog<bool>(
+       context: context,
+       builder: (ctx) => AlertDialog(
+         title: const Text('Gerar Jogo da Final?'),
+         content: const Text('Isso buscará os vencedores das semifinais FINALIZADAS e criará o jogo da final. Tem certeza?\n(Verifique se AMBAS as semifinais estão com status "Finalizado" e sem empates).'),
+         actions: [
+           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.green))), // Cor diferente
+         ],
+       ),
+     );
+
+     if (confirm == true && mounted) {
+       setState(() { _isSaving = true; });
+       final result = await _firestoreService.generateFinal(); // Chama a nova função
+       setState(() { _isSaving = false; });
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
+     }
+  }
+  // --- FIM ---
 
   @override
   Widget build(BuildContext context) {
@@ -432,6 +483,22 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                 MaterialPageRoute(builder: (ctx) => const TiebreakerRulesScreen()),
               );
             },
+          ),
+          const Divider(),
+          ListTile(
+            leading: Icon(Icons.emoji_events_outlined, color: Colors.blue[600]), // Ícone de playoff/troféu
+            title: const Text('Gerar Jogos da Semifinal'),
+            subtitle: const Text('Cria os jogos (1ºx4º, 2ºx3º) baseado na classificação final'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: _isSaving ? null : _triggerGenerateSemifinals, // Chama a nova função
+          ),
+          const Divider(),
+           ListTile(
+            leading: Icon(Icons.emoji_events, color: Colors.amber[700]), // Ícone Troféu
+            title: const Text('Gerar Jogo da Final'),
+            subtitle: const Text('Cria o jogo final com os vencedores das semifinais'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: _isSaving ? null : _triggerGenerateFinal, // Chama a nova função
           ),
           const Divider(),
           ListTile(
