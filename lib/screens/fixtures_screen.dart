@@ -126,7 +126,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
         case PlayoffStage.third_place:
           return '2º Fase';
         case PlayoffStage.final_game:
-          return 'Final';
+          return '2º Fase';
       }
     }
   }
@@ -177,11 +177,11 @@ class _FixturesScreenState extends State<FixturesScreen> {
               children: const <Widget>[
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text('1ªF'),
+                  child: Text('1ª Fase'),
                 ),
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Text('2ªF'),
+                  child: Text('2ª Fase'),
                 ),
               ],
             ),
