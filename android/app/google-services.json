@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:211551139323:android:dc42f122d69b1c86adc75e",
+        "mobilesdk_app_id": "1:211551139323:android:01cd6cd94956967cadc75e",
         "android_client_info": {
-          "package_name": "com.example.fjf_app"
+          "package_name": "com.fjf_app"
         }
       },
       "oauth_client": [],
