@@ -52,8 +52,23 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Regras de desempate playoff salvas!')));
         Navigator.of(context).pop();
       }
-    } catch (e) { /* ... tratamento de erro ... */ }
-    finally { if (mounted) setState(() { _isSaving = false; }); }
+    } catch (e) {
+      // 1. Loga o erro detalhado no console de depuração
+       debugPrint("Erro ao salvar regras playoff: $e");
+       
+       // 2. Se o widget ainda estiver montado, mostra um SnackBar de erro
+       if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(
+             content: Text('Erro ao salvar regras: ${e.toString()}'),
+             backgroundColor: Colors.red, // Cor de erro para feedback visual
+           ),
+         );
+       }
+    }finally { 
+       // Garante que o estado de 'salvando' termine, mesmo se der erro
+       if (mounted) setState(() { _isSaving = false; }); 
+    }
   }
 
   @override
