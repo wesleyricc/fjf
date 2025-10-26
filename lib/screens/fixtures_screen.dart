@@ -281,6 +281,7 @@ class _FixturesScreenState extends State<FixturesScreen>
 
                     final String phase = data['phase'] ?? 'first';
                     final String status = data['status'] ?? 'pending';
+
                     final bool isPlayoff = [
                       'semifinal',
                       'third_place',
@@ -440,20 +441,11 @@ class _FixturesScreenState extends State<FixturesScreen>
                                     ),
                                   ),
 
-                                  // --- 5. APLICA A ANIMAÇÃO CONDICIONAL ---
-                                  // if (status == 'in_progress')
-                                  //FadeTransition(
-                                  // opacity: _blinkAnimationController, // Controlado pelo controller
-                                  //child: statusWidget, // O Row de status
-                                  //)
-                                  //else
-                                  //statusWidget,
-                                  // --- FIM DA MUDANÇA ---
-
                                   // --- 2. EXIBIR ÍCONE, DATA E LOCAL ---
                                   Row(
                                     // Usar Row para alinhar ícone e texto
-                                    mainAxisAlignment: MainAxisAlignment.center, // Centraliza o conteúdo da Row
+                                    mainAxisAlignment: MainAxisAlignment
+                                        .center, // Centraliza o conteúdo da Row
                                     children: [
                                       // --- 5. APLICA A ANIMAÇÃO CONDICIONAL ---
                                       if (status == 'in_progress')
@@ -491,8 +483,8 @@ class _FixturesScreenState extends State<FixturesScreen>
                                                 errorWidget:
                                                     (context, url, error) =>
                                                         const Icon(Icons.error),
-                                                width: 40,
-                                                height: 40,
+                                                width: 60,
+                                                height: 60,
                                               ),
                                               const SizedBox(height: 4),
                                               Text(
@@ -524,17 +516,32 @@ class _FixturesScreenState extends State<FixturesScreen>
                                                 fontSize: 35, // Fonte maior
                                               ),
                                             ),
-                                            if (penaltyScoreStr !=
-                                                null) // Só exibe se houver pênaltis
-                                              Text(
-                                                penaltyScoreStr, // Placar de pênaltis menor
+                                            if (penaltyScoreStr != null) ... [// Só exibe se houver pênaltis
+                                              const Text(
+                                                'Pênaltis',
                                                 textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                  fontSize: 20, // Fonte menor
-                                                  color:
-                                                      Colors.grey, // Cor sutil
+                                                style: TextStyle(
+                                                  fontSize:
+                                                      12, // Fonte bem pequena
+                                                  color: Colors.black54,
+                                                  fontWeight: FontWeight.w500,
+                                                  height:
+                                                      1.2, // Espaçamento de linha menor
                                                 ),
                                               ),
+                                            // Placar dos Pênaltis
+                                            Text(
+                                              '$penaltyScoreStr', // Placar
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                fontSize: 15, // Fonte pequena
+                                                color: Colors.black54,
+                                                fontWeight: FontWeight.w500,
+                                                height:
+                                                    1.2, // Espaçamento de linha menor
+                                              ),
+                                            ),
+                                          ],
                                           ],
                                         ),
                                       ),
@@ -558,8 +565,8 @@ class _FixturesScreenState extends State<FixturesScreen>
                                                 errorWidget:
                                                     (context, url, error) =>
                                                         const Icon(Icons.error),
-                                                width: 40,
-                                                height: 40,
+                                                width: 60,
+                                                height: 60,
                                               ),
                                               const SizedBox(height: 4),
                                               Text(
@@ -629,7 +636,7 @@ class _FixturesScreenState extends State<FixturesScreen>
                                 child: Column(
                                   children: [
                                     Text(
-                                      'O CAMPEÃO É:',
+                                      'CAMPEÃO',
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleMedium
@@ -712,7 +719,7 @@ class _FixturesScreenState extends State<FixturesScreen>
     if (_selectedPhase == TournamentPhase.first) {
       // --- Seletor de Rodada ---
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+        padding: const EdgeInsets.symmetric(vertical: 1.0, horizontal: 16.0),
         child: Row(
           mainAxisAlignment:
               MainAxisAlignment.spaceBetween, // Espaça botões e texto

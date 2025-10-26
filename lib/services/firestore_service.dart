@@ -453,6 +453,7 @@ class FirestoreService {
     required int? penaltyScoreHome,
     required int? penaltyScoreAway,
     required String? winnerTeamId,
+    required String? newSumulaUrl,
   }) async {
     final String matchId = matchSnapshot.id;
     final matchDataBefore = matchSnapshot.data() as Map<String, dynamic>? ?? {};
@@ -540,6 +541,7 @@ class FirestoreService {
           'penalty_score_home': penaltyScoreHome,
           'penalty_score_away': penaltyScoreAway,
           'winner_team_id': winnerTeamId,
+          'sumula_url': newSumulaUrl,
           'stats_applied': {
             'player_stats': newPlayerStatsToSave,
             'man_of_the_match': newManOfTheMatchId,

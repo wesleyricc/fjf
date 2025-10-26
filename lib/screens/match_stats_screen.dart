@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../widgets/sponsor_banner_rotator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MatchStatsScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -28,6 +29,25 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     super.initState();
     _extractStatsAndFetchPlayers();
   }
+
+  // --- 2. ADICIONE A FUNÇÃO _launchURL ---
+  Future<void> _launchURL(String? urlString) async {
+    if (urlString == null || urlString.isEmpty) {
+      debugPrint('URL da súmula está vazia.');
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Súmula não disponível.')));
+      return;
+    }
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      debugPrint('Não foi possível abrir $urlString');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível abrir o link: $urlString')),
+        );
+      }
+    }
+  }
+  // --- FIM DA ADIÇÃO --
 
   // --- FUNÇÃO QUE FALTAVA ---
   Future<void> _extractStatsAndFetchPlayers() async {
@@ -349,6 +369,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     final homeShield = data['team_home_shield'] ?? '';
     final awayShield = data['team_away_shield'] ?? '';
     final String location = data['location'] ?? '';
+    final String? sumulaUrl = data['sumula_url'] as String?;
     String formattedDate = 'Data Indisponível';
     if (data['datetime'] != null && data['datetime'] is Timestamp) {
       formattedDate = DateFormat('dd/MM/yyyy HH:mm').format((data['datetime'] as Timestamp).toDate());
@@ -387,6 +408,24 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
                      textAlign: TextAlign.center,
                     ),
+
+                    // --- 4. ADICIONE O BOTÃO DA SÚMULA AQUI ---
+                  if (sumulaUrl != null && sumulaUrl.isNotEmpty) // Mostra só se a URL existir
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.description_outlined, size: 20),
+                        label: const Text('Súmula da Partida (PDF)'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context).primaryColor, // Cor do texto/ícone
+                        ),
+                        onPressed: () {
+                          _launchURL(sumulaUrl); // Chama a função
+                        },
+                      ),
+                    ),
+                  // --- FIM DA ADIÇÃO ---
+
                 ],
               ),
             ),

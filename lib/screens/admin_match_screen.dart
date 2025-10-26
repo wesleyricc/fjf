@@ -20,6 +20,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   late TextEditingController _homeScoreController;
   late TextEditingController _awayScoreController;
+  late TextEditingController _sumulaUrlController;
 
   List<DocumentSnapshot> _homePlayers = [];
   List<DocumentSnapshot> _awayPlayers = [];
@@ -55,6 +56,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
     _penaltyHomeScoreController = TextEditingController();
     _penaltyAwayScoreController = TextEditingController();
+    _sumulaUrlController = TextEditingController(text: data?['sumula_url'] ?? '');
 
     _penaltyHomeScoreController.text =
         data['penalty_score_home']?.toString() ?? '';
@@ -531,6 +533,18 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                     )
                   else
                     const Text('Carregando jogadores...'),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _sumulaUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'URL da Súmula (PDF)',
+                      hintText: 'Cole o link do PDF aqui (opcional)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.link),
+                    ),
+                    keyboardType: TextInputType.url, // Teclado otimizado para URLs
+                    enabled: !_isSaving, // Desabilita enquanto salva
+                  ),
                 ],
               ),
             ),
@@ -680,6 +694,11 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       _isSaving = true;
     });
 
+    // Pega a URL (salva null se o campo estiver vazio)
+    final String? sumulaUrl = _sumulaUrlController.text.trim().isEmpty 
+                              ? null 
+                              : _sumulaUrlController.text.trim();
+
     String result = await _firestoreService.updateMatchStats(
       matchSnapshot: widget.match,
       newStatus: _selectedStatus,
@@ -694,6 +713,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       penaltyScoreHome: penaltyScoreHome,
       penaltyScoreAway: penaltyScoreAway,
       winnerTeamId: winnerId,
+      newSumulaUrl: sumulaUrl,
     );
     
     setState(() {
@@ -769,6 +789,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     _awayScoreController.dispose();
     _penaltyHomeScoreController.dispose();
     _penaltyAwayScoreController.dispose();
+    _sumulaUrlController.dispose();
     // --- FIM ---
     super.dispose();
   }
