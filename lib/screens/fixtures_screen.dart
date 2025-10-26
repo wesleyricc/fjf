@@ -9,6 +9,7 @@ import '../widgets/sponsor_banner_rotator.dart';
 import 'match_stats_screen.dart';
 import 'team_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'edit_match_screen.dart';
 
 // Enum para clareza na seleção de fase
 enum TournamentPhase { first, second }
@@ -126,7 +127,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
         case PlayoffStage.third_place:
           return '2º Fase';
         case PlayoffStage.final_game:
-          return '2º Fase';
+          return 'Final';
       }
     }
   }
@@ -519,6 +520,24 @@ class _FixturesScreenState extends State<FixturesScreen> {
         ], // Fim Column principal do body
       ),
       bottomNavigationBar: const SponsorBannerRotator(), // Banner fixo
+
+      // --- ADICIONAR FLOATING ACTION BUTTON (FAB) ---
+      floatingActionButton: AdminService.isAdmin && _selectedPhase == TournamentPhase.first
+          ? FloatingActionButton(
+              onPressed: () {
+                // Navega para a tela de criação (passando null)
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (ctx) => const EditMatchScreen(match: null)),
+                );
+              },
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+              tooltip: 'Adicionar Jogo da 1ª Fase',
+              child: const Icon(Icons.add),
+            )
+          : null, // Não mostra o botão se não for admin ou não for 1ª fase
+      // --- FIM DO FAB ---
+
     );
   }
 

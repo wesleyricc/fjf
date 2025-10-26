@@ -27,6 +27,108 @@ class FirestoreService {
     return delta;
   }
 
+  // --- NOVA FUNÇÃO: CRIAR PARTIDA ---
+  Future<String> createMatch({
+    required DocumentSnapshot homeTeam, // Doc completo do time
+    required DocumentSnapshot awayTeam, // Doc completo do time
+    required String location,
+    required int round,
+    required DateTime dateTime,
+  }) async {
+    try {
+      final homeTeamData = homeTeam.data() as Map<String, dynamic>;
+      final awayTeamData = awayTeam.data() as Map<String, dynamic>;
+
+      await _firestore.collection('matches').add({
+        'phase': 'first', // Só permite criar jogos da 1ª fase
+        'round': round,
+        'datetime': Timestamp.fromDate(dateTime),
+        'location': location,
+        'status': 'pending',
+        'score_home': null,
+        'score_away': null,
+        'penalty_score_home': null,
+        'penalty_score_away': null,
+        'winner_team_id': null,
+        'stats_applied': null,
+        'team_home_id': homeTeam.id,
+        'team_home_name': homeTeamData['name'] ?? '?',
+        'team_home_shield': homeTeamData['shield_url'] ?? '',
+        'team_away_id': awayTeam.id,
+        'team_away_name': awayTeamData['name'] ?? '?',
+        'team_away_shield': awayTeamData['shield_url'] ?? '',
+      });
+      return "Sucesso: Partida criada.";
+    } catch (e) {
+      debugPrint("Erro ao criar partida: $e");
+      return "Erro ao criar partida: ${e.toString()}";
+    }
+  }
+  // --- FIM ---
+
+  // --- NOVA FUNÇÃO: ATUALIZAR DETALHES DA PARTIDA ---
+  Future<String> updateMatchDetails({
+    required DocumentSnapshot match,
+    required DocumentSnapshot homeTeam,
+    required DocumentSnapshot awayTeam,
+    required String location,
+    required int round,
+    required DateTime dateTime,
+    required String phase, // Fase (para editar 2ª fase)
+  }) async {
+     try {
+       final homeTeamData = homeTeam.data() as Map<String, dynamic>;
+       final awayTeamData = awayTeam.data() as Map<String, dynamic>;
+       
+       await match.reference.update({
+         'phase': phase,
+         'round': round,
+         'datetime': Timestamp.fromDate(dateTime),
+         'location': location,
+         'team_home_id': homeTeam.id,
+         'team_home_name': homeTeamData['name'] ?? '?',
+         'team_home_shield': homeTeamData['shield_url'] ?? '',
+         'team_away_id': awayTeam.id,
+         'team_away_name': awayTeamData['name'] ?? '?',
+         'team_away_shield': awayTeamData['shield_url'] ?? '',
+       });
+       return "Sucesso: Detalhes da partida atualizados.";
+     } catch (e) {
+       debugPrint("Erro ao atualizar detalhes: $e");
+       return "Erro ao atualizar detalhes: ${e.toString()}";
+     }
+  }
+  // --- FIM ---
+
+  // --- NOVA FUNÇÃO: EXCLUIR PARTIDA ---
+  Future<String> deleteMatch(DocumentSnapshot match) async {
+     try {
+       final data = match.data() as Map<String, dynamic>? ?? {};
+       final status = data['status'] ?? 'pending';
+       final phase = data['phase'] ?? 'first';
+       final homeTeamId = data['team_home_id'];
+       final awayTeamId = data['team_away_id'];
+
+       // 1. Deleta o documento da partida
+       await match.reference.delete();
+
+       // 2. Se a partida era da 1ª Fase e estava 'finished',
+       // precisamos recalcular a classificação dos times envolvidos.
+       if (status == 'finished' && phase == 'first') {
+         debugPrint("Partida finalizada da 1ª Fase excluída. Recalculando times...");
+         if (homeTeamId != null) await _recalculateTeamStats(homeTeamId);
+         if (awayTeamId != null) await _recalculateTeamStats(awayTeamId);
+       }
+       
+       return "Sucesso: Partida excluída.";
+     } catch (e) {
+       debugPrint("Erro ao excluir partida: $e");
+       return "Erro ao excluir partida: ${e.toString()}";
+     }
+  }
+  // --- FIM ---
+
+
   Future<void> _recalculateTeamStats(String teamId) async {
     debugPrint("[SERVICE_RECALC] Recalculando Time (1ª Fase): $teamId");
     // 1. Inicializa totais

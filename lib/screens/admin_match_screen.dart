@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import '../services/firestore_service.dart';
 import '../services/admin_service.dart';
+import 'edit_match_screen.dart';
 
 class AdminMatchScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -325,7 +326,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (allPlayers, data, team names) ...
     final List<DocumentSnapshot> allPlayers = [
       ..._homePlayers,
       ..._awayPlayers,
@@ -351,6 +351,26 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       appBar: AppBar(
         title: Text('$homeTeamName x $awayTeamName'),
         actions: [
+          // --- NOVOS BOTÕES ADMIN ---
+          // Botão Editar Detalhes
+          IconButton(
+            icon: const Icon(Icons.edit_calendar_outlined),
+            tooltip: 'Editar Detalhes (Data, Local, Times)',
+            onPressed: _isSaving ? null : () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (ctx) => EditMatchScreen(match: widget.match), // Passa o jogo
+                ),
+              );
+            },
+          ),
+          // Botão Excluir
+          IconButton(
+            icon: const Icon(Icons.delete_forever_outlined, color: Colors.redAccent),
+            tooltip: 'Excluir Partida',
+            onPressed: _isSaving ? null : _showDeleteMatchDialog,
+          ),
+          // --- FIM ---
           if (_isSaving)
             const Padding(
               padding: EdgeInsets.all(16.0),
@@ -650,6 +670,40 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       );
     }
   }
+
+  // --- NOVA FUNÇÃO: DIÁLOGO EXCLUIR PARTIDA ---
+  Future<void> _showDeleteMatchDialog() async {
+     final confirm = await showDialog<bool>(
+       context: context,
+       builder: (ctx) => AlertDialog(
+         title: const Text('Excluir Partida?'),
+         content: const Text('Tem certeza que deseja excluir esta partida permanentemente? Se ela já foi finalizada, a classificação da 1ª Fase será recalculada.'),
+         actions: [
+           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+           TextButton(
+             onPressed: () => Navigator.of(ctx).pop(true),
+             child: const Text('Excluir', style: TextStyle(color: Colors.red)),
+           ),
+         ],
+       ),
+     );
+
+     if (confirm == true && mounted) {
+       setState(() { _isSaving = true; }); // Reusa a flag
+       
+       final result = await _firestoreService.deleteMatch(widget.match);
+       
+       setState(() { _isSaving = false; });
+       
+       if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+          if (result.startsWith('Sucesso')) {
+             Navigator.of(context).pop(); // Volta para a tela de jogos
+          }
+       }
+     }
+  }
+  // --- FIM ---
 
   // Helper para nome da regra
   String _getTiebreakerRuleName(String ruleKey) {
