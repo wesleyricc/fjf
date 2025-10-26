@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'screens/splash_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/admin_service.dart';
+import 'services/notification_service.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +20,7 @@ void main() async {
   await AdminService.loadDisciplinaryRules();
   await AdminService.loadTiebreakerRules();
   await AdminService.loadPlayoffRules();
+  await NotificationService().init();
 
   runApp(const MyApp());
 }
