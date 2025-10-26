@@ -36,7 +36,18 @@ class _FixturesScreenState extends State<FixturesScreen> {
   PlayoffStage _selectedPlayoffStage = PlayoffStage.semifinal;
   int TOTAL_RODADAS = 7;
 
-  // --- 2. ADICIONE A FUNÇÃO AUXILIAR DE NAVEGAÇÃO ---
+  // --- 1. FUNÇÃO AUXILIAR PARA BUSCAR TIME (PARA O CAMPEÃO) ---
+  Future<DocumentSnapshot?> _fetchTeam(String? teamId) async {
+    if (teamId == null || teamId.isEmpty) return null;
+    try {
+      return await _firestore.collection('teams').doc(teamId).get();
+    } catch (e) {
+      debugPrint("Erro ao buscar time $teamId: $e");
+      return null;
+    }
+  }
+
+  // --- FIM DA FUNÇÃO ---
   Future<void> _navigateToTeamDetail(
     BuildContext context,
     String teamId,
@@ -119,15 +130,15 @@ class _FixturesScreenState extends State<FixturesScreen> {
   // Helper para obter o texto do título da AppBar
   String _getAppBarTitle() {
     if (_selectedPhase == TournamentPhase.first) {
-      return '1º Fase';
+      return '1ª Fase';
     } else {
       switch (_selectedPlayoffStage) {
         case PlayoffStage.semifinal:
-          return '2º Fase';
+          return '2ª Fase';
         case PlayoffStage.third_place:
-          return '2º Fase';
+          return '2ª Fase';
         case PlayoffStage.final_game:
-          return 'Final';
+          return '2ª Fase';
       }
     }
   }
@@ -237,7 +248,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
 
                     String scoreHomeStr = data['score_home']?.toString() ?? '-';
                     String scoreAwayStr = data['score_away']?.toString() ?? '-';
-                    String? penaltyScoreStr; // Nullable string para pênaltis
+                    String? penaltyScoreStr;
 
                     final String phase = data['phase'] ?? 'first';
                     final String status = data['status'] ?? 'pending';
@@ -246,6 +257,8 @@ class _FixturesScreenState extends State<FixturesScreen> {
                       'third_place',
                       'final',
                     ].contains(phase);
+                    final String? winnerTeamId =
+                        data['winner_team_id']; // Pega o ID do vencedor
 
                     // Lógica para verificar e formatar placar de pênaltis
                     if (isPlayoff && status == 'finished') {
@@ -255,7 +268,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                       // Se ambos os placares de pênalti existem (são diferentes de null)
                       if (penaltyHome != null && penaltyAway != null) {
                         penaltyScoreStr =
-                            '($penaltyHome - $penaltyAway)'; // Formato: "(4-3)"
+                            '($penaltyHome - $penaltyAway)'; // Formato: "(4 - 3)"
                       }
                     }
                     // --- FIM DA LÓGICA ---
@@ -280,7 +293,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                       case 'in_progress':
                         statusIcon = const Icon(Icons.timer_outlined, size: 16);
                         statusText = 'Em Andamento';
-                        statusColor = Colors.red;
+                        statusColor = Colors.orange;
                         break;
                       case 'pending':
                       default:
@@ -289,7 +302,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                           size: 16,
                         );
                         statusText = 'Pendente';
-                        statusColor = Colors.orange;
+                        statusColor = Colors.red;
                         break;
                     }
 
@@ -312,222 +325,328 @@ class _FixturesScreenState extends State<FixturesScreen> {
                       }
                     }
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 4.0,
-                      ),
+                    // --- CONDIÇÃO PARA MOSTRAR CAMPEÃO ---
+                    final bool isFinalFinished =
+                        (phase == 'final' &&
+                        status == 'finished' &&
+                        winnerTeamId != null &&
+                        winnerTeamId.isNotEmpty);
 
-                      child: InkWell(
-                        // InkWell principal para stats/admin
-                        onTap: () {
-                          final gameStatus = data['status'] ?? 'pending';
-
-                          if (AdminService.isAdmin) {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (ctx) =>
-                                    AdminMatchScreen(match: match),
-                              ),
-                            );
-                          } else if (gameStatus == 'finished') {
-                            // Não-Admin SÓ PODE ver stats de jogo FINALIZADO
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (ctx) => MatchStatsScreen(
-                                  match: match,
-                                ), // <-- Vai para a nova tela
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'As estatísticas estarão disponíveis após o fim do jogo.',
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12.0,
+                    return Column(
+                      children: [
+                        Card(
+                          margin: const EdgeInsets.symmetric(
                             horizontal: 8.0,
+                            vertical: 4.0,
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                // Permite que o texto quebre se for muito longo
-                                child: Text(
-                                  '$formattedDate - $location',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(color: Colors.grey[700]),
-                                  textAlign: TextAlign.center,
-                                ),
+
+                          child: InkWell(
+                            // InkWell principal para stats/admin
+                            onTap: () {
+                              final gameStatus = data['status'] ?? 'pending';
+
+                              if (AdminService.isAdmin) {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (ctx) =>
+                                        AdminMatchScreen(match: match),
+                                  ),
+                                );
+                              } else if (gameStatus == 'finished') {
+                                // Não-Admin SÓ PODE ver stats de jogo FINALIZADO
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (ctx) => MatchStatsScreen(
+                                      match: match,
+                                    ), // <-- Vai para a nova tela
+                                  ),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'As estatísticas estarão disponíveis após o fim do jogo.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12.0,
+                                horizontal: 8.0,
                               ),
-
-                              // --- 2. EXIBIR ÍCONE, DATA E LOCAL ---
-                              Row(
-                                // Usar Row para alinhar ícone e texto
-                                mainAxisAlignment: MainAxisAlignment
-                                    .center, // Centraliza o conteúdo da Row
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  IconTheme(
-                                    // Aplica cor ao ícone
-                                    data: IconThemeData(
-                                      color: statusColor,
-                                      size: 16,
-                                    ),
-                                    child: statusIcon,
-                                  ),
-                                  const SizedBox(
-                                    width: 6,
-                                  ), // Espaço entre ícone e texto
-
-                                  Text(
-                                    statusText,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color:
-                                          statusColor, // Usa a mesma cor no texto
-                                      fontWeight: FontWeight.w500,
+                                  Flexible(
+                                    // Permite que o texto quebre se for muito longo
+                                    child: Text(
+                                      '$formattedDate - $location',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: Colors.grey[700]),
+                                      textAlign: TextAlign.center,
                                     ),
                                   ),
-                                ],
-                              ),
-                              // --- FIM DA EXIBIÇÃO ---
 
-                              // --- LINHA PRINCIPAL (TIMES E PLACAR) ---
-                              Row(
-                                children: [
-                                  // --- Time Casa (Logo Maior + Nome Maior + Clicável) ---
-                                  Expanded(
-                                    child: GestureDetector(
-                                      onTap: () => _navigateToTeamDetail(
-                                        context,
-                                        data['team_home_id'],
+                                  // --- 2. EXIBIR ÍCONE, DATA E LOCAL ---
+                                  Row(
+                                    // Usar Row para alinhar ícone e texto
+                                    mainAxisAlignment: MainAxisAlignment
+                                        .center, // Centraliza o conteúdo da Row
+                                    children: [
+                                      IconTheme(
+                                        // Aplica cor ao ícone
+                                        data: IconThemeData(
+                                          color: statusColor,
+                                          size: 16,
+                                        ),
+                                        child: statusIcon,
                                       ),
-                                      child: Column(
-                                        children: [
-                                          CachedNetworkImage(
-                                            imageUrl:
-                                                data['team_home_shield'] ??
-                                                'assets/placeholder_shield.png',
-                                            placeholder: (context, url) =>
-                                                const CircularProgressIndicator(),
-                                            errorWidget:
-                                                (context, url, error) =>
-                                                    const Icon(Icons.error),
-                                            width: 40,
-                                            height: 40,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            data['team_home_name'] ??
-                                                'Time Casa',
-                                            textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                                      const SizedBox(
+                                        width: 6,
+                                      ), // Espaço entre ícone e texto
 
-                                  // --- Placar Central (sem mudanças) ---
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12.0,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          '$scoreHomeStr x $scoreAwayStr', // Placar normal maior
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 35, // Fonte maior
+                                      Text(
+                                        statusText,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color:
+                                              statusColor, // Usa a mesma cor no texto
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  // --- FIM DA EXIBIÇÃO ---
+
+                                  // --- LINHA PRINCIPAL (TIMES E PLACAR) ---
+                                  Row(
+                                    children: [
+                                      // --- Time Casa (Logo Maior + Nome Maior + Clicável) ---
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () => _navigateToTeamDetail(
+                                            context,
+                                            data['team_home_id'],
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              CachedNetworkImage(
+                                                imageUrl:
+                                                    data['team_home_shield'] ??
+                                                    'assets/placeholder_shield.png',
+                                                placeholder: (context, url) =>
+                                                    const CircularProgressIndicator(),
+                                                errorWidget:
+                                                    (context, url, error) =>
+                                                        const Icon(Icons.error),
+                                                width: 40,
+                                                height: 40,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                data['team_home_name'] ??
+                                                    'Time Casa',
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                        if (penaltyScoreStr !=
-                                            null) // Só exibe se houver pênaltis
-                                          Text(
-                                            penaltyScoreStr, // Placar de pênaltis menor
-                                            textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                              fontSize: 20, // Fonte menor
-                                              color: Colors.grey, // Cor sutil
+                                      ),
+                                      // --- Placar Central (sem mudanças) ---
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12.0,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              '$scoreHomeStr x $scoreAwayStr', // Placar normal maior
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 35, // Fonte maior
+                                              ),
                                             ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  // --- Fim Placar ---
+                                            if (penaltyScoreStr !=
+                                                null) // Só exibe se houver pênaltis
+                                              Text(
+                                                penaltyScoreStr, // Placar de pênaltis menor
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  fontSize: 20, // Fonte menor
+                                                  color:
+                                                      Colors.grey, // Cor sutil
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      // --- Fim Placar ---
 
-                                  // --- Time Visitante (Logo Maior + Nome Maior + Clicável) ---
-                                  Expanded(
-                                    child: GestureDetector(
-                                      onTap: () => _navigateToTeamDetail(
-                                        context,
-                                        data['team_away_id'],
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          CachedNetworkImage(
-                                            imageUrl:
-                                                data['team_away_shield'] ??
-                                                'assets/placeholder_shield.png',
-                                            placeholder: (context, url) =>
-                                                const CircularProgressIndicator(),
-                                            errorWidget:
-                                                (context, url, error) =>
-                                                    const Icon(Icons.error),
-                                            width: 40,
-                                            height: 40,
+                                      // --- Time Visitante (Logo Maior + Nome Maior + Clicável) ---
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () => _navigateToTeamDetail(
+                                            context,
+                                            data['team_away_id'],
                                           ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            data['team_away_name'] ??
-                                                'Time Fora',
-                                            textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
+                                          child: Column(
+                                            children: [
+                                              CachedNetworkImage(
+                                                imageUrl:
+                                                    data['team_away_shield'] ??
+                                                    'assets/placeholder_shield.png',
+                                                placeholder: (context, url) =>
+                                                    const CircularProgressIndicator(),
+                                                errorWidget:
+                                                    (context, url, error) =>
+                                                        const Icon(Icons.error),
+                                                width: 40,
+                                                height: 40,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                data['team_away_name'] ??
+                                                    'Time Fora',
+                                                textAlign: TextAlign.center,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ), //Column
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                            ],
-                          ), // Fim da Column interna
-                        ), // Fim do Padding interno
-                      ), // Fim do InkWell (Card)
-                    ); // Fim do Card
+                            ),
+                          ),
+                        ),
+
+                        // --- 4. WIDGET DO CAMPEÃO (CONDICIONAL) ---
+                        if (isFinalFinished)
+                          FutureBuilder<DocumentSnapshot?>(
+                            future: _fetchTeam(
+                              winnerTeamId,
+                            ), // Chama a nova função
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                // Pode mostrar um loading menor ou nada
+                                return const SizedBox(
+                                  height: 32,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                );
+                              }
+                              // Não mostra nada se houver erro ou não encontrar
+                              if (snapshot.hasError ||
+                                  !snapshot.hasData ||
+                                  snapshot.data == null ||
+                                  !snapshot.data!.exists) {
+                                return const SizedBox.shrink();
+                              }
+
+                              final winnerTeamData =
+                                  snapshot.data!.data()
+                                      as Map<String, dynamic>? ??
+                                  {};
+                              final winnerTeamName =
+                                  winnerTeamData['name'] ?? 'Campeão';
+                              final winnerTeamShield =
+                                  winnerTeamData['shield_url'] ?? '';
+
+                              return Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16.0,
+                                  50.0,
+                                  16.0,
+                                  32.0,
+                                ), // Padding extra
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'O CAMPEÃO É:',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: Theme.of(
+                                              context,
+                                            ).primaryColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    if (winnerTeamShield.isNotEmpty)
+                                      CachedNetworkImage(
+                                        imageUrl: winnerTeamShield,
+                                        placeholder: (context, url) =>
+                                            const CircularProgressIndicator(),
+                                        errorWidget: (context, url, error) =>
+                                            const Icon(Icons.shield, size: 80),
+                                        width: 200, // Tamanho grande
+                                        height: 200,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      winnerTeamName.toUpperCase(),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineMedium
+                                          ?.copyWith(
+                                            color:
+                                                Theme.of(
+                                                  context,
+                                                ).primaryColorDark ??
+                                                Theme.of(context).primaryColor,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        // --- FIM DO WIDGET DO CAMPEÃO ---
+                      ],
+                    );
                   },
                 ); // Fim ListView
               },
             ),
           ),
-          // --- FIM LISTA DE JOGOS ---
-        ], // Fim Column principal do body
+        ],
       ),
-      bottomNavigationBar: const SponsorBannerRotator(), // Banner fixo
 
+      bottomNavigationBar: const SponsorBannerRotator(), // Banner fixo
       // --- ADICIONAR FLOATING ACTION BUTTON (FAB) ---
-      floatingActionButton: AdminService.isAdmin && _selectedPhase == TournamentPhase.first
+      floatingActionButton:
+          AdminService.isAdmin && _selectedPhase == TournamentPhase.first
           ? FloatingActionButton(
               onPressed: () {
                 // Navega para a tela de criação (passando null)
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (ctx) => const EditMatchScreen(match: null)),
+                  MaterialPageRoute(
+                    builder: (ctx) => const EditMatchScreen(match: null),
+                  ),
                 );
               },
               backgroundColor: Theme.of(context).primaryColor,
@@ -537,7 +656,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
             )
           : null, // Não mostra o botão se não for admin ou não for 1ª fase
       // --- FIM DO FAB ---
-
     );
   }
 
