@@ -9,8 +9,6 @@ import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
 import '../services/firestore_service.dart';
 import 'playoff_rules_screen.dart';
-import 'package:youtube_player_flutter/youtube_player_flutter.dart'; // Importar para _showChangeVideoIdDialog
-
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});

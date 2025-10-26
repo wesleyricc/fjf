@@ -553,9 +553,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   // --- NOVO WIDGET PARA SEÇÃO DE DESEMPATE ---
   Widget _buildTiebreakerSection() {
-    final homeTeamId = widget.match['team_home_id'];
+    //final homeTeamId = widget.match['team_home_id'];
     final homeTeamName = widget.match['team_home_name'] ?? 'Casa';
-    final awayTeamId = widget.match['team_away_id'];
+    //final awayTeamId = widget.match['team_away_id'];
     final awayTeamName = widget.match['team_away_name'] ?? 'Visitante';
 
     return Card(

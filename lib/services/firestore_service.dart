@@ -43,7 +43,6 @@ class FirestoreService {
         'team_id': teamId,
         'team_name': teamName, // Denormalizado
         'team_shield_url': teamShieldUrl, // Denormalizado
-
         // Inicializa todas as estatísticas
         'goals': 0, 'assists': 0,
         'yellow_cards': 0, 'red_cards': 0,
@@ -65,34 +64,32 @@ class FirestoreService {
     required String name,
     required bool isGoalkeeper,
   }) async {
-     try {
-       await playerDoc.reference.update({
-         'name': name,
-         'is_goalkeeper': isGoalkeeper,
-         // Nota: Mudar o time de um jogador exigiria uma lógica mais complexa
-         // para recalcular stats do time antigo e do novo.
-       });
-       return "Sucesso: Jogador '$name' atualizado.";
-     } catch (e) {
-       debugPrint("Erro ao atualizar jogador: $e");
-       return "Erro ao atualizar jogador: ${e.toString()}";
-     }
+    try {
+      await playerDoc.reference.update({
+        'name': name,
+        'is_goalkeeper': isGoalkeeper,
+        // Nota: Mudar o time de um jogador exigiria uma lógica mais complexa
+        // para recalcular stats do time antigo e do novo.
+      });
+      return "Sucesso: Jogador '$name' atualizado.";
+    } catch (e) {
+      debugPrint("Erro ao atualizar jogador: $e");
+      return "Erro ao atualizar jogador: ${e.toString()}";
+    }
   }
 
   // Soft Delete: Apenas marca o jogador como inativo
   Future<String> deletePlayer(DocumentSnapshot playerDoc) async {
-     try {
-       await playerDoc.reference.update({
-         'isActive': false,
-       });
-       // Nota: Isso NÃO recalcula estatísticas. As estatísticas dele
-       // permanecem nos totais (Time e Jogador Total), mas ele
-       // desaparecerá das listas de jogadores ativos.
-       return "Sucesso: Jogador excluído (inativado).";
-     } catch (e) {
-       debugPrint("Erro ao excluir jogador: $e");
-       return "Erro ao excluir jogador: ${e.toString()}";
-     }
+    try {
+      await playerDoc.reference.update({'isActive': false});
+      // Nota: Isso NÃO recalcula estatísticas. As estatísticas dele
+      // permanecem nos totais (Time e Jogador Total), mas ele
+      // desaparecerá das listas de jogadores ativos.
+      return "Sucesso: Jogador excluído (inativado).";
+    } catch (e) {
+      debugPrint("Erro ao excluir jogador: $e");
+      return "Erro ao excluir jogador: ${e.toString()}";
+    }
   }
   // --- FIM CRUD JOGADOR ---
 
@@ -135,7 +132,6 @@ class FirestoreService {
   }
   // --- FIM ---
 
-
   // --- NOVA FUNÇÃO: ATUALIZAR EQUIPE ---
   Future<String> updateTeam({
     required DocumentSnapshot teamDoc,
@@ -143,94 +139,115 @@ class FirestoreService {
     required String shortName,
     required String shieldUrl,
   }) async {
-     try {
-       await teamDoc.reference.update({
-         'name': name,
-         'short_name': shortName,
-         'shield_url': shieldUrl,
-       });
+    try {
+      await teamDoc.reference.update({
+        'name': name,
+        'short_name': shortName,
+        'shield_url': shieldUrl,
+      });
 
-       // ATENÇÃO: Se o nome ou escudo mudou, idealmente deveríamos
-       // atualizar 'team_home_name', 'team_away_name', etc.
-       // em TODOS os 'matches' e 'players'.
-       // Isso é uma operação MUITO CUSTOSA (Cloud Function seria melhor).
-       // Por enquanto, vamos assumir que o admin sabe que precisa
-       // recriar os jogos ou que os nomes antigos persistirão.
-       debugPrint("Aviso: Nome/Escudo da equipe alterado. Jogos e jogadores antigos não serão atualizados automaticamente.");
+      // ATENÇÃO: Se o nome ou escudo mudou, idealmente deveríamos
+      // atualizar 'team_home_name', 'team_away_name', etc.
+      // em TODOS os 'matches' e 'players'.
+      // Isso é uma operação MUITO CUSTOSA (Cloud Function seria melhor).
+      // Por enquanto, vamos assumir que o admin sabe que precisa
+      // recriar os jogos ou que os nomes antigos persistirão.
+      debugPrint(
+        "Aviso: Nome/Escudo da equipe alterado. Jogos e jogadores antigos não serão atualizados automaticamente.",
+      );
 
-       return "Sucesso: Equipe '$name' atualizada.";
-     } catch (e) {
-       debugPrint("Erro ao atualizar equipe: $e");
-       return "Erro ao atualizar equipe: ${e.toString()}";
-     }
+      return "Sucesso: Equipe '$name' atualizada.";
+    } catch (e) {
+      debugPrint("Erro ao atualizar equipe: $e");
+      return "Erro ao atualizar equipe: ${e.toString()}";
+    }
   }
   // --- FIM ---
 
-
   // --- NOVA FUNÇÃO: EXCLUIR EQUIPE (CASCATA) ---
   Future<String> deleteTeam(DocumentSnapshot teamDoc) async {
-     debugPrint("INICIANDO EXCLUSÃO EM CASCATA PARA: ${teamDoc.id}");
-     final teamId = teamDoc.id;
-     final WriteBatch batch = _firestore.batch();
-     Set<String> opponentsToRecalculate = {}; // Para recalcular classificação
+    debugPrint("INICIANDO EXCLUSÃO EM CASCATA PARA: ${teamDoc.id}");
+    final teamId = teamDoc.id;
+    final WriteBatch batch = _firestore.batch();
+    Set<String> opponentsToRecalculate = {}; // Para recalcular classificação
 
-     try {
-       // 1. Encontrar e deletar JOGADORES do time
-       final playersSnapshot = await _firestore.collection('players')
-           .where('team_id', isEqualTo: teamId).get();
-       for (final player in playersSnapshot.docs) {
-         batch.delete(player.reference);
-       }
-       debugPrint("Exclusão: ${playersSnapshot.docs.length} jogadores marcados para deleção.");
+    try {
+      // 1. Encontrar e deletar JOGADORES do time
+      final playersSnapshot = await _firestore
+          .collection('players')
+          .where('team_id', isEqualTo: teamId)
+          .get();
+      for (final player in playersSnapshot.docs) {
+        batch.delete(player.reference);
+      }
+      debugPrint(
+        "Exclusão: ${playersSnapshot.docs.length} jogadores marcados para deleção.",
+      );
 
-       // 2. Encontrar e deletar PARTIDAS onde o time era CASA
-       final homeMatches = await _firestore.collection('matches')
-           .where('team_home_id', isEqualTo: teamId).get();
-       for (final match in homeMatches.docs) {
-         final data = match.data() as Map<String, dynamic>? ?? {};
-         // Se a partida era da 1ª Fase e finalizada, marca o Oponente para recalcular
-         if (data['status'] == 'finished' && data['phase'] == 'first' && data['team_away_id'] != null) {
-            opponentsToRecalculate.add(data['team_away_id']);
-         }
-         batch.delete(match.reference);
-       }
-       debugPrint("Exclusão: ${homeMatches.docs.length} jogos (casa) marcados para deleção.");
+      // 2. Encontrar e deletar PARTIDAS onde o time era CASA
+      final homeMatches = await _firestore
+          .collection('matches')
+          .where('team_home_id', isEqualTo: teamId)
+          .get();
+      for (final match in homeMatches.docs) {
+        final data = match.data() as Map<String, dynamic>? ?? {};
+        // Se a partida era da 1ª Fase e finalizada, marca o Oponente para recalcular
+        if (data['status'] == 'finished' &&
+            data['phase'] == 'first' &&
+            data['team_away_id'] != null) {
+          opponentsToRecalculate.add(data['team_away_id']);
+        }
+        batch.delete(match.reference);
+      }
+      debugPrint(
+        "Exclusão: ${homeMatches.docs.length} jogos (casa) marcados para deleção.",
+      );
 
-       // 3. Encontrar e deletar PARTIDAS onde o time era VISITANTE
-       final awayMatches = await _firestore.collection('matches')
-           .where('team_away_id', isEqualTo: teamId).get();
-       for (final match in awayMatches.docs) {
-         final data = match.data() as Map<String, dynamic>? ?? {};
-         // Se a partida era da 1ª Fase e finalizada, marca o Oponente para recalcular
-         if (data['status'] == 'finished' && data['phase'] == 'first' && data['team_home_id'] != null) {
-            opponentsToRecalculate.add(data['team_home_id']);
-         }
-         batch.delete(match.reference);
-       }
-       debugPrint("Exclusão: ${awayMatches.docs.length} jogos (visitante) marcados para deleção.");
+      // 3. Encontrar e deletar PARTIDAS onde o time era VISITANTE
+      final awayMatches = await _firestore
+          .collection('matches')
+          .where('team_away_id', isEqualTo: teamId)
+          .get();
+      for (final match in awayMatches.docs) {
+        final data = match.data() as Map<String, dynamic>? ?? {};
+        // Se a partida era da 1ª Fase e finalizada, marca o Oponente para recalcular
+        if (data['status'] == 'finished' &&
+            data['phase'] == 'first' &&
+            data['team_home_id'] != null) {
+          opponentsToRecalculate.add(data['team_home_id']);
+        }
+        batch.delete(match.reference);
+      }
+      debugPrint(
+        "Exclusão: ${awayMatches.docs.length} jogos (visitante) marcados para deleção.",
+      );
 
-       // 4. Deletar a própria EQUIPE
-       batch.delete(teamDoc.reference);
-       debugPrint("Exclusão: Equipe ${teamDoc.id} marcada para deleção.");
+      // 4. Deletar a própria EQUIPE
+      batch.delete(teamDoc.reference);
+      debugPrint("Exclusão: Equipe ${teamDoc.id} marcada para deleção.");
 
-       // 5. Executar o Batch (Todas as deleções)
-       await batch.commit();
-       debugPrint("Batch de exclusão concluído.");
+      // 5. Executar o Batch (Todas as deleções)
+      await batch.commit();
+      debugPrint("Batch de exclusão concluído.");
 
-       // 6. Recalcular classificação dos oponentes afetados (PÓS-BATCH)
-       if (opponentsToRecalculate.isNotEmpty) {
-          debugPrint("Recalculando classificação para ${opponentsToRecalculate.length} oponentes afetados...");
-          for (String opponentId in opponentsToRecalculate) {
-             await _recalculateTeamStats(opponentId); // Chama a função que já temos
-          }
-          debugPrint("Recálculo de oponentes concluído.");
-       }
-       
-       return "Sucesso: Equipe e todos os seus dados associados (jogadores, partidas) foram excluídos.";
-     } catch (e) {
-       debugPrint("Erro ao excluir equipe: $e");
-       return "Erro ao excluir equipe: ${e.toString()}";
-     }
+      // 6. Recalcular classificação dos oponentes afetados (PÓS-BATCH)
+      if (opponentsToRecalculate.isNotEmpty) {
+        debugPrint(
+          "Recalculando classificação para ${opponentsToRecalculate.length} oponentes afetados...",
+        );
+        for (String opponentId in opponentsToRecalculate) {
+          await _recalculateTeamStats(
+            opponentId,
+          ); // Chama a função que já temos
+        }
+        debugPrint("Recálculo de oponentes concluído.");
+      }
+
+      return "Sucesso: Equipe e todos os seus dados associados (jogadores, partidas) foram excluídos.";
+    } catch (e) {
+      debugPrint("Erro ao excluir equipe: $e");
+      return "Erro ao excluir equipe: ${e.toString()}";
+    }
   }
   // --- FIM ---
 
@@ -283,58 +300,59 @@ class FirestoreService {
     required DateTime dateTime,
     required String phase, // Fase (para editar 2ª fase)
   }) async {
-     try {
-       final homeTeamData = homeTeam.data() as Map<String, dynamic>;
-       final awayTeamData = awayTeam.data() as Map<String, dynamic>;
-       
-       await match.reference.update({
-         'phase': phase,
-         'round': round,
-         'datetime': Timestamp.fromDate(dateTime),
-         'location': location,
-         'team_home_id': homeTeam.id,
-         'team_home_name': homeTeamData['name'] ?? '?',
-         'team_home_shield': homeTeamData['shield_url'] ?? '',
-         'team_away_id': awayTeam.id,
-         'team_away_name': awayTeamData['name'] ?? '?',
-         'team_away_shield': awayTeamData['shield_url'] ?? '',
-       });
-       return "Sucesso: Detalhes da partida atualizados.";
-     } catch (e) {
-       debugPrint("Erro ao atualizar detalhes: $e");
-       return "Erro ao atualizar detalhes: ${e.toString()}";
-     }
+    try {
+      final homeTeamData = homeTeam.data() as Map<String, dynamic>;
+      final awayTeamData = awayTeam.data() as Map<String, dynamic>;
+
+      await match.reference.update({
+        'phase': phase,
+        'round': round,
+        'datetime': Timestamp.fromDate(dateTime),
+        'location': location,
+        'team_home_id': homeTeam.id,
+        'team_home_name': homeTeamData['name'] ?? '?',
+        'team_home_shield': homeTeamData['shield_url'] ?? '',
+        'team_away_id': awayTeam.id,
+        'team_away_name': awayTeamData['name'] ?? '?',
+        'team_away_shield': awayTeamData['shield_url'] ?? '',
+      });
+      return "Sucesso: Detalhes da partida atualizados.";
+    } catch (e) {
+      debugPrint("Erro ao atualizar detalhes: $e");
+      return "Erro ao atualizar detalhes: ${e.toString()}";
+    }
   }
   // --- FIM ---
 
   // --- NOVA FUNÇÃO: EXCLUIR PARTIDA ---
   Future<String> deleteMatch(DocumentSnapshot match) async {
-     try {
-       final data = match.data() as Map<String, dynamic>? ?? {};
-       final status = data['status'] ?? 'pending';
-       final phase = data['phase'] ?? 'first';
-       final homeTeamId = data['team_home_id'];
-       final awayTeamId = data['team_away_id'];
+    try {
+      final data = match.data() as Map<String, dynamic>? ?? {};
+      final status = data['status'] ?? 'pending';
+      final phase = data['phase'] ?? 'first';
+      final homeTeamId = data['team_home_id'];
+      final awayTeamId = data['team_away_id'];
 
-       // 1. Deleta o documento da partida
-       await match.reference.delete();
+      // 1. Deleta o documento da partida
+      await match.reference.delete();
 
-       // 2. Se a partida era da 1ª Fase e estava 'finished',
-       // precisamos recalcular a classificação dos times envolvidos.
-       if (status == 'finished' && phase == 'first') {
-         debugPrint("Partida finalizada da 1ª Fase excluída. Recalculando times...");
-         if (homeTeamId != null) await _recalculateTeamStats(homeTeamId);
-         if (awayTeamId != null) await _recalculateTeamStats(awayTeamId);
-       }
-       
-       return "Sucesso: Partida excluída.";
-     } catch (e) {
-       debugPrint("Erro ao excluir partida: $e");
-       return "Erro ao excluir partida: ${e.toString()}";
-     }
+      // 2. Se a partida era da 1ª Fase e estava 'finished',
+      // precisamos recalcular a classificação dos times envolvidos.
+      if (status == 'finished' && phase == 'first') {
+        debugPrint(
+          "Partida finalizada da 1ª Fase excluída. Recalculando times...",
+        );
+        if (homeTeamId != null) await _recalculateTeamStats(homeTeamId);
+        if (awayTeamId != null) await _recalculateTeamStats(awayTeamId);
+      }
+
+      return "Sucesso: Partida excluída.";
+    } catch (e) {
+      debugPrint("Erro ao excluir partida: $e");
+      return "Erro ao excluir partida: ${e.toString()}";
+    }
   }
   // --- FIM ---
-
 
   Future<void> _recalculateTeamStats(String teamId) async {
     debugPrint("[SERVICE_RECALC] Recalculando Time (1ª Fase): $teamId");
@@ -687,104 +705,102 @@ class FirestoreService {
               );
             }
           }
-            if (rDelta < 0 &&
-                finalYellows < AdminService.suspensionYellowCards) {
-              finalSuspension = false;
-            }
-            if (yDelta < 0 &&
-                theoreticalNewYellows < AdminService.suspensionYellowCards &&
-                currentYellows >= AdminService.suspensionYellowCards &&
-                finalReds == 0) {
-              finalSuspension = false;
-            }
+          if (rDelta < 0 && finalYellows < AdminService.suspensionYellowCards) {
+            finalSuspension = false;
+          }
+          if (yDelta < 0 &&
+              theoreticalNewYellows < AdminService.suspensionYellowCards &&
+              currentYellows >= AdminService.suspensionYellowCards &&
+              finalReds == 0) {
+            finalSuspension = false;
+          }
 
-            // Prepara update do jogador
-            Map<String, dynamic> playerUpdateData = {
-              'yellow_cards': finalYellows,
-              'red_cards': finalReds,
-              'total_yellow_cards': finalTotalYellows,
-              'total_red_cards': finalTotalReds,
-              'is_suspended': finalSuspension,
-            };
-            transaction.update(playerSnap.reference, playerUpdateData);
+          // Prepara update do jogador
+          Map<String, dynamic> playerUpdateData = {
+            'yellow_cards': finalYellows,
+            'red_cards': finalReds,
+            'total_yellow_cards': finalTotalYellows,
+            'total_red_cards': finalTotalReds,
+            'is_suspended': finalSuspension,
+          };
+          transaction.update(playerSnap.reference, playerUpdateData);
 
-            // Calcula delta Pontos Disciplinares
-            int pointsDelta = 0;
-            if (isSecondYellowRedScenario) {
-              pointsDelta = (1 * 10) + (1 * 21);
-            } else {
-              pointsDelta = (yDelta * 10) + (rDelta * 21);
-            }
+          // Calcula delta Pontos Disciplinares
+          int pointsDelta = 0;
+          if (isSecondYellowRedScenario) {
+            pointsDelta = (1 * 10) + (1 * 21);
+          } else {
+            pointsDelta = (yDelta * 10) + (rDelta * 21);
+          }
 
-            // --- ACUMULA DELTAS PARA TIMES (PONTOS DISCIPLINARES E TOTAIS DE CARTÕES) ---
-            final String? playerTeamId = playerData['team_id'];
-            if (playerTeamId == homeTeamId) {
-              disciplinaryHomeDelta += pointsDelta;
-              totalYellowHomeDelta += yDelta; // Acumula delta original CA
-              totalRedHomeDelta += rDelta; // Acumula delta original CV
-            } else if (playerTeamId == awayTeamId) {
-              disciplinaryAwayDelta += pointsDelta;
-              totalYellowAwayDelta += yDelta; // Acumula delta original CA
-              totalRedAwayDelta += rDelta;
-            } else {
-              debugPrint(
-                "[DISCIPLINA] ERRO: Jogador $playerId não pertence a nenhum dos times da partida ($homeTeamId vs $awayTeamId). TeamID: $playerTeamId",
-              );
-            }
-            // --- FIM DA ACUMULAÇÃO ---
-          } // Fim loop for playerId
-          debugPrint(
-            "[PONTOS] Antes Update Disc.: TimeCasa=$homeTeamId, Delta=$disciplinaryHomeDelta | TimeFora=$awayTeamId, Delta=$disciplinaryAwayDelta",
+          // --- ACUMULA DELTAS PARA TIMES (PONTOS DISCIPLINARES E TOTAIS DE CARTÕES) ---
+          final String? playerTeamId = playerData['team_id'];
+          if (playerTeamId == homeTeamId) {
+            disciplinaryHomeDelta += pointsDelta;
+            totalYellowHomeDelta += yDelta; // Acumula delta original CA
+            totalRedHomeDelta += rDelta; // Acumula delta original CV
+          } else if (playerTeamId == awayTeamId) {
+            disciplinaryAwayDelta += pointsDelta;
+            totalYellowAwayDelta += yDelta; // Acumula delta original CA
+            totalRedAwayDelta += rDelta;
+          } else {
+            debugPrint(
+              "[DISCIPLINA] ERRO: Jogador $playerId não pertence a nenhum dos times da partida ($homeTeamId vs $awayTeamId). TeamID: $playerTeamId",
+            );
+          }
+          // --- FIM DA ACUMULAÇÃO ---
+        } // Fim loop for playerId
+        debugPrint(
+          "[PONTOS] Antes Update Disc.: TimeCasa=$homeTeamId, Delta=$disciplinaryHomeDelta | TimeFora=$awayTeamId, Delta=$disciplinaryAwayDelta",
+        );
+
+        // --- Aplica deltas acumulados aos TIMES ---
+        final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
+        final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
+
+        // Cria mapas de update apenas se houver o que mudar
+        Map<String, dynamic> homeUpdateData = {};
+        if (disciplinaryHomeDelta != 0)
+          homeUpdateData['disciplinary_points'] = FieldValue.increment(
+            disciplinaryHomeDelta,
+          );
+        if (totalYellowHomeDelta != 0)
+          homeUpdateData['total_yellow_cards'] = FieldValue.increment(
+            totalYellowHomeDelta,
+          );
+        if (totalRedHomeDelta != 0)
+          homeUpdateData['total_red_cards'] = FieldValue.increment(
+            totalRedHomeDelta,
           );
 
-          // --- Aplica deltas acumulados aos TIMES ---
-          final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
-          final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
+        Map<String, dynamic> awayUpdateData = {};
+        if (disciplinaryAwayDelta != 0)
+          awayUpdateData['disciplinary_points'] = FieldValue.increment(
+            disciplinaryAwayDelta,
+          );
+        if (totalYellowAwayDelta != 0)
+          awayUpdateData['total_yellow_cards'] = FieldValue.increment(
+            totalYellowAwayDelta,
+          );
+        if (totalRedAwayDelta != 0)
+          awayUpdateData['total_red_cards'] = FieldValue.increment(
+            totalRedAwayDelta,
+          );
 
-          // Cria mapas de update apenas se houver o que mudar
-          Map<String, dynamic> homeUpdateData = {};
-          if (disciplinaryHomeDelta != 0)
-            homeUpdateData['disciplinary_points'] = FieldValue.increment(
-              disciplinaryHomeDelta,
-            );
-          if (totalYellowHomeDelta != 0)
-            homeUpdateData['total_yellow_cards'] = FieldValue.increment(
-              totalYellowHomeDelta,
-            );
-          if (totalRedHomeDelta != 0)
-            homeUpdateData['total_red_cards'] = FieldValue.increment(
-              totalRedHomeDelta,
-            );
+        // Aplica updates se houver dados
+        if (homeUpdateData.isNotEmpty) {
+          debugPrint(
+            "[SERVICE_UPDATE] Aplicando Delta Time Casa ($homeTeamId): ${homeUpdateData.keys}",
+          );
+          transaction.update(homeTeamRef, homeUpdateData);
+        }
 
-          Map<String, dynamic> awayUpdateData = {};
-          if (disciplinaryAwayDelta != 0)
-            awayUpdateData['disciplinary_points'] = FieldValue.increment(
-              disciplinaryAwayDelta,
-            );
-          if (totalYellowAwayDelta != 0)
-            awayUpdateData['total_yellow_cards'] = FieldValue.increment(
-              totalYellowAwayDelta,
-            );
-          if (totalRedAwayDelta != 0)
-            awayUpdateData['total_red_cards'] = FieldValue.increment(
-              totalRedAwayDelta,
-            );
-
-          // Aplica updates se houver dados
-          if (homeUpdateData.isNotEmpty) {
-            debugPrint(
-              "[SERVICE_UPDATE] Aplicando Delta Time Casa ($homeTeamId): ${homeUpdateData.keys}",
-            );
-            transaction.update(homeTeamRef, homeUpdateData);
-          }
-
-          if (awayUpdateData.isNotEmpty) {
-            debugPrint(
-              "[SERVICE_UPDATE] Aplicando Delta Time Visitante ($awayTeamId): ${awayUpdateData.keys}",
-            );
-            transaction.update(awayTeamRef, awayUpdateData);
-          }
-        
+        if (awayUpdateData.isNotEmpty) {
+          debugPrint(
+            "[SERVICE_UPDATE] Aplicando Delta Time Visitante ($awayTeamId): ${awayUpdateData.keys}",
+          );
+          transaction.update(awayTeamRef, awayUpdateData);
+        }
       });
 
       // Fim da Transação
@@ -951,8 +967,41 @@ class FirestoreService {
         return "Erro: Esperava 2 semifinais, encontrou ${semisSnapshot.docs.length}.";
 
       // ... (Lê times envolvidos para pegar Rank) ...
-      Set<String> teamIdsInSemis = {}; /* ... coleta IDs ... */
-      Map<String, DocumentSnapshot> teamDataMap = {}; /* ... busca times ... */
+      debugPrint(
+        "[SERVICE_FINAL] Semifinais encontradas: ${semisSnapshot.docs.length}",
+      );
+
+      // 2. Coletar IDs dos times envolvidos
+      Set<String> teamIdsInSemis = {};
+      for (var semi in semisSnapshot.docs) {
+        // Adiciona try/catch ou acesso seguro se 'data' puder ser nulo
+        final data = semi.data() as Map<String, dynamic>?;
+        if (data != null) {
+          if (data['team_home_id'] != null)
+            teamIdsInSemis.add(data['team_home_id']);
+          if (data['team_away_id'] != null)
+            teamIdsInSemis.add(data['team_away_id']);
+        }
+      }
+
+      // --- TRECHO PREENCHIDO: Buscar dados dos times (para Ranks) ---
+      Map<String, DocumentSnapshot> teamDataMap = {};
+
+      if (teamIdsInSemis.isNotEmpty) {
+        // Busca os documentos dos 4 times envolvidos nas semis
+        final teamDocs = await _firestore
+            .collection('teams')
+            .where(FieldPath.documentId, whereIn: teamIdsInSemis.toList())
+            .get();
+        // Mapeia os resultados por ID para fácil acesso
+        for (var doc in teamDocs.docs) {
+          teamDataMap[doc.id] = doc;
+        }
+      }
+      // --- FIM DO TRECHO PREENCHIDO ---
+      debugPrint(
+        "[SERVICE_FINAL] Dados dos times das semis carregados: ${teamDataMap.length} times encontrados.",
+      );
 
       // Determina Vencedores/Perdedores (com lógica de desempate atualizada)
       String? winner1Id, loser1Id, winner2Id, loser2Id;
@@ -967,14 +1016,18 @@ class FirestoreService {
         if (data == null ||
             data['status'] != 'finished' ||
             data['score_home'] == null ||
-            data['score_away'] == null)
-          return "Erro: Semifinal ${matchDoc.id} não está pronta.";
+            data['score_away'] == null) {
+          // Exemplo de como pegar nomes para a mensagem de erro
+          String homeName = data?['team_home_name'] ?? 'Jogo ${i + 1}';
+          String awayName = data?['team_away_name'] ?? '';
+          return "Erro: Semifinal $homeName vs $awayName não está finalizada ou não tem placar.";
+        }
 
         String currentWinnerId, currentLoserId;
         String currentWinnerName, currentLoserName;
         String currentWinnerShield, currentLoserShield;
-        final int scoreHome =
-            data['score_home']; /* ... (pega scoreAway, ids, nomes, escudos) ... */
+
+        final int scoreHome = data['score_home'];
         final int scoreAway = data['score_away'];
         final String homeId = data['team_home_id'];
         final String homeName = data['team_home_name'];
