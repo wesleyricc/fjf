@@ -6,8 +6,11 @@ import 'dart:convert'; // Para utf8
 import '../screens/admin_menu_screen.dart'; // <-- Tela que vamos criar
 
 class AdminService {
-  static bool isAdmin = false; // Estado global de login
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Instância do Firestore
+  static bool isAdmin = false;
+  static String? loggedInAdminUsername; //Guarda o ID/username do admin logado
+
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // --- REGRAS DISCIPLINARES (com valores padrão) ---
   static int pendingYellowCards = 2; // Padrão: Pendurado com 2
@@ -129,7 +132,7 @@ class AdminService {
     return digest.toString();
   }
 
-  // --- NOVA FUNÇÃO PARA EXIBIR DIÁLOGO DE SENHA ---
+  // --- FUNÇÃO DE LOGIN ATUALIZADA (promptAdminPassword) ---
   Future<void> promptAdminPassword(BuildContext context) async {
     // Se já for admin, vai direto para o menu
     if (isAdmin) {
@@ -139,7 +142,8 @@ class AdminService {
       return;
     }
 
-    // Lógica do diálogo (similar à que estava na FixturesScreen)
+    // Controladores para os DOIS campos
+    final TextEditingController usernameController = TextEditingController();
     final TextEditingController passwordController = TextEditingController();
     bool isLoading = false;
 
@@ -147,42 +151,67 @@ class AdminService {
     bool? loggedIn = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext dialogContext) { // Usa dialogContext
+      builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Acesso Admin'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Senha'),
-                enabled: !isLoading,
+              content: Column( // Usa Column para dois campos
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: usernameController,
+                    decoration: const InputDecoration(labelText: 'Usuário'),
+                    enabled: !isLoading,
+                    textCapitalization: TextCapitalization.none, // Evita maiúsculas
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Senha'),
+                    enabled: !isLoading,
+                  ),
+                ],
               ),
               actions: <Widget>[
                 TextButton(
                   child: const Text('Cancelar'),
-                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(false), // Retorna false
+                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(false),
                 ),
                 TextButton(
-                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Entrar'),
+                  child: isLoading ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Entrar'),
                   onPressed: isLoading ? null : () async {
-                    final enteredPassword = passwordController.text;
-                    if (enteredPassword.isEmpty) {
-                       ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Digite a senha.')));
+                    final String username = usernameController.text.trim().toLowerCase(); // Força minúsculo
+                    final String password = passwordController.text;
+                    if (username.isEmpty || password.isEmpty) {
+                       ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Preencha usuário e senha.')));
                        return;
                     }
+                    
                     setDialogState(() { isLoading = true; });
                     try {
-                      final enteredHash = _hashPassword(enteredPassword);
-                      final docRef = _firestore.collection('config').doc('admin_credentials');
+                      // 1. Busca o documento do usuário
+                      final docRef = _firestore.collection('admin_users').doc(username);
                       final docSnap = await docRef.get();
-                      if (!docSnap.exists || !docSnap.data()!.containsKey('password_hash')) {
-                         throw Exception('Configuração de senha não encontrada.');
+
+                      if (!docSnap.exists) {
+                         throw Exception('Usuário Admin não encontrado.');
                       }
-                      final storedHash = docSnap.get('password_hash');
+                      
+                      // 2. Calcula o hash da senha digitada
+                      final enteredHash = _hashPassword(password);
+                      
+                      // 3. Compara com o hash armazenado
+                      final storedHash = docSnap.data()?['password_hash'];
+                      if (storedHash == null) {
+                         throw Exception('Erro de configuração no usuário admin.');
+                      }
 
                       if (enteredHash == storedHash) {
-                        isAdmin = true; // Seta o estado global
+                        // SUCESSO
+                        isAdmin = true; // Seta estado global
+                        loggedInAdminUsername = username; // Salva quem logou
                         Navigator.of(dialogContext).pop(true); // Retorna true
                       } else {
                         throw Exception('Senha incorreta.');
@@ -191,9 +220,8 @@ class AdminService {
                       ScaffoldMessenger.of(dialogContext).showSnackBar(
                         SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')),
                       );
-                      setDialogState(() { isLoading = false; }); // Permite tentar de novo
+                      setDialogState(() { isLoading = false; });
                     }
-                    // Não precisa do finally aqui, pois o pop(true) já fecha
                   },
                 ),
               ],
@@ -202,9 +230,8 @@ class AdminService {
         );
       },
     );
-
-    // --- Se o login foi bem-sucedido (pop retornou true), navega ---
-    if (loggedIn == true && Navigator.of(context).canPop()) { // Verifica contexto novamente
+    // Navega se o login foi bem-sucedido
+    if (loggedIn == true && (context as Element).mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (ctx) => const AdminMenuScreen()),
         );
@@ -217,6 +244,6 @@ class AdminService {
   // --- FUNÇÃO DE LOGOUT ---
   static void logoutAdmin() {
     isAdmin = false;
-    // Poderia adicionar notificação aqui se necessário
+    loggedInAdminUsername = null; // Limpa o usuário
   }
 }

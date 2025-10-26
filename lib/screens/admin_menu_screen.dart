@@ -4,10 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import '../services/data_uploader_service.dart';
+import '../services/admin_service.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
 import '../services/firestore_service.dart';
 import 'playoff_rules_screen.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart'; // Importar para _showChangeVideoIdDialog
+
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -109,135 +112,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  Future<void> _showChangePasswordDialog() async {
-    // Controladores para os campos de texto
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool isLoading = false; // Estado de carregamento do diálogo
-
-    // Mostra o diálogo
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false, // Não fechar clicando fora
-      builder: (dialogContext) { // Usar um contexto diferente para o diálogo
-        return StatefulBuilder( // Permite atualizar o estado do diálogo (loading)
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Alterar Senha Admin'),
-              content: SingleChildScrollView( // Caso a tela seja pequena e o teclado apareça
-                child: Column(
-                  mainAxisSize: MainAxisSize.min, // Encolhe para o conteúdo
-                  children: [
-                    TextField(
-                      controller: currentPasswordController,
-                      obscureText: true, // Esconde a senha
-                      decoration: const InputDecoration(labelText: 'Senha Atual'),
-                      enabled: !isLoading, // Desabilita enquanto carrega
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: newPasswordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: 'Nova Senha'),
-                      enabled: !isLoading,
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: confirmPasswordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(labelText: 'Confirmar Nova Senha'),
-                      enabled: !isLoading,
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(), // Fecha o diálogo
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: isLoading ? null : () async {
-                    // Pega os valores dos campos
-                    final currentPassword = currentPasswordController.text;
-                    final newPassword = newPasswordController.text;
-                    final confirmPassword = confirmPasswordController.text;
-
-                    // --- Validações ---
-                    if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Preencha todos os campos.')));
-                      return; // Impede o envio
-                    }
-                    if (newPassword != confirmPassword) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('As novas senhas não coincidem.')));
-                      return;
-                    }
-                     if (newPassword.length < 6) { // Regra de força mínima
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('A nova senha deve ter pelo menos 6 caracteres.')));
-                      return;
-                    }
-                    // --- Fim Validações ---
-
-                    // Inicia o estado de carregamento
-                    setDialogState(() { isLoading = true; });
-
-                    try {
-                      // 1. Verifica a senha atual
-                      final currentHash = _hashPassword(currentPassword); // Usa a função _hashPassword da classe
-                      final docRef = _firestore.collection('config').doc('admin_credentials');
-                      final docSnap = await docRef.get();
-
-                      // Verifica se o documento e o campo existem
-                      if (!docSnap.exists || !docSnap.data()!.containsKey('password_hash')) {
-                         throw Exception('Configuração de senha admin não encontrada.');
-                      }
-                      final storedHash = docSnap.get('password_hash');
-
-                      // Compara o hash digitado com o armazenado
-                      if (currentHash != storedHash) {
-                        throw Exception('Senha atual incorreta.');
-                      }
-
-                      // 2. Calcula o hash da nova senha
-                      final newHash = _hashPassword(newPassword);
-
-                      // 3. Atualiza o hash no Firestore
-                      await docRef.update({'password_hash': newHash});
-
-                      // Fecha o diálogo ANTES de mostrar o SnackBar de sucesso
-                      if (Navigator.of(dialogContext).canPop()) {
-                         Navigator.of(dialogContext).pop();
-                      }
-                      // Mostra mensagem de sucesso (usando o context principal se o dialogContext não for mais válido)
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha alterada com sucesso!')));
-
-                    } catch (e) {
-                      // Mostra mensagem de erro
-                       if (Navigator.of(dialogContext).canPop()) { // Usa dialogContext para o SnackBar de erro
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
-                            SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')),
-                          );
-                       }
-                    } finally {
-                       // Garante que o estado de carregamento termine
-                       // Verifica se o diálogo ainda está montado antes de chamar setDialogState
-                       // (Embora em caso de sucesso ele já tenha sido fechado)
-                       if (Navigator.of(dialogContext).canPop()){
-                          setDialogState(() { isLoading = false; });
-                       }
-                    }
-                  },
-                  // Exibe o indicador de carregamento ou o texto do botão
-                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Alterar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
+  
 
   Future<void> _showChangeVideoIdDialog() async {
     final videoIdController = TextEditingController();
@@ -367,61 +242,62 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
 
   // --- NOVA FUNÇÃO: VERIFICAR SENHA ADMIN ---
   Future<bool> _verifyAdminPassword(BuildContext context) async {
+    final String? currentAdminUsername = AdminService.loggedInAdminUsername;
+    if (currentAdminUsername == null) {
+       // Se não houver admin logado (bug?), cancela
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro: Admin não identificado. Tente relogar.')));
+       return false;
+    }
+    
     final TextEditingController passwordController = TextEditingController();
     bool isLoading = false;
+
     final bool? passwordConfirmed = await showDialog<bool>(
       context: context,
-      barrierDismissible: false, // Não fechar clicando fora
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Confirme a Senha Admin'),
+              title: Text('Confirmar Ação para usuário "$currentAdminUsername"'), // Mostra quem está confirmando
               content: TextField(
                 controller: passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'Senha'),
+                decoration: const InputDecoration(labelText: 'Digite sua senha'),
                 enabled: !isLoading,
               ),
               actions: <Widget>[
                 TextButton(
                   child: const Text('Cancelar'),
-                  // Ao cancelar, fecha o diálogo retornando false
                   onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(false),
                 ),
                 TextButton(
-                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Confirmar'),
+                  child: isLoading ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Confirmar'),
                   onPressed: isLoading ? null : () async {
                     final enteredPassword = passwordController.text;
                     if (enteredPassword.isEmpty) {
                        ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Digite a senha.')));
                        return;
-                    }
+                    } 
                     setDialogState(() { isLoading = true; });
                     try {
                       final enteredHash = _hashPassword(enteredPassword);
-                      final docRef = _firestore.collection('config').doc('admin_credentials');
+                      // Busca o documento do admin LOGADO
+                      final docRef = _firestore.collection('admin_users').doc(currentAdminUsername);
                       final docSnap = await docRef.get();
-                      if (!docSnap.exists || !docSnap.data()!.containsKey('password_hash')) {
-                         throw Exception('Configuração de senha não encontrada.');
-                      }
-                      final storedHash = docSnap.get('password_hash');
-
+                      
+                      if (!docSnap.exists) throw Exception('Usuário Admin não encontrado.');
+                      
+                      final storedHash = docSnap.data()?['password_hash'];
                       if (enteredHash == storedHash) {
-                        // Senha correta, fecha o diálogo retornando true
-                        Navigator.of(dialogContext).pop(true);
+                        Navigator.of(dialogContext).pop(true); // Sucesso
                       } else {
                         throw Exception('Senha incorreta.');
                       }
                     } catch (e) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')),
-                      );
-                      // Não fecha o diálogo em caso de erro, permite tentar de novo
-                      setDialogState(() { isLoading = false; });
-                      // Não retorna valor aqui, o usuário pode tentar de novo ou cancelar
+                       ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')));
+                       setDialogState(() { isLoading = false; });
                     }
-                    // Não precisa de finally aqui
                   },
                 ),
               ],
@@ -430,12 +306,106 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
         );
       },
     );
-  
     return passwordConfirmed ?? false;
   }
+  Future<void> _showChangePasswordDialog() async {
+    final String? currentAdminUsername = AdminService.loggedInAdminUsername;
+    if (currentAdminUsername == null) return; // Segurança
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool isLoading = false;
 
+    // Mostra o diálogo
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // Não fechar clicando fora
+      builder: (dialogContext) { // Usar um contexto diferente para o diálogo
+        return StatefulBuilder( // Permite atualizar o estado do diálogo (loading)
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Mudar Senha ($currentAdminUsername)'), // Mostra qual usuário
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(controller: currentPasswordController, obscureText: true, decoration: const InputDecoration(labelText: 'Senha Atual'), enabled: !isLoading),
+                    const SizedBox(height: 10),
+                    TextField(controller: newPasswordController, obscureText: true, decoration: const InputDecoration(labelText: 'Nova Senha'), enabled: !isLoading),
+                    const SizedBox(height: 10),
+                    TextField(controller: confirmPasswordController, obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar Nova Senha'), enabled: !isLoading),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: isLoading ? null : () async {
+                    // Pega os valores dos campos
+                    final currentPassword = currentPasswordController.text;
+                    final newPassword = newPasswordController.text;
+                    final confirmPassword = confirmPasswordController.text;
 
-  // --- NOVA FUNÇÃO PARA CHAMAR GERAÇÃO ---
+                    // --- Validações ---
+                    if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Preencha todos os campos.')));
+                      return; // Impede o envio
+                    }
+                    if (newPassword != confirmPassword) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('As novas senhas não coincidem.')));
+                      return;
+                    }
+                     if (newPassword.length < 6) { // Regra de força mínima
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('A nova senha deve ter pelo menos 6 caracteres.')));
+                      return;
+                    }
+                    // --- Fim Validações ---
+
+                    // Inicia o estado de carregamento
+                    setDialogState(() { isLoading = true; });
+
+                    try {
+                      // 1. Verifica a senha atual
+                      final currentHash = _hashPassword(currentPassword);
+                      final docRef = _firestore.collection('admin_users').doc(currentAdminUsername);
+                      final docSnap = await docRef.get();
+                      final storedHash = docSnap.data()?['password_hash'];
+
+                      if (currentHash != storedHash) {
+                        throw Exception('Senha atual incorreta.');
+                      }
+
+                      // 2. Calcula o hash da nova senha
+                      final newHash = _hashPassword(newPassword);
+
+                      // 3. Atualiza o hash no Firestore
+                      await docRef.update({'password_hash': newHash});
+
+                      // Fecha o diálogo ANTES de mostrar o SnackBar de sucesso
+                      if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+
+                      // Mostra mensagem de sucesso (usando o context principal se o dialogContext não for mais válido)
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha alterada com sucesso!')));
+
+                    } catch (e) {
+                       if (Navigator.of(dialogContext).canPop()) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')));
+                    } finally {
+                       if (Navigator.of(dialogContext).canPop()) setDialogState(() { isLoading = false; });
+                    }
+                  },
+                  // Exibe o indicador de carregamento ou o texto do botão
+                  child: isLoading ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Alterar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
   Future<void> _triggerGenerateSemifinals() async {
      // Diálogo de confirmação extra
      final confirm = await showDialog<bool>(
