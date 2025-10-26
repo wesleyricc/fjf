@@ -136,12 +136,14 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       final homeQuery = await _firestore
           .collection('players')
           .where('team_id', isEqualTo: homeTeamId)
+          .where('isActive', isEqualTo: true)
           .get();
       _homePlayers = homeQuery.docs;
 
       final awayQuery = await _firestore
           .collection('players')
           .where('team_id', isEqualTo: awayTeamId)
+          .where('isActive', isEqualTo: true)
           .get();
       _awayPlayers = awayQuery.docs;
 
@@ -326,10 +328,24 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<DocumentSnapshot> allPlayers = [
-      ..._homePlayers,
-      ..._awayPlayers,
-    ];
+
+    // --- CORREÇÃO: GARANTIR LISTA ÚNICA DE JOGADORES ---
+    // 1. Cria um Map para garantir IDs únicos. O ID do jogador é a chave.
+    final Map<String, DocumentSnapshot> uniquePlayersMap = {};
+    
+    // 2. Adiciona todos os jogadores da casa ao mapa
+    for (var player in _homePlayers) {
+      uniquePlayersMap[player.id] = player;
+    }
+    // 3. Adiciona todos os jogadores visitantes (duplicatas serão sobrescritas)
+    for (var player in _awayPlayers) {
+      uniquePlayersMap[player.id] = player;
+    }
+    
+    // 4. Cria a lista final 'allPlayers' a partir dos valores do mapa
+    final List<DocumentSnapshot> allPlayers = uniquePlayersMap.values.toList();
+    // --- FIM DA CORREÇÃO ---
+
     final data = widget.match.data() as Map<String, dynamic>;
     final homeTeamName = data['team_home_name'] ?? 'Casa';
     final awayTeamName = data['team_away_name'] ?? 'Visitante';
@@ -346,6 +362,31 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       ),
     );
     // --- FIM DA ORDENAÇÃO ---
+
+    // --- CORREÇÃO: Validar o _selectedManOfTheMatchId ---
+    // Cria uma variável local 'validSelectedMotmId' baseada no estado
+    String? validSelectedMotmId = _selectedManOfTheMatchId;
+
+    // Só faz a verificação se os jogadores já carregaram e um ID está selecionado
+    if (validSelectedMotmId != null &&
+        validSelectedMotmId.isNotEmpty &&
+        !_isLoadingPlayers) {
+      
+      // Tenta encontrar o jogador na lista 'allPlayers'
+      final bool playerExistsInList = allPlayers.any((player) => player.id == validSelectedMotmId);
+      
+      // Se o ID salvo NÃO existe na lista de jogadores desta partida
+      if (!playerExistsInList) {
+        debugPrint(
+            "Aviso: Craque do Jogo salvo ('$validSelectedMotmId') não encontrado na lista de jogadores desta partida. Resetando para null.");
+        validSelectedMotmId = null; // Força para null
+        // Opcional: Atualiza o estado principal (mas pode causar loop se não for cuidadoso)
+        // WidgetsBinding.instance.addPostFrameCallback((_) {
+        //   setState(() { _selectedManOfTheMatchId = null; });
+        // });
+      }
+    }
+    // --- FIM DA CORREÇÃO ---
 
     return Scaffold(
       appBar: AppBar(
@@ -465,7 +506,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                           vertical: 8.0,
                         ),
                         child: DropdownButtonFormField<String>(
-                          value: _selectedManOfTheMatchId,
+                          value: validSelectedMotmId,
                           hint: const Text('Selecione o jogador'),
                           isExpanded: true,
                           items: allPlayers.map((player) {

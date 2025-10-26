@@ -74,6 +74,7 @@ class DataUploaderService {
         playerInfo['is_suspended'] = false;
         playerInfo['total_yellow_cards'] = 0;
         playerInfo['total_red_cards'] = 0;
+        playerInfo['isActive'] = true;
 
         batch.set(playerRef, playerInfo);
       }

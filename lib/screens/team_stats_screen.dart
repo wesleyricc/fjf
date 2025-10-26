@@ -265,7 +265,7 @@ class TeamStatsScreen extends StatelessWidget {
             _buildRankingList(
               context: context,
               // Query: Ordena por 'total_yellow_cards' (descendente)
-              query: FirebaseFirestore.instance.collection('teams').where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: false).orderBy('name'),
+              query: FirebaseFirestore.instance.collection('teams').where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
               statField: 'total_yellow_cards',
               statLabel: 'CA',
               emptyMessage: 'Nenhuma equipe com cartões amarelos.',
@@ -274,7 +274,7 @@ class TeamStatsScreen extends StatelessWidget {
             _buildRankingList(
               context: context,
               // Query: Ordena por 'total_red_cards' (descendente)
-              query: FirebaseFirestore.instance.collection('teams').where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: false).orderBy('name'),
+              query: FirebaseFirestore.instance.collection('teams').where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
               statField: 'total_red_cards',
               statLabel: 'CV',
               emptyMessage: 'Nenhuma equipe com cartões vermelhos.',

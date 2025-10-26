@@ -27,6 +27,213 @@ class FirestoreService {
     return delta;
   }
 
+  // --- NOVAS FUNÇÕES CRUD DE JOGADOR ---
+
+  Future<String> createPlayer({
+    required String name,
+    required bool isGoalkeeper,
+    required String teamId,
+    required String teamName,
+    required String teamShieldUrl,
+  }) async {
+    try {
+      await _firestore.collection('players').add({
+        'name': name,
+        'is_goalkeeper': isGoalkeeper,
+        'team_id': teamId,
+        'team_name': teamName, // Denormalizado
+        'team_shield_url': teamShieldUrl, // Denormalizado
+
+        // Inicializa todas as estatísticas
+        'goals': 0, 'assists': 0,
+        'yellow_cards': 0, 'red_cards': 0,
+        'total_yellow_cards': 0, 'total_red_cards': 0,
+        'goals_conceded': 0,
+        'man_of_the_match_awards': 0,
+        'is_suspended': false,
+        'isActive': true, // <-- Define como ativo
+      });
+      return "Sucesso: Jogador '$name' criado.";
+    } catch (e) {
+      debugPrint("Erro ao criar jogador: $e");
+      return "Erro ao criar jogador: ${e.toString()}";
+    }
+  }
+
+  Future<String> updatePlayer({
+    required DocumentSnapshot playerDoc,
+    required String name,
+    required bool isGoalkeeper,
+  }) async {
+     try {
+       await playerDoc.reference.update({
+         'name': name,
+         'is_goalkeeper': isGoalkeeper,
+         // Nota: Mudar o time de um jogador exigiria uma lógica mais complexa
+         // para recalcular stats do time antigo e do novo.
+       });
+       return "Sucesso: Jogador '$name' atualizado.";
+     } catch (e) {
+       debugPrint("Erro ao atualizar jogador: $e");
+       return "Erro ao atualizar jogador: ${e.toString()}";
+     }
+  }
+
+  // Soft Delete: Apenas marca o jogador como inativo
+  Future<String> deletePlayer(DocumentSnapshot playerDoc) async {
+     try {
+       await playerDoc.reference.update({
+         'isActive': false,
+       });
+       // Nota: Isso NÃO recalcula estatísticas. As estatísticas dele
+       // permanecem nos totais (Time e Jogador Total), mas ele
+       // desaparecerá das listas de jogadores ativos.
+       return "Sucesso: Jogador excluído (inativado).";
+     } catch (e) {
+       debugPrint("Erro ao excluir jogador: $e");
+       return "Erro ao excluir jogador: ${e.toString()}";
+     }
+  }
+  // --- FIM CRUD JOGADOR ---
+
+  // --- NOVA FUNÇÃO: CRIAR EQUIPE ---
+  Future<String> createTeam({
+    required String name,
+    required String shortName,
+    required String shieldUrl,
+  }) async {
+    try {
+      final newTeamRef = _firestore.collection('teams').doc(); // ID automático
+
+      // Define todos os campos de estatísticas como 0
+      await newTeamRef.set({
+        'name': name,
+        'short_name': shortName,
+        'shield_url': shieldUrl,
+        // Stats de Classificação (1ª Fase)
+        'points': 0,
+        'match_points': 0,
+        'extra_points': 0,
+        'games_played': 0,
+        'wins': 0,
+        'draws': 0,
+        'losses': 0,
+        'goals_for': 0,
+        'goals_against': 0,
+        'goal_difference': 0,
+        'phase1_rank': null,
+        // Stats Disciplinares
+        'disciplinary_points': 0,
+        'total_yellow_cards': 0,
+        'total_red_cards': 0,
+      });
+      return "Sucesso: Equipe '$name' criada.";
+    } catch (e) {
+      debugPrint("Erro ao criar equipe: $e");
+      return "Erro ao criar equipe: ${e.toString()}";
+    }
+  }
+  // --- FIM ---
+
+
+  // --- NOVA FUNÇÃO: ATUALIZAR EQUIPE ---
+  Future<String> updateTeam({
+    required DocumentSnapshot teamDoc,
+    required String name,
+    required String shortName,
+    required String shieldUrl,
+  }) async {
+     try {
+       await teamDoc.reference.update({
+         'name': name,
+         'short_name': shortName,
+         'shield_url': shieldUrl,
+       });
+
+       // ATENÇÃO: Se o nome ou escudo mudou, idealmente deveríamos
+       // atualizar 'team_home_name', 'team_away_name', etc.
+       // em TODOS os 'matches' e 'players'.
+       // Isso é uma operação MUITO CUSTOSA (Cloud Function seria melhor).
+       // Por enquanto, vamos assumir que o admin sabe que precisa
+       // recriar os jogos ou que os nomes antigos persistirão.
+       debugPrint("Aviso: Nome/Escudo da equipe alterado. Jogos e jogadores antigos não serão atualizados automaticamente.");
+
+       return "Sucesso: Equipe '$name' atualizada.";
+     } catch (e) {
+       debugPrint("Erro ao atualizar equipe: $e");
+       return "Erro ao atualizar equipe: ${e.toString()}";
+     }
+  }
+  // --- FIM ---
+
+
+  // --- NOVA FUNÇÃO: EXCLUIR EQUIPE (CASCATA) ---
+  Future<String> deleteTeam(DocumentSnapshot teamDoc) async {
+     debugPrint("INICIANDO EXCLUSÃO EM CASCATA PARA: ${teamDoc.id}");
+     final teamId = teamDoc.id;
+     final WriteBatch batch = _firestore.batch();
+     Set<String> opponentsToRecalculate = {}; // Para recalcular classificação
+
+     try {
+       // 1. Encontrar e deletar JOGADORES do time
+       final playersSnapshot = await _firestore.collection('players')
+           .where('team_id', isEqualTo: teamId).get();
+       for (final player in playersSnapshot.docs) {
+         batch.delete(player.reference);
+       }
+       debugPrint("Exclusão: ${playersSnapshot.docs.length} jogadores marcados para deleção.");
+
+       // 2. Encontrar e deletar PARTIDAS onde o time era CASA
+       final homeMatches = await _firestore.collection('matches')
+           .where('team_home_id', isEqualTo: teamId).get();
+       for (final match in homeMatches.docs) {
+         final data = match.data() as Map<String, dynamic>? ?? {};
+         // Se a partida era da 1ª Fase e finalizada, marca o Oponente para recalcular
+         if (data['status'] == 'finished' && data['phase'] == 'first' && data['team_away_id'] != null) {
+            opponentsToRecalculate.add(data['team_away_id']);
+         }
+         batch.delete(match.reference);
+       }
+       debugPrint("Exclusão: ${homeMatches.docs.length} jogos (casa) marcados para deleção.");
+
+       // 3. Encontrar e deletar PARTIDAS onde o time era VISITANTE
+       final awayMatches = await _firestore.collection('matches')
+           .where('team_away_id', isEqualTo: teamId).get();
+       for (final match in awayMatches.docs) {
+         final data = match.data() as Map<String, dynamic>? ?? {};
+         // Se a partida era da 1ª Fase e finalizada, marca o Oponente para recalcular
+         if (data['status'] == 'finished' && data['phase'] == 'first' && data['team_home_id'] != null) {
+            opponentsToRecalculate.add(data['team_home_id']);
+         }
+         batch.delete(match.reference);
+       }
+       debugPrint("Exclusão: ${awayMatches.docs.length} jogos (visitante) marcados para deleção.");
+
+       // 4. Deletar a própria EQUIPE
+       batch.delete(teamDoc.reference);
+       debugPrint("Exclusão: Equipe ${teamDoc.id} marcada para deleção.");
+
+       // 5. Executar o Batch (Todas as deleções)
+       await batch.commit();
+       debugPrint("Batch de exclusão concluído.");
+
+       // 6. Recalcular classificação dos oponentes afetados (PÓS-BATCH)
+       if (opponentsToRecalculate.isNotEmpty) {
+          debugPrint("Recalculando classificação para ${opponentsToRecalculate.length} oponentes afetados...");
+          for (String opponentId in opponentsToRecalculate) {
+             await _recalculateTeamStats(opponentId); // Chama a função que já temos
+          }
+          debugPrint("Recálculo de oponentes concluído.");
+       }
+       
+       return "Sucesso: Equipe e todos os seus dados associados (jogadores, partidas) foram excluídos.";
+     } catch (e) {
+       debugPrint("Erro ao excluir equipe: $e");
+       return "Erro ao excluir equipe: ${e.toString()}";
+     }
+  }
+  // --- FIM ---
+
   // --- NOVA FUNÇÃO: CRIAR PARTIDA ---
   Future<String> createMatch({
     required DocumentSnapshot homeTeam, // Doc completo do time

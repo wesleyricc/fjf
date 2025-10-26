@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/admin_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import 'extra_points_log_screen.dart'; // <-- Tela de log que vamos criar
+import 'extra_points_log_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'edit_player_screen.dart';
+import '../services/firestore_service.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc; // Recebe o documento do time selecionado
@@ -18,6 +20,9 @@ class TeamDetailScreen extends StatefulWidget {
 
 class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService = FirestoreService();
+  
+  
 
   // --- Função para mostrar o diálogo de Pontos Extras ---
   Future<void> _showAddExtraPointsDialog() async {
@@ -237,6 +242,30 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
   // --- FIM DA FUNÇÃO AUXILIAR ---
 
+// --- NOVA FUNÇÃO: DIÁLOGO EXCLUIR JOGADOR ---
+  Future<void> _showDeletePlayerDialog(BuildContext context, DocumentSnapshot playerDoc) async {
+     final playerName = (playerDoc.data() as Map<String, dynamic>? ?? {})['name'] ?? 'Jogador';
+     final confirm = await showDialog<bool>(
+       context: context,
+       builder: (ctx) => AlertDialog(
+         title: Text('Excluir Jogador $playerName?'),
+         content: const Text('Isso marcará o jogador como inativo. Ele desaparecerá das listas, mas suas estatísticas históricas serão mantidas.\n\nDeseja continuar?'),
+         actions: [
+           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+           TextButton(
+             onPressed: () => Navigator.of(ctx).pop(true),
+             child: const Text('Excluir (Inativar)', style: TextStyle(color: Colors.red)),
+           ),
+         ],
+       ),
+     );
+
+     if (confirm == true && mounted) {
+       final result = await _firestoreService.deletePlayer(playerDoc); // Chama o serviço (soft delete)
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+     }
+  }
+  // --- FIM ---
 
   @override
   Widget build(BuildContext context) {
@@ -259,17 +288,37 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(teamName),
-      ),
+      
       // Adiciona o FloatingActionButton SÓ se for admin
-      floatingActionButton: AdminService.isAdmin
-          ? FloatingActionButton.extended(
-              onPressed: _showAddExtraPointsDialog,
-              icon: const Icon(Icons.add_circle_outline),
-              label: const Text('Pontos Extras'),
-              backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white,
-            )
-          : null, // Não mostra o botão se não for admin
+      actions: AdminService.isAdmin
+          ? [ // Mostra ações se for admin
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  tooltip: 'Adicionar Pontos Extras',
+                  onPressed: _showAddExtraPointsDialog, // Chama a função existente
+                ),
+                IconButton(
+                  icon: const Icon(Icons.person_add_alt_1),
+                  tooltip: 'Adicionar Novo Jogador',
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (ctx) => EditPlayerScreen(
+                          teamId: teamId,
+                          teamName: teamName,
+                          teamShieldUrl: teamShieldUrl,
+                          playerDoc: null, // Modo Criação
+                        ),
+                      ),
+                    );
+                  },
+                ),
+          ]
+          : null,
+      ),
+
+          
+          
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -360,6 +409,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               stream: _firestore
                   .collection('players')
                   .where('team_id', isEqualTo: teamId)
+                  .where('isActive', isEqualTo: true)
                   .orderBy('name')
                   .snapshots(),
               builder: (context, playerSnapshot) {
@@ -370,19 +420,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   return Center(child: Text('Erro ao carregar jogadores: ${playerSnapshot.error}'));
                 }
                 if (!playerSnapshot.hasData || playerSnapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('Nenhum jogador cadastrado para esta equipe.'));
+                  return const Center(child: Text('Nenhum jogador ativo cadastrado para esta equipe.'));
                 }
 
                 final players = playerSnapshot.data!.docs;
 
                 // --- SUBSTITUIÇÃO DO LISTVIEW PELA DATATABLE ---
                 return Padding( // Adiciona um padding lateral para a tabela
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
                   child: SingleChildScrollView( // Permite rolagem horizontal se a tabela for larga
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
                       // --- Ajustes para Compactar ---
-                      columnSpacing: 16.0, // Espaço entre colunas
+                      columnSpacing: 12.0, // Espaço entre colunas
                       horizontalMargin: 8.0, // Margem nas bordas da tabela
                       dataRowMinHeight: 35.0, // Altura mínima da linha
                       dataRowMaxHeight: 35.0, // Altura máxima da linha
@@ -391,52 +441,21 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       columns: [
                         const DataColumn(label: Text('Jogador')), // Coluna Nome
                         // Colunas de Estatísticas com Ícones
-                        DataColumn(
-                          label: Tooltip( // Tooltip ajuda a entender o ícone
-                            message: 'Gols Marcados',
-                            //child: Icon(Icons.sports_soccer, size: 20, color: Theme.of(context).primaryColor),
-                            child: Center(child: Icon(Icons.sports_soccer, size: 20, color: Theme.of(context).primaryColor)),
-                          ),
-                          //numeric: true, // Alinha à direita
-                        ),
-                        DataColumn(
-                          label: Tooltip(
-                            message: 'Gols Sofridos (Goleiro)',
-                            // Ícone diferente para GS, talvez shield?
-                            //child: Icon(Icons.shield_outlined, size: 20, color: Colors.blueGrey),
-                            child: Center(child: Icon(Icons.shield_outlined, size: 20, color: Colors.blueGrey)),
-                          ),
-                          //numeric: true, // Alinha à direita
-                        ),
-                        DataColumn(
-                          label: Tooltip(
-                            message: 'Assistências',
-                            //child: Icon(Iconsr.assistant, size: 20, color: Theme.of(context).primaryColor),
-                            child: Center(child: Icon(Icons.assistant, size: 20, color: Theme.of(context).primaryColor)),
-                          ),
-                          //numeric: true,
-                        ),
-                        DataColumn(
-                          label: Tooltip(
-                            message: 'Cartões Amarelos',
-                            //child: Icon(Icons.style, size: 20, color: Colors.yellow[700]),
-                            child: Center(child: Icon(Icons.style, size: 20, color: Colors.yellow[700])),
-                          ),
-                          //numeric: true,
-                        ),
-                        DataColumn(
-                          label: Tooltip(
-                            message: 'Cartões Vermelhos',
-                            //child: Icon(Icons.style, size: 20, color: Colors.red[700]),
-                            child: Center(child: Icon(Icons.style, size: 20, color: Colors.red[700])),
-                          ),
-                          //numeric: true,
-                        ),
+                        DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'Gols', child: Icon(Icons.sports_soccer, size: 20)))),
+                        DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'Assist.', child: Icon(Icons.assistant, size: 20)))),
+                        DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'CA', child: Icon(Icons.style, size: 20, color: Colors.yellow[700])))),
+                        DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'CV', child: Icon(Icons.style, size: 20, color: Colors.red[700])))),
+                        DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'GS', child: Icon(Icons.shield_outlined, size: 20, color: Colors.blueGrey)))),
+                        // --- NOVA COLUNA AÇÕES (SÓ ADMIN) ---
+                        if (AdminService.isAdmin)
+                           const DataColumn(label: Center(child: Text('Ações'))),
+                        // --- FIM ---
+                        
                       ],
                       rows: players.map((playerDoc) {
                         try {
                           final playerData = playerDoc.data() as Map<String, dynamic>;
-                          final bool isGoalkeeper = playerData['is_goalkeeper'] ?? false; // Pega se é goleiro
+                          final bool isGoalkeeper = playerData['is_goalkeeper'] ?? false;
                           
                           return DataRow(cells: [
                             DataCell(
@@ -457,17 +476,47 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                 ],
                               ),
                             ),
-                            //DataCell(Text((playerData['goals'] ?? 0).toString())),
-                            DataCell(Center(child: Text((playerData['goals'] ?? 0).toString()))), 
-                            //DataCell(Text(isGoalkeeper ? (playerData['goals_conceded'] ?? 0).toString() : '0')),
-                            DataCell(Center(child: Text(isGoalkeeper ? (playerData['goals_conceded'] ?? 0).toString() : '0'))),
-                            //DataCell(Text((playerData['assists'] ?? 0).toString())),
+                            DataCell(Center(child: Text((playerData['goals'] ?? 0).toString()))),
                             DataCell(Center(child: Text((playerData['assists'] ?? 0).toString()))),
-                            //DataCell(Text((playerData['yellow_cards'] ?? 0).toString())),
-                            DataCell(Center(child: Text((playerData['yellow_cards'] ?? 0).toString()))),
-                            //DataCell(Text((playerData['red_cards'] ?? 0).toString()),
-                            DataCell(Center(child: Text((playerData['red_cards'] ?? 0).toString())),
-                            ),
+                            DataCell(Center(child: Text((playerData['total_yellow_cards'] ?? 0).toString()))), // Usa Total
+                            DataCell(Center(child: Text((playerData['total_red_cards'] ?? 0).toString()))), // Usa Total
+                            DataCell(Center(child: Text(isGoalkeeper ? (playerData['goals_conceded'] ?? 0).toString() : '-'))),
+
+                            // --- NOVA CÉLULA AÇÕES (SÓ ADMIN) ---
+                            if (AdminService.isAdmin)
+                              DataCell(
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_note, size: 20),
+                                      color: Theme.of(context).primaryColor,
+                                      padding: EdgeInsets.zero,
+                                      tooltip: 'Editar Jogador',
+                                      onPressed: () {
+                                         Navigator.of(context).push(
+                                          MaterialPageRoute(builder: (ctx) => EditPlayerScreen(
+                                            teamId: teamId,
+                                            teamName: teamName,
+                                            teamShieldUrl: teamShieldUrl,
+                                            playerDoc: playerDoc, // Modo Edição
+                                          )),
+                                        );
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, size: 20),
+                                      color: Colors.red[700],
+                                      padding: EdgeInsets.zero,
+                                      tooltip: 'Excluir Jogador (Inativar)',
+                                      onPressed: () {
+                                        _showDeletePlayerDialog(context, playerDoc);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            // --- FIM ---
                           ]);
 
                         } catch (e) {
