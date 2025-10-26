@@ -28,13 +28,42 @@ class FixturesScreen extends StatefulWidget {
   State<FixturesScreen> createState() => _FixturesScreenState();
 }
 
-class _FixturesScreenState extends State<FixturesScreen> {
+class _FixturesScreenState extends State<FixturesScreen>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   // --- Estados usando Enums ---
   TournamentPhase _selectedPhase = TournamentPhase.first;
   int _selectedRound = 1;
   PlayoffStage _selectedPlayoffStage = PlayoffStage.semifinal;
   int TOTAL_RODADAS = 7;
+
+  // --- 2. DECLARAR O CONTROLLER DA ANIMAÇÃO ---
+  late AnimationController _blinkAnimationController;
+  // --- FIM ---
+
+  // --- 3. INICIALIZAR O CONTROLLER NO INITSTATE ---
+  @override
+  void initState() {
+    super.initState();
+    _blinkAnimationController = AnimationController(
+      vsync: this, // Fornecido pelo SingleTickerProviderStateMixin
+      duration: const Duration(
+        milliseconds: 700,
+      ), // Duração do "fade" (meio piscar)
+    );
+    _blinkAnimationController.repeat(
+      reverse: true,
+    ); // Faz piscar (fade out -> fade in)
+  }
+  // --- FIM ---
+
+  // --- 4. FAZER DISPOSE DO CONTROLLER ---
+  @override
+  void dispose() {
+    _blinkAnimationController.dispose(); // Limpa o controller
+    super.dispose();
+  }
+  // --- FIM ---
 
   // --- 1. FUNÇÃO AUXILIAR PARA BUSCAR TIME (PARA O CAMPEÃO) ---
   Future<DocumentSnapshot?> _fetchTeam(String? teamId) async {
@@ -332,6 +361,26 @@ class _FixturesScreenState extends State<FixturesScreen> {
                         winnerTeamId != null &&
                         winnerTeamId.isNotEmpty);
 
+                    // Cria o widget da Row de Status
+                    Widget statusWidget = Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconTheme(
+                          data: IconThemeData(color: statusColor, size: 16),
+                          child: statusIcon,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: statusColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    );
+
                     return Column(
                       children: [
                         Card(
@@ -391,33 +440,32 @@ class _FixturesScreenState extends State<FixturesScreen> {
                                     ),
                                   ),
 
+                                  // --- 5. APLICA A ANIMAÇÃO CONDICIONAL ---
+                                  // if (status == 'in_progress')
+                                  //FadeTransition(
+                                  // opacity: _blinkAnimationController, // Controlado pelo controller
+                                  //child: statusWidget, // O Row de status
+                                  //)
+                                  //else
+                                  //statusWidget,
+                                  // --- FIM DA MUDANÇA ---
+
                                   // --- 2. EXIBIR ÍCONE, DATA E LOCAL ---
                                   Row(
                                     // Usar Row para alinhar ícone e texto
-                                    mainAxisAlignment: MainAxisAlignment
-                                        .center, // Centraliza o conteúdo da Row
+                                    mainAxisAlignment: MainAxisAlignment.center, // Centraliza o conteúdo da Row
                                     children: [
-                                      IconTheme(
-                                        // Aplica cor ao ícone
-                                        data: IconThemeData(
-                                          color: statusColor,
-                                          size: 16,
-                                        ),
-                                        child: statusIcon,
-                                      ),
-                                      const SizedBox(
-                                        width: 6,
-                                      ), // Espaço entre ícone e texto
-
-                                      Text(
-                                        statusText,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color:
-                                              statusColor, // Usa a mesma cor no texto
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
+                                      // --- 5. APLICA A ANIMAÇÃO CONDICIONAL ---
+                                      if (status == 'in_progress')
+                                        FadeTransition(
+                                          opacity:
+                                              _blinkAnimationController, // Controlado pelo controller
+                                          child:
+                                              statusWidget, // O Row de status
+                                        )
+                                      else
+                                        statusWidget,
+                                      //--- FIM DA MUDANÇA ---
                                     ],
                                   ),
                                   // --- FIM DA EXIBIÇÃO ---
