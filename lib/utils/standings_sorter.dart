@@ -16,7 +16,8 @@ class TeamStanding {
   int goalsFor;
   int goalsAgainst;
   int disciplinaryPoints;
-
+  int extraPoints;
+  
   TeamStanding(this.teamDoc)
       : points = (teamDoc.data() as Map<String, dynamic>?)?['points'] ?? 0,
         matchPoints = (teamDoc.data() as Map<String, dynamic>?)?['match_points'] ?? 0,
@@ -27,7 +28,8 @@ class TeamStanding {
         goalDifference = (teamDoc.data() as Map<String, dynamic>?)?['goal_difference'] ?? 0,
         goalsFor = (teamDoc.data() as Map<String, dynamic>?)?['goals_for'] ?? 0,
         goalsAgainst = (teamDoc.data() as Map<String, dynamic>?)?['goals_against'] ?? 0,
-        disciplinaryPoints = (teamDoc.data() as Map<String, dynamic>?)?['disciplinary_points'] ?? 0;
+        disciplinaryPoints = (teamDoc.data() as Map<String, dynamic>?)?['disciplinary_points'] ?? 0,
+        extraPoints = (teamDoc.data() as Map<String, dynamic>?)?['extra_points'] ?? 0;
 
   String get id => teamDoc.id;
   Map<String, dynamic> get data => teamDoc.data() as Map<String, dynamic>;

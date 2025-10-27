@@ -117,6 +117,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                       DataColumn(label: Text('GC')),
                       DataColumn(label: Text('SG')),
                       DataColumn(label: Text('APR %')),
+                      DataColumn(label: Text('PE')),
                       DataColumn(label: Text('PD')),
                     ],
                     rows: teams.map((teamStanding) {
@@ -184,7 +185,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                             },
                           )
                         ),
-
+                        DataCell(Text(teamStanding.extraPoints.toString())),
                         DataCell(Text(teamStanding.disciplinaryPoints.toString())),
                       ]);
                     }).toList(),
@@ -215,6 +216,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                         _buildLegendRow('GP', 'Gols Pró'),
                         _buildLegendRow('GC', 'Gols Contra'),
                         _buildLegendRow('APR %', 'Aproveitamento (%)'),
+                        _buildLegendRow('PE', 'Pontos Extras (Bônus/Penalidades)'),
                         _buildLegendRow('PD', 'Pontos Disciplinares (10 - Amarelo / 21  - Vermelho)'),
                       ],
                     ),
