@@ -1,0 +1,12 @@
+[
+  {
+    "origin": [
+      "https://fjfapp.web.app",       
+      "http://localhost:56441",   
+      "http://localhost"
+    ],
+    "method": ["GET"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"]
+  }
+]

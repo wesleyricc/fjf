@@ -1,11 +1,11 @@
 {
-    "name": "fjf_app",
-    "short_name": "fjf_app",
+    "name": "FJF",
+    "short_name": "FJF",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#C25F22",
+    "theme_color": "#C25F22",
+    "description": "Força Jovem Fumacense - Campeonato FJF 2025",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

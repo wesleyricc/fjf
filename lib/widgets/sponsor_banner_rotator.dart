@@ -14,123 +14,164 @@ class SponsorBannerRotator extends StatefulWidget {
 
 class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  List<DocumentSnapshot> _sponsors = [];
   int _currentIndex = 0;
   Timer? _timer;
-  List<DocumentSnapshot> _sponsors = []; // Guarda os patrocinadores buscados
+  StreamSubscription? _sponsorSubscription;
+  bool _isLoading = true; 
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForSponsorChanges(); // Inicia o listener
+  }
 
   @override
   void dispose() {
-    _timer?.cancel(); // Cancela o timer ao sair da tela
+    _timer?.cancel();
+    _sponsorSubscription?.cancel(); // Cancela a inscrição do Firestore
     super.dispose();
   }
 
-  void _startTimer() {
-    _timer?.cancel(); // Cancela o timer anterior, se houver
+  // 1. Ouve as mudanças no Firestore
+  void _listenForSponsorChanges() {
+    // Configura a query
+    final query = _firestore
+        .collection('sponsors')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order');
 
-    if (_sponsors.isEmpty) return; // Não faz nada se não há patrocinadores
+    // Cancela qualquer listener anterior
+    _sponsorSubscription?.cancel();
+    
+    // Inicia o novo listener
+    _sponsorSubscription = query.snapshots().listen(
+      (snapshot) {
+        // --- Dados recebidos ---
+        debugPrint("[Rotator] Dados de patrocinadores recebidos: ${snapshot.docs.length} banners.");
+        
+        if (!mounted) return; // Se a tela foi fechada, não faz nada
+        
+        bool listChanged = _didSponsorListChange(snapshot.docs); // Compara com a lista antiga
+        
+        setState(() {
+          _sponsors = snapshot.docs;
+          _isLoading = false; // Terminou o carregamento
+          
+          // Se a lista mudou ou está vazia, reseta o índice
+          if (listChanged || _sponsors.isEmpty) {
+            _currentIndex = 0;
+          }
+          // Garante que o índice atual é válido
+          if (_sponsors.isNotEmpty) {
+             _currentIndex = _currentIndex % _sponsors.length;
+          }
+        });
 
-    // Garante que o índice atual é válido
-    _currentIndex = _currentIndex % _sponsors.length;
-
-    final currentSponsor =
-        _sponsors[_currentIndex].data() as Map<String, dynamic>;
-    final displayTime =
-        (currentSponsor['displayTimeSeconds'] ?? 5) as int; // Padrão de 5s
-
-    // Cria um novo timer com a duração específica deste banner
-    _timer = Timer(Duration(seconds: displayTime), () {
-      if (!mounted) return; // Verifica se o widget ainda está na tela
-      setState(() {
-        _currentIndex =
-            (_currentIndex + 1) % _sponsors.length; // Avança para o próximo
-      });
-      _startTimer(); // Chama recursivamente para agendar o próximo timer
-    });
-  }
-
-  // --- NOVA FUNÇÃO PARA ABRIR URL ---
-  Future<void> _launchURL(String? urlString) async {
-    if (urlString == null || urlString.isEmpty) {
-      debugPrint('URL do banner está vazia.');
-      return; // Não faz nada se a URL for nula ou vazia
-    }
-
-    final Uri url = Uri.parse(urlString); // Converte a string para Uri
-
-    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      // Se não conseguir abrir no navegador externo, mostra erro
-      debugPrint('Não foi possível abrir $urlString');
-      if (mounted) {
-        // Verifica se o widget ainda está na tela
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível abrir o link: $urlString')),
-        );
+        // Inicia ou reinicia o timer com os novos dados
+        if (_sponsors.isNotEmpty) {
+          _startTimer();
+        } else {
+          _timer?.cancel(); // Para o timer se não há banners
+        }
+      },
+      onError: (error) {
+        // --- Erro ao buscar dados ---
+        debugPrint("[Rotator] Erro ao ouvir patrocinadores: $error");
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _sponsors = [];
+            _timer?.cancel();
+          });
+        }
       }
+    );
+  }
+
+  void _startTimer() {
+    _timer?.cancel(); // Cancela timer anterior
+    if (_sponsors.isEmpty || !mounted) return; // Não faz nada se lista vazia
+
+    // Pega a duração do banner ATUAL
+    try {
+      final currentSponsorData = _sponsors[_currentIndex].data() as Map<String, dynamic>;
+      final displayTime = (currentSponsorData['displayTimeSeconds'] ?? 5) as int;
+
+      // Agenda o próximo "setState"
+      _timer = Timer(Duration(seconds: displayTime), () {
+        if (!mounted) return;
+        
+        // --- AQUI É O PULO ---
+        // Apenas avança o índice e chama setState
+        setState(() {
+          _currentIndex = (_currentIndex + 1) % _sponsors.length;
+        });
+        // --- FIM DO PULO ---
+        
+        _startTimer(); // Chama recursivamente para o próximo ciclo
+      });
+    } catch (e) {
+      debugPrint("[Rotator] Erro ao iniciar timer (provavelmente dados inválidos): $e");
     }
   }
-  // --- FIM DA NOVA FUNÇÃO ---
+
+  // 3. Função de pré-cache (Opcional, mas ajuda. Chamada no build)
+  // Removida na versão anterior, mas vamos tentar de novo COM a lógica de estado correta.
+  void _precacheNextImage() {
+    if (_sponsors.isEmpty || !mounted) return;
+
+    try {
+      final int nextIndex = (_currentIndex + 1) % _sponsors.length;
+      final String nextImageUrl = (_sponsors[nextIndex].data() as Map<String, dynamic>?)?['imageUrl'] ?? '';
+      
+      if (nextImageUrl.isNotEmpty) {
+         // pre-cache não deve ser chamado excessivamente, mas aqui é ok
+         precacheImage(CachedNetworkImageProvider(nextImageUrl), context);
+      }
+    } catch (e) {
+       debugPrint("[Rotator] Erro no pré-cache: $e");
+    }
+  }
+
+  Future<void> _launchURL(String? urlString) async {
+    if (urlString == null || urlString.isEmpty) return;
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+       debugPrint('Não foi possível abrir $urlString');
+    }
+  }
+
+  // Função auxiliar para checar se a lista mudou
+  bool _didSponsorListChange(List<DocumentSnapshot> newSponsors) {
+    if (newSponsors.length != _sponsors.length) return true;
+    for (int i = 0; i < newSponsors.length; i++) {
+      if (newSponsors[i].id != _sponsors[i].id) return true;
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      // Busca patrocinadores ativos, ordenados
-      stream: _firestore
-          .collection('sponsors')
-          .where('isActive', isEqualTo: true)
-          .orderBy('order')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          // Mostra um placeholder enquanto carrega
-          return const SizedBox(
-            height: 120,
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasError) {
-          return const SizedBox(
-            height: 120,
-            child: Center(child: Text('Erro ao carregar patrocinadores')),
-          );
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          // Não mostra nada se não houver patrocinadores ativos
-          return const SizedBox.shrink(); // Widget vazio
-        }
+    // Estado 1: Carregando pela primeira vez
+    if (_isLoading) {
+      return const SizedBox(height: 60, child: Center(child: CircularProgressIndicator()));
+    }
+    
+    // Estado 2: Carregou, mas não há patrocinadores
+    if (_sponsors.isEmpty) {
+      return const SizedBox.shrink(); // Não mostra nada
+    }
 
-        // Atualiza a lista de patrocinadores e reinicia o timer se necessário
-        // Compara as listas para ver se houve mudança real nos dados
-        final newSponsors = snapshot.data!.docs;
-        bool listChanged = _didSponsorListChange(newSponsors);
-        _sponsors = newSponsors;
+    // Estado 3: Temos patrocinadores, vamos exibir
+    
+    // Tenta carregar a próxima imagem em segundo plano
+    _precacheNextImage();
 
-        // Se a lista mudou ou o timer não está ativo, inicia/reinicia
-        if (listChanged || _timer == null || !_timer!.isActive) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _startTimer();
-          });
-        }
-
-        if (_sponsors.isEmpty) return const SizedBox.shrink(); // Segurança extra
-
-        // Garante que o índice é válido após a atualização da lista
-        _currentIndex = _currentIndex % _sponsors.length;
-        final currentSponsorData = _sponsors[_currentIndex].data() as Map<String, dynamic>;
-        final imageUrl = currentSponsorData['imageUrl'];
-        final targetUrl = currentSponsorData['targetUrl'];
-
-        // --- 1. LÓGICA DE PRÉ-CACHE ---
-        // Pega o índice do *próximo* banner
-        final int nextIndex = (_currentIndex + 1) % _sponsors.length;
-        // Pega a URL do próximo banner
-        final String nextImageUrl = (_sponsors[nextIndex].data() as Map<String, dynamic>?)?['imageUrl'] ?? '';
-        
-        if (nextImageUrl.isNotEmpty) {
-           // Baixa a próxima imagem em segundo plano
-           // (O 'context' é necessário para precacheImage)
-           precacheImage(CachedNetworkImageProvider(nextImageUrl), context);
-        }
-        // --- FIM DO PRÉ-CACHE ---
+    // Pega os dados do banner atual
+    final currentSponsorData = _sponsors[_currentIndex].data() as Map<String, dynamic>;
+    final imageUrl = currentSponsorData['imageUrl'] as String? ?? ''; // Garante String
+    final targetUrl = currentSponsorData['targetUrl'] as String? ?? ''; // Garante String
         
         return AnimatedSwitcher(
           duration: const Duration(
@@ -140,9 +181,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
             return FadeTransition(opacity: animation, child: child);
           },
 
-          // --- 3. LAYOUT BUILDER EXPLÍCITO ---
-          // Força o AnimatedSwitcher a empilhar os widgets (cross-fade)
-          // em vez de potencialmente mostrá-los em sequência
+          // LayoutBuilder para garantir sobreposição (cross-fade)
           layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
             return Stack(
               alignment: Alignment.center,
@@ -204,18 +243,6 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                     ),
             ),
           ),
-        );
-      },
     );
-  }
-
-  // Função auxiliar para verificar se a lista de patrocinadores mudou
-  bool _didSponsorListChange(List<DocumentSnapshot> newSponsors) {
-    if (newSponsors.length != _sponsors.length) return true;
-    for (int i = 0; i < newSponsors.length; i++) {
-      if (newSponsors[i].id != _sponsors[i].id) return true;
-      // Poderia adicionar mais verificações (ex: imageUrl mudou), se necessário
-    }
-    return false;
   }
 }
