@@ -244,7 +244,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             // Contador GS (só para goleiro)
             if (isGoalkeeper)
               _buildStatCounter(
-                icon: Icons.shield_outlined,
+                icon: Icons.pan_tool_outlined,
                 label: "GS",
                 color: Colors.blueGrey,
                 count: currentGoalsConceded,
@@ -895,7 +895,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                 dense: true,
                 leading: Icon(
                   data['is_goalkeeper'] == true
-                      ? Icons.shield_outlined
+                      ? Icons.pan_tool_outlined
                       : Icons.person_outline,
                 ),
                 title: Text(

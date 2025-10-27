@@ -137,7 +137,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                    _isGoalkeeper = value;
                  });
                },
-               secondary: Icon(_isGoalkeeper ? Icons.shield_outlined : Icons.person_outline),
+               secondary: Icon(_isGoalkeeper ? Icons.pan_tool_outlined : Icons.person_outline),
                activeColor: Theme.of(context).primaryColor,
              ),
           ],

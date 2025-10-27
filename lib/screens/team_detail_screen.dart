@@ -445,7 +445,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'Assist.', child: Icon(Icons.assistant, size: 20)))),
                         DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'CA', child: Icon(Icons.style, size: 20, color: Colors.yellow[700])))),
                         DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'CV', child: Icon(Icons.style, size: 20, color: Colors.red[700])))),
-                        DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'GS', child: Icon(Icons.shield_outlined, size: 20, color: Colors.blueGrey)))),
+                        DataColumn(label: Container(alignment: Alignment.center, child: Tooltip(message: 'GS', child: Icon(Icons.pan_tool_outlined, size: 20, color: Colors.blueGrey)))),
                         // --- NOVA COLUNA AÇÕES (SÓ ADMIN) ---
                         if (AdminService.isAdmin)
                            const DataColumn(label: Center(child: Text('Ações'))),
@@ -465,7 +465,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   if (isGoalkeeper)
                                     Padding(
                                       padding: const EdgeInsets.only(right: 4.0),
-                                      child: Icon(Icons.shield_outlined, size: 16, color: Colors.blueGrey), // Ícone Goleiro
+                                      child: Icon(Icons.pan_tool_outlined, size: 16, color: Colors.blueGrey), // Ícone Goleiro
                                     ),
                                   Flexible( // Evita que nome longo quebre layout da célula
                                     child: Text(
