@@ -1,4 +1,5 @@
 // lib/services/admin_service.dart
+import 'package:fjf_app/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
@@ -136,6 +137,7 @@ class AdminService {
   Future<void> promptAdminPassword(BuildContext context) async {
     // Se já for admin, vai direto para o menu
     if (isAdmin) {
+      Navigator.of(context).pop();
       Navigator.of(context).push(
         MaterialPageRoute(builder: (ctx) => const AdminMenuScreen()),
       );
@@ -146,6 +148,7 @@ class AdminService {
     final TextEditingController usernameController = TextEditingController();
     final TextEditingController passwordController = TextEditingController();
     bool isLoading = false;
+    bool _obscurePassword = true;
 
     // Retorna o resultado do showDialog para saber se o login foi bem-sucedido
     bool? loggedIn = await showDialog<bool>(
@@ -155,7 +158,7 @@ class AdminService {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Acesso Admin'),
+              title: const Text('Menu Admininistrador'),
               content: Column( // Usa Column para dois campos
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -168,8 +171,24 @@ class AdminService {
                   const SizedBox(height: 10),
                   TextField(
                     controller: passwordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Senha'),
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration( // Remove 'const'
+                      labelText: 'Senha',
+                      // Adiciona o ícone de olho
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          // Muda o ícone baseado no estado
+                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          color: Colors.grey,
+                        ),
+                        onPressed: () {
+                          // Atualiza o estado DENTRO do diálogo
+                          setDialogState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
+                    ),
                     enabled: !isLoading,
                   ),
                 ],
@@ -230,15 +249,25 @@ class AdminService {
         );
       },
     );
+
+    if (!(context as Element).mounted) return;
+
     // Navega se o login foi bem-sucedido
     if (loggedIn == true && (context as Element).mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (ctx) => const AdminMenuScreen()),
-        );
+        Navigator.of(context).pop();
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Modo Admin ativado!')),
         );
+
+        // 2. REDIRECIONA PARA A TELA INICIAL (SPLASHSCREEN)
+        // Usamos pushAndRemoveUntil para limpar a pilha de navegação
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (ctx) => const SplashScreen()),
+          (route) => false, // Remove todas as rotas anteriores
+        );
     }
+    
   }
 
   // --- FUNÇÃO DE LOGOUT ---

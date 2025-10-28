@@ -14,7 +14,6 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     final AdminService adminService = AdminService();
 
     return Drawer(
@@ -25,7 +24,9 @@ class AppDrawer extends StatelessWidget {
           // --- HEADER DO DRAWER (Com a Logo e Título) ---
           DrawerHeader(
             decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor, // Cor definida no main.dart
+              color: Theme.of(
+                context,
+              ).primaryColor, // Cor definida no main.dart
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -33,7 +34,7 @@ class AppDrawer extends StatelessWidget {
               children: [
                 Image.asset(
                   'assets/logo2_fjf.png', // Caminho da sua logo
-                  height: 80, 
+                  height: 80,
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -87,18 +88,13 @@ class AppDrawer extends StatelessWidget {
           ),
 
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.leaderboard,
-            'Classificação',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                // Removemos o 'const' pois StandingsScreen não é mais const
-                MaterialPageRoute(builder: (ctx) => StandingsScreen()), 
-              );
-            },
-          ),
+          _buildDrawerItem(context, Icons.leaderboard, 'Classificação', () {
+            Navigator.of(context).pop();
+            Navigator.of(context).pushReplacement(
+              // Removemos o 'const' pois StandingsScreen não é mais const
+              MaterialPageRoute(builder: (ctx) => StandingsScreen()),
+            );
+          }),
 
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
@@ -108,7 +104,9 @@ class AppDrawer extends StatelessWidget {
             () {
               Navigator.of(context).pop();
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const TeamsListScreen()), // <-- Vai para a nova tela
+                MaterialPageRoute(
+                  builder: (ctx) => const TeamsListScreen(),
+                ), // <-- Vai para a nova tela
               );
             },
           ),
@@ -125,7 +123,7 @@ class AppDrawer extends StatelessWidget {
               );
             },
           ),
-          
+
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
@@ -142,36 +140,70 @@ class AppDrawer extends StatelessWidget {
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
-            AdminService.isAdmin ? Icons.admin_panel_settings : Icons.lock_outline, // Ícone muda se logado
-            AdminService.isAdmin ? 'Menu Admin' : 'Acesso Admin', // Texto muda
+            AdminService.isAdmin
+                ? Icons.admin_panel_settings
+                : Icons.lock_outline, // Ícone muda se logado
+            AdminService.isAdmin
+                ? 'Menu Administrador'
+                : 'Modo Admininistrador', // Texto muda
             () {
-              Navigator.of(context).pop(); // Fecha o drawer ANTES de mostrar o diálogo
-              adminService.promptAdminPassword(context); // Chama a função do serviço
+              //Navigator.of(
+                //context,
+              //).pop(); // Fecha o drawer ANTES de mostrar o diálogo
+              adminService.promptAdminPassword(
+                context,
+              ); // Chama a função do serviço
             },
             denseOverride: true, // Força compacto
-            contentPaddingOverride: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0), // Força compacto
+            contentPaddingOverride: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 4.0,
+            ), // Força compacto
           ),
 
           // --- ITEM DE LOGOUT (SÓ SE LOGADO) ---
           if (AdminService.isAdmin)
-             _buildDrawerItem(
-               context,
-               Icons.logout,
-               'Sair do Modo Admin',
-               () {
-                 AdminService.logoutAdmin();
-                 Navigator.of(context).pop(); // Fecha o drawer
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text('Modo Admin desativado.')),
-                 );
-                 // Opcional: Navegar para a tela inicial para "resetar" visualmente
-                 // Navigator.of(context).pushReplacement(
-                 //    MaterialPageRoute(builder: (ctx) => const SplashScreen()),
-                 // );
-               },
-               denseOverride: true,
-               contentPaddingOverride: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-             ),
+            _buildDrawerItem(
+              context,
+              Icons.logout,
+              'Sair do Modo Admininistrador',
+              () {
+                AdminService.logoutAdmin();
+                Navigator.of(context).pop(); // Fecha o drawer
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Modo Admininistrador desativado.'),
+                  ),
+                );
+                // Opcional: Navegar para a tela inicial para "resetar" visualmente
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (ctx) => const SplashScreen()),
+                  (route) => false, // Remove todas as rotas anteriores
+                );
+              },
+              denseOverride: true,
+              contentPaddingOverride: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 4.0,
+              ),
+            ),
+
+          // --- ADICIONAR TEXTO DE COPYRIGHT AQUI ---
+          const SizedBox(height: 150), // Espaço antes do texto
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              'Desenvolvido por Wesley Ricardo.\nTodos os direitos reservados © FJF 2025.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5), // Cor branca sutil
+                fontSize: 11, // Fonte pequena
+                height: 1.4, // Espaçamento entre linhas
+              ),
+            ),
+          ),
+          const SizedBox(height: 24), // Espaço no final do menu
+          // --- FIM DA ADIÇÃO ---
           // --- FIM DO ITEM DE LOGOUT ---
         ],
       ),
@@ -180,18 +212,25 @@ class AppDrawer extends StatelessWidget {
 
   // Função auxiliar para construir os itens do Drawer
   Widget _buildDrawerItem(
-        BuildContext context, IconData icon, String title, VoidCallback onTap,
-      {bool? denseOverride, EdgeInsets? contentPaddingOverride}) {
+    BuildContext context,
+    IconData icon,
+    String title,
+    VoidCallback onTap, {
+    bool? denseOverride,
+    EdgeInsets? contentPaddingOverride,
+  }) {
     return ListTile(
       dense: denseOverride ?? true,
-      contentPadding: contentPaddingOverride ?? const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0), // Usa override ou o padrão
+      contentPadding:
+          contentPaddingOverride ??
+          const EdgeInsets.symmetric(
+            horizontal: 16.0,
+            vertical: 4.0,
+          ), // Usa override ou o padrão
       leading: Icon(icon, color: Colors.white70, size: 24),
       title: Text(
         title,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-        ),
+        style: const TextStyle(color: Colors.white, fontSize: 16),
       ),
       onTap: onTap,
     );

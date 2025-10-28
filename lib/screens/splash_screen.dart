@@ -258,7 +258,7 @@ class _SplashScreenState extends State<SplashScreen> {
           Expanded(
             child: SingleChildScrollView(
               // Padding movido para dentro do conteúdo rolável
-              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 80.0),
+              padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 10.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -372,6 +372,18 @@ class _SplashScreenState extends State<SplashScreen> {
                       }).toList(),
                     ),
                   ),
+
+                  const SizedBox(height: 5), // Espaço generoso antes do rodapé
+                      Text(
+                        'Desenvolvido por Wesley Ricardo.\nTodos os direitos reservados © FJF 2025.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey[600], // Cor sutil
+                          fontSize: 12,
+                          height: 1.5, // Espaçamento entre linhas
+                        ),
+                      ),
+
                 ],
               ),
             ),
