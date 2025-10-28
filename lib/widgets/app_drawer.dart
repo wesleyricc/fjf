@@ -189,7 +189,7 @@ class AppDrawer extends StatelessWidget {
             ),
 
           // --- ADICIONAR TEXTO DE COPYRIGHT AQUI ---
-          const SizedBox(height: 150), // Espaço antes do texto
+          const SizedBox(height: 70), // Espaço antes do texto
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
