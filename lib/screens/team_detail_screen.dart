@@ -41,8 +41,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       'Outro (Negativo)': 0,
     };
 
-   
-
     // --- Função auxiliar para mostrar o Date Picker ---
     Future<void> _pickDate(
       BuildContext context,
@@ -376,17 +374,24 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
   // --- FIM ---
 
-   // --- NOVA FUNÇÃO AUXILIAR PARA ÍCONE DE STAFF ---
+  // --- NOVA FUNÇÃO AUXILIAR PARA ÍCONE DE STAFF ---
   IconData _getStaffIcon(String? role) {
     if (role == null) return Icons.assignment_ind_outlined; // Padrão
 
     String roleLower = role.toLowerCase();
 
     if (roleLower.contains('treinador') || roleLower.contains('técnico')) {
-      return Icons.content_paste; // Ícone de Prancheta
+      if (roleLower.contains('auxiliar')) {
+        return Icons.support_agent;
+      } else{
+        return Icons.content_paste; // Ícone de Prancheta
+      }
     }
     if (roleLower.contains('auxiliar')) {
       return Icons.support_agent; // Ícone de Headset
+    }
+    if (roleLower.contains('atendente')) {
+      return Icons.how_to_reg; // Ícone de Headset
     }
     if (roleLower.contains('analista')) {
       return Icons.analytics; // Ícone de Gráfico de Barras
@@ -395,7 +400,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       return Icons.healing; // Ícone de Maleta Médica
     }
     // Adicione mais 'else if' para outras funções (ex: presidente, roupeiro)
-    
+
     return Icons.assignment_ind_outlined; // Padrão
   }
   // --- FIM ---
@@ -732,7 +737,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   children: [
                                     if (isGoalkeeper)
                                       Padding(
-                                        padding: const EdgeInsets.only(right: 4.0),
+                                        padding: const EdgeInsets.only(
+                                          right: 4.0,
+                                        ),
                                         child: Icon(
                                           Icons.pan_tool_outlined,
                                           size: 16,
@@ -897,7 +904,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 final staff = staffSnapshot.data!.docs;
 
                 // --- 2. LÓGICA DE ORDENAÇÃO PERSONALIZADA ---
-                
+
                 // Pega a lista original (ordenada por nome)
                 List<DocumentSnapshot> staffList = staffSnapshot.data!.docs;
 
@@ -906,8 +913,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   'técnico': 1,
                   'treinador': 1, // Alias
                   'auxiliar': 2,
-                  'massagista': 3,
-                  'analista': 4,
+                  'atendente': 3,
+                  'massagista': 4,
+                  'analista': 5,
                   // Outros cargos ficarão com prioridade 99
                 };
 
@@ -931,13 +939,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   if (role.contains('auxiliar')) {
                     return 2; // "Auxiliar" (que não era "Auxiliar Técnico")
                   }
-                  if (role.contains('massagista')) {
+                  if (role.contains('atendente')) {
                     return 3;
                   }
-                  if (role.contains('analista')) {
+                  if (role.contains('massagista')) {
                     return 4;
                   }
-                  
+                  if (role.contains('analista')) {
+                    return 5;
+                  }
+
                   return 99; // Prioridade padrão para cargos não listados
                 }
 
@@ -953,8 +964,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   }
 
                   // Se a prioridade for a mesma (ex: 2 auxiliares), usa a ordem alfabética
-                  final aName = (a.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
-                  final bName = (b.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
+                  final aName =
+                      (a.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
+                  final bName =
+                      (b.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
                   return aName.compareTo(bName);
                 });
                 // --- FIM DA LÓGICA DE ORDENAÇÃO ---
@@ -967,7 +980,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   itemBuilder: (context, index) {
                     final member = staffList[index];
                     final data = member.data() as Map<String, dynamic>;
-                    final String staffRole = data['staff_role'] ?? 'Membro'; // Pega a função
+                    final String staffRole =
+                        data['staff_role'] ?? 'Membro'; // Pega a função
                     final IconData staffIcon = _getStaffIcon(staffRole);
 
                     return Card(
@@ -977,9 +991,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       ),
                       elevation: 1,
                       child: ListTile(
-                        leading: Icon(staffIcon, color: Colors.blueGrey[700], size: 28),
-                        
-                        title: Text(data['name'] ?? '...', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15)),
+                        leading: Icon(
+                          staffIcon,
+                          color: Colors.blueGrey[700],
+                          size: 28,
+                        ),
+
+                        title: Text(
+                          data['name'] ?? '...',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 15,
+                          ),
+                        ),
 
                         subtitle: Text(staffRole),
                         trailing: AdminService.isAdmin

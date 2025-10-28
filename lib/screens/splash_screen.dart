@@ -21,7 +21,7 @@ class _SplashScreenState extends State<SplashScreen> {
   // --- Estados do Player e UI ---
   late YoutubePlayerController _ytController;
   bool _isLoadingVideoId = true;
-  final String _defaultVideoId = 'hi8CH7KOUSk';
+  final String _defaultVideoId = 'ByBvdFS1jko';
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Lista de redes sociais
@@ -51,20 +51,6 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
     debugPrint("SplashScreen: initState");
 
-    // Inicializa o controller imediatamente com o ID padrão
-    _ytController = YoutubePlayerController.fromVideoId(
-      videoId: _defaultVideoId, // Usa o ID padrão
-      autoPlay: false, // Começa pausado
-      params: const YoutubePlayerParams(
-        showControls:
-            true, // <-- MOSTRA CONTROLES PADRÃO (Play, Volume, Progresso)
-        mute: false, // Começa com som
-        showFullscreenButton: true,
-        enableCaption: false, // Desabilita legendas
-      ),
-    );
-
-    // Inicia a busca pelo ID correto do Firestore
     _fetchAndLoadCorrectVideoId();
 
     // --- CAPTURAR O EVENTO DE INSTALAÇÃO (SÓ NA WEB) ---
@@ -75,12 +61,14 @@ class _SplashScreenState extends State<SplashScreen> {
       html.window.addEventListener('beforeinstallprompt', (html.Event e) {
         debugPrint("Evento 'beforeinstallprompt' capturado!");
         e.preventDefault(); // Impede o pop-up automático
+        if (mounted) {
 
         // Atualiza o estado da tela principal
         setState(() {
           _installPromptEvent = e; // Salva o evento
           _showInstallButton = true; // Mostra nosso botão
         });
+         }
       });
       // --- FIM DA CORREÇÃO ---
     }
@@ -91,82 +79,59 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _fetchAndLoadCorrectVideoId() async {
     // Garante que o estado de loading comece (ou recomece) true
     if (!_isLoadingVideoId && mounted) {
-      setState(() {
-        _isLoadingVideoId = true;
-      });
+      setState(() { _isLoadingVideoId = true; });
     } else if (!mounted && !_isLoadingVideoId) {
       _isLoadingVideoId = true;
     }
 
-    String correctVideoId = _defaultVideoId; // Começa com o ID padrão
-    dynamic fetchedIdFromFirestore; // Variável para guardar o que veio do banco
-
+    String correctVideoId = _defaultVideoId;
     try {
       debugPrint("[DIAGNÓSTICO] Iniciando busca no Firestore...");
-      final docRef = _firestore.collection('config').doc('app_settings');
-      final docSnap = await docRef.get();
+      final docSnap = await _firestore.collection('config').doc('app_settings').get();
 
       if (docSnap.exists) {
-        debugPrint("[DIAGNÓSTICO] Documento 'app_settings' encontrado.");
         final docData = docSnap.data();
         if (docData != null && docData.containsKey('live_video_id')) {
-          fetchedIdFromFirestore = docData['live_video_id'];
-          debugPrint(
-            "[DIAGNÓSTICO] Campo 'live_video_id' encontrado. Valor: '$fetchedIdFromFirestore' (Tipo: ${fetchedIdFromFirestore?.runtimeType})",
-          );
-          if (fetchedIdFromFirestore is String &&
-              fetchedIdFromFirestore.isNotEmpty) {
-            correctVideoId = fetchedIdFromFirestore;
-            debugPrint(
-              "[DIAGNÓSTICO] ID do Firestore é válido. Usando: $correctVideoId",
-            );
+          final fetchedId = docData['live_video_id'];
+          if (fetchedId is String && fetchedId.isNotEmpty) {
+            correctVideoId = fetchedId;
+            debugPrint("[DIAGNÓSTICO] ID do Firestore é válido. Usando: $correctVideoId");
           } else {
-            debugPrint(
-              "[DIAGNÓSTICO] ID do Firestore é nulo, vazio ou não é String. Usando padrão: $_defaultVideoId",
-            );
-            correctVideoId = _defaultVideoId;
+            debugPrint("[DIAGNÓSTICO] ID do Firestore inválido. Usando padrão: $_defaultVideoId");
           }
         } else {
-          debugPrint(
-            "[DIAGNÓSTICO] Campo 'live_video_id' NÃO encontrado. Usando padrão: $_defaultVideoId",
-          );
-          correctVideoId = _defaultVideoId;
+          debugPrint("[DIAGNÓSTICO] Campo 'live_video_id' NÃO encontrado. Usando padrão.");
         }
       } else {
-        debugPrint(
-          "[DIAGNÓSTICO] Documento 'app_settings' NÃO encontrado. Usando padrão: $_defaultVideoId",
-        );
-        correctVideoId = _defaultVideoId;
+        debugPrint("[DIAGNÓSTICO] Documento 'app_settings' NÃO encontrado. Usando padrão.");
       }
     } catch (e) {
       debugPrint("[DIAGNÓSTICO] ERRO CATCH ao buscar ID: $e. Usando padrão.");
-      correctVideoId = _defaultVideoId;
     } finally {
-      debugPrint(
-        "[DIAGNÓSTICO] Bloco finally. ID final a ser usado: $correctVideoId",
+      debugPrint("[DIAGNÓTICO] Bloco finally. ID final a ser usado: $correctVideoId");
+
+      // --- CRIAÇÃO DO CONTROLLER ---
+      // Cria o controller AQUI, com o ID correto (do Firestore ou o padrão)
+      _ytController = YoutubePlayerController.fromVideoId(
+        videoId: correctVideoId, // Usa o ID final
+        autoPlay: true,
+        params: const YoutubePlayerParams(
+          showControls: true,
+          mute: true,
+          showFullscreenButton: true,
+          enableCaption: false,
+        ),
       );
+      // --- FIM DA CRIAÇÃO ---
 
+      // Verifica se o widget ainda está montado ANTES de chamar setState
       if (mounted) {
-        // --- 2. MÉTODO DE LOAD ATUALIZADO ---
-        // Compara o ID encontrado com o ID atual no controller
-        final currentId = _ytController.metadata.videoId;
-        if (currentId != correctVideoId) {
-          debugPrint(
-            "SplashScreen: Carregando ID ($correctVideoId) no player...",
-          );
-          _ytController.loadVideoById(
-            videoId: correctVideoId,
-          ); // <-- MÉTODO NOVO
-        } else {
-          debugPrint(
-            "SplashScreen: IDs são iguais. Nenhuma ação de load necessária.",
-          );
-        }
-        // --- FIM DA ATUALIZAÇÃO ---
-
         setState(() {
-          _isLoadingVideoId = false; // Finaliza o loading da *busca*
+          _isLoadingVideoId = false; // Finaliza o loading
         });
+        debugPrint("[DIAGNÓSTICO] setState chamado, _isLoadingVideoId = false.");
+      } else {
+        debugPrint("[DIAGNÓSTICO] Widget desmontado no finally.");
       }
     }
   }
@@ -174,7 +139,9 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void dispose() {
     debugPrint("SplashScreen: dispose");
+    if (mounted || !_isLoadingVideoId) {
     _ytController.close();
+    }
     super.dispose();
   }
 

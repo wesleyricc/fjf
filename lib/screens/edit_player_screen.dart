@@ -39,6 +39,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   final List<String> _staffRoleOptions = [
     'Técnico',
     'Auxiliar Técnico',
+    'Atendente',
     'Massagista',
     'Analista',
     // Adicione outros cargos fixos aqui se desejar
