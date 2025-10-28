@@ -297,7 +297,7 @@ class PlayerStatsScreen extends StatelessWidget {
             // 1. Artilheiros (Gols)
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('goals', isGreaterThan: 0).orderBy('goals', descending: true).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('goals', isGreaterThan: 0).orderBy('goals', descending: true).orderBy('name'),
               statField: 'goals',
               statLabel: 'Gols',
               emptyMessage: 'Nenhum artilheiro ainda.',
@@ -305,7 +305,7 @@ class PlayerStatsScreen extends StatelessWidget {
             // 2. Assistências
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('assists', isGreaterThan: 0).orderBy('assists', descending: true).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('assists', isGreaterThan: 0).orderBy('assists', descending: true).orderBy('name'),
               statField: 'assists',
               statLabel: 'Ass',
               emptyMessage: 'Nenhum líder em assistências.',
@@ -313,7 +313,7 @@ class PlayerStatsScreen extends StatelessWidget {
              // 3. Goleiro Menos Vazado (Gols Sofridos)
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_goalkeeper', isEqualTo: true).where('goals_conceded', isGreaterThanOrEqualTo: 0).orderBy('goals_conceded', descending: false).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('is_goalkeeper', isEqualTo: true).where('goals_conceded', isGreaterThanOrEqualTo: 0).orderBy('goals_conceded', descending: false).orderBy('name'),
               statField: 'goals_conceded',
               statLabel: 'Gols',
               emptyMessage: 'Nenhum goleiro com dados.',
@@ -321,7 +321,7 @@ class PlayerStatsScreen extends StatelessWidget {
              // 4. Craque do Jogo
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('man_of_the_match_awards', isGreaterThan: 0).orderBy('man_of_the_match_awards', descending: true).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('man_of_the_match_awards', isGreaterThan: 0).orderBy('man_of_the_match_awards', descending: true).orderBy('name'),
               statField: 'man_of_the_match_awards',
               statLabel: 'vezes',
               emptyMessage: 'Ranking de Craque do Jogo vazio.',
@@ -331,6 +331,7 @@ class PlayerStatsScreen extends StatelessWidget {
               context: context,
               query: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
+                  .where('is_staff', isEqualTo: false)
                   .where('yellow_cards', isEqualTo: AdminService.pendingYellowCards) // Usa regra
                   .where('is_suspended', isEqualTo: false) // Não pode estar suspenso
                   .orderBy('name'),
@@ -342,6 +343,7 @@ class PlayerStatsScreen extends StatelessWidget {
               context: context,
               query: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
+                  .where('is_staff', isEqualTo: false)
                   .where('is_suspended', isEqualTo: true) // Usa flag
                   .orderBy('name'),
               emptyMessage: 'Nenhum jogador suspenso.',
@@ -350,7 +352,7 @@ class PlayerStatsScreen extends StatelessWidget {
             // 7. Total Amarelos (usa total_yellow_cards)
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: false).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: false).orderBy('name'),
               statField: 'total_yellow_cards',
               statLabel: 'CA',
               emptyMessage: 'Nenhum jogador com cartão amarelo.',
@@ -358,7 +360,7 @@ class PlayerStatsScreen extends StatelessWidget {
              // 8. Total Vermelhos (usa total_red_cards)
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: false).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: false).orderBy('name'),
               statField: 'total_red_cards',
               statLabel: 'CV',
               emptyMessage: 'Nenhum jogador com cartão vermelho.',

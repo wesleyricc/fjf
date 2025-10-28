@@ -31,6 +31,29 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     return digest.toString();
   }
 
+  // --- NOVA FUNÇÃO PARA CHAMAR A MIGRAÇÃO ---
+  Future<void> _triggerMigrationV1() async {
+     final confirm = await showDialog<bool>(
+       context: context,
+       builder: (ctx) => AlertDialog(
+         title: const Text('Executar Migração de Dados?'),
+         content: const Text('Isso verificará TODOS os jogadores e adicionará os campos faltantes (como "is_staff" e "jersey_number").\n\nExecute isso APENAS UMA VEZ após uma atualização.\n\nDeseja continuar?'),
+         actions: [
+           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.orange))),
+         ],
+       ),
+     );
+
+     if (confirm == true && mounted) {
+       setState(() { _isSaving = true; });
+       final result = await _firestoreService.migratePlayersV1(); // Chama a nova função
+       setState(() { _isSaving = false; });
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
+     }
+  }
+  // --- FIM ---
+
   // --- NOVA FUNÇÃO PARA CHAMAR CÁLCULO DE RANKS ---
   Future<void> _triggerCalculateRanks() async {
      final confirm = await showDialog<bool>(
@@ -560,6 +583,16 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             },
           ),
           const Divider(),
+          // --- NOVO BOTÃO DE MIGRAÇÃO (Coloque no final) ---
+          ListTile(
+            leading: const Icon(Icons.upgrade, color: Colors.teal),
+            title: const Text('Atualizar Estrutura Jogadores (V1)'),
+            subtitle: const Text('Adiciona campos (is_staff, jersey_number) em jogadores antigos. Execute 1 vez.'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: _isSaving ? null : _triggerMigrationV1,
+          ),
+          const Divider(),
+          // --- FIM ---
           // Adicione mais opções administrativas aqui, se necessário
         ],
       ),

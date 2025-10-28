@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -18,6 +20,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   Map<String, Map<String, dynamic>> _playerDataCache = {};
   bool _isLoadingPlayerData = true;
   String? _manOfTheMatchName;
+  int? _manOfTheMatchNumber;
   Map<String, int> _goals = {};
   Map<String, int> _assists = {};
   Map<String, int> _yellows = {};
@@ -29,25 +32,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     super.initState();
     _extractStatsAndFetchPlayers();
   }
-
-  // --- 2. ADICIONE A FUNÇÃO _launchURL ---
-  Future<void> _launchURL(String? urlString) async {
-    if (urlString == null || urlString.isEmpty) {
-      debugPrint('URL da súmula está vazia.');
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Súmula não disponível.')));
-      return;
-    }
-    final Uri url = Uri.parse(urlString);
-    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      debugPrint('Não foi possível abrir $urlString');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível abrir o link: $urlString')),
-        );
-      }
-    }
-  }
-  // --- FIM DA ADIÇÃO --
 
   // --- FUNÇÃO QUE FALTAVA ---
   Future<void> _extractStatsAndFetchPlayers() async {
@@ -62,7 +46,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     final data = widget.match.data() as Map<String, dynamic>;
     Map<String, dynamic> statsApplied = {};
     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
-       statsApplied = data['stats_applied'];
+      statsApplied = data['stats_applied'];
     }
     Map<String, dynamic> playerStats = statsApplied['player_stats'] ?? {};
     _manOfTheMatchId = statsApplied['man_of_the_match']; // Define o ID do MotM
@@ -74,7 +58,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     _reds = Map<String, int>.from(playerStats['reds'] ?? {});
     // Adicionar _goalsConceded se for usar:
     // _goalsConceded = Map<String, int>.from(playerStats['goals_conceded'] ?? {});
-
 
     // 2. Coleta todos os IDs de jogadores únicos mencionados
     Set<String> playerIds = {};
@@ -121,14 +104,16 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
           fetchedData[doc.id] = doc.data();
         }
       }
-       _playerDataCache = fetchedData;
+      _playerDataCache = fetchedData;
 
-       // Busca o nome do Craque do Jogo separadamente se houver ID
-       if (_manOfTheMatchId != null && _playerDataCache.containsKey(_manOfTheMatchId)) {
-         _manOfTheMatchName = _playerDataCache[_manOfTheMatchId]?['name'] ?? 'Não encontrado';
-       }
-
-
+      // Busca o nome do Craque do Jogo separadamente se houver ID
+      if (_manOfTheMatchId != null &&
+          _playerDataCache.containsKey(_manOfTheMatchId)) {
+        _manOfTheMatchName =
+            _playerDataCache[_manOfTheMatchId]?['name'] ?? 'Não encontrado';
+        _manOfTheMatchNumber =
+            _playerDataCache[_manOfTheMatchId]?['jersey_number']; // Pega o número
+      }
     } catch (e) {
       debugPrint("Erro ao buscar dados dos jogadores: $e");
       // Tratar erro, talvez mostrando uma mensagem
@@ -141,52 +126,104 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     }
   }
 
+  // --- 2. ADICIONE A FUNÇÃO _launchURL ---
+  Future<void> _launchURL(String? urlString) async {
+    if (urlString == null || urlString.isEmpty) {
+      debugPrint('URL da súmula está vazia.');
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Súmula não disponível.')));
+      return;
+    }
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      debugPrint('Não foi possível abrir $urlString');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível abrir o link: $urlString')),
+        );
+      }
+    }
+  }
+  // --- FIM DA ADIÇÃO --
 
   // --- FUNÇÃO ATUALIZADA PARA CONSTRUIR COLUNA DE STATS ---
   // --- FUNÇÃO ATUALIZADA PARA ORDENAR E MOSTRAR NOME DO TIME ---
-  Widget _buildTeamStatsColumn(String teamId, String teamName, CrossAxisAlignment alignment) {
+  Widget _buildTeamStatsColumn(
+    String teamId,
+    String teamName,
+    CrossAxisAlignment alignment,
+  ) {
     // Listas temporárias para guardar jogadores e permitir ordenação
-    List<Map<String, dynamic>> goalPlayers = []; // Guarda {'name': 'Nome', 'count': Qtd}
+
+    // Função auxiliar de ordenação
+    void sortPlayersByNumber(List<Map<String, dynamic>> players) {
+      players.sort((a, b) {
+        final int? aNum = a['number'];
+        final int? bNum = b['number'];
+        if (aNum != null && bNum != null) {
+          return aNum.compareTo(bNum); // 1. Numérico
+        } else if (aNum != null && bNum == null) {
+          return -1; // 2. Com número vem antes
+        } else if (aNum == null && bNum != null) {
+          return 1; // 3. Com número vem antes
+        } else {
+          return a['name'].compareTo(b['name']); // 4. Alfabético
+        }
+      });
+    }
+
+    List<Map<String, dynamic>> goalPlayers =
+        []; // Guarda {'name': 'Nome', 'count': Qtd}
     _goals.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        goalPlayers.add({'name': name, 'count': count});
+        int? number = _playerDataCache[playerId]?['jersey_number'];
+        goalPlayers.add({'name': name, 'count': count, 'number': number});
       }
     });
-    // Ordena alfabeticamente pelo nome
-    goalPlayers.sort((a, b) => a['name'].compareTo(b['name']));
+    sortPlayersByNumber(goalPlayers); // Ordena
 
     List<Map<String, dynamic>> assistPlayers = [];
     _assists.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        assistPlayers.add({'name': name, 'count': count});
+        int? number = _playerDataCache[playerId]?['jersey_number'];
+        assistPlayers.add({'name': name, 'count': count, 'number': number});
       }
     });
-    assistPlayers.sort((a, b) => a['name'].compareTo(b['name']));
+    sortPlayersByNumber(assistPlayers); // Ordena
 
     // Lógica unificada para cartões (coleta dados)
-    Map<String, Map<String, int>> playersWithCardsData = {}; // { playerId: {'yellow': count, 'red': count} }
+    Map<String, Map<String, int>> playersWithCardsData =
+        {}; // { playerId: {'yellow': count, 'red': count} }
     _yellows.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
-        playersWithCardsData.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
+        playersWithCardsData.putIfAbsent(
+          playerId,
+          () => {'yellow': 0, 'red': 0},
+        );
         playersWithCardsData[playerId]!['yellow'] = count;
       }
     });
     _reds.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
-        playersWithCardsData.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
+        playersWithCardsData.putIfAbsent(
+          playerId,
+          () => {'yellow': 0, 'red': 0},
+        );
         playersWithCardsData[playerId]!['red'] = count;
       }
     });
     // Converte para lista ordenada para exibição
     List<Map<String, dynamic>> cardPlayers = [];
     playersWithCardsData.forEach((playerId, cardCounts) {
-       String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-       cardPlayers.add({'name': name, 'counts': cardCounts}); // Guarda o mapa de contagens
+      String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
+      int? number = _playerDataCache[playerId]?['jersey_number'];
+      cardPlayers.add({'name': name, 'counts': cardCounts, 'number': number});
     });
-    cardPlayers.sort((a, b) => a['name'].compareTo(b['name']));
-
+    sortPlayersByNumber(cardPlayers); // Ordena
 
     // Constrói a coluna
     return Column(
@@ -194,7 +231,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
       children: [
         // --- 2. MOSTRAR NOME DO TIME ---
         Padding(
-          padding: const EdgeInsets.only(bottom: 12.0), // Aumenta espaço abaixo do nome
+          padding: const EdgeInsets.only(
+            bottom: 12.0,
+          ), // Aumenta espaço abaixo do nome
           child: SizedBox(
             width: double.infinity,
             child: Text(
@@ -209,155 +248,235 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
         // Seção Gols (Itera sobre a lista ordenada)
         if (goalPlayers.isNotEmpty) ...[
           _buildStatHeader('Gols', Icons.sports_soccer, alignment),
-          ...goalPlayers.map((player) => _buildStatItem(
-              name: player['name'],
-              count: player['count'],
-              alignment: alignment)
-          ).toList(), // Constrói widgets a partir da lista ordenada
+          ...goalPlayers
+              .map(
+                (player) => _buildStatItem(
+                  name: player['name'],
+                  count: player['count'],
+                  number: player['number'],
+                  alignment: alignment,
+                ),
+              )
+              .toList(), // Constrói widgets a partir da lista ordenada
           const SizedBox(height: 12),
         ],
         // Seção Assists (Itera sobre a lista ordenada)
         if (assistPlayers.isNotEmpty) ...[
           _buildStatHeader('Assistências', Icons.assistant, alignment),
-           ...assistPlayers.map((player) => _buildStatItem(
-              name: player['name'],
-              count: player['count'],
-              alignment: alignment)
-          ).toList(),
+          ...assistPlayers
+              .map(
+                (player) => _buildStatItem(
+                  name: player['name'],
+                  count: player['count'],
+                  number: player['number'],
+                  alignment: alignment,
+                ),
+              )
+              .toList(),
           const SizedBox(height: 12),
         ],
 
         // Seção Cartões (Itera sobre a lista ordenada)
         if (cardPlayers.isNotEmpty) ...[
           _buildStatHeader('Cartões', Icons.style_outlined, alignment),
-          ...cardPlayers.map((player) => _buildCardStatItem(
-              name: player['name'],
-              cardCounts: player['counts'] as Map<String, int>, // Pega o mapa de contagens
-              alignment: alignment)
-          ).toList(),
+          ...cardPlayers
+              .map(
+                (player) => _buildCardStatItem(
+                  name: player['name'],
+                  cardCounts:
+                      player['counts']
+                          as Map<String, int>, // Pega o mapa de contagens
+                  number: player['number'],
+                  alignment: alignment,
+                ),
+              )
+              .toList(),
         ],
       ],
     );
   }
   // --- FIM _buildTeamStatsColumn ---
 
-
   // Função _buildStatHeader (sem mudanças)
-  Widget _buildStatHeader(String title, IconData icon, CrossAxisAlignment alignment, [Color? iconColor]) {
-     // Usa Align para controlar a posição do conteúdo (Row)
-     return Align(
-       alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
-       child: Padding(
-         padding: const EdgeInsets.only(bottom: 4.0, left: 8.0, right: 8.0), // Padding lateral
-         child: Row(
-            mainAxisSize: MainAxisSize.min, // Row encolhe para o conteúdo
-            children: [
-              // Ordem Ícone/Texto baseada no alinhamento
-              if (alignment == CrossAxisAlignment.end) ...[
-                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 6),
-                  Icon(icon, color: iconColor ?? Colors.black54, size: 16),
-              ] else ...[
-                  Icon(icon, color: iconColor ?? Colors.black54, size: 16),
-                  const SizedBox(width: 6),
-                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              ]
+  Widget _buildStatHeader(
+    String title,
+    IconData icon,
+    CrossAxisAlignment alignment, [
+    Color? iconColor,
+  ]) {
+    // Usa Align para controlar a posição do conteúdo (Row)
+    return Align(
+      alignment: alignment == CrossAxisAlignment.start
+          ? Alignment.centerLeft
+          : Alignment.centerRight,
+      child: Padding(
+        padding: const EdgeInsets.only(
+          bottom: 4.0,
+          left: 8.0,
+          right: 8.0,
+        ), // Padding lateral
+        child: Row(
+          mainAxisSize: MainAxisSize.min, // Row encolhe para o conteúdo
+          children: [
+            // Ordem Ícone/Texto baseada no alinhamento
+            if (alignment == CrossAxisAlignment.end) ...[
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(icon, color: iconColor ?? Colors.black54, size: 16),
+            ] else ...[
+              Icon(icon, color: iconColor ?? Colors.black54, size: 16),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
-          ),
-       ),
-     );
+          ],
+        ),
+      ),
+    );
   }
-
 
   // --- FUNÇÃO _buildStatItem SIMPLIFICADA (só para Gols/Assists) ---
   Widget _buildStatItem({
     required String name,
     required int count,
     required CrossAxisAlignment alignment,
+    int? number,
   }) {
-    String displayText = name;
-    if (count > 1) {
-      displayText += ' ($count)';
-    }
+    // Formata o nome: "Nº. Nome (Qtd)" ou "-. Nome (Qtd)"
+    String numberPrefix = number != null ? '#$number ' : '';
+    String countSuffix = (count > 1) ? ' ($count)' : '';
+    String displayText = '$numberPrefix$name$countSuffix';
 
     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
-      ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
-      : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
+        ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
+        : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
 
     // Retorna apenas o texto alinhado
     return Align(
-       alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
-       child: Padding(
-         padding: itemPadding,
-         child: Text( // Removido Flexible, pode não ser necessário aqui
-               displayText,
-               style: const TextStyle(fontSize: 14),
-               textAlign: alignment == CrossAxisAlignment.start ? TextAlign.start : TextAlign.end,
-             )
-       ),
+      alignment: alignment == CrossAxisAlignment.start
+          ? Alignment.centerLeft
+          : Alignment.centerRight,
+      child: Padding(
+        padding: itemPadding,
+        child: Text(
+          // Removido Flexible, pode não ser necessário aqui
+          displayText,
+          style: const TextStyle(fontSize: 14),
+          textAlign: alignment == CrossAxisAlignment.start
+              ? TextAlign.start
+              : TextAlign.end,
+        ),
+      ),
     );
   }
   // --- FIM _buildStatItem ---
-
 
   // --- NOVA FUNÇÃO AUXILIAR PARA ITEM DE CARTÃO ---
   Widget _buildCardStatItem({
     required String name,
     required Map<String, int> cardCounts, // {'yellow': count, 'red': count}
     required CrossAxisAlignment alignment,
+    int? number,
   }) {
-     int yellowCount = cardCounts['yellow'] ?? 0;
-     int redCount = cardCounts['red'] ?? 0;
+    int yellowCount = cardCounts['yellow'] ?? 0;
+    int redCount = cardCounts['red'] ?? 0;
 
-     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
-      ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
-      : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
+    // Formata o nome: "Nº. Nome"
+    String numberPrefix = number != null ? '#$number ' : '';
+    String displayText = '$numberPrefix$name';
 
-     // Cria a lista de ícones/contadores de cartões
-     List<Widget> cardIndicators = [];
-     if (yellowCount > 0) {
-       cardIndicators.add(Icon(Icons.style, size: 16, color: Colors.yellow[700]));
-       if (yellowCount > 1) { // Adiciona contador se for mais de 1 amarelo
-         cardIndicators.add(const SizedBox(width: 2));
-         cardIndicators.add(Text('($yellowCount)', style: const TextStyle(fontSize: 12, color: Colors.black54)));
-       }
-     }
-     if (redCount > 0) {
-       if (cardIndicators.isNotEmpty) { // Adiciona espaço se já tiver amarelo
-         cardIndicators.add(const SizedBox(width: 5));
-       }
-       cardIndicators.add(Icon(Icons.style, size: 16, color: Colors.red[700]));
-       // Vermelho geralmente é só 1, não precisa de contador
-     }
+    // Adiciona contagem de amarelos (se > 1)
+    if (yellowCount > 1) {
+      displayText += ' ($yellowCount)';
+    }
 
-     return Align(
-       alignment: alignment == CrossAxisAlignment.start ? Alignment.centerLeft : Alignment.centerRight,
-       child: Padding(
-         padding: itemPadding,
-         child: Row(
-           mainAxisSize: MainAxisSize.min,
-           children: [
-             // Ordem Nome / Indicadores baseada no alinhamento
-             if (alignment == CrossAxisAlignment.end) ...[
-               Flexible(child: Text(name, style: const TextStyle(fontSize: 14), textAlign: TextAlign.end)),
-               const SizedBox(width: 6),
-               Row(mainAxisSize: MainAxisSize.min, children: cardIndicators), // Agrupa indicadores
-             ] else ...[
-               Row(mainAxisSize: MainAxisSize.min, children: cardIndicators), // Agrupa indicadores
-               const SizedBox(width: 6),
-               Flexible(child: Text(name, style: const TextStyle(fontSize: 14), textAlign: TextAlign.start)),
-             ]
-           ],
-         ),
-       ),
-     );
+    EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
+        ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
+        : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
+
+    // Cria a lista de ícones/contadores de cartões
+    List<Widget> cardIndicators = [];
+    if (yellowCount > 0) {
+      cardIndicators.add(
+        Icon(Icons.style, size: 16, color: Colors.yellow[700]),
+      );
+      if (yellowCount > 1) {
+        // Adiciona contador se for mais de 1 amarelo
+        cardIndicators.add(const SizedBox(width: 2));
+        cardIndicators.add(
+          Text(
+            '($yellowCount)',
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        );
+      }
+    }
+    if (redCount > 0) {
+      if (cardIndicators.isNotEmpty) {
+        // Adiciona espaço se já tiver amarelo
+        cardIndicators.add(const SizedBox(width: 5));
+      }
+      cardIndicators.add(Icon(Icons.style, size: 16, color: Colors.red[700]));
+      // Vermelho geralmente é só 1, não precisa de contador
+    }
+
+    return Align(
+      alignment: alignment == CrossAxisAlignment.start
+          ? Alignment.centerLeft
+          : Alignment.centerRight,
+      child: Padding(
+        padding: itemPadding,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Ordem Nome / Indicadores baseada no alinhamento
+            if (alignment == CrossAxisAlignment.end) ...[
+              Flexible(
+                child: Text(
+                  displayText,
+                  style: const TextStyle(fontSize: 14),
+                  textAlign: TextAlign.end,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: cardIndicators,
+              ), // Agrupa indicadores
+            ] else ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: cardIndicators,
+              ), // Agrupa indicadores
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  displayText,
+                  style: const TextStyle(fontSize: 14),
+                  textAlign: TextAlign.start,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
   // --- FIM _buildCardStatItem ---
 
-
   @override
   Widget build(BuildContext context) {
-
     // ... (extração de dados como antes: scoreHome, scoreAway, ids, nomes, escudos, data) ...
     final data = widget.match.data() as Map<String, dynamic>;
     final scoreHome = data['score_home']?.toString() ?? '-';
@@ -368,17 +487,22 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     final awayTeamName = data['team_away_name'] ?? 'Time Visitante';
     final homeShield = data['team_home_shield'] ?? '';
     final awayShield = data['team_away_shield'] ?? '';
-    final String location = data['location'] ?? '';
-    final String? sumulaUrl = data['sumula_url'] as String?;
     String formattedDate = 'Data Indisponível';
     if (data['datetime'] != null && data['datetime'] is Timestamp) {
-      formattedDate = DateFormat('dd/MM/yyyy HH:mm').format((data['datetime'] as Timestamp).toDate());
+      formattedDate = DateFormat(
+        'dd/MM/yyyy HH:mm',
+        'pt_BR',
+      ).format((data['datetime'] as Timestamp).toDate());
     }
-
+    final String location = data['location'] ?? 'Local a definir';
+    final String? sumulaUrl = data['sumula_url'] as String?;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('$homeTeamName $scoreHome x $scoreAway $awayTeamName', overflow: TextOverflow.ellipsis),
+        title: Text(
+          '$homeTeamName $scoreHome x $scoreAway $awayTeamName',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -391,41 +515,63 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                       if (homeShield.isNotEmpty) Image.network(homeShield, height: 40),
+                      if (homeShield.isNotEmpty)
+                        SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: CachedNetworkImage(
+                            imageUrl: homeShield,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20.0),
                         child: Text(
                           '$scoreHome x $scoreAway',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
-                       if (awayShield.isNotEmpty) Image.network(awayShield, height: 40),
+                      if (awayShield.isNotEmpty)
+                        SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: CachedNetworkImage(
+                            imageUrl: awayShield,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                     ],
                   ),
-                   const SizedBox(height: 8),
-                   Text(
-                     '$formattedDate - $location', // Combina as duas
-                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
-                     textAlign: TextAlign.center,
-                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$formattedDate - $location',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                    textAlign: TextAlign.center,
+                  ),
 
-                    // --- 4. ADICIONE O BOTÃO DA SÚMULA AQUI ---
-                  if (sumulaUrl != null && sumulaUrl.isNotEmpty) // Mostra só se a URL existir
+                  // --- 4. ADICIONE O BOTÃO DA SÚMULA AQUI ---
+                  if (sumulaUrl != null &&
+                      sumulaUrl.isNotEmpty) // Mostra só se a URL existir
                     Padding(
                       padding: const EdgeInsets.only(top: 12.0),
                       child: TextButton.icon(
                         icon: const Icon(Icons.description_outlined, size: 20),
                         label: const Text('Súmula da Partida (PDF)'),
                         style: TextButton.styleFrom(
-                          foregroundColor: Theme.of(context).primaryColor, // Cor do texto/ícone
+                          foregroundColor: Theme.of(
+                            context,
+                          ).primaryColor, // Cor do texto/ícone
                         ),
                         onPressed: () {
                           _launchURL(sumulaUrl); // Chama a função
                         },
                       ),
                     ),
-                  // --- FIM DA ADIÇÃO ---
 
+                  // --- FIM DA ADIÇÃO ---
                 ],
               ),
             ),
@@ -433,69 +579,102 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
 
             // --- SEÇÃO DE ESTATÍSTICAS ---
             _isLoadingPlayerData
-                ? const Padding( // Loading enquanto busca jogadores
+                ? const Padding(
+                    // Loading enquanto busca jogadores
                     padding: EdgeInsets.symmetric(vertical: 40.0),
                     child: Center(child: CircularProgressIndicator()),
                   )
                 : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0,
+                      vertical: 8.0,
+                    ),
                     child: IntrinsicHeight(
                       child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // --- Coluna Time da Casa (Alinhada à Esquerda) ---
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                // Passa o alinhamento start
-                                child: _buildTeamStatsColumn(homeTeamId, homeTeamName, CrossAxisAlignment.start),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // --- Coluna Time da Casa (Alinhada à Esquerda) ---
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              // Passa o alinhamento start
+                              child: _buildTeamStatsColumn(
+                                homeTeamId,
+                                homeTeamName,
+                                CrossAxisAlignment.start,
                               ),
                             ),
-                            // --- Linha Divisória (sem mudanças) ---
-                            Container(width: 1, color: const Color.fromARGB(255, 39, 39, 39)),
-                            // --- Coluna Time Visitante (Alinhada à Direita) ---
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(left: 8.0),
-                                // Passa o alinhamento end
-                                child: _buildTeamStatsColumn(awayTeamId, awayTeamName, CrossAxisAlignment.end),
+                          ),
+                          // --- Linha Divisória (sem mudanças) ---
+                          Container(width: 1, color: Colors.grey.shade300),
+                          // --- Coluna Time Visitante (Alinhada à Direita) ---
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              // Passa o alinhamento end
+                              child: _buildTeamStatsColumn(
+                                awayTeamId,
+                                awayTeamName,
+                                CrossAxisAlignment.end,
                               ),
                             ),
-                          ],
+                          ),
+                        ],
                       ),
-                    )
+                    ),
                   ),
 
             // --- MOVER CRAQUE DO JOGO PARA CÁ ---
-            if (_manOfTheMatchName != null && !_isLoadingPlayerData) ...[ // Só mostra se não estiver carregando
-              const Divider(height: 1, thickness: 1), // Divisor opcional
-              Center( // Mantém o Card centralizado
+            if (_manOfTheMatchName != null && !_isLoadingPlayerData) ...[
+              // Só mostra se não estiver carregando
+              const Divider(
+                height: 16,
+                thickness: 0.5,
+                indent: 16,
+                endIndent: 16,
+              ),
+              Center(
+                // Mantém o Card centralizado
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
+                  padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
                   child: Card(
-                     elevation: 2,
-                     child: Padding( // Adiciona padding interno ao Card
-                       padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
-                       child: Column( // Usa Column para centralizar o conteúdo
-                         mainAxisSize: MainAxisSize.min, // Encolhe na vertical
-                         children: [
-                           const Icon(Icons.star, color: Colors.amber, size: 30),
-                           const SizedBox(height: 8), // Espaço entre ícone e texto
-                           const Text(
-                             'Craque do Jogo',
-                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                             textAlign: TextAlign.center, // Garante centralização do texto
-                           ),
-                           const SizedBox(height: 4), // Espaço entre textos
-                           Text(
-                             _manOfTheMatchName!,
-                             style: const TextStyle(fontSize: 18), // Fonte maior para o nome
-                             textAlign: TextAlign.center, // Garante centralização do texto
-                           ),
-                         ],
-                       ),
-                     ),
-                   ),
+                    elevation: 2,
+                    child: Padding(
+                      // Adiciona padding interno ao Card
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16.0,
+                        horizontal: 8.0,
+                      ),
+                      child: Column(
+                        // Usa Column para centralizar o conteúdo
+                        mainAxisSize: MainAxisSize.min, // Encolhe na vertical
+                        children: [
+                          const Icon(Icons.star, color: Colors.amber, size: 30),
+                          const SizedBox(
+                            height: 8,
+                          ), // Espaço entre ícone e texto
+                          const Text(
+                            'Craque do Jogo',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                            textAlign: TextAlign
+                                .center, // Garante centralização do texto
+                          ),
+                          const SizedBox(height: 4), // Espaço entre textos
+                          Text(
+                            // Formata com número se existir
+                            _manOfTheMatchNumber != null
+                                ? '#${_manOfTheMatchNumber} $_manOfTheMatchName'
+                                : _manOfTheMatchName!,
+                            style: const TextStyle(fontSize: 18),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

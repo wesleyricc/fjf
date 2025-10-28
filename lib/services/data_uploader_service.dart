@@ -75,6 +75,8 @@ class DataUploaderService {
         playerInfo['total_yellow_cards'] = 0;
         playerInfo['total_red_cards'] = 0;
         playerInfo['isActive'] = true;
+        playerInfo['jersey_number'] = playerInfo['jersey_number'];
+        playerInfo['is_staff'] = playerInfo['is_staff'] ?? false;
 
         batch.set(playerRef, playerInfo);
       }

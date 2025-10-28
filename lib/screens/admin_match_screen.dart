@@ -56,7 +56,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
     _penaltyHomeScoreController = TextEditingController();
     _penaltyAwayScoreController = TextEditingController();
-    _sumulaUrlController = TextEditingController(text: data?['sumula_url'] ?? '');
+    _sumulaUrlController = TextEditingController(
+      text: data?['sumula_url'] ?? '',
+    );
 
     _penaltyHomeScoreController.text =
         data['penalty_score_home']?.toString() ?? '';
@@ -83,8 +85,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       _redCards = Map<String, int>.from(stats['reds'] ?? {});
       _goalsConceded = Map<String, int>.from(stats['goals_conceded'] ?? {});
       _selectedManOfTheMatchId = data['stats_applied']['man_of_the_match'];
-      _penaltyHomeScoreController.text = data['penalty_score_home']?.toString() ?? '';
-      _penaltyAwayScoreController.text = data['penalty_score_away']?.toString() ?? '';
+      _penaltyHomeScoreController.text =
+          data['penalty_score_home']?.toString() ?? '';
+      _penaltyAwayScoreController.text =
+          data['penalty_score_away']?.toString() ?? '';
       _selectedWinnerId = data['winner_team_id'];
     }
 
@@ -97,8 +101,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     else if (phase == 'final')
       _tiebreakerRule = AdminService.finalTiebreaker;
     // --- FIM ---
-
-    
 
     _fetchPlayers();
     _checkShowTiebreakerSection(); // Verifica se precisa mostrar seção de desempate
@@ -139,6 +141,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
           .collection('players')
           .where('team_id', isEqualTo: homeTeamId)
           .where('isActive', isEqualTo: true)
+          .where('is_staff', isEqualTo: false)
           .get();
       _homePlayers = homeQuery.docs;
 
@@ -146,6 +149,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
           .collection('players')
           .where('team_id', isEqualTo: awayTeamId)
           .where('isActive', isEqualTo: true)
+          .where('is_staff', isEqualTo: false)
           .get();
       _awayPlayers = awayQuery.docs;
 
@@ -161,8 +165,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       if (mounted) setState(() => _isLoadingPlayers = false);
     }
   }
-
-  
 
   // --- WIDGET EDITOR (AGORA RECEBE playerDoc) ---
   Widget _buildStatEditor(DocumentSnapshot playerDoc) {
@@ -330,57 +332,61 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-
-    // --- CORREÇÃO: GARANTIR LISTA ÚNICA DE JOGADORES ---
-    // 1. Cria um Map para garantir IDs únicos. O ID do jogador é a chave.
-    final Map<String, DocumentSnapshot> uniquePlayersMap = {};
-    
-    // 2. Adiciona todos os jogadores da casa ao mapa
-    for (var player in _homePlayers) {
-      uniquePlayersMap[player.id] = player;
-    }
-    // 3. Adiciona todos os jogadores visitantes (duplicatas serão sobrescritas)
-    for (var player in _awayPlayers) {
-      uniquePlayersMap[player.id] = player;
-    }
-    
-    // 4. Cria a lista final 'allPlayers' a partir dos valores do mapa
-    final List<DocumentSnapshot> allPlayers = uniquePlayersMap.values.toList();
-    // --- FIM DA CORREÇÃO ---
-
+    // --- 1. COMBINA A LISTA ---
+    final List<DocumentSnapshot> allPlayers = [
+      ..._homePlayers,
+      ..._awayPlayers,
+    ];
     final data = widget.match.data() as Map<String, dynamic>;
     final homeTeamName = data['team_home_name'] ?? 'Casa';
     final awayTeamName = data['team_away_name'] ?? 'Visitante';
 
-    // --- ORDENA AS LISTAS DE JOGADORES ---
-    _homePlayers.sort(
-      (a, b) => (a.data() as Map<String, dynamic>)['name'].compareTo(
-        (b.data() as Map<String, dynamic>)['name'],
-      ),
-    );
-    _awayPlayers.sort(
-      (a, b) => (a.data() as Map<String, dynamic>)['name'].compareTo(
-        (b.data() as Map<String, dynamic>)['name'],
-      ),
-    );
-    // --- FIM DA ORDENAÇÃO ---
+    // --- 2. ORDENA A LISTA COMBINADA 'allPlayers' POR NÚMERO ---
+    // (Esta função é a mesma que usamos para _homePlayers e _awayPlayers antes)
+    void sortPlayersByNumber(List<DocumentSnapshot> players) {
+      players.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>? ?? {};
+        final bData = b.data() as Map<String, dynamic>? ?? {};
 
-    // --- CORREÇÃO: Validar o _selectedManOfTheMatchId ---
-    // Cria uma variável local 'validSelectedMotmId' baseada no estado
+        final int? aNum = aData['jersey_number']; // Pode ser nulo
+        final int? bNum = bData['jersey_number'];
+
+        // Lógica de ordenação (números primeiro, depois por nome)
+        if (aNum != null && bNum != null) {
+          return aNum.compareTo(bNum); // Ordenação numérica
+        } else if (aNum != null && bNum == null) {
+          return -1; // 'a' (com número) vem antes
+        } else if (aNum == null && bNum != null) {
+          return 1; // 'b' (com número) vem antes
+        } else {
+          return (aData['name'] ?? '').compareTo(
+            bData['name'] ?? '',
+          ); // Desempate por nome
+        }
+      });
+    }
+
+    sortPlayersByNumber(allPlayers); // Aplica a ordenação na lista combinada
+
+    // Ordena as listas individuais (para a UI das listas de time)
+    sortPlayersByNumber(_homePlayers);
+    sortPlayersByNumber(_awayPlayers);
     String? validSelectedMotmId = _selectedManOfTheMatchId;
 
     // Só faz a verificação se os jogadores já carregaram e um ID está selecionado
     if (validSelectedMotmId != null &&
         validSelectedMotmId.isNotEmpty &&
         !_isLoadingPlayers) {
-      
       // Tenta encontrar o jogador na lista 'allPlayers'
-      final bool playerExistsInList = allPlayers.any((player) => player.id == validSelectedMotmId);
-      
+      final bool playerExistsInList = allPlayers.any(
+        (player) => player.id == validSelectedMotmId,
+      );
+
       // Se o ID salvo NÃO existe na lista de jogadores desta partida
       if (!playerExistsInList) {
         debugPrint(
-            "Aviso: Craque do Jogo salvo ('$validSelectedMotmId') não encontrado na lista de jogadores desta partida. Resetando para null.");
+          "Aviso: Craque do Jogo salvo ('$validSelectedMotmId') não encontrado na lista de jogadores desta partida. Resetando para null.",
+        );
         validSelectedMotmId = null; // Força para null
         // Opcional: Atualiza o estado principal (mas pode causar loop se não for cuidadoso)
         // WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -399,17 +405,24 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
           IconButton(
             icon: const Icon(Icons.edit_calendar_outlined),
             tooltip: 'Editar Detalhes (Data, Local, Times)',
-            onPressed: _isSaving ? null : () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (ctx) => EditMatchScreen(match: widget.match), // Passa o jogo
-                ),
-              );
-            },
+            onPressed: _isSaving
+                ? null
+                : () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (ctx) => EditMatchScreen(
+                          match: widget.match,
+                        ), // Passa o jogo
+                      ),
+                    );
+                  },
           ),
           // Botão Excluir
           IconButton(
-            icon: const Icon(Icons.delete_forever_outlined, color: Colors.redAccent),
+            icon: const Icon(
+              Icons.delete_forever_outlined,
+              color: Colors.redAccent,
+            ),
             tooltip: 'Excluir Partida',
             onPressed: _isSaving ? null : _showDeleteMatchDialog,
           ),
@@ -513,10 +526,24 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                           isExpanded: true,
                           items: allPlayers.map((player) {
                             final data = player.data() as Map<String, dynamic>;
+
+                            // Pega os dados para o texto
+                            final int? number = data['jersey_number'];
+                            final String playerName =
+                                data['name'] ?? 'Nome Indisponível';
+                            final String teamName =
+                                data['team_name'] ?? '?'; // Time
+
+                            // Formata o texto: "Nº. Nome (Time)"
+                            final String displayString = number != null
+                                ? '$number. $playerName ($teamName)'
+                                : '-. $playerName ($teamName)';
                             return DropdownMenuItem<String>(
                               value: player.id,
                               child: Text(
-                                '${data['name']} (${data['team_name']})',
+                                displayString,
+                                overflow: TextOverflow
+                                    .ellipsis, // Evita quebra de linha
                               ),
                             );
                           }).toList(),
@@ -542,7 +569,8 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.link),
                     ),
-                    keyboardType: TextInputType.url, // Teclado otimizado para URLs
+                    keyboardType:
+                        TextInputType.url, // Teclado otimizado para URLs
                     enabled: !_isSaving, // Desabilita enquanto salva
                   ),
                 ],
@@ -621,7 +649,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                 padding: const EdgeInsets.only(top: 8.0),
                 child: Text(
                   'O vencedor será determinado automaticamente pela classificação da 1ª Fase ao gerar a Final/3º Lugar.',
-                  style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey[700]),
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey[700],
+                  ),
                 ),
               ),
           ],
@@ -677,7 +708,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             ? widget.match['team_home_id']
             : widget.match['team_away_id'];
       } else if (_tiebreakerRule == 'extra_time_standing') {
-
         penaltyScoreHome = null;
         penaltyScoreAway = null;
         winnerId = null;
@@ -695,9 +725,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     });
 
     // Pega a URL (salva null se o campo estiver vazio)
-    final String? sumulaUrl = _sumulaUrlController.text.trim().isEmpty 
-                              ? null 
-                              : _sumulaUrlController.text.trim();
+    final String? sumulaUrl = _sumulaUrlController.text.trim().isEmpty
+        ? null
+        : _sumulaUrlController.text.trim();
 
     String result = await _firestoreService.updateMatchStats(
       matchSnapshot: widget.match,
@@ -715,7 +745,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       winnerTeamId: winnerId,
       newSumulaUrl: sumulaUrl,
     );
-    
+
     setState(() {
       _isSaving = false;
     });
@@ -734,35 +764,46 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   // --- NOVA FUNÇÃO: DIÁLOGO EXCLUIR PARTIDA ---
   Future<void> _showDeleteMatchDialog() async {
-     final confirm = await showDialog<bool>(
-       context: context,
-       builder: (ctx) => AlertDialog(
-         title: const Text('Excluir Partida?'),
-         content: const Text('Tem certeza que deseja excluir esta partida permanentemente? Se ela já foi finalizada, a classificação da 1ª Fase será recalculada.'),
-         actions: [
-           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-           TextButton(
-             onPressed: () => Navigator.of(ctx).pop(true),
-             child: const Text('Excluir', style: TextStyle(color: Colors.red)),
-           ),
-         ],
-       ),
-     );
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir Partida?'),
+        content: const Text(
+          'Tem certeza que deseja excluir esta partida permanentemente? Se ela já foi finalizada, a classificação da 1ª Fase será recalculada.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
 
-     if (confirm == true && mounted) {
-       setState(() { _isSaving = true; }); // Reusa a flag
-       
-       final result = await _firestoreService.deleteMatch(widget.match);
-       
-       setState(() { _isSaving = false; });
-       
-       if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-          if (result.startsWith('Sucesso')) {
-             Navigator.of(context).pop(); // Volta para a tela de jogos
-          }
-       }
-     }
+    if (confirm == true && mounted) {
+      setState(() {
+        _isSaving = true;
+      }); // Reusa a flag
+
+      final result = await _firestoreService.deleteMatch(widget.match);
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result)));
+        if (result.startsWith('Sucesso')) {
+          Navigator.of(context).pop(); // Volta para a tela de jogos
+        }
+      }
+    }
   }
   // --- FIM ---
 
@@ -873,6 +914,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
         final playerId = player.id;
         final data = player.data() as Map<String, dynamic>;
         final bool isSelected = _selectedPlayerId == playerId;
+        final int? number = data['jersey_number'];
+        final String playerName = data['name'] ?? 'Nome Indisponível';
+
         // Monta resumo de stats para o subtitle
         final statsSummary =
             'G:${_goals[playerId] ?? 0} A:${_assists[playerId] ?? 0} '
@@ -899,7 +943,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                       : Icons.person_outline,
                 ),
                 title: Text(
-                  data['name'] ?? '...',
+                  number != null ? '$number. $playerName' : '$playerName',
                   style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 subtitle: Text(
@@ -937,6 +981,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       },
     );
   }
+
   // --- FIM _buildPlayerSelectList ---
 } // Fim da classe _AdminMatchScreenState
 

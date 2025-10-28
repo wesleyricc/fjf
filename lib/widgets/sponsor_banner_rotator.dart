@@ -213,8 +213,8 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                       ),
                       // O fade da própria imagem (após carregar do placeholder)
                       // Definir como 0 pode ajudar se o pré-cache funcionar bem
-                      fadeInDuration: const Duration(milliseconds: 500), 
-                      fadeOutDuration: const Duration(milliseconds: 500),
+                      //fadeInDuration: const Duration(milliseconds: 500), 
+                      //fadeOutDuration: const Duration(milliseconds: 500),
                       errorWidget: (context, url, error) => SizedBox(
                         height: 120, 
                         width: double.infinity,

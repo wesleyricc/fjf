@@ -35,14 +35,18 @@ class FirestoreService {
     required String teamId,
     required String teamName,
     required String teamShieldUrl,
+    required int? jerseyNumber,
+    required bool isStaff,
+    required String? staffRole,
   }) async {
     try {
       await _firestore.collection('players').add({
         'name': name,
         'is_goalkeeper': isGoalkeeper,
         'team_id': teamId,
-        'team_name': teamName, // Denormalizado
-        'team_shield_url': teamShieldUrl, // Denormalizado
+        'team_name': teamName,
+        'team_shield_url': teamShieldUrl,
+        'jersey_number': jerseyNumber,
         // Inicializa todas as estatísticas
         'goals': 0, 'assists': 0,
         'yellow_cards': 0, 'red_cards': 0,
@@ -50,12 +54,14 @@ class FirestoreService {
         'goals_conceded': 0,
         'man_of_the_match_awards': 0,
         'is_suspended': false,
+        'is_staff': isStaff,
+        'staff_role': isStaff ? staffRole : null,
         'isActive': true, // <-- Define como ativo
       });
-      return "Sucesso: Jogador '$name' criado.";
+      return "Sucesso: Membro '$name' criado.";
     } catch (e) {
-      debugPrint("Erro ao criar jogador: $e");
-      return "Erro ao criar jogador: ${e.toString()}";
+      debugPrint("Erro ao criar membro: $e");
+      return "Erro ao criar membro: ${e.toString()}";
     }
   }
 
@@ -63,13 +69,17 @@ class FirestoreService {
     required DocumentSnapshot playerDoc,
     required String name,
     required bool isGoalkeeper,
+    required int? jerseyNumber,
+    required bool isStaff,
+    required String? staffRole,
   }) async {
     try {
       await playerDoc.reference.update({
         'name': name,
         'is_goalkeeper': isGoalkeeper,
-        // Nota: Mudar o time de um jogador exigiria uma lógica mais complexa
-        // para recalcular stats do time antigo e do novo.
+        'jersey_number': jerseyNumber,
+        'is_staff': isStaff,
+        'staff_role': isStaff ? staffRole : null,
       });
       return "Sucesso: Jogador '$name' atualizado.";
     } catch (e) {
@@ -163,6 +173,72 @@ class FirestoreService {
     }
   }
   // --- FIM ---
+
+  // --- NOVA FUNÇÃO DE MIGRAÇÃO ---
+  Future<String> migratePlayersV1() async {
+    debugPrint("[MIGRAÇÃO] Iniciando migração de jogadores...");
+    // Configura um WriteBatch. Limite de 500 operações por batch.
+    WriteBatch batch = _firestore.batch();
+    int documentsInBatch = 0;
+    int totalUpdated = 0;
+
+    try {
+      // 1. Pega TODOS os jogadores
+      final playersSnapshot = await _firestore.collection('players').get();
+      debugPrint("[MIGRAÇÃO] ${playersSnapshot.docs.length} jogadores encontrados.");
+
+      // 2. Itera por cada jogador
+      for (final doc in playersSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        
+        bool needsUpdate = false;
+        Map<String, dynamic> updateData = {};
+
+        // 3. Verifica se o campo 'is_staff' está faltando
+        if (!data.containsKey('is_staff')) {
+          updateData['is_staff'] = false; // Define o valor padrão
+          needsUpdate = true;
+          debugPrint("[MIGRAÇÃO] Jogador ${doc.id}: 'is_staff' faltando. Adicionando 'false'.");
+        }
+        
+        // 4. Verifica se o campo 'jersey_number' está faltando
+        if (!data.containsKey('jersey_number')) {
+          updateData['jersey_number'] = null; // Define o valor padrão
+          needsUpdate = true;
+          debugPrint("[MIGRAÇÃO] Jogador ${doc.id}: 'jersey_number' faltando. Adicionando 'null'.");
+        }
+
+        // 5. Adiciona a atualização ao batch
+        if (needsUpdate) {
+          batch.update(doc.reference, updateData);
+          documentsInBatch++;
+          totalUpdated++;
+        }
+
+        // 6. Envia o batch se atingir o limite de 500 e começa um novo
+        if (documentsInBatch == 499) {
+          debugPrint("[MIGRAÇÃO] Enviando batch de 500...");
+          await batch.commit();
+          batch = _firestore.batch(); // Reinicia o batch
+          documentsInBatch = 0;
+        }
+      }
+
+      // 7. Envia o último batch (o que sobrou)
+      if (documentsInBatch > 0) {
+        debugPrint("[MIGRAÇÃO] Enviando batch final de $documentsInBatch...");
+        await batch.commit();
+      }
+
+      debugPrint("[MIGRAÇÃO] Concluída. $totalUpdated jogadores atualizados.");
+      return "Sucesso: $totalUpdated jogadores foram atualizados com os novos campos.";
+
+    } catch (e) {
+      debugPrint("[MIGRAÇÃO] ERRO: $e");
+      return "Erro durante a migração: ${e.toString()}";
+    }
+  }
+  // --- FIM DA MIGRAÇÃO ---
 
   // --- NOVA FUNÇÃO: EXCLUIR EQUIPE (CASCATA) ---
   Future<String> deleteTeam(DocumentSnapshot teamDoc) async {
