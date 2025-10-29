@@ -19,7 +19,7 @@ class AdminService {
   static bool suspensionOnRed = true; // Padrão: Vermelho suspende
   static bool resetYellowsOnSuspension = true; // Zerar amarelos ao ser suspenso por amarelos
   static bool resetYellowsOnRed = false;        // Zerar amarelos ao receber cartão vermelho direto
-  static bool resetYellowsOnRedWhilePending = false; // Se levar vermelho estando pendurado, zera os amarelos
+  //static bool resetYellowsOnRedWhilePending = false; // Se levar vermelho estando pendurado, zera os amarelos
   // --- FIM REGRAS ---
 
   // --- REGRAS DE DESEMPATE PLAYOFF (com padrões) ---
@@ -56,8 +56,8 @@ class AdminService {
           suspensionOnRed = data['suspension_on_red'] ?? suspensionOnRed;
           resetYellowsOnSuspension = data['reset_yellows_on_suspension'] ?? resetYellowsOnSuspension;
           resetYellowsOnRed = data['reset_yellows_on_red'] ?? resetYellowsOnRed;
-          resetYellowsOnRedWhilePending = data['reset_yellows_on_red_while_pending'] ?? resetYellowsOnRedWhilePending;
-          debugPrint("Regras carregadas: Pend:$pendingYellowCards, SuspCA:$suspensionYellowCards, SuspCV:$suspensionOnRed, ResetSusp:$resetYellowsOnSuspension, ResetRed:$resetYellowsOnRed, ResetRedPend:$resetYellowsOnRedWhilePending");
+          //resetYellowsOnRedWhilePending = data['reset_yellows_on_red_while_pending'] ?? resetYellowsOnRedWhilePending;
+          debugPrint("Regras carregadas: Pend:$pendingYellowCards, SuspCA:$suspensionYellowCards, SuspCV:$suspensionOnRed, ResetSusp:$resetYellowsOnSuspension, ResetRed:$resetYellowsOnRed");
         }
       } else {
         debugPrint("Documento 'disciplinary_rules' não encontrado. Usando regras padrão.");

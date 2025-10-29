@@ -21,7 +21,7 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
   late bool _suspendOnRed;
   late bool _resetYellowsOnSuspension;
   late bool _resetYellowsOnRed;
-  late bool _resetYellowsOnRedWhilePending;
+  //late bool _resetYellowsOnRedWhilePending;
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -34,7 +34,7 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
     _suspendOnRed = AdminService.suspensionOnRed; // Usa valor do cache inicial
     _resetYellowsOnSuspension = AdminService.resetYellowsOnSuspension;
     _resetYellowsOnRed = AdminService.resetYellowsOnRed;
-    _resetYellowsOnRedWhilePending = AdminService.resetYellowsOnRedWhilePending;
+    //_resetYellowsOnRedWhilePending = AdminService.resetYellowsOnRedWhilePending;
     _loadCurrentRules();
   }
 
@@ -48,7 +48,7 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
        _suspendOnRed = AdminService.suspensionOnRed;
         _resetYellowsOnSuspension = AdminService.resetYellowsOnSuspension;
         _resetYellowsOnRed = AdminService.resetYellowsOnRed;
-        _resetYellowsOnRedWhilePending = AdminService.resetYellowsOnRedWhilePending;
+        //_resetYellowsOnRedWhilePending = AdminService.resetYellowsOnRedWhilePending;
        // Opcional: Busca novamente do Firestore para garantir o valor mais recente
        // final docSnap = await _firestore.collection('config').doc('disciplinary_rules').get();
        // if (docSnap.exists && docSnap.data() != null) {
@@ -78,7 +78,7 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
           'suspension_on_red': _suspendOnRed,
           'reset_yellows_on_suspension': _resetYellowsOnSuspension,
           'reset_yellows_on_red': _resetYellowsOnRed,
-          'reset_yellows_on_red_while_pending': _resetYellowsOnRedWhilePending,
+          //'reset_yellows_on_red_while_pending': _resetYellowsOnRedWhilePending,
         });
 
         // Recarrega as regras no AdminService para o app usar imediatamente
@@ -176,18 +176,12 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
                      secondary: Icon(_resetYellowsOnSuspension ? Icons.clear_all : Icons.layers_clear),
                     ),
                     SwitchListTile(
-                      title: const Text('Zerar amarelos ao receber CV direto?'),
+                      title: const Text('Zerar amarelos ao suspender por CV?'),
                       value: _resetYellowsOnRed,
                       onChanged: _isSaving ? null : (bool value) => setState(() => _resetYellowsOnRed = value),
                       secondary: Icon(_resetYellowsOnRed ? Icons.clear_all : Icons.layers_clear),
                     ),
-                    SwitchListTile(
-                      title: const Text('NÃO zerar amarelos se levar CV estando Pendurado?'),
-                      subtitle: const Text('(Ignora a regra anterior neste caso específico)'),
-                      value: !_resetYellowsOnRedWhilePending, // Invertido: Switch ON = NÃO ZERAR
-                      onChanged: _isSaving ? null : (bool value) => setState(() => _resetYellowsOnRedWhilePending = !value), // Inverte ao salvar
-                      secondary: Icon(!_resetYellowsOnRedWhilePending ? Icons.block : Icons.task_alt),
-                    ),
+                    
 
                    const SizedBox(height: 32),
                    ElevatedButton.icon(

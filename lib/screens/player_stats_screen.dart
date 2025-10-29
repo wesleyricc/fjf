@@ -20,13 +20,32 @@ class PlayerStatsScreen extends StatelessWidget {
       BuildContext context, DocumentSnapshot player) async {
     final playerName = player['name'] ?? 'Jogador desconhecido';
 
+    // Pega os dados atuais para usar na lógica
+    final data = player.data() as Map<String, dynamic>? ?? {};
+    final int currentYellows = data['yellow_cards'] ?? 0; // Pega a contagem CORRENTE
+    final int currentReds = data['red_cards'] ?? 0;
+
+    // Determina o(s) motivo(s) da suspensão para o diálogo
+    bool suspendedByRed = (currentReds > 0 && AdminService.suspensionOnRed);
+    bool suspendedByYellow = (currentYellows >= AdminService.suspensionYellowCards);
+    
+    String reason = "Motivo desconhecido.";
+    if (suspendedByRed && suspendedByYellow) {
+       reason = "Motivo: Acúmulo de CA e Cartão Vermelho (Suspensão Múltipla).";
+    } else if (suspendedByRed) {
+       reason = "Motivo: Cartão Vermelho.";
+    } else if (suspendedByYellow) {
+       reason = "Motivo: Acúmulo de Cartões Amarelos (Limite: ${AdminService.suspensionYellowCards}).";
+    }
+
     return showDialog<void>(
       context: context,
-      builder: (BuildContext dialogContext) { // Usa dialogContext
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Limpar Suspensão'),
           content: Text(
-              'Você tem certeza que deseja remover a suspensão de $playerName? (Assumindo que cumpriu a suspensão automática).'),
+            'Tem certeza que deseja liberar $playerName?\n\n$reason\n\n'
+            'Isso definirá "Suspenso=Falso" e zerará o contador de CV. O contador de CA só será zerado se tiver atingido o limite de ${AdminService.suspensionYellowCards}.'),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancelar'),
@@ -35,25 +54,45 @@ class PlayerStatsScreen extends StatelessWidget {
               },
             ),
             TextButton(
-              child: const Text('Confirmar'),
+              child: const Text('Confirmar Liberação'),
               onPressed: () async {
                 try {
-                  // Atualiza o jogador no banco de dados
+                  // --- LÓGICA DE ATUALIZAÇÃO CONDICIONAL ---
+                  
+                  // Prepara os dados para o update
+                  Map<String, dynamic> updateData = {
+                    'is_suspended': false, // Sempre libera a suspensão
+                    'red_cards': 0,    // Sempre zera o contador de CV corrente
+                  };
+
+                  // REGRA: Só zera o 'yellow_cards' corrente SE
+                  // ele for igual ou maior que o limite de suspensão.
+                  if (currentYellows >= AdminService.suspensionYellowCards) {
+                    updateData['yellow_cards'] = 0;
+                    debugPrint("Limpando suspensão: Zerando yellow_cards (era $currentYellows).");
+                  } else {
+                    // Se 'currentYellows' for 1 ou 2, 'yellow_cards' não é
+                    // adicionado ao 'updateData' e seu valor é mantido no Firestore.
+                    debugPrint("Limpando suspensão: Mantendo yellow_cards (era $currentYellows).");
+                  }
+                  // --- FIM DA LÓGICA ---
+
+                  // Executa a atualização com o mapa de dados preparado
                   await _firestore
                       .collection('players')
                       .doc(player.id)
-                      .update({'is_suspended': false});
+                      .update(updateData);
 
                   Navigator.of(dialogContext).pop();
-                  if (Navigator.of(context).canPop()) { // Verifica contexto principal
+                  if (Navigator.of(context).canPop()) { 
                      ScaffoldMessenger.of(context).showSnackBar(
                        SnackBar(content: Text('$playerName liberado da suspensão.')),
                      );
                   }
                 } catch (e) {
-                   Navigator.of(dialogContext).pop();
-                   if (Navigator.of(context).canPop()) {
-                     ScaffoldMessenger.of(context).showSnackBar(
+                  debugPrint("Erro ao liberar jogador: $e");
+                   if (Navigator.of(dialogContext).canPop()) {
+                     ScaffoldMessenger.of(dialogContext).showSnackBar(
                        SnackBar(content: Text('Erro ao liberar jogador: $e')),
                      );
                   }
@@ -111,11 +150,15 @@ class PlayerStatsScreen extends StatelessWidget {
                      // Lógica de Cor/Status (baseada nas regras do AdminService)
                      if (isSuspendedList) {
                        int reds = data['red_cards'] ?? 0;
-                       if (reds > 0 && AdminService.suspensionOnRed) {
-                         status = "Cartão Vermelho";
+                       int yellows = data['yellow_cards'] ?? 0;
+                       if (reds > 0 && AdminService.suspensionOnRed && yellows == AdminService.suspensionYellowCards) {
+                         status = "Mútipla CA/CV (2 jogos)";
+                         statusColor = const Color.fromARGB(255, 150, 72, 0)!;
+                       }else if (reds > 0 && AdminService.suspensionOnRed) {
+                         status = "Cartão Vermelho (1 jogo)";
                          statusColor = Colors.red[700]!;
                        } else {
-                         status = "Acúmulo de CA (Limite: ${AdminService.suspensionYellowCards})";
+                         status = "Acúmulo de CA (Limite: ${AdminService.suspensionYellowCards}) (1 jogo)";
                          statusColor = Colors.yellow[800]!;
                        }
                      } else {
