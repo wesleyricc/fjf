@@ -23,5 +23,37 @@
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+  // A versão do service worker é injetada pelo 'flutter build'
+  const serviceWorkerVersion = "{{flutter_service_worker_version}}";
+  
+  // Carrega o service worker principal do Flutter
+  var scriptLoaded = new Promise(function(resolve, reject) {
+    var script = document.createElement('script');
+    script.src = 'flutter_service_worker.js?v=' + serviceWorkerVersion;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+
+  // Quando o script do Flutter estiver pronto...
+  scriptLoaded.then(function() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(function(registration) {
+        
+        // --- ADIÇÃO MANUAL ---
+        // Registra o service worker do Firebase Messaging
+        // Este é o passo que o 'flutterfire configure' deveria ter feito.
+        console.log('Registrando manualmente o firebase-messaging-sw.js');
+        navigator.serviceWorker.register('firebase-messaging-sw.js');
+        // --- FIM DA ADIÇÃO MANUAL ---
+
+      });
+    }
+  });
+</script>
+
+
 </body>
 </html>
