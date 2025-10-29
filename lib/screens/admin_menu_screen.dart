@@ -9,6 +9,7 @@ import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
 import '../services/firestore_service.dart';
 import 'playoff_rules_screen.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -136,122 +137,91 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   
 
   Future<void> _showChangeVideoIdDialog() async {
-    final videoIdController = TextEditingController();
+    final urlOrIdController = TextEditingController();
     bool isLoading = false;
-    String currentVideoId = ''; // Para mostrar o ID atual
+    String currentVideoId = '';
 
     // Busca o ID atual para preencher o campo
     try {
-      final docSnap = await _firestore
-          .collection('config')
-          .doc('app_settings')
-          .get();
-      if (docSnap.exists) {
+      final docSnap = await _firestore.collection('config').doc('app_settings').get();
+      // Verifica se o doc e o campo existem antes de ler
+      if (docSnap.exists && docSnap.data() != null && docSnap.data()!.containsKey('live_video_id')) {
         currentVideoId = docSnap.get('live_video_id') ?? '';
-        videoIdController.text = currentVideoId;
+        urlOrIdController.text = currentVideoId;
       }
     } catch (e) {
-      debugPrint("Erro ao buscar ID de vídeo atual: $e");
-      // Continua mesmo se não conseguir buscar o ID atual
+       debugPrint("Erro ao buscar ID de vídeo atual: $e");
     }
 
-    if (!mounted) return; // Verifica se a tela ainda existe
+    if (!mounted) return;
 
     return showDialog<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (context) {
+      barrierDismissible: !isLoading,
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Alterar ID do Vídeo/Live'),
+              title: const Text('Alterar Vídeo/Live da Tela Inicial'),
               content: TextField(
-                controller: videoIdController,
+                controller: urlOrIdController,
                 decoration: const InputDecoration(
-                  labelText: 'ID do Vídeo do YouTube',
-                  hintText: 'Ex: dQw4w9WgXcQ',
+                  labelText: 'URL do YouTube ou ID do Vídeo',
+                  hintText: 'Cole a URL completa ou apenas o ID',
+                  border: OutlineInputBorder(),
                 ),
                 enabled: !isLoading,
               ),
               actions: [
                 TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () => Navigator.of(context).pop(),
+                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(),
                   child: const Text('Cancelar'),
                 ),
                 TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          final newVideoId = videoIdController.text
-                              .trim(); // Remove espaços extras
+                  onPressed: isLoading ? null : () async {
+                    final String input = urlOrIdController.text.trim();
 
-                          if (newVideoId.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'O ID do vídeo não pode ser vazio.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-                          // Validação simples (IDs do YouTube geralmente têm 11 caracteres)
-                          if (newVideoId.length < 10 ||
-                              newVideoId.contains(' ')) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('ID do vídeo parece inválido.'),
-                              ),
-                            );
-                            return;
-                          }
+                    if (input.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('O campo não pode ser vazio.')));
+                      return;
+                    }
 
-                          setDialogState(() {
-                            isLoading = true;
-                          });
+                    setDialogState(() { isLoading = true; });
 
-                          try {
-                            // Atualiza no Firestore
-                            await _firestore
-                                .collection('config')
-                                .doc('app_settings')
-                                .update({'live_video_id': newVideoId});
+                    String? extractedId;
 
-                            if (mounted) Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'ID do vídeo atualizado com sucesso!',
-                                ),
-                              ),
-                            );
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Erro ao atualizar ID: ${e.toString()}',
-                                  ),
-                                ),
-                              );
-                            }
-                          } finally {
-                            if (mounted) {
-                              setDialogState(() {
-                                isLoading = false;
-                              });
-                            }
-                          }
-                        },
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Salvar'),
+                    try {
+                      // Lógica de Extração (como antes)
+                      extractedId = YoutubePlayerController.convertUrlToId(input);
+                      debugPrint("Input: '$input', ID Extraído: '$extractedId'");
+
+                      if (extractedId == null || extractedId.isEmpty) {
+                         throw Exception('Não foi possível extrair um ID válido da URL fornecida.');
+                      }
+
+                      // --- ATUALIZAÇÃO: Salva o ID E o Timestamp ---
+                      await _firestore.collection('config').doc('app_settings').set({ // Use .set com merge:true para criar/atualizar
+                        'live_video_id': extractedId, // Salva o ID
+                        'live_video_timestamp': FieldValue.serverTimestamp(), // Salva a hora atual
+                      }, SetOptions(merge: true)); // 'merge: true' garante que outros campos (ex: regulation_pdf_url) não sejam apagados
+                      // --- FIM DA ATUALIZAÇÃO ---
+
+                      if (mounted) Navigator.of(dialogContext).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vídeo/Live atualizado! Válido por 24h.')));
+
+                    } catch (e) {
+                       if (mounted) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')),
+                          );
+                       }
+                    } finally {
+                       if (Navigator.of(dialogContext).canPop()){
+                         setDialogState(() { isLoading = false; });
+                       }
+                    }
+                  },
+                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Salvar'),
                 ),
               ],
             );

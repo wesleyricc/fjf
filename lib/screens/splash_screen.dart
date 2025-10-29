@@ -44,6 +44,7 @@ class _SplashScreenState extends State<SplashScreen> {
   html.Event? _installPromptEvent;
   bool _showInstallButton = false;
   bool _isDrawerOpen = false;
+  String? _regulationUrl;
 
   // --- FIM ---
   @override
@@ -51,9 +52,20 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
     debugPrint("SplashScreen: initState");
 
-    _fetchAndLoadCorrectVideoId();
+    // Inicializa o controller
+    _ytController = YoutubePlayerController.fromVideoId(
+      videoId: _defaultVideoId,
+      autoPlay: false,
+      params: const YoutubePlayerParams(
+        showControls: true,
+        mute: false,
+        showFullscreenButton: true,
+        enableCaption: false,
+      ),
+    );
 
-    // --- CAPTURAR O EVENTO DE INSTALAÇÃO (SÓ NA WEB) ---
+    // Inicia as buscas
+    _fetchFirebaseData(); // Nova função "wrapper"
     if (kIsWeb) {
       debugPrint("Verificando instalação PWA...");
 
@@ -75,66 +87,119 @@ class _SplashScreenState extends State<SplashScreen> {
     // --- FIM DA CAPTURA ---
   }
 
-  // Busca o ID do vídeo no Firestore e carrega no player
-  Future<void> _fetchAndLoadCorrectVideoId() async {
-    // Garante que o estado de loading comece (ou recomece) true
-    if (!_isLoadingVideoId && mounted) {
-      setState(() { _isLoadingVideoId = true; });
-    } else if (!mounted && !_isLoadingVideoId) {
-      _isLoadingVideoId = true;
-    }
+  // --- 2. NOVA FUNÇÃO WRAPPER PARA BUSCAR TUDO ---
+  // Chama ambas as buscas do Firestore
+  Future<void> _fetchFirebaseData() async {
+    // Inicia ambas as buscas em paralelo
+    final videoIdFuture = _fetchVideoId();
+    final regulationUrlFuture = _fetchRegulationUrl();
+    
+    await regulationUrlFuture;
 
-    String correctVideoId = _defaultVideoId;
+    final String correctVideoId = await videoIdFuture;
+
+    // Quando ambas terminarem, inicializa o player com o ID correto
+    // e finaliza o loading da tela
+    if (mounted) {
+      final correctVideoId = await videoIdFuture; // Pega o resultado
+      
+      // Carrega o vídeo correto no controller (que já existe)
+      final currentId = _ytController.metadata.videoId;
+      if (currentId != correctVideoId) {
+        debugPrint("SplashScreen: Carregando ID ($correctVideoId) no player...");
+        _ytController.loadVideoById(videoId: correctVideoId);
+      } else {
+        debugPrint("SplashScreen: IDs são iguais. Nenhuma ação de load necessária.");
+      }
+
+      // Atualiza o estado (URL do regulamento já foi setada)
+      setState(() {
+        _isLoadingVideoId = false; // Termina o loading do player
+      });
+      debugPrint("[DIAGNÓSTICO] setState chamado, _isLoadingVideoId = false.");
+    }
+  }
+  // --- FIM DA FUNÇÃO WRAPPER ---
+
+
+  // --- 3. FUNÇÃO DE BUSCA DO VÍDEO (AGORA RETORNA STRING) ---
+
+
+  // Busca o ID do vídeo no Firestore e carrega no player
+ Future<String> _fetchVideoId() async {
+    String correctVideoId = _defaultVideoId; // Começa com o ID padrão
     try {
-      debugPrint("[DIAGNÓSTICO] Iniciando busca no Firestore...");
+      debugPrint("[DIAGNÓSTICO] Iniciando busca (Vídeo)...");
       final docSnap = await _firestore.collection('config').doc('app_settings').get();
 
       if (docSnap.exists) {
         final docData = docSnap.data();
-        if (docData != null && docData.containsKey('live_video_id')) {
-          final fetchedId = docData['live_video_id'];
-          if (fetchedId is String && fetchedId.isNotEmpty) {
-            correctVideoId = fetchedId;
-            debugPrint("[DIAGNÓSTICO] ID do Firestore é válido. Usando: $correctVideoId");
+        // --- VERIFICAÇÃO DE 24 HORAS ---
+        if (docData != null &&
+            docData.containsKey('live_video_id') &&
+            docData.containsKey('live_video_timestamp')) {
+          
+          final fetchedId = docData['live_video_id'] as String?;
+          final fetchedTimestamp = docData['live_video_timestamp'] as Timestamp?; // Pega o timestamp
+
+          if (fetchedId != null && fetchedId.isNotEmpty && fetchedTimestamp != null) {
+            final DateTime timestampDate = fetchedTimestamp.toDate();
+            final DateTime now = DateTime.now();
+            final Duration difference = now.difference(timestampDate);
+
+            if (difference.inHours < 24) {
+              correctVideoId = fetchedId; // VÁLIDO
+            } else {
+              debugPrint("[DIAGNÓSTICO] ID do Firestore EXPIRADO. Usando padrão.");
+              correctVideoId = _defaultVideoId;
+            }
           } else {
-            debugPrint("[DIAGNÓSTICO] ID do Firestore inválido. Usando padrão: $_defaultVideoId");
+             debugPrint("[DIAGNÓSTICO] Campos de vídeo incompletos. Usando padrão.");
+             correctVideoId = _defaultVideoId;
           }
         } else {
-          debugPrint("[DIAGNÓSTICO] Campo 'live_video_id' NÃO encontrado. Usando padrão.");
+          debugPrint("[DIAGNÓSTICO] Campo 'live_video_id' ou 'timestamp' NÃO encontrado. Usando padrão.");
+          correctVideoId = _defaultVideoId;
         }
       } else {
         debugPrint("[DIAGNÓSTICO] Documento 'app_settings' NÃO encontrado. Usando padrão.");
+        correctVideoId = _defaultVideoId;
       }
     } catch (e) {
       debugPrint("[DIAGNÓSTICO] ERRO CATCH ao buscar ID: $e. Usando padrão.");
-    } finally {
-      debugPrint("[DIAGNÓTICO] Bloco finally. ID final a ser usado: $correctVideoId");
-
-      // --- CRIAÇÃO DO CONTROLLER ---
-      // Cria o controller AQUI, com o ID correto (do Firestore ou o padrão)
-      _ytController = YoutubePlayerController.fromVideoId(
-        videoId: correctVideoId, // Usa o ID final
-        autoPlay: true,
-        params: const YoutubePlayerParams(
-          showControls: true,
-          mute: true,
-          showFullscreenButton: true,
-          enableCaption: false,
-        ),
-      );
-      // --- FIM DA CRIAÇÃO ---
-
-      // Verifica se o widget ainda está montado ANTES de chamar setState
-      if (mounted) {
-        setState(() {
-          _isLoadingVideoId = false; // Finaliza o loading
-        });
-        debugPrint("[DIAGNÓSTICO] setState chamado, _isLoadingVideoId = false.");
-      } else {
-        debugPrint("[DIAGNÓSTICO] Widget desmontado no finally.");
-      }
+      correctVideoId = _defaultVideoId;
     }
+    return correctVideoId; // Retorna o ID final
   }
+
+   // --- 4. NOVA FUNÇÃO PARA BUSCAR URL DO REGULAMENTO ---
+  Future<void> _fetchRegulationUrl() async {
+    try {
+      debugPrint("[DIAGNÓSTICO] Iniciando busca (Regulamento)...");
+      final docSnap = await _firestore.collection('config').doc('app_settings').get();
+      if (docSnap.exists && docSnap.data()!.containsKey('regulation_pdf_url')) {
+        final fetchedUrl = docSnap.get('regulation_pdf_url') as String?;
+        if (fetchedUrl != null && fetchedUrl.isNotEmpty) {
+          debugPrint("[DIAGNÓSTICO] URL do Regulamento encontrada.");
+          if (mounted) {
+            setState(() {
+              _regulationUrl = fetchedUrl; // Salva a URL no estado
+            });
+          }
+        } else {
+           debugPrint("[DIAGNÓSTICO] URL do Regulamento está vazia no Firestore.");
+        }
+      } else {
+         debugPrint("[DIAGNÓSTICO] Campo 'regulation_pdf_url' NÃO encontrado.");
+      }
+    } catch (e) {
+       debugPrint("[DIAGNÓSTICO] ERRO CATCH ao buscar URL do Regulamento: $e");
+    }
+    // Não precisa de finally ou setState, pois _regulationUrl ser nulo
+    // apenas esconderá o botão.
+  }
+  // --- FIM DA FUNÇÃO ---
+
 
   @override
   void dispose() {
@@ -264,6 +329,32 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // --- 5. BOTÃO REGULAMENTO (NOVO) ---
+                  if (_regulationUrl != null && _regulationUrl!.isNotEmpty) // Só mostra se a URL foi carregada
+                    Padding(
+                      padding: const EdgeInsets.only(top: 24.0, left: 32.0, right: 32.0), // Padding para centralizar/afunilar
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.description_outlined),
+                        label: const Text('Regulamento Oficial'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12.0),
+                          backgroundColor: Colors.grey[100], // Cor neutra
+                          foregroundColor: Theme.of(context).primaryColor, // Cor do texto
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Theme.of(context).primaryColor, width: 1.5) // Borda
+                          )
+                        ),
+                        onPressed: () {
+                          _launchURL(_regulationUrl!); // Abre o PDF
+                        },
+                      ),
+                    ),
+                  // --- FIM DO BOTÃO ---
+
+                  const SizedBox(height: 20), // Espaço
+
+
                   if (kIsWeb && !isStandalone) ...[
                   if (_showInstallButton && !isIOS)
                     Padding(

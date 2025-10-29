@@ -145,7 +145,7 @@ class AppDrawer extends StatelessWidget {
                 : Icons.lock_outline, // Ícone muda se logado
             AdminService.isAdmin
                 ? 'Menu Administrador'
-                : 'Modo Admininistrador', // Texto muda
+                : 'Modo Administrador', // Texto muda
             () {
               //Navigator.of(
                 //context,
@@ -166,13 +166,13 @@ class AppDrawer extends StatelessWidget {
             _buildDrawerItem(
               context,
               Icons.logout,
-              'Sair do Modo Admininistrador',
+              'Sair do Modo Administrador',
               () {
                 AdminService.logoutAdmin();
                 Navigator.of(context).pop(); // Fecha o drawer
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Modo Admininistrador desativado.'),
+                    content: Text('Modo Administrador desativado.'),
                   ),
                 );
                 // Opcional: Navegar para a tela inicial para "resetar" visualmente
@@ -189,7 +189,7 @@ class AppDrawer extends StatelessWidget {
             ),
 
           // --- ADICIONAR TEXTO DE COPYRIGHT AQUI ---
-          const SizedBox(height: 70), // Espaço antes do texto
+          const SizedBox(height: 30), // Espaço antes do texto
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
