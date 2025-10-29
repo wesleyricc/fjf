@@ -44,7 +44,7 @@ class FirestoreService {
     final homeMatches = await _firestore
         .collection('matches')
         .where('team_home_id', isEqualTo: teamId)
-        .where('status', isEqualTo: 'finished')
+        .where('status', whereIn: ['finished', 'in_progress'])
         .where('phase', isEqualTo: 'first')
         .get();
     for (final doc in homeMatches.docs) {
@@ -74,7 +74,7 @@ class FirestoreService {
     final awayMatches = await _firestore
         .collection('matches')
         .where('team_away_id', isEqualTo: teamId)
-        .where('status', isEqualTo: 'finished')
+        .where('status', whereIn: ['finished', 'in_progress'])
         .where('phase', isEqualTo: 'first')
         .get();
     for (final doc in awayMatches.docs) {
