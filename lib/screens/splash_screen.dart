@@ -178,10 +178,12 @@ class _SplashScreenState extends State<SplashScreen> {
     // --- VERIFICA SE É IOS (PARA INSTRUÇÕES) ---
     bool isIOS = false;
     bool isAndroid = false;
+    bool isStandalone = false;
     if (kIsWeb) {
       final userAgent = html.window.navigator.userAgent.toLowerCase();
       isIOS = userAgent.contains('iphone') || userAgent.contains('ipad');
       isAndroid = userAgent.contains('android');
+      isStandalone = html.window.matchMedia('(display-mode: standalone)').matches;
     }
 
     return Scaffold(
@@ -262,7 +264,8 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (kIsWeb && _showInstallButton && !isIOS)
+                  if (kIsWeb && !isStandalone) ...[
+                  if (_showInstallButton && !isIOS)
                     Padding(
                       padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
                       child: ElevatedButton.icon(
@@ -277,7 +280,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       ),
                     ),
 
-                  if (kIsWeb && isIOS)
+                  if (!_showInstallButton && isIOS)
                     Container(
                       padding: const EdgeInsets.all(12.0),
                       margin: const EdgeInsets.only(top: 10.0, bottom: 10.0),
@@ -312,7 +315,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
 
                   // --- FIM INSTRUÇÕES iOS ---
-                  if (kIsWeb && !_showInstallButton && isAndroid)
+                  if (!_showInstallButton && isAndroid)
                     Container(
                       padding: const EdgeInsets.all(12.0),
                       margin: const EdgeInsets.only(top: 24.0, bottom: 16.0),
@@ -345,6 +348,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         ],
                       ),
                     ),
+                  ],
 
                   const SizedBox(height: 5),
                   // --- 3. Links de Redes Sociais ---
