@@ -10,6 +10,7 @@ import 'match_stats_screen.dart';
 import 'team_detail_screen.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'edit_match_screen.dart';
+import 'match_roster_screen.dart';
 
 // Enum para clareza na seleção de fase
 enum TournamentPhase { first, second }
@@ -412,12 +413,9 @@ class _FixturesScreenState extends State<FixturesScreen>
                                   ),
                                 );
                               } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'As estatísticas estarão disponíveis após o fim do jogo.',
-                                    ),
-                                  ),
+                                // Usuário, Jogo Pendente ou Em Andamento -> Vai para Escalação
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (ctx) => MatchRosterScreen(match: match)),
                                 );
                               }
                             },
