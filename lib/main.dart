@@ -31,6 +31,7 @@ void main() async {
   await AdminService.loadDisciplinaryRules();
   await AdminService.loadTiebreakerRules();
   await AdminService.loadPlayoffRules();
+  await AdminService.loadDefaultRound();
   await NotificationService().init();
 
   runApp(const MyApp());

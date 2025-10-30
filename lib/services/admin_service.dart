@@ -9,7 +9,7 @@ import '../screens/admin_menu_screen.dart'; // <-- Tela que vamos criar
 class AdminService {
   static bool isAdmin = false;
   static String? loggedInAdminUsername; //Guarda o ID/username do admin logado
-
+  static int defaultRound = 1;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -68,6 +68,25 @@ class AdminService {
     }
   }
   // --- FIM CARREGAR REGRAS ---
+
+  // --- NOVA FUNÇÃO PARA CARREGAR A RODADA PADRÃO ---
+  static Future<void> loadDefaultRound() async {
+    try {
+      final docSnap = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('app_settings')
+          .get();
+          
+      if (docSnap.exists && docSnap.data()!.containsKey('default_fixtures_round')) {
+        defaultRound = docSnap.get('default_fixtures_round') ?? 1;
+      }
+      debugPrint("Rodada Padrão carregada do Firestore: $defaultRound");
+    } catch (e) {
+      debugPrint("Erro ao carregar rodada padrão (loadDefaultRound): $e. Usando padrão 1.");
+      defaultRound = 1; // Garante o padrão em caso de erro
+    }
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
 
   // --- NOVA FUNÇÃO PARA CARREGAR ORDEM DE DESEMPATE ---
   static Future<void> loadTiebreakerRules() async {

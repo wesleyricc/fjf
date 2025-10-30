@@ -568,7 +568,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             ),
             if (isGoalkeeper)
                _buildStatCounter(
-                 icon: Icons.shield_outlined, // Mudei o ícone de goleiro
+                 icon: Icons.pan_tool_outlined, // Mudei o ícone de goleiro
                  label: "GS",
                  color: Colors.blueGrey,
                  count: currentGoalsConceded,
@@ -873,7 +873,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               elevation: isSelected ? 3 : 1,
               child: ListTile(
                 dense: true,
-                leading: Icon(data['is_goalkeeper']==true ? Icons.shield_outlined : Icons.person_outline),
+                leading: Icon(data['is_goalkeeper']==true ? Icons.pan_tool_outlined : Icons.person_outline),
                 title: Text(
                   number != null ? '$number. $playerName' : '-. $playerName', // Usa '-.' se nulo
                   style: const TextStyle(fontWeight: FontWeight.w500)
@@ -1056,13 +1056,20 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                           const SizedBox(height: 12),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               ElevatedButton.icon(
                                 icon: const Icon(Icons.attach_file, size: 18),
                                 label: const Text('Selecionar PDF'),
                                 onPressed: (_isSaving || _isUploadingSumula) ? null : _pickSumulaFile, // Chama a função correta
                               ),
-                              _buildFileStatus(), // Chama o status da Súmula
+                              // Espaçador para evitar que colem
+                              const SizedBox(width: 8), 
+                              
+                              // Flexible permite que o widget de status encolha/quebre linha
+                              Flexible(
+                                child: _buildFileStatus(), // Chama o status da Súmula
+                              ),
                             ],
                           ),
                         ],

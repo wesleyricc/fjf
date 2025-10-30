@@ -676,50 +676,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
    
   // --- FIM MEDIA TAB ---
 
-  // --- 5. WIDGET AUXILIAR PARA O ITEM DE MÍDIA ---
-  Widget _buildMediaItem(BuildContext context, String title, String videoId) {
-    // Cria um controller SÓ PARA ESTE ITEM
-    final controller = YoutubePlayerController.fromVideoId(
-      videoId: videoId,
-      autoPlay: false,
-      params: const YoutubePlayerParams(
-        showControls: true,
-        showFullscreenButton: true,
-      ),
-    );
-
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            // Usa o YoutubePlayerScaffold para permitir fullscreen e evitar
-            // problemas de clique caso o usuário abra um Dialog sobre ele.
-            YoutubePlayerScaffold(
-              controller: controller,
-              // Não precisamos de AppBar/Drawer aqui
-              builder: (context, player) {
-                // 'player' é o widget YoutubePlayer gerenciado
-                return player;
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  // --- FIM MEDIA ITEM ---
-
   // --- NOVA FUNÇÃO AUXILIAR PARA ITEM DE CARTÃO ---
   Widget _buildCardStatItem({
     required String name,
@@ -866,8 +822,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                     children: [
                       if (homeShield.isNotEmpty)
                         SizedBox(
-                          width: 40,
-                          height: 40,
+                          width: 80,
+                          height: 80,
                           child: CachedNetworkImage(
                             imageUrl: homeShield,
                             fit: BoxFit.contain,
@@ -883,8 +839,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                       ),
                       if (awayShield.isNotEmpty)
                         SizedBox(
-                          width: 40,
-                          height: 40,
+                          width: 80,
+                          height: 80,
                           child: CachedNetworkImage(
                             imageUrl: awayShield,
                             fit: BoxFit.contain,

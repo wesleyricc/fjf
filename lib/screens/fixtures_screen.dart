@@ -33,7 +33,7 @@ class _FixturesScreenState extends State<FixturesScreen>
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   // --- Estados usando Enums ---
   TournamentPhase _selectedPhase = TournamentPhase.first;
-  int _selectedRound = 1;
+  int _selectedRound = AdminService.defaultRound;
   PlayoffStage _selectedPlayoffStage = PlayoffStage.semifinal;
   int TOTAL_RODADAS = 7;
 
@@ -256,8 +256,8 @@ class _FixturesScreenState extends State<FixturesScreen>
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   String message = _selectedPhase == TournamentPhase.first
-                      ? 'Nenhum jogo para registrado para a rodada $_selectedRound.'
-                      : 'Nenhum jogo para registrado para ${_selectedPlayoffStage == PlayoffStage.semifinal ? 'Semifinais' : (_selectedPlayoffStage == PlayoffStage.third_place ? '3º Lugar' : 'Final')}.';
+                      ? 'Nenhum jogo registrado para a rodada $_selectedRound.'
+                      : 'Nenhum jogo registrado para ${_selectedPlayoffStage == PlayoffStage.semifinal ? 'Semifinais' : (_selectedPlayoffStage == PlayoffStage.third_place ? '3º Lugar' : 'Final')}.';
                   //if (AdminService.isAdmin && _selectedPhase == 'second') {
                   //message += '\nUse o Menu Admin para gerar os jogos.';
                   //}

@@ -468,7 +468,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 5), // Espaço generoso antes do rodapé
+                  const SizedBox(height: 5),
                       Text(
                         'Desenvolvido por Wesley Ricardo.\nTodos os direitos reservados © FJF 2025.',
                         textAlign: TextAlign.center,

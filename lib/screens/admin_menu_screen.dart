@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import '../services/data_uploader_service.dart';
 import '../services/admin_service.dart';
 import 'disciplinary_rules_screen.dart';
@@ -448,6 +449,99 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
   // --- FIM ---
 
+  // --- 2. ADICIONE A NOVA FUNÇÃO DO DIÁLOGO ---
+  Future<void> _showSetDefaultRoundDialog() async {
+    // Controlado pré-preenchido com a rodada atual
+    final roundController = TextEditingController(
+      text: AdminService.defaultRound.toString(),
+    );
+    bool isDialogSaving = false; // Estado de loading local
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder( // Necessário para o loading
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Definir Rodada Padrão'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Informe a rodada que deve ser exibida ao abrir a "Tabela de Jogos". Isso afetará todos os usuários.',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: roundController,
+                    decoration: const InputDecoration(
+                      labelText: 'Número da Rodada',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    enabled: !isDialogSaving,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isDialogSaving ? null : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: isDialogSaving ? null : () async {
+                    final int? newRound = int.tryParse(roundController.text);
+                    // (Ajuste o limite de 7 se necessário)
+                    if (newRound != null && newRound > 0 && newRound <= 7) { 
+                      
+                      setDialogState(() { isDialogSaving = true; });
+                      
+                      try {
+                        // --- 1. Salva no Firestore ---
+                        await _firestore.collection('config').doc('app_settings').set(
+                          { 'default_fixtures_round': newRound },
+                          SetOptions(merge: true) // merge:true NÃO apaga outros campos
+                        );
+                        
+                        // --- 2. Salva no AdminService (para sessão atual) ---
+                        AdminService.defaultRound = newRound; 
+                        
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Rodada padrão definida como $newRound.')),
+                          );
+                          Navigator.of(dialogContext).pop();
+                        }
+                      } catch (e) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(content: Text('Erro ao salvar no Firestore: $e')),
+                          );
+                      } finally {
+                          // Garante que o loading pare mesmo se 'mounted' for falso
+                          // (embora o 'canPop' seja mais seguro)
+                           setDialogState(() { isDialogSaving = false; });
+                      }
+                    } else {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(content: Text('Por favor, insira um número de rodada válido (1-7).')),
+                      );
+                    }
+                  },
+                  child: isDialogSaving 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                      : const Text('Salvar'),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -464,6 +558,15 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             onTap: _showChangeVideoIdDialog, // Chama a função movida
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.looks_one_outlined), // Ícone de número
+            title: const Text('Definir Rodada Padrão'),
+            subtitle: const Text('Define a rodada da Tabela de Jogos'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: _isSaving ? null : _showSetDefaultRoundDialog,
+          ),
+          const Divider(),
+          
           ListTile(
             leading: const Icon(Icons.rule_folder), // Ícone de regras
             title: const Text('Regras Disciplinares'),

@@ -106,7 +106,7 @@ class _StandingsScreenState extends State<StandingsScreen> {
                     dataRowMaxHeight: 38.0, // Altura ligeiramente reduzida
                     headingRowHeight: 44, // Altura do cabeçalho
                     columns: const [
-                      DataColumn(label: Text('Pos')),
+                      DataColumn(label: Text('#')),
                       DataColumn(label: Text('Time')),
                       DataColumn(label: Text('P')),
                       DataColumn(label: Text('J')),
@@ -116,9 +116,9 @@ class _StandingsScreenState extends State<StandingsScreen> {
                       DataColumn(label: Text('GP')),
                       DataColumn(label: Text('GC')),
                       DataColumn(label: Text('SG')),
-                      DataColumn(label: Text('APR %')),
-                      DataColumn(label: Text('PE')),
                       DataColumn(label: Text('PD')),
+                      DataColumn(label: Text('PE')),
+                      DataColumn(label: Text('APR %')),
                     ],
                     rows: teams.map((teamStanding) {
                       final data = teamStanding.data;
@@ -164,7 +164,8 @@ class _StandingsScreenState extends State<StandingsScreen> {
                         DataCell(Text(teamStanding.goalsFor.toString())),
                         DataCell(Text(teamStanding.goalsAgainst.toString())),
                         DataCell(Text(teamStanding.goalDifference.toString())),
-
+                        DataCell(Text(teamStanding.disciplinaryPoints.toString())),
+                        DataCell(Text(teamStanding.extraPoints.toString())),
                         DataCell(
                           Builder( // Usamos Builder para calcular aqui dentro
                             builder: (context) {
@@ -185,8 +186,6 @@ class _StandingsScreenState extends State<StandingsScreen> {
                             },
                           )
                         ),
-                        DataCell(Text(teamStanding.extraPoints.toString())),
-                        DataCell(Text(teamStanding.disciplinaryPoints.toString())),
                       ]);
                     }).toList(),
                   ),
@@ -215,9 +214,9 @@ class _StandingsScreenState extends State<StandingsScreen> {
                         _buildLegendRow('SG', 'Saldo de Gols'),
                         _buildLegendRow('GP', 'Gols Pró'),
                         _buildLegendRow('GC', 'Gols Contra'),
-                        _buildLegendRow('APR %', 'Aproveitamento (%)'),
-                        _buildLegendRow('PE', 'Pontos Extras (Bônus/Penalidades)'),
                         _buildLegendRow('PD', 'Pontos Disciplinares (10 - Amarelo / 21  - Vermelho)'),
+                        _buildLegendRow('PE', 'Pontos Extras (Bônus/Penalidades)'),
+                        _buildLegendRow('APR %', 'Aproveitamento (%)'),
                       ],
                     ),
                   ),
