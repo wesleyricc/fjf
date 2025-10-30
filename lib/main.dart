@@ -8,6 +8,7 @@ import 'screens/splash_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/admin_service.dart';
 import 'services/notification_service.dart';
+//import 'package:firebase_auth/firebase_auth.dart';
 
 
 void main() async {
@@ -16,6 +17,16 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // --- 2. FAZ LOGIN ANÔNIMO ---
+  //try {
+    //final userCredential = await FirebaseAuth.instance.signInAnonymously();
+    //debugPrint("Login anônimo BEM-SUCEDIDO. UID: ${userCredential.user?.uid}");
+  //} catch (e) {
+    //debugPrint("Erro no login anônimo: $e");
+    // O app continuará, mas os uploads podem falhar se as regras exigirem auth
+  //}
+  // --- FIM ---
 
   await AdminService.loadDisciplinaryRules();
   await AdminService.loadTiebreakerRules();
@@ -70,6 +81,7 @@ class MyApp extends StatelessWidget {
       ],
       // Define o locale padrão (opcional, mas bom ter)
       locale: const Locale('pt', 'BR'),
+      
       // --- FIM DAS ADIÇÕES ---
 
     );

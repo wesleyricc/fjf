@@ -55,10 +55,10 @@ class _SplashScreenState extends State<SplashScreen> {
     // Inicializa o controller
     _ytController = YoutubePlayerController.fromVideoId(
       videoId: _defaultVideoId,
-      autoPlay: false,
+      autoPlay: true,
       params: const YoutubePlayerParams(
         showControls: true,
-        mute: false,
+        mute: true,
         showFullscreenButton: true,
         enableCaption: false,
       ),
@@ -329,32 +329,6 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // --- 5. BOTÃO REGULAMENTO (NOVO) ---
-                  if (_regulationUrl != null && _regulationUrl!.isNotEmpty) // Só mostra se a URL foi carregada
-                    Padding(
-                      padding: const EdgeInsets.only(top: 24.0, left: 32.0, right: 32.0), // Padding para centralizar/afunilar
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.description_outlined),
-                        label: const Text('Regulamento Oficial'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12.0),
-                          backgroundColor: Colors.grey[100], // Cor neutra
-                          foregroundColor: Theme.of(context).primaryColor, // Cor do texto
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(color: Theme.of(context).primaryColor, width: 1.5) // Borda
-                          )
-                        ),
-                        onPressed: () {
-                          _launchURL(_regulationUrl!); // Abre o PDF
-                        },
-                      ),
-                    ),
-                  // --- FIM DO BOTÃO ---
-
-                  const SizedBox(height: 20), // Espaço
-
-
                   if (kIsWeb && !isStandalone) ...[
                   if (_showInstallButton && !isIOS)
                     Padding(
@@ -442,6 +416,32 @@ class _SplashScreenState extends State<SplashScreen> {
                   ],
 
                   const SizedBox(height: 5),
+
+                  // --- 5. BOTÃO REGULAMENTO (NOVO) ---
+                  if (_regulationUrl != null && _regulationUrl!.isNotEmpty) // Só mostra se a URL foi carregada
+                    Padding(
+                      padding: const EdgeInsets.only(top: 24.0, left: 32.0, right: 32.0), // Padding para centralizar/afunilar
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.description_outlined),
+                        label: const Text('Regulamento Oficial'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12.0),
+                          backgroundColor: Colors.grey[100], // Cor neutra
+                          foregroundColor: Theme.of(context).primaryColor, // Cor do texto
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: Theme.of(context).primaryColor, width: 1.5) // Borda
+                          )
+                        ),
+                        onPressed: () {
+                          _launchURL(_regulationUrl!); // Abre o PDF
+                        },
+                      ),
+                    ),
+                  // --- FIM DO BOTÃO ---
+
+                  const SizedBox(height: 10), // Espaço
+
                   // --- 3. Links de Redes Sociais ---
                   Text(
                     'Siga-nos nas Redes Sociais',

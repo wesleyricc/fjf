@@ -8,6 +8,7 @@ import '../screens/teams_list_screen.dart';
 import '../services/admin_service.dart';
 import '../screens/team_stats_screen.dart';
 import '../screens/player_stats_screen.dart';
+import '../screens/report_bug_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -135,6 +136,22 @@ class AppDrawer extends StatelessWidget {
                 MaterialPageRoute(builder: (ctx) => PlayerStatsScreen()),
               );
             },
+          ),
+
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
+          _buildDrawerItem(
+            context,
+            Icons.bug_report_outlined, // Ícone de bug
+            'Reportar Erro',
+            () {
+              Navigator.of(context).pop(); // Fecha o drawer
+              // Usa push (não pushReplacement) para poder voltar
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (ctx) => const ReportBugScreen()),
+              );
+            },
+            denseOverride: true,
+            contentPaddingOverride: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
           ),
 
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),

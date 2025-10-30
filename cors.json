@@ -1,12 +1,17 @@
 [
   {
     "origin": [
-      "https://fjfapp.web.app",       
-      "http://localhost:56441",   
+      "https://fjfapp.web.app",
+      "https://fjf-app.web.app",
+      "http://localhost:5000", 
       "http://localhost"
     ],
-    "method": ["GET"],
+    "method": ["GET", "PUT", "POST", "OPTIONS"],
     "maxAgeSeconds": 3600,
-    "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"]
+    "responseHeader": [
+      "Content-Type",
+      "Access-Control-Allow-Origin",
+      "x-goog-resumable"
+    ]
   }
 ]

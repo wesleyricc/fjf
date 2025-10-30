@@ -4,8 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 
 class MatchStatsScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -15,7 +17,7 @@ class MatchStatsScreen extends StatefulWidget {
   State<MatchStatsScreen> createState() => _MatchStatsScreenState();
 }
 
-class _MatchStatsScreenState extends State<MatchStatsScreen> {
+class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   Map<String, Map<String, dynamic>> _playerDataCache = {};
   bool _isLoadingPlayerData = true;
@@ -27,12 +29,204 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   Map<String, int> _reds = {};
   String? _manOfTheMatchId;
 
+
+  late TabController _tabController;
+  List<Map<String, dynamic>> _mediaLinks = [];
+
+  VideoPlayerController? _activeVideoPlayerController;
+  ChewieController? _activeChewieController;
+  String _activeMediaTitle = 'Carregando Mídia...';
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _extractStatsAndFetchPlayers();
+    _loadMediaLinks();
   }
 
+ @override  
+ void dispose() {
+    _tabController.dispose();
+    _activeVideoPlayerController?.dispose();
+    _activeChewieController?.dispose();
+    super.dispose();
+  }
+
+  // Carrega a lista de mídias do documento do jogo
+  void _loadMediaLinks() {
+    final data = widget.match.data() as Map<String, dynamic>;
+    if (data.containsKey('stats_applied') &&
+        data['stats_applied'] != null &&
+        data['stats_applied']['media_links'] != null)
+    {
+      final linksFromDb = data['stats_applied']['media_links'] as List<dynamic>;
+      _mediaLinks = List<Map<String, dynamic>>.from(
+        linksFromDb.map((item) => Map<String, dynamic>.from(item))
+      );
+      
+      // --- 3. INICIALIZA O PRIMEIRO VÍDEO (se houver mídias) ---
+      if (_mediaLinks.isNotEmpty) {
+        // Atraso de 1 frame para garantir que o build inicial termine
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+             _changeMediaVideo(
+                _mediaLinks.first['videoUrl'],
+                _mediaLinks.first['title'],
+                autoPlay: false
+             );
+          }
+        });
+      }
+      // --- FIM ---
+    }
+    
+    // Atualiza o estado (mesmo que a lista esteja vazia)
+    if(mounted) setState(() {});
+  }
+
+  // --- 4. NOVA FUNÇÃO PARA TROCAR O VÍDEO NO PLAYER ---
+  void _changeMediaVideo(String videoUrl, String title, {bool autoPlay = true}) {
+    if (!mounted) return;
+    
+    // Se clicar no vídeo que já está carregado, não faz nada
+    if (_activeVideoPlayerController?.dataSource == videoUrl) return;
+
+    debugPrint("Trocando mídia para: $title ($videoUrl)");
+
+    // Limpa os controllers antigos (se existirem)
+    _activeVideoPlayerController?.dispose();
+    _activeChewieController?.dispose();
+
+    // Cria os novos controllers
+    try {
+      _activeVideoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(videoUrl),
+      );
+      
+      _activeChewieController = ChewieController(
+        videoPlayerController: _activeVideoPlayerController!,
+        autoPlay: autoPlay,
+        looping: false,
+        autoInitialize: true,
+        aspectRatio: 16 / 9,
+        allowFullScreen: true, 
+        placeholder: Container(
+          color: Colors.black,
+          child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+        ),
+        errorBuilder: (context, errorMessage) {
+          return Container(
+            color: Colors.black,
+            child: Center(
+              child: Text('Erro ao carregar vídeo: $errorMessage', style: const TextStyle(color: Colors.white)),
+            ),
+          );
+        },
+      );
+
+      // Atualiza a UI para mostrar o novo player e título
+      setState(() {
+        _activeMediaTitle = title;
+      });
+    } catch (e) {
+       debugPrint("Erro ao criar VideoPlayerController: $e");
+       setState(() {
+         _activeMediaTitle = "Erro ao carregar vídeo";
+         _activeChewieController = null; // Remove o player
+       });
+    }
+  }
+  // --- FIM DA FUNÇÃO ---
+  // --- 5. FUNÇÃO: CONSTRÓI A ABA DE MÍDIAS (REFEITA) ---
+  Widget _buildMediaTab() {
+    if (_mediaLinks.isEmpty) {
+      return const Center(
+        child: Text('Nenhuma mídia (vídeo) disponível para esta partida.'),
+      );
+    }
+
+    // A lógica de inicialização foi movida para _loadMediaLinks
+
+    return SingleChildScrollView( // Permite rolar a lista de vídeos
+      padding: const EdgeInsets.all(8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // --- A. O PLAYER ÚNICO ---
+          Card(
+            elevation: 3,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
+                  child: Container(
+                    width: double.infinity, // Força largura total
+                    alignment: Alignment.center, // Centraliza o filho
+                    child: Text(
+                    _activeMediaTitle,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                ),
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: (_activeChewieController == null)
+                      // Se nenhum vídeo foi carregado (ou deu erro)
+                      ? Container(color: Colors.black, child: const Center(child: CircularProgressIndicator()))
+                      // Mostra o player de vídeo ativo
+                      : Chewie(controller: _activeChewieController!),
+                ),
+              ],
+            ),
+          ),
+          // --- FIM DO PLAYER ---
+
+          //const SizedBox(height: 5),
+          const Divider(),
+          Padding(
+             padding: const EdgeInsets.symmetric(vertical: 2.0),
+             child: Text('Lista de Reprodução', style: Theme.of(context).textTheme.titleMedium),
+          ),
+
+          // --- B. A LISTA DE VÍDEOS (PLAYLIST) ---
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _mediaLinks.length,
+            itemBuilder: (context, index) {
+              final media = _mediaLinks[index];
+              final String title = media['title'] ?? 'Vídeo';
+              final String videoUrl = media['videoUrl'];
+              
+              // Verifica se este item é o que está tocando
+              final bool isPlaying = (_activeVideoPlayerController?.dataSource == videoUrl);
+
+              return ListTile(
+                dense: true, // Reduz altura
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8.0), // Reduz padding
+                visualDensity: VisualDensity.compact, // Mais compacto
+                leading: Icon(
+                  isPlaying ? Icons.play_circle_fill : Icons.play_circle_outline,
+                  color: isPlaying ? Theme.of(context).primaryColor : Colors.grey,
+                ),
+                title: Text(title, style: TextStyle(fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal, fontSize: 14)),
+                selected: isPlaying,
+                selectedTileColor: Theme.of(context).primaryColor.withOpacity(0.05),
+                onTap: () {
+                  _changeMediaVideo(videoUrl, title); // Troca o vídeo ao clicar
+                },
+              );
+            },
+          ),
+          // --- FIM DA LISTA ---
+        ],
+      ),
+    );
+  }
+  // --- FIM MEDIA TAB ---
   // --- FUNÇÃO QUE FALTAVA ---
   Future<void> _extractStatsAndFetchPlayers() async {
     // Garante que o estado de loading está ativo
@@ -261,9 +455,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
           const SizedBox(height: 12),
         ],
         // Seção Assists (Itera sobre a lista ordenada)
-        if (assistPlayers.isNotEmpty) ...[
+        /*if (assistPlayers.isNotEmpty) ...[
           _buildStatHeader('Assistências', Icons.assistant, alignment),
-          ...assistPlayers
+          ...assistPlayersr
               .map(
                 (player) => _buildStatItem(
                   name: player['name'],
@@ -274,7 +468,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               )
               .toList(),
           const SizedBox(height: 12),
-        ],
+        ],*/
 
         // Seção Cartões (Itera sobre a lista ordenada)
         if (cardPlayers.isNotEmpty) ...[
@@ -382,6 +576,150 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
   }
   // --- FIM _buildStatItem ---
 
+  // --- 3. NOVA FUNÇÃO: CONSTRÓI A ABA DE ESTATÍSTICAS ---
+  Widget _buildStatsTab() {
+    final data = widget.match.data() as Map<String, dynamic>;
+    final homeTeamId = data['team_home_id'] ?? '';
+    final awayTeamId = data['team_away_id'] ?? '';
+    final homeTeamName = data['team_home_name'] ?? 'Time Casa';
+    final awayTeamName = data['team_away_name'] ?? 'Time Visitante';
+    //final String? sumulaUrl = data['sumula_url'] as String?;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(
+        children: [
+          // SEÇÃO DE ESTATÍSTICAS (O conteúdo antigo)
+          _isLoadingPlayerData
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40.0),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8.0,
+                    vertical: 8.0,
+                  ),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _buildTeamStatsColumn(
+                            homeTeamId,
+                            homeTeamName,
+                            CrossAxisAlignment.start,
+                          ),
+                        ),
+                        Container(width: 1, color: Colors.grey.shade300),
+                        Expanded(
+                          child: _buildTeamStatsColumn(
+                            awayTeamId,
+                            awayTeamName,
+                            CrossAxisAlignment.end,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+          // CRAQUE DO JOGO (O conteúdo antigo)
+          if (_manOfTheMatchName != null && !_isLoadingPlayerData) ...[
+            const Divider(
+              height: 16,
+              thickness: 0.5,
+              indent: 16,
+              endIndent: 16,
+            ),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
+                child: Card(
+                   elevation: 2,
+                   child: Padding(
+                     padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
+                     child: Column(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         const Icon(Icons.star, color: Colors.amber, size: 30),
+                         const SizedBox(height: 8),
+                         const Text(
+                           'Craque do Jogo',
+                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                           textAlign: TextAlign.center,
+                         ),
+                         const SizedBox(height: 4),
+                         Text(
+                           // Formata com número se existir
+                           _manOfTheMatchNumber != null
+                             ? '${_manOfTheMatchNumber}. $_manOfTheMatchName'
+                             : _manOfTheMatchName!,
+                           style: const TextStyle(fontSize: 18),
+                           textAlign: TextAlign.center,
+                         ),
+                       ],
+                     ),
+                   ),
+                 ),
+              ),
+            ),
+          ],
+
+        ],
+      ),
+    );
+  }
+  // --- FIM STATS TAB ---
+
+  // --- 6. FUNÇÃO: CONSTRÓI A ABA DE MÍDIAS (REFEITA) ---
+   
+  // --- FIM MEDIA TAB ---
+
+  // --- 5. WIDGET AUXILIAR PARA O ITEM DE MÍDIA ---
+  Widget _buildMediaItem(BuildContext context, String title, String videoId) {
+    // Cria um controller SÓ PARA ESTE ITEM
+    final controller = YoutubePlayerController.fromVideoId(
+      videoId: videoId,
+      autoPlay: false,
+      params: const YoutubePlayerParams(
+        showControls: true,
+        showFullscreenButton: true,
+      ),
+    );
+
+    return Card(
+      elevation: 3,
+      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 4.0),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            // Usa o YoutubePlayerScaffold para permitir fullscreen e evitar
+            // problemas de clique caso o usuário abra um Dialog sobre ele.
+            YoutubePlayerScaffold(
+              controller: controller,
+              // Não precisamos de AppBar/Drawer aqui
+              builder: (context, player) {
+                // 'player' é o widget YoutubePlayer gerenciado
+                return player;
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // --- FIM MEDIA ITEM ---
+
   // --- NOVA FUNÇÃO AUXILIAR PARA ITEM DE CARTÃO ---
   Widget _buildCardStatItem({
     required String name,
@@ -481,8 +819,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     final data = widget.match.data() as Map<String, dynamic>;
     final scoreHome = data['score_home']?.toString() ?? '-';
     final scoreAway = data['score_away']?.toString() ?? '-';
-    final homeTeamId = data['team_home_id'] ?? '';
-    final awayTeamId = data['team_away_id'] ?? '';
+
     final homeTeamName = data['team_home_name'] ?? 'Time Casa';
     final awayTeamName = data['team_away_name'] ?? 'Time Visitante';
     final homeShield = data['team_home_shield'] ?? '';
@@ -497,15 +834,27 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
     final String location = data['location'] ?? 'Local a definir';
     final String? sumulaUrl = data['sumula_url'] as String?;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '$homeTeamName $scoreHome x $scoreAway $awayTeamName',
-          overflow: TextOverflow.ellipsis,
+    return DefaultTabController(
+      length: 2, // Estatísticas e Mídias
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            '$homeTeamName $scoreHome x $scoreAway $awayTeamName',
+            overflow: TextOverflow.ellipsis,
+          ),
+          // Adiciona as Abas
+          bottom: TabBar(
+            controller: _tabController,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            tabs: const [
+              Tab(icon: Icon(Icons.bar_chart), text: 'Estatísticas'),
+              Tab(icon: Icon(Icons.video_library), text: 'Mídias'),
+            ],
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
-        child: Column(
+        body: Column(
           children: [
             // --- Info Cabeçalho (sem mudanças) ---
             Padding(
@@ -576,113 +925,22 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> {
               ),
             ),
             const Divider(height: 1, thickness: 1),
-
-            // --- SEÇÃO DE ESTATÍSTICAS ---
-            _isLoadingPlayerData
-                ? const Padding(
-                    // Loading enquanto busca jogadores
-                    padding: EdgeInsets.symmetric(vertical: 40.0),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0,
-                      vertical: 8.0,
-                    ),
-                    child: IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // --- Coluna Time da Casa (Alinhada à Esquerda) ---
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 8.0),
-                              // Passa o alinhamento start
-                              child: _buildTeamStatsColumn(
-                                homeTeamId,
-                                homeTeamName,
-                                CrossAxisAlignment.start,
-                              ),
-                            ),
-                          ),
-                          // --- Linha Divisória (sem mudanças) ---
-                          Container(width: 1, color: Colors.grey.shade300),
-                          // --- Coluna Time Visitante (Alinhada à Direita) ---
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 8.0),
-                              // Passa o alinhamento end
-                              child: _buildTeamStatsColumn(
-                                awayTeamId,
-                                awayTeamName,
-                                CrossAxisAlignment.end,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-            // --- MOVER CRAQUE DO JOGO PARA CÁ ---
-            if (_manOfTheMatchName != null && !_isLoadingPlayerData) ...[
-              // Só mostra se não estiver carregando
-              const Divider(
-                height: 16,
-                thickness: 0.5,
-                indent: 16,
-                endIndent: 16,
+            Expanded(
+              child: TabBarView(
+                controller: _tabController, // Usa o controller
+                children: [
+                  _buildStatsTab(), // Aba 1
+                  _buildMediaTab(), // Aba 2
+                ],
               ),
-              Center(
-                // Mantém o Card centralizado
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
-                  child: Card(
-                    elevation: 2,
-                    child: Padding(
-                      // Adiciona padding interno ao Card
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 16.0,
-                        horizontal: 8.0,
-                      ),
-                      child: Column(
-                        // Usa Column para centralizar o conteúdo
-                        mainAxisSize: MainAxisSize.min, // Encolhe na vertical
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 30),
-                          const SizedBox(
-                            height: 8,
-                          ), // Espaço entre ícone e texto
-                          const Text(
-                            'Craque do Jogo',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                            textAlign: TextAlign
-                                .center, // Garante centralização do texto
-                          ),
-                          const SizedBox(height: 4), // Espaço entre textos
-                          Text(
-                            // Formata com número se existir
-                            _manOfTheMatchNumber != null
-                                ? '#${_manOfTheMatchNumber} $_manOfTheMatchName'
-                                : _manOfTheMatchName!,
-                            style: const TextStyle(fontSize: 18),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-            // --- FIM DA MOVIMENTAÇÃO ---
+            ),
           ],
         ),
+        bottomNavigationBar: const SponsorBannerRotator(),
       ),
-      bottomNavigationBar: const SponsorBannerRotator(),
     );
+    
+    // --- FIM DA ATUALIZAÇÃO ---
   }
+  
 } // Fim da classe _MatchStatsScreenState
