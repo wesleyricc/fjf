@@ -144,6 +144,11 @@ class PlayerStatsScreen extends StatelessWidget {
                    try {
                      final data = player.data() as Map<String, dynamic>;
                      final String shieldUrl = data['team_shield_url'] ?? '';
+                     final int? jerseyNumber = data['jersey_number'];
+                     final String playerName = data['name'] ?? 'Nome Indisponível';
+                     final String displayName = jerseyNumber != null
+                          ? '$jerseyNumber. $playerName'
+                          : playerName;
                      String status = '';
                      Color statusColor = Colors.black;
 
@@ -151,7 +156,7 @@ class PlayerStatsScreen extends StatelessWidget {
                      if (isSuspendedList) {
                        int reds = data['red_cards'] ?? 0;
                        int yellows = data['yellow_cards'] ?? 0;
-                       if (reds > 0 && AdminService.suspensionOnRed && yellows == AdminService.suspensionYellowCards) {
+                       if (reds > 0 && AdminService.suspensionOnRed && yellows >= AdminService.suspensionYellowCards) {
                          status = "Mútipla CA/CV (2 jogos)";
                          statusColor = const Color.fromARGB(255, 150, 72, 0)!;
                        }else if (reds > 0 && AdminService.suspensionOnRed) {
@@ -168,8 +173,8 @@ class PlayerStatsScreen extends StatelessWidget {
 
                      return ListTile(
                        leading: const Icon(Icons.person_outline), // Ícone genérico
-                       title: Text(data['name'] ?? 'Nome Indisponível'),
-                       subtitle: Row( // Escudo e nome do time
+                       title: Text(displayName),
+                       subtitle: Row(
                          children: [
                            if (shieldUrl.isNotEmpty)
                              Padding(
@@ -260,9 +265,15 @@ class PlayerStatsScreen extends StatelessWidget {
                     final String shieldUrl = data['team_shield_url'] ?? '';
                     final int statValue = data[statField] ?? 0;
 
+                    final int? jerseyNumber = data['jersey_number'];
+                    final String playerName = data['name'] ?? 'Nome Indisponível';
+                    final String displayName = jerseyNumber != null
+                        ? '$jerseyNumber. $playerName'
+                        : playerName;
+
                     return ListTile(
                       leading: RankIndicator(rank: rank), // Indicador Ouro/Prata/Bronze
-                      title: Text(data['name'] ?? 'Nome Indisponível'),
+                      title: Text(displayName),
                       subtitle: Row( // Escudo e nome do time
                          children: [
                            if (shieldUrl.isNotEmpty)
@@ -309,11 +320,138 @@ class PlayerStatsScreen extends StatelessWidget {
   }
   // --- FIM _buildPlayerRankingList ---
 
+  // --- 3. NOVA FUNÇÃO: _buildTotalCardsList ---
+  // (Semelhante ao Ranking, mas consulta ambos os campos)
+  Widget _buildTotalCardsList({
+    required BuildContext context,
+    required Stream<QuerySnapshot> stream,
+    required String emptyMessage,
+  }) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+           debugPrint("Erro Stream PlayerStats (Total Cards): ${snapshot.error}");
+           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice.'));
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(child: Text(emptyMessage));
+        }
+
+        // Processa e ordena os jogadores em Dart
+        List<DocumentSnapshot> players = snapshot.data!.docs;
+        
+        // Cria uma lista de "jogadores com cartão"
+        List<Map<String, dynamic>> playersWithCards = [];
+        for (var player in players) {
+          final data = player.data() as Map<String, dynamic>;
+          final int totalYellows = data['total_yellow_cards'] ?? 0;
+          final int totalReds = data['total_red_cards'] ?? 0;
+          final int totalCards = totalYellows + totalReds;
+
+          if (totalCards > 0) {
+            playersWithCards.add({
+              'doc': player,
+              'data': data,
+              'totalYellows': totalYellows,
+              'totalReds': totalReds,
+              'totalCards': totalCards,
+            });
+          }
+        }
+        
+        // Ordena a nova lista pelo total (maior primeiro)
+        playersWithCards.sort((a, b) => b['totalCards'].compareTo(a['totalCards']));
+        
+        if (playersWithCards.isEmpty) {
+           return Center(child: Text(emptyMessage));
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 16.0),
+          child: Column(
+            children: [
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: playersWithCards.length,
+                itemBuilder: (context, index) {
+                  final playerInfo = playersWithCards[index];
+                  final data = playerInfo['data'] as Map<String, dynamic>;
+                  final rank = index + 1;
+                  final String shieldUrl = data['team_shield_url'] ?? '';
+                  final int totalCards = playerInfo['totalCards'];
+                  final int totalYellows = playerInfo['totalYellows'];
+                  final int totalReds = playerInfo['totalReds'];
+                  
+                  final int? jerseyNumber = data['jersey_number'];
+                  final String playerName = data['name'] ?? 'Nome Indisponível';
+                  final String displayName = jerseyNumber != null
+                      ? '$jerseyNumber. $playerName'
+                      : playerName;
+
+                  return ListTile(
+                    leading: RankIndicator(rank: rank),
+                    title: Text(displayName),
+                    subtitle: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        if (shieldUrl.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6.0, top: 4.0),
+                            child: SizedBox(
+                              width: 18, height: 18,
+                              child: CachedNetworkImage(
+                                imageUrl: shieldUrl,
+                                placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
+                                errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        Flexible(
+                          child: Text(
+                            data['team_name'] ?? 'Time Indisponível',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // Linha 1: Total
+                        Text(
+                          '$totalCards Cartões',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        // Linha 2: Breakdown
+                        Text(
+                          '($totalYellows CA, $totalReds CV)',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        )
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
+
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 8, // --- TOTAL DE 8 ABAS ---
+      length: 9, // --- TOTAL DE 8 ABAS ---
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Estatísticas dos Jogadores'),
@@ -325,12 +463,13 @@ class PlayerStatsScreen extends StatelessWidget {
             tabs: [
               Tab(text: 'Artilheiros'),
               Tab(text: 'Assistências'),
-              Tab(text: 'Goleiro Menos Vazado'),
+              Tab(text: 'Goleiro MV'),
               Tab(text: 'Craque do Jogo'),
               Tab(text: 'Pendurados'),
               Tab(text: 'Suspensos'),
               Tab(text: 'Total Amarelos'),
               Tab(text: 'Total Vermelhos'),
+              Tab(text: 'Total Cartões'),
             ],
           ),
         ),
@@ -369,7 +508,7 @@ class PlayerStatsScreen extends StatelessWidget {
               statLabel: 'vezes',
               emptyMessage: 'Ranking de Craque do Jogo vazio.',
             ),
-            // 5. Pendurados (usa _buildPlayerStatusList)
+            // 6. Pendurados (usa _buildPlayerStatusList)
             _buildPlayerStatusList(
               context: context,
               query: _firestore.collection('players')
@@ -381,7 +520,7 @@ class PlayerStatsScreen extends StatelessWidget {
               emptyMessage: 'Nenhum jogador pendurado (${AdminService.pendingYellowCards} CA).',
               isSuspendedList: false,
             ),
-            // 6. Suspensos (usa _buildPlayerStatusList)
+            // 7. Suspensos (usa _buildPlayerStatusList)
             _buildPlayerStatusList(
               context: context,
               query: _firestore.collection('players')
@@ -392,7 +531,7 @@ class PlayerStatsScreen extends StatelessWidget {
               emptyMessage: 'Nenhum jogador suspenso.',
               isSuspendedList: true,
             ),
-            // 7. Total Amarelos (usa total_yellow_cards)
+            // 8. Total Amarelos (usa total_yellow_cards)
             _buildPlayerRankingList(
               context: context,
               query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
@@ -400,7 +539,7 @@ class PlayerStatsScreen extends StatelessWidget {
               statLabel: 'CA',
               emptyMessage: 'Nenhum jogador com cartão amarelo.',
             ),
-             // 8. Total Vermelhos (usa total_red_cards)
+             // 9. Total Vermelhos (usa total_red_cards)
             _buildPlayerRankingList(
               context: context,
               query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
@@ -408,6 +547,21 @@ class PlayerStatsScreen extends StatelessWidget {
               statLabel: 'CV',
               emptyMessage: 'Nenhum jogador com cartão vermelho.',
             ),
+             // --- 5. CONTEÚDO DA NOVA ABA ---
+            _buildTotalCardsList(
+              context: context,
+              // Busca todos os jogadores ativos que tenham pelo menos um cartão (amarelo OU vermelho)
+              // (Nota: Esta query é complexa e pode exigir um índice ou ser lenta.
+              //  Uma alternativa é buscar TODOS os jogadores e filtrar em Dart, como fizemos.)
+              stream: _firestore.collection('players')
+                  .where('isActive', isEqualTo: true)
+                  .where('is_staff', isEqualTo: false)
+                  // .where('total_yellow_cards', isGreaterThan: 0) // Não podemos fazer 'OU'
+                  // .where('total_red_cards', isGreaterThan: 0) // Não podemos fazer 'OU'
+                  .snapshots(), // Busca todos e filtra em Dart (dentro da função)
+              emptyMessage: 'Nenhum jogador com cartões registrados.',
+            ),
+            // --- FIM ---
           ],
         ),
         bottomNavigationBar: const SponsorBannerRotator(), // Banner fixo
