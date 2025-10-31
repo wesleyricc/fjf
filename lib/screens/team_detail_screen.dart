@@ -901,7 +901,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   );
                 }
 
-                final staff = staffSnapshot.data!.docs;
+                //final staff = staffSnapshot.data!.docs;
 
                 // --- 2. LÓGICA DE ORDENAÇÃO PERSONALIZADA ---
 
@@ -909,7 +909,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 List<DocumentSnapshot> staffList = staffSnapshot.data!.docs;
 
                 // Mapa de prioridade (número menor = mais alto na lista)
-                final rolePriority = {
+                /*final rolePriority = {
                   'técnico': 1,
                   'treinador': 1, // Alias
                   'auxiliar': 2,
@@ -917,7 +917,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   'massagista': 4,
                   'analista': 5,
                   // Outros cargos ficarão com prioridade 99
-                };
+                };*/
 
                 // Função auxiliar para obter a prioridade de um documento
                 int getPriority(DocumentSnapshot doc) {

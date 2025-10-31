@@ -201,7 +201,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
             width: double.infinity, // Ocupa toda a largura
             child: InkWell(
               onTap: () => _launchURL(targetUrl),
-              child: (imageUrl != null && imageUrl.isNotEmpty)
+              child: (imageUrl.isNotEmpty)
                   ? CachedNetworkImage(
                       imageUrl: imageUrl,
                       fit: BoxFit.cover, // ou contain

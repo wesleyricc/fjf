@@ -665,11 +665,8 @@ class _FixturesScreenState extends State<FixturesScreen>
                                           .headlineMedium
                                           ?.copyWith(
                                             color:
-                                                Theme.of(
-                                                  context,
-                                                ).primaryColorDark ??
-                                                Theme.of(context).primaryColor,
-                                            fontWeight: FontWeight.w900,
+                                              Theme.of(context).primaryColorDark,
+                                              fontWeight: FontWeight.w900,
                                           ),
                                       textAlign: TextAlign.center,
                                     ),

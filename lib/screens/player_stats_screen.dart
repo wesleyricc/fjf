@@ -158,7 +158,7 @@ class PlayerStatsScreen extends StatelessWidget {
                        int yellows = data['yellow_cards'] ?? 0;
                        if (reds > 0 && AdminService.suspensionOnRed && yellows >= AdminService.suspensionYellowCards) {
                          status = "Mútipla CA/CV (2 jogos)";
-                         statusColor = const Color.fromARGB(255, 150, 72, 0)!;
+                         statusColor = const Color.fromARGB(255, 150, 72, 0);
                        }else if (reds > 0 && AdminService.suspensionOnRed) {
                          status = "Cartão Vermelho (1 jogo)";
                          statusColor = Colors.red[700]!;

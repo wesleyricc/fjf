@@ -272,7 +272,7 @@ class AdminService {
     if (!(context as Element).mounted) return;
 
     // Navega se o login foi bem-sucedido
-    if (loggedIn == true && (context as Element).mounted) {
+    if (loggedIn == true) {
         Navigator.of(context).pop();
         
         ScaffoldMessenger.of(context).showSnackBar(

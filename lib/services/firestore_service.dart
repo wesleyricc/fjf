@@ -699,7 +699,7 @@ class FirestoreService {
           if (newManOfTheMatchId != null) newManOfTheMatchId,
           if (oldManOfTheMatchId != null) oldManOfTheMatchId,
         };
-        playersToReadIds.removeWhere((id) => id == null || id.isEmpty);
+        playersToReadIds.removeWhere((id) => id.isEmpty);
 
         Map<String, DocumentSnapshot> playerSnaps = {};
         for (String playerId in playersToReadIds) {
