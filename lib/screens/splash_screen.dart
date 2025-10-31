@@ -358,7 +358,14 @@ class _SplashScreenState extends State<SplashScreen> {
       },
       
       // A tela inteira rola (SingleChildScrollView é a raiz)
-      body: SingleChildScrollView(
+      body: ScrollConfiguration(
+        // Define o comportamento para ClampingScrollPhysics (estilo Android)
+        // e desabilita o 'glow' de overscroll
+        behavior: const ScrollBehavior().copyWith(
+          overscroll: false,
+          physics: const ClampingScrollPhysics(),
+        ),
+        child: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: 5.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -487,8 +494,9 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             // --- FIM COPYRIGHT ---
-
           ],
+        ),
+        
         ),
       ),
       bottomNavigationBar: const SponsorBannerRotator(),

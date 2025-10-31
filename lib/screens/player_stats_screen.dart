@@ -83,6 +83,26 @@ class PlayerStatsScreen extends StatelessWidget {
                       .doc(player.id)
                       .update(updateData);
 
+                      // --- 2. ATUALIZA O LOG DE SUSPENSÃO ---
+                  // Busca o último log pendente para este jogador
+                  final logQuery = await _firestore
+                      .collection('suspension_log')
+                      .where('playerId', isEqualTo: player.id)
+                      .where('status', isEqualTo: 'pending')
+                      .orderBy('timestamp', descending: true)
+                      .limit(1)
+                      .get();
+                  
+                  // Se encontrou um log pendente, marca como 'cleared'
+                  if (logQuery.docs.isNotEmpty) {
+                    await logQuery.docs.first.reference.update({
+                      'status': 'cleared',
+                      'cleared_timestamp': FieldValue.serverTimestamp(),
+                    });
+                    debugPrint("Log de suspensão ${logQuery.docs.first.id} atualizado para 'cleared'.");
+                  }
+                  // --- FIM DA ATUALIZAÇÃO DO LOG ---
+
                   Navigator.of(dialogContext).pop();
                   if (Navigator.of(context).canPop()) { 
                      ScaffoldMessenger.of(context).showSnackBar(

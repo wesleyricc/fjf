@@ -648,8 +648,14 @@ class FirestoreService {
   }) async {
     final String matchId = matchSnapshot.id;
     final matchDataBefore = matchSnapshot.data() as Map<String, dynamic>? ?? {};
-    final String homeTeamId = matchDataBefore['team_home_id'];
-    final String awayTeamId = matchDataBefore['team_away_id'];
+    // --- CORREÇÃO: Validação de Nulidade ---
+    final String? homeTeamId = matchDataBefore['team_home_id'];
+    final String? awayTeamId = matchDataBefore['team_away_id'];
+    
+    if (homeTeamId == null || awayTeamId == null) {
+      return "Erro: A partida não possui IDs de time válidos.";
+    }
+    // --- FIM DA CORREÇÃO ---
 
     debugPrint("[SERVICE_UPDATE] Iniciando update para Jogo $matchId");
 
@@ -707,12 +713,19 @@ class FirestoreService {
           var snap = await transaction.get(playerRef);
           if (snap.exists) {
             playerSnaps[playerId] = snap;
-          } else {
-            debugPrint(
-              "[SERVICE_UPDATE] Aviso: Jogador $playerId não encontrado.",
-            );
           }
         }
+
+        // --- CORREÇÃO: Lê os dados dos times AGORA ---
+        final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
+        final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
+        final DocumentSnapshot homeTeamSnap = await transaction.get(homeTeamRef);
+        final DocumentSnapshot awayTeamSnap = await transaction.get(awayTeamRef);
+        
+        final homeLogoUrl = (homeTeamSnap.data() as Map<String, dynamic>?)?['shield_url'] ?? '';
+        final awayLogoUrl = (awayTeamSnap.data() as Map<String, dynamic>?)?['shield_url'] ?? '';
+        // --- FIM DA CORREÇÃO (LEITURA) ---
+
         debugPrint(
           "[SERVICE_UPDATE] Leitura concluída. ${playerSnaps.length} jogadores encontrados.",
         );
@@ -804,6 +817,7 @@ class FirestoreService {
         }
 
         // --- LÓGICA COMPLEXA PARA CARTÕES (CORRIGIDA) ---
+        
         Set<String> affectedCardPlayerIds = {...yellowDelta.keys, ...redDelta.keys};
         debugPrint("[DISCIPLINA] Iniciando cálculo de delta. Jogadores afetados: ${affectedCardPlayerIds.length}");
 
@@ -896,6 +910,74 @@ class FirestoreService {
               );
             }
           }
+
+          // --- LÓGICA DE CRIAÇÃO DE LOG (ATUALIZADA) ---
+           String suspensionReason = ""; 
+
+           // Verifica suspensão/reset por Amarelos
+           if (yellowIncrementForCurrent > 0 && 
+               theoreticalNewYellows >= AdminService.suspensionYellowCards && 
+               currentYellows < AdminService.suspensionYellowCards) 
+           {
+              if (!currentlySuspended) {
+                finalSuspension = true;
+                suspensionReason = "${AdminService.suspensionYellowCards} CA";
+              }
+              if (AdminService.resetYellowsOnSuspension) finalYellows = 0;
+           }
+           
+           // Verifica suspensão/reset por Vermelho
+           if (rDelta > 0 && AdminService.suspensionOnRed) {
+              if (!currentlySuspended) {
+                finalSuspension = true;
+                suspensionReason = (suspensionReason.isNotEmpty) ? "$suspensionReason e CV" : "CV";
+              }
+              if (AdminService.resetYellowsOnRed) finalYellows = 0;
+           }
+
+           // Se uma nova suspensão foi detectada...
+           if (suspensionReason.isNotEmpty) {
+             debugPrint("[SUSPENSION LOG] Registrando nova suspensão para $playerId. Motivo: $suspensionReason");
+             final logRef = _firestore.collection('suspension_log').doc();
+             
+             // --- LÓGICA DAS DATAS (NOVA) ---
+             // Pega a data da partida do documento do jogo
+             DateTime matchDate = DateTime.now(); // Fallback
+             if (currentMatchData['datetime'] != null && currentMatchData['datetime'] is Timestamp) {
+                matchDate = (currentMatchData['datetime'] as Timestamp).toDate();
+             }
+             // Calcula a data de retorno (Data da Partida + 10 dias)
+             final DateTime returnDate = matchDate.add(const Duration(days: 10));
+
+             // --- NOVO: BUSCAR E SALVAR A LOGO DA EQUIPE ---
+            // --- Usa os dados do time pré-buscados (SEM transaction.get) ---
+             String teamLogoUrl = ''; 
+             final teamId = playerData['team_id'];
+             if (teamId == homeTeamId) {
+               teamLogoUrl = homeLogoUrl;
+             } else if (teamId == awayTeamId) {
+               teamLogoUrl = awayLogoUrl;
+             }
+             // --- Fim da correção ---
+             // --- FIM NOVO ---
+             // --- FIM ---
+             
+             transaction.set(logRef, {
+               'playerId': playerId,
+               'playerName': playerData['name'] ?? '?',
+               'teamId': playerData['team_id'] ?? '?',
+               'teamName': playerData['team_name'] ?? '?',
+               'teamLogoUrl': teamLogoUrl, // <-- NOVO CAMPO
+               'timestamp': Timestamp.fromDate(matchDate), // <-- USA A DATA DA PARTIDA
+               'return_date': Timestamp.fromDate(returnDate), // <-- SALVA A DATA DE RETORNO
+               'reason': suspensionReason,
+               'matchId_occurred': matchId,
+               'match_description': "Rodada ${currentMatchData['round']}: ${currentMatchData['team_home_name']} vs ${currentMatchData['team_away_name']}",
+               // 'status': 'pending', // Não precisamos mais de 'status'
+             });
+           }
+           // --- FIM DA LÓGICA DE LOG ---
+           
           // Verifica remoção de suspensão
           if (rDelta < 0 && finalYellows < AdminService.suspensionYellowCards)
             finalSuspension = false;
@@ -940,8 +1022,8 @@ class FirestoreService {
         );
 
         // --- Aplica deltas acumulados aos TIMES ---
-        final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
-        final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
+        //final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
+        //final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
 
         // Cria mapas de update apenas se houver o que mudar
         Map<String, dynamic> homeUpdateData = {};

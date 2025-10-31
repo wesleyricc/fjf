@@ -9,6 +9,7 @@ import '../services/admin_service.dart';
 import '../screens/team_stats_screen.dart';
 import '../screens/player_stats_screen.dart';
 import '../screens/report_bug_screen.dart';
+import '../screens/suspension_history_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -134,6 +135,19 @@ class AppDrawer extends StatelessWidget {
               Navigator.of(context).pop();
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (ctx) => PlayerStatsScreen()),
+              );
+            },
+          ),
+
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
+          _buildDrawerItem(
+            context,
+            Icons.history_toggle_off, // Ícone de histórico
+            'Histórico de Suspensões',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).push( // Usa push normal
+                MaterialPageRoute(builder: (ctx) => SuspensionHistoryScreen()),
               );
             },
           ),
