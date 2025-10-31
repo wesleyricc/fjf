@@ -3,9 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart'; // Para debugPrint
 import 'admin_service.dart'; // Para acessar regras globais
 import '../utils/standings_sorter.dart'; // Para ordenação complexa
+import 'package:firebase_storage/firebase_storage.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.appspot.com");
 
   // --- Função Auxiliar: Calcular Delta entre Mapas ---
   Map<String, int> _calculateDelta(
@@ -26,6 +28,94 @@ class FirestoreService {
     });
     return delta;
   }
+
+  // --- FUNÇÕES CRUD DE MÍDIAS (NOVAS) ---
+
+  Future<int> getNextMediaOrder() async {
+    try {
+      final snapshot = await _firestore
+          .collection('media_feed')
+          .orderBy('order', descending: true)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isEmpty) {
+        return 1; // É o primeiro item
+      }
+      
+      final lastOrder = (snapshot.docs.first.data()['order'] as num?) ?? 0;
+      return lastOrder.toInt() + 1;
+    } catch (e) {
+      debugPrint("Erro ao buscar próxima ordem: $e");
+      return 1; // Retorna 1 em caso de erro
+    }
+  }
+
+  Future<String> createMediaItem({
+    required String title,
+    required String targetUrl,
+    required String imageUrl,
+    required int order,
+  }) async {
+    try {
+      await _firestore.collection('media_feed').add({
+        'title': title,
+        'targetUrl': targetUrl,
+        'imageUrl': imageUrl,
+        'order': order,
+        'isActive': true, // Sempre ativo ao criar
+      });
+      return "Sucesso: Mídia criada.";
+    } catch (e) {
+      return "Erro ao criar mídia: ${e.toString()}";
+    }
+  }
+
+  Future<String> updateMediaItem({
+    required String docId,
+    required String title,
+    required String targetUrl,
+    required String imageUrl,
+    required int order,
+  }) async {
+    try {
+      await _firestore.collection('media_feed').doc(docId).update({
+        'title': title,
+        'targetUrl': targetUrl,
+        'imageUrl': imageUrl,
+        'order': order,
+      });
+      return "Sucesso: Mídia atualizada.";
+    } catch (e) {
+      return "Erro ao atualizar mídia: ${e.toString()}";
+    }
+  }
+
+  Future<String> deleteMediaItem(DocumentSnapshot doc) async {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    final String imageUrl = data['imageUrl'] ?? '';
+
+    try {
+      // 1. Tenta deletar a imagem do Storage (se houver)
+      if (imageUrl.isNotEmpty && imageUrl.contains('firebasestorage')) {
+        try {
+          // Usa o bucket correto
+          final ref = _storage.refFromURL(imageUrl); 
+          await ref.delete();
+          debugPrint("Imagem da mídia deletada do Storage: $imageUrl");
+        } catch (e) {
+          debugPrint("Aviso: Falha ao deletar imagem do Storage (pode já ter sido removida): $e");
+        }
+      }
+      
+      // 2. Deleta o documento do Firestore
+      await doc.reference.delete();
+      return "Sucesso: Mídia deletada.";
+    } catch (e) {
+      return "Erro ao deletar mídia: ${e.toString()}";
+    }
+  }
+  // --- FIM DAS FUNÇÕES DE MÍDIA ---
 
   // --- Função _recalculateTeamStats (MOVIDA PARA CIMA) ---
   // (Esta função permanece a mesma, calculando apenas stats da 1ª Fase)

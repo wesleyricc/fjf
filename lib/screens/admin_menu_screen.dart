@@ -11,6 +11,7 @@ import 'tiebreaker_rules_screen.dart';
 import '../services/firestore_service.dart';
 import 'playoff_rules_screen.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
+import 'admin_media_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -550,6 +551,18 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          ListTile(
+            leading: const Icon(Icons.newspaper, color: Colors.blue),
+            title: const Text('Gerenciar Mídias'),
+            subtitle: const Text('Adiciona/Edita notícias e vídeos da tela inicial'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+               Navigator.of(context).push(MaterialPageRoute(
+                 builder: (ctx) => const AdminMediaScreen(),
+               ));
+            },
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.live_tv),
             title: const Text('Alterar Vídeo Ao Vivo'),
