@@ -7,7 +7,7 @@ import 'screens/splash_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/admin_service.dart';
 import 'services/notification_service.dart';
-//import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 
 void main() async {
@@ -17,15 +17,19 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // --- 2. FAZ LOGIN ANÔNIMO ---
-  //try {
-    //final userCredential = await FirebaseAuth.instance.signInAnonymously();
-    //debugPrint("Login anônimo BEM-SUCEDIDO. UID: ${userCredential.user?.uid}");
-  //} catch (e) {
-    //debugPrint("Erro no login anônimo: $e");
-    // O app continuará, mas os uploads podem falhar se as regras exigirem auth
-  //}
-  // --- FIM ---
+   // --- 2. HABILITAR PERSISTÊNCIA OFFLINE ---
+  try {
+    // Tenta habilitar o cache de dados offline do Firestore
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+    );
+    debugPrint("Persistência offline do Firestore habilitada.");
+  } catch (e) {
+    debugPrint("Erro ao habilitar persistência offline: $e");
+    // Isso geralmente falha em modos de navegação privada ou se
+    // várias abas estiverem abertas. O app continuará online.
+  }
+  // --- FIM DA ADIÇÃO ---
 
   await AdminService.loadDisciplinaryRules();
   await AdminService.loadTiebreakerRules();
