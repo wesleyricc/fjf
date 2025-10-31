@@ -2,6 +2,8 @@
 <html>
 <head>
   <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-analytics-compat.js"></script>
   
   <base href="$FLUTTER_BASE_HREF">
 
@@ -23,6 +25,24 @@
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    // Cole os valores da sua 'FirebaseOptions web' (do firebase_options.dart)
+    var firebaseConfig = {
+      apiKey: 'AIzaSyAI3SJkOCdY5Z5lC5hiSiXPeKUwsYu-u2w',
+      authDomain: 'fjfapp.firebaseapp.com',
+      projectId: 'fjfapp',
+      storageBucket: 'fjfapp.firebasestorage.app',
+      messagingSenderId: '211551139323',
+      appId: '1:211551139323:web:f583360c18907986adc75e',
+      measurementId: 'G-GNBBWGHX3G',
+    };
+    
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    // Initialize Analytics
+    firebase.analytics();
+  </script>
 
   <script>
   // A versão do service worker é injetada pelo 'flutter build'

@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 class MatchStatsScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -42,6 +43,20 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     _tabController = TabController(length: 2, vsync: this);
     _extractStatsAndFetchPlayers();
     _loadMediaLinks();
+
+    // --- 2. ADICIONE A CHAMADA DO ANALYTICS ---
+    try {
+      // Cria um nome de tela dinâmico (ex: /match/stats/TimeA-vs-TimeB)
+      final data = widget.match.data() as Map<String, dynamic>? ?? {};
+      final String homeName = data['team_home_name'] ?? 'Casa';
+      final String awayName = data['team_away_name'] ?? 'Fora';
+      FirebaseAnalytics.instance.logScreenView(
+        screenName: '/match/stats/$homeName-vs-$awayName',
+      );
+    } catch (e) {
+      debugPrint("Erro ao logar screen_view (MatchStatsScreen): $e");
+    }
+    // --- FIM ---
   }
 
  @override  

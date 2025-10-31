@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'edit_player_screen.dart';
 import '../services/firestore_service.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc; // Recebe o documento do time selecionado
@@ -21,6 +22,24 @@ class TeamDetailScreen extends StatefulWidget {
 class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirestoreService _firestoreService = FirestoreService();
+
+  // --- 2. ADICIONE A CHAMADA DO ANALYTICS NO INITSTATE ---
+  @override
+  void initState() {
+    super.initState(); // Chame super.initState() primeiro
+
+    try {
+      // Cria um nome de tela dinâmico (ex: /team/detail/NomeDoTime)
+      final teamData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
+      final teamName = teamData['name'] ?? 'TimeDesconhecido';
+      FirebaseAnalytics.instance.logScreenView(
+        screenName: '/team/detail/$teamName',
+      );
+    } catch (e) {
+      debugPrint("Erro ao logar screen_view (TeamDetailScreen): $e");
+    }
+  }
+  // --- FIM ---
 
   // --- Função para mostrar o diálogo de Pontos Extras ---
   Future<void> _showAddExtraPointsDialog() async {

@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart'; // Para formatar data
 import '../services/admin_service.dart'; // Para acessar regras de cartões
 import '../widgets/sponsor_banner_rotator.dart'; // Para o rodapé
+import 'package:firebase_analytics/firebase_analytics.dart';
 
 class MatchRosterScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -41,6 +42,20 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     awayShieldUrl = data['team_away_shield'] ?? '';
     
     _fetchRosters();
+
+    // --- 2. ADICIONE A CHAMADA DO ANALYTICS ---
+    try {
+      // Usa as variáveis que você já tem no initState
+      final data = widget.match.data() as Map<String, dynamic>? ?? {};
+      final String homeName = data['team_home_name'] ?? 'Casa';
+      final String awayName = data['team_away_name'] ?? 'Fora';
+      FirebaseAnalytics.instance.logScreenView(
+        screenName: '/match/roster/$homeName-vs-$awayName',
+      );
+    } catch (e) {
+      debugPrint("Erro ao logar screen_view (MatchRosterScreen): $e");
+    }
+    // --- FIM ---
   }
 
   Future<void> _fetchRosters() async {

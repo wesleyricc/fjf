@@ -1,13 +1,22 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart'; 
-import 'package:intl/date_symbol_data_local.dart';
+import 'package:fjf_app/firebase_options.dart'; 
 import 'screens/splash_screen.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/admin_service.dart';
 import 'services/notification_service.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:fjf_app/screens/fixtures_screen.dart';
+import 'package:fjf_app/screens/standings_screen.dart';
+import 'package:fjf_app/screens/teams_list_screen.dart';
+import 'package:fjf_app/screens/player_stats_screen.dart';
+import 'package:fjf_app/screens/suspension_history_screen.dart';
+import 'package:fjf_app/screens/report_bug_screen.dart';
+import 'package:fjf_app/screens/admin_menu_screen.dart';
+import 'package:fjf_app/screens/team_stats_screen.dart';
 
 
 void main() async {
@@ -40,6 +49,47 @@ void main() async {
   runApp(const MyApp());
 }
 
+// --- 2. CLASSE DO OBSERVADOR DO ANALYTICS ---
+// Esta classe escuta a navegação e envia eventos de 'screen_view'
+class FjfAnalyticsObserver extends NavigatorObserver {
+  final FirebaseAnalytics analytics = FirebaseAnalytics.instance;
+
+  // Função auxiliar para logar a tela
+  void _logScreenView(Route<dynamic> route) {
+    final String? screenName = route.settings.name;
+    // Só loga se o nome não for nulo (evita logar rotas internas do Flutter)
+    if (screenName != null && screenName.startsWith('/')) {
+      debugPrint('[Analytics] Logando tela: $screenName');
+      analytics.logScreenView(screenName: screenName);
+    }
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _logScreenView(route); // Loga a tela que foi "empurrada" (ex: /report-bug)
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    if (previousRoute != null) {
+      _logScreenView(previousRoute); // Loga a tela para a qual "voltamos"
+    }
+  }
+
+  // --- ESTA É A FUNÇÃO QUE FALTAVA ---
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    if (newRoute != null) {
+      _logScreenView(newRoute); // Loga a tela que "substituiu" (ex: /fixtures)
+    }
+  }
+  // --- FIM DA ADIÇÃO ---
+}
+// --- FIM DO OBSERVADOR ---
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -70,7 +120,7 @@ class MyApp extends StatelessWidget {
         // --- FIM DAS CORES DO TEMA ---
         useMaterial3: true,
       ),
-      home: const SplashScreen(),
+      //home: const SplashScreen(),
 
 
 // --- 2. ADICIONAR DELEGATES E LOCALES ---
@@ -87,6 +137,31 @@ class MyApp extends StatelessWidget {
       locale: const Locale('pt', 'BR'),
       
       // --- FIM DAS ADIÇÕES ---
+
+      // --- 3. ATUALIZAÇÃO DO MATERIALAPP ---
+      
+      // Remove 'home' e usa 'initialRoute'
+      // home: const SplashScreen(), 
+      initialRoute: '/', // Define a rota inicial
+
+      // Adiciona o observador do Analytics
+      navigatorObservers: [
+        FjfAnalyticsObserver(),
+      ],
+
+      // Define as rotas nomeadas
+      routes: {
+        '/': (context) => const SplashScreen(),
+        '/fixtures': (context) => const FixturesScreen(),
+        '/standings': (context) => StandingsScreen(),
+        '/teams': (context) => const TeamsListScreen(),
+        '/team-stats': (context) => const TeamStatsScreen(),
+        '/player-stats': (context) => PlayerStatsScreen(),
+        '/suspension-history': (context) => SuspensionHistoryScreen(),
+        '/report-bug': (context) => const ReportBugScreen(),
+        '/admin-menu': (context) => const AdminMenuScreen(),
+      },
+      // --- FIM DA ATUALIZAÇÃO ---
 
     );
   }

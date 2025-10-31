@@ -69,10 +69,7 @@ class AppDrawer extends StatelessWidget {
             'Início',
             () {
               Navigator.of(context).pop();
-              // Use pushReplacement para não empilhar a tela inicial
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const SplashScreen()),
-              );
+              Navigator.of(context).pushReplacementNamed('/');
             },
           ),
 
@@ -83,19 +80,14 @@ class AppDrawer extends StatelessWidget {
             'Tabela de Jogos',
             () {
               Navigator.of(context).pop(); // Fecha o drawer
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const FixturesScreen()),
-              );
+              Navigator.of(context).pushReplacementNamed('/fixtures');
             },
           ),
 
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(context, Icons.leaderboard, 'Classificação', () {
             Navigator.of(context).pop();
-            Navigator.of(context).pushReplacement(
-              // Removemos o 'const' pois StandingsScreen não é mais const
-              MaterialPageRoute(builder: (ctx) => StandingsScreen()),
-            );
+            Navigator.of(context).pushReplacementNamed('/standings');
           }),
 
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
@@ -105,11 +97,7 @@ class AppDrawer extends StatelessWidget {
             'Equipes',
             () {
               Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (ctx) => const TeamsListScreen(),
-                ), // <-- Vai para a nova tela
-              );
+              Navigator.of(context).pushReplacementNamed('/teams');
             },
           ),
 
@@ -120,9 +108,7 @@ class AppDrawer extends StatelessWidget {
             'Estatísticas das Equipes',
             () {
               Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => const TeamStatsScreen()),
-              );
+              Navigator.of(context).pushReplacementNamed('/team-stats');
             },
           ),
 
@@ -133,9 +119,7 @@ class AppDrawer extends StatelessWidget {
             'Estatísticas dos Jogadores',
             () {
               Navigator.of(context).pop();
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (ctx) => PlayerStatsScreen()),
-              );
+              Navigator.of(context).pushReplacementNamed('/player-stats');
             },
           ),
 
@@ -146,9 +130,7 @@ class AppDrawer extends StatelessWidget {
             'Histórico de Suspensões',
             () {
               Navigator.of(context).pop();
-              Navigator.of(context).push( // Usa push normal
-                MaterialPageRoute(builder: (ctx) => SuspensionHistoryScreen()),
-              );
+              Navigator.of(context).pushNamed('/suspension-history');
             },
           ),
 
@@ -160,9 +142,7 @@ class AppDrawer extends StatelessWidget {
             () {
               Navigator.of(context).pop(); // Fecha o drawer
               // Usa push (não pushReplacement) para poder voltar
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (ctx) => const ReportBugScreen()),
-              );
+              Navigator.of(context).pushNamed('/report-bug');
             },
             denseOverride: true,
             contentPaddingOverride: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
