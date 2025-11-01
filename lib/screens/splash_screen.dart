@@ -9,6 +9,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'team_detail_screen.dart'; 
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -228,7 +229,7 @@ class _SplashScreenState extends State<SplashScreen> {
   // --- WIDGET: SEÇÃO DE MÍDIAS (Horizontal Scroll) ---
   Widget _buildMediaFeed() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Título da Seção
         Padding(
@@ -236,6 +237,7 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Text(
             'Últimas Notícias',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
           ),
         ),
         // StreamBuilder e ListView Horizontalr
@@ -329,6 +331,107 @@ class _SplashScreenState extends State<SplashScreen> {
   }
   // --- FIM DO ITEM DE MÍDIA ---
 
+  // --- 2. NOVO WIDGET: SEÇÃO DAS EQUIPES ---
+  Widget _buildTeamsGrid() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+          child: Text(
+            'Equipes Participantes',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        StreamBuilder<QuerySnapshot>(
+          stream: _firestore
+              .collection('teams')
+              .orderBy('name') // Ordena por nome
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Center(child: Text('Nenhuma equipe encontrada.'));
+            }
+
+            final teams = snapshot.data!.docs;
+
+            // GridView com 2 colunas
+            return GridView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              shrinkWrap: true, // Essencial dentro de um SingleChildScrollView
+              physics: const NeverScrollableScrollPhysics(), // Desabilita rolagem do Grid
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2, // 2 colunas
+                childAspectRatio: 1.1,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: teams.length,
+              itemBuilder: (context, index) {
+                final teamDoc = teams[index];
+                final teamData = teamDoc.data() as Map<String, dynamic>;
+                final String teamName = teamData['name'] ?? 'Equipe';
+                final String teamShield = teamData['shield_url'] ?? '';
+
+                // Item da Grade (Card)
+                return Card(
+                  elevation: 2,
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () {
+                      // Navega para a tela de detalhes da equipe
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc),
+                        ),
+                      );
+                    },
+                    // --- MUDANÇA 2: Row para Column ---
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center, 
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Logo (Escudo)
+                        Expanded( // Ocupa o espaço disponível
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: CachedNetworkImage(
+                              imageUrl: teamShield,
+                              fit: BoxFit.contain,
+                              placeholder: (context, url) => const Icon(Icons.shield, size: 40),
+                              errorWidget: (context, url, error) => const Icon(Icons.shield, size: 40),
+                            ),
+                          ),
+                        ),
+                        // Nome (embaixo)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+                          child: Text(
+                            teamName,
+                            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                    // --- FIM DA MUDANÇA ---
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+  // --- FIM DA SEÇÃO DAS EQUIPES ---
+
 
   @override
   Widget build(BuildContext context) {
@@ -359,14 +462,12 @@ class _SplashScreenState extends State<SplashScreen> {
       
       // A tela inteira rola (SingleChildScrollView é a raiz)
       body: ScrollConfiguration(
-        // Define o comportamento para ClampingScrollPhysics (estilo Android)
-        // e desabilita o 'glow' de overscroll
         behavior: const ScrollBehavior().copyWith(
           overscroll: false,
           physics: const ClampingScrollPhysics(),
         ),
         child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 5.0),
+        padding: EdgeInsets.zero, // Padding será aplicado no final
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -480,8 +581,13 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             // --- FIM DO PLAYER ---
+
+            // --- 3. NOVA SEÇÃO DE EQUIPES ---
+              _buildTeamsGrid(),
+              // --- FIM DA SEÇÃO ---
             
-            const SizedBox(height: 10),
+            
+            const SizedBox(height: 50),
 
             // --- 5. COPYRIGHT ---
             Text(
@@ -493,6 +599,8 @@ class _SplashScreenState extends State<SplashScreen> {
                 height: 1.5,
               ),
             ),
+
+            const SizedBox(height: 5.0), 
             // --- FIM COPYRIGHT ---
           ],
         ),
