@@ -21,13 +21,25 @@ class DefaultFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        return android;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for android - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.iOS:
-        return ios;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for ios - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.macOS:
-        return macos;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for macos - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.windows:
-        return windows;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for windows - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -49,41 +61,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'fjfapp.firebasestorage.app',
     measurementId: 'G-GNBBWGHX3G',
   );
-
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyB-DWvTPnrmER5pee2IiQ-D4DEHhFay0gQ',
-    appId: '1:211551139323:android:01cd6cd94956967cadc75e',
-    messagingSenderId: '211551139323',
-    projectId: 'fjfapp',
-    storageBucket: 'fjfapp.firebasestorage.app',
-  );
-
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyB8IdeicPj0cA3EtMcLM0ssfhs3xrLMudI',
-    appId: '1:211551139323:ios:65cefa8708bd7211adc75e',
-    messagingSenderId: '211551139323',
-    projectId: 'fjfapp',
-    storageBucket: 'fjfapp.firebasestorage.app',
-    iosBundleId: 'com.example.fjfApp',
-  );
-
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyB8IdeicPj0cA3EtMcLM0ssfhs3xrLMudI',
-    appId: '1:211551139323:ios:65cefa8708bd7211adc75e',
-    messagingSenderId: '211551139323',
-    projectId: 'fjfapp',
-    storageBucket: 'fjfapp.firebasestorage.app',
-    iosBundleId: 'com.example.fjfApp',
-  );
-
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyAI3SJkOCdY5Z5lC5hiSiXPeKUwsYu-u2w',
-    appId: '1:211551139323:web:e03c369f6e1856a8adc75e',
-    messagingSenderId: '211551139323',
-    projectId: 'fjfapp',
-    authDomain: 'fjfapp.firebaseapp.com',
-    storageBucket: 'fjfapp.firebasestorage.app',
-    measurementId: 'G-KXDJBLRPXV',
-  );
-
 }

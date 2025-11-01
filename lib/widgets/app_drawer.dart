@@ -1,15 +1,8 @@
 // lib/widgets/app_drawer.dart
 import 'package:flutter/material.dart';
 // Precisamos importar as telas para onde vamos navegar
-import '../screens/fixtures_screen.dart';
-import '../screens/standings_screen.dart';
 import '../screens/splash_screen.dart';
-import '../screens/teams_list_screen.dart';
 import '../services/admin_service.dart';
-import '../screens/team_stats_screen.dart';
-import '../screens/player_stats_screen.dart';
-import '../screens/report_bug_screen.dart';
-import '../screens/suspension_history_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});

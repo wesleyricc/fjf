@@ -1,42 +1,43 @@
 // lib/services/notification_service.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-// --- IMPORTANTE: Para Background Handler ---
-// Esta função DEVE ficar fora de qualquer classe (top-level)
+// --- MANIPULADOR DE BACKGROUND ---
+// Esta função DEVE ficar fora de uma classe (nível superior)
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Se você inicializar o Firebase em outro lugar, pode precisar inicializar aqui também
-  // await Firebase.initializeApp();
+  // Se você inicializou o Firebase em main.dart, não precisa inicializar aqui.
+  // (No PWA, o service worker 'firebase-messaging-sw.js' lida com isso)
   debugPrint("Notificação em Background Recebida: ${message.messageId}");
-  // Você pode fazer lógica de background aqui se precisar
 }
-// --- FIM Background Handler ---
+// --- FIM DO MANIPULADOR ---
 
 
 class NotificationService {
-  // Instância singleton
+  // Instância Singleton (padrão)
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
 
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+  
+  // Plugin de Notificações Locais (para mostrar quando o app está aberto)
+  final FlutterLocalNotificationsPlugin _localNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-  // Canal Padrão para Android (necessário)
+  // Canal Android (necessário para Android 8.0+)
   final AndroidNotificationChannel _androidChannel = const AndroidNotificationChannel(
-    'high_importance_channel', // ID (precisa ser único)
+    'high_importance_channel', // ID (qualquer um)
     'Notificações Importantes', // Título
-    description: 'Canal para notificações importantes do campeonato.',
+    description: 'Canal usado para notificações importantes.', // Descrição
     importance: Importance.high,
   );
 
-  // Inicialização Completa
+  // Função de Inicialização Principal (chamada no main.dart)
   Future<void> init() async {
     try {
-      // 1. Pedir Permissão (iOS e Android 13+)
+      // 1. Pedir Permissão (iOS, Web)
       NotificationSettings settings = await _firebaseMessaging.requestPermission(
         alert: true,
         announcement: false,
@@ -46,34 +47,66 @@ class NotificationService {
         provisional: false,
         sound: true,
       );
+
       debugPrint('Permissão de notificação concedida: ${settings.authorizationStatus}');
+      
+      if (settings.authorizationStatus != AuthorizationStatus.authorized) {
+         debugPrint('Usuário não concedeu permissão. As notificações não funcionarão.');
+         return; // Para a execução se a permissão foi negada
+      }
 
-      // 2. Inscrever no Tópico
-      // Todos os usuários serão inscritos neste tópico
-      await _firebaseMessaging.subscribeToTopic('all_users');
-      debugPrint('Inscrito no tópico "all_users"');
+      // 2. Pegar o Token FCM (para PWA e teste)
+      String? token;
+      if (kIsWeb) {
+        // Para Web (PWA), precisamos passar a VAPID key (ID 580)
+        // que o 'flutterfire configure' salvou no firebase_options.dart
+        token = await _firebaseMessaging.getToken(
+          vapidKey: 'BEyMuORAMcQM9S1Zn9A5251FASRhDnIN3tLbYuEMC3WPHkYCSCMMlG-72oC8nwy58No9Pt4lJ56v9Gp4ID-ym1A',
+        );
+      } else {
+        // Para Android/iOS nativo
+        token = await _firebaseMessaging.getToken();
+      }
+      
+      // Imprime o token no console (útil para testes diretos)
+      debugPrint("====================================================");
+      debugPrint("TOKEN FCM DESTE DISPOSITIVO (para teste):");
+      debugPrint(token);
+      debugPrint("====================================================");
 
-      // 3. Inicializar Notificações Locais (para foreground)
+      // --- 3. CORREÇÃO: Inscrição em Tópico ---
+      // A inscrição em tópicos SÓ é suportada em clientes nativos (Android/iOS)
+      if (!kIsWeb) {
+        await _firebaseMessaging.subscribeToTopic('all_users');
+        debugPrint('Inscrito no tópico "all_users" (Nativo)');
+      } else {
+        debugPrint('Inscrição em tópicos não suportada no PWA (Web).');
+      }
+      // --- FIM DA CORREÇÃO ---
+
+      // 4. Inicializar Notificações Locais (para app aberto)
       await _initLocalNotifications();
 
-      // 4. Configurar Handlers de Mensagem
+      // 5. Configurar Handlers de Mensagem (App Aberto e Background)
       _setupMessageHandlers();
+
     } catch (e) {
       debugPrint("Erro ao inicializar notificações: $e");
+      // (Possível erro aqui se o vapidKey estiver faltando no firebase_options.dart)
     }
   }
 
-  // Inicializa o plugin de Notificação Local
+  // Configura o plugin de notificações locais
   Future<void> _initLocalNotifications() async {
     // Configurações para Android
-    const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@drawable/ic_stat_notification'); // Usa o ícone que você adicionou
+    const AndroidInitializationSettings androidSettings = 
+        AndroidInitializationSettings('@mipmap/ic_launcher'); // Usa o ícone padrão do app
 
-    // Configurações para iOS (pede permissões)
+    // Configurações para iOS
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      requestAlertPermission: false, // Permissão já pedida pelo FCM
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
 
     const InitializationSettings initSettings = InitializationSettings(
@@ -83,23 +116,25 @@ class NotificationService {
 
     await _localNotificationsPlugin.initialize(initSettings);
 
-    // Cria o canal Android
-    await _localNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_androidChannel);
+    // Cria o canal Android (se não for Web)
+    if (!kIsWeb) {
+      await _localNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(_androidChannel);
+    }
   }
 
-  // Configura como o app lida com mensagens
+  // Configura como o app lida com mensagens recebidas
   void _setupMessageHandlers() {
-    // 1. App em Foreground (Aberto e visível)
+    // 1. App em Primeiro Plano (Aberto e visível)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint('Notificação em Foreground Recebida: ${message.notification?.title}');
+      debugPrint('Notificação recebida (App em Primeiro Plano): ${message.notification?.title}');
+      
       RemoteNotification? notification = message.notification;
       AndroidNotification? android = message.notification?.android;
 
-      // Se for uma notificação E tiver payload, MOSTRA localmente
-      if (notification != null) {
+      // Se a notificação existir E formos Android/iOS, mostre a notificação local
+      if (notification != null && !kIsWeb) {
         _localNotificationsPlugin.show(
           notification.hashCode,
           notification.title,
@@ -109,42 +144,26 @@ class NotificationService {
               _androidChannel.id,
               _androidChannel.name,
               channelDescription: _androidChannel.description,
-              icon: android?.smallIcon, // Usa o ícone do AndroidManifest
+              icon: android?.smallIcon ?? '@mipmap/ic_launcher',
               importance: Importance.high,
               priority: Priority.high,
             ),
-            iOS: const DarwinNotificationDetails(
-              presentAlert: true,
-              presentBadge: true,
-              presentSound: true,
-            ),
+            iOS: const DarwinNotificationDetails(),
           ),
-          // payload: message.data['route'], // Opcional: para navegação
         );
       }
+      // (No PWA, o navegador geralmente NÃO mostra notificações se a aba estiver ativa)
     });
 
-    // 2. App em Background (Minimizado)
-    // Esta função é chamada quando a MENSAGEM CHEGA
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    // 3. App Terminado (Fechado)
-    // Esta função é chamada quando o USUÁRIO CLICA na notificação
-    // e o app abre a partir do estado terminado.
-    _firebaseMessaging.getInitialMessage().then((RemoteMessage? message) {
-      if (message != null) {
-        debugPrint("App aberto a partir de notificação (Terminado): ${message.messageId}");
-        // Navegar para uma tela específica se a notificação tiver dados
-        // Ex: if (message.data['route'] == '/jogos') { ... }
-      }
-    });
-
-    // 4. App em Background (Minimizado)
-    // Esta função é chamada quando o USUÁRIO CLICA na notificação
-    // e o app volta para o foreground.
+    // 2. App em Segundo Plano (Minimizado ou Fechado)
+    // (Abre o app quando o usuário clica na notificação)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-       debugPrint("App aberto a partir de notificação (Background): ${message.messageId}");
-       // Navegar para uma tela específica
+      debugPrint('Notificação clicada (App aberto do Background): ${message.messageId}');
+      // Aqui você pode adicionar lógica de navegação se a notificação tiver dados
+      // Ex: if (message.data['screen'] == 'fixtures') { ... }
     });
+
+    // 3. Handler de Background (definido no topo do arquivo)
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   }
 }
