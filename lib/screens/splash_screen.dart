@@ -9,7 +9,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'team_detail_screen.dart'; 
+import 'team_detail_screen.dart'; // Import da TeamDetailScreen
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -19,51 +19,55 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+// --- 1. ADICIONA O MIXIN DE ANIMAÇÃO ---
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late YoutubePlayerController _ytController;
   bool _isLoadingVideoId = true;
   final String _defaultVideoId = 'ByBvdFS1jko';
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  //bool kIsWeb = false;
 
-  // Lista de redes sociais (agora usada no _buildHeader)
+  // Lista de redes sociais
   final List<Map<String, dynamic>> _socialLinks = [
-    {
-      'icon': FontAwesomeIcons.facebook,
-      'url': 'https://www.facebook.com/forcajovemfumacense',
-    },
-    {
-      'icon': FontAwesomeIcons.instagram,
-      'url': 'https://www.instagram.com/fjf.forcajovem',
-    },
-    {
-      'icon': FontAwesomeIcons.youtube,
-      'url': 'https://www.youtube.com/@forcajovemfumacense',
-    },
+    {'icon': FontAwesomeIcons.facebook, 'url': 'https://www.facebook.com/forcajovemfumacense'},
+    {'icon': FontAwesomeIcons.instagram, 'url': 'https://www.instagram.com/fjf.forcajovem'},
+    {'icon': FontAwesomeIcons.youtube, 'url': 'https://www.youtube.com/@forcajovemfumacense'},
   ];
 
   // Estado PWA e Drawer
   html.Event? _installPromptEvent;
   bool _showInstallButton = false;
-  bool _isDrawerOpen = false;
+  bool _isDrawerOpen = false; 
   String? _regulationUrl;
+
+  // Estado do Player
+  bool _isPlayerExpanded = false;
+
+  // --- 2. CONTROLLER DA ANIMAÇÃO "PISCANDO" ---
+  late AnimationController _blinkController;
+  // --- FIM ---
 
   @override
   void initState() {
     super.initState();
     debugPrint("SplashScreen: initState");
 
-    // Inicializa o controller
+    // Inicializa o controller do YouTube
     _ytController = YoutubePlayerController.fromVideoId(
       videoId: _defaultVideoId,
-      autoPlay: true,
+      autoPlay: true, 
       params: const YoutubePlayerParams(
         showControls: true,
-        mute: true,
+        mute: true, // Começa mutado
         showFullscreenButton: true,
         enableCaption: false,
       ),
     );
+
+    // --- 3. INICIALIZA O CONTROLLER DA ANIMAÇÃO ---
+    _blinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..repeat(reverse: true);
 
     // Inicia as buscas
     _fetchFirebaseData(); 
@@ -143,6 +147,7 @@ class _SplashScreenState extends State<SplashScreen> {
   void dispose() {
     debugPrint("SplashScreen: dispose");
     _ytController.close();
+    _blinkController.dispose();
     super.dispose();
   }
 
@@ -151,12 +156,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (urlString.isEmpty) return;
     final Uri url = Uri.parse(urlString);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      debugPrint('Não foi possível abrir $urlString');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível abrir o link: $urlString')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível abrir o link: $urlString')));
     }
   }
   
@@ -170,44 +170,31 @@ class _SplashScreenState extends State<SplashScreen> {
     });
   }
 
-  // --- WIDGET: CABEÇALHO (Logo, Título, Sociais, Regulamento) ---
+  // --- WIDGET: CABEÇALHO (sem mudanças) ---
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 5.0),
+      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 12.0),
       child: Column(
         children: [
-          // 1. Logo e Título
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Image.asset('assets/logo3_fjf.png', height: 100),
               const SizedBox(width: 12),
-              const Text(
-                'FJF 2025',
-                style: TextStyle(
-                  fontSize: 40,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              const Text('FJF 2025', style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold)),
             ],
           ),
-          //const SizedBox(height: 5),
-          // 2. Botões (Sociais e Regulamento)
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              // Botão Regulamento
               if (_regulationUrl != null && _regulationUrl!.isNotEmpty)
                 TextButton.icon(
                   icon: const Icon(Icons.description_outlined),
                   label: const Text('Regulamento'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Theme.of(context).primaryColor,
-                  ),
+                  style: TextButton.styleFrom(foregroundColor: Theme.of(context).primaryColor),
                   onPressed: () => _launchURL(_regulationUrl!),
                 ),
-              
-              // Ícones Sociais
               ..._socialLinks.map((link) {
                 return IconButton(
                   icon: Icon(link['icon'] as IconData),
@@ -223,24 +210,20 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
     );
   }
-  // --- FIM DO WIDGET CABEÇALHO ---
-
-
-  // --- WIDGET: SEÇÃO DE MÍDIAS (Horizontal Scroll) ---
+  
+  // --- WIDGET: SEÇÃO DE MÍDIAS (sem mudanças) ---
   Widget _buildMediaFeed() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Título da Seção
         Padding(
-          padding: const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 0.0),
+          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
           child: Text(
             'Últimas Notícias',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
         ),
-        // StreamBuilder e ListView Horizontalr
         StreamBuilder<QuerySnapshot>(
           stream: _firestore
               .collection('media_feed')
@@ -250,16 +233,14 @@ class _SplashScreenState extends State<SplashScreen> {
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())); // <-- AJUSTE DE ALTURA 2
+              return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
             }
             if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return const SizedBox(height: 100, child: Center(child: Text('Nenhuma mídia recente disponível.')));
             }
-
             final mediaItems = snapshot.data!.docs;
-
             return SizedBox(
-              height: 200, // <-- AJUSTE DE ALTURA 2 (Altura total da faixa)
+              height: 200,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 10.0),
@@ -279,12 +260,11 @@ class _SplashScreenState extends State<SplashScreen> {
       ],
     );
   }
-  // --- FIM DA SEÇÃO DE MÍDIAS ---
 
-  // --- WIDGET: Item da Lista de Mídia (Card) ---
+  // --- WIDGET: Item da Lista de Mídia (sem mudanças) ---
   Widget _buildMediaItem(String title, String imageUrl, String targetUrl) {
     return SizedBox(
-      width: 180, // <-- AJUSTE DE LARGURA 2
+      width: 180,
       child: Card(
         clipBehavior: Clip.antiAlias,
         elevation: 3,
@@ -294,32 +274,24 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Imagem
               SizedBox(
-                height: 100, // <-- AJUSTE DE ALTURA 2 (Imagem)
-                width: 180, // <-- AJUSTE DE LARGURA 2
+                height: 100,
+                width: 180,
                 child: (imageUrl.isEmpty)
-                  ? Container(
-                      color: Colors.grey[200],
-                      child: const Center(child: Icon(Icons.newspaper, color: Colors.grey)),
-                    )
+                  ? Container(color: Colors.grey[200], child: const Center(child: Icon(Icons.newspaper, color: Colors.grey)))
                   : CachedNetworkImage(
                       imageUrl: imageUrl,
                       fit: BoxFit.cover,
                       placeholder: (context, url) => Container(color: Colors.grey[200]),
-                      errorWidget: (context, url, error) => Container(
-                        color: Colors.grey[200],
-                        child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
-                      ),
+                      errorWidget: (context, url, error) => Container(color: Colors.grey[200], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
                     ),
               ),
-              // Título
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Text(
                   title,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600), // <-- AJUSTE DE FONTE 2
-                  maxLines: 4, // <-- AJUSTE DE LINHAS 2
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -329,9 +301,8 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
     );
   }
-  // --- FIM DO ITEM DE MÍDIA ---
 
-  // --- 2. NOVO WIDGET: SEÇÃO DAS EQUIPES ---
+  // --- WIDGET: SEÇÃO DAS EQUIPES (sem mudanças) ---
   Widget _buildTeamsGrid() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -347,7 +318,7 @@ class _SplashScreenState extends State<SplashScreen> {
         StreamBuilder<QuerySnapshot>(
           stream: _firestore
               .collection('teams')
-              .orderBy('name') // Ordena por nome
+              .orderBy('name')
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -356,16 +327,13 @@ class _SplashScreenState extends State<SplashScreen> {
             if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return const Center(child: Text('Nenhuma equipe encontrada.'));
             }
-
             final teams = snapshot.data!.docs;
-
-            // GridView com 2 colunas
             return GridView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12.0),
-              shrinkWrap: true, // Essencial dentro de um SingleChildScrollView
-              physics: const NeverScrollableScrollPhysics(), // Desabilita rolagem do Grid
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2, // 2 colunas
+                crossAxisCount: 2,
                 childAspectRatio: 1.1,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
@@ -377,26 +345,22 @@ class _SplashScreenState extends State<SplashScreen> {
                 final String teamName = teamData['name'] ?? 'Equipe';
                 final String teamShield = teamData['shield_url'] ?? '';
 
-                // Item da Grade (Card)
                 return Card(
                   elevation: 2,
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     onTap: () {
-                      // Navega para a tela de detalhes da equipe
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc),
                         ),
                       );
                     },
-                    // --- MUDANÇA 2: Row para Column ---
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center, 
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Logo (Escudo)
-                        Expanded( // Ocupa o espaço disponível
+                        Expanded(
                           child: Padding(
                             padding: const EdgeInsets.all(8.0),
                             child: CachedNetworkImage(
@@ -407,7 +371,6 @@ class _SplashScreenState extends State<SplashScreen> {
                             ),
                           ),
                         ),
-                        // Nome (embaixo)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
                           child: Text(
@@ -420,7 +383,6 @@ class _SplashScreenState extends State<SplashScreen> {
                         ),
                       ],
                     ),
-                    // --- FIM DA MUDANÇA ---
                   ),
                 );
               },
@@ -460,23 +422,24 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       },
       
-      // A tela inteira rola (SingleChildScrollView é a raiz)
-      body: ScrollConfiguration(
-        behavior: const ScrollBehavior().copyWith(
-          overscroll: false,
-          physics: const ClampingScrollPhysics(),
-        ),
-        child: SingleChildScrollView(
-        padding: EdgeInsets.zero, // Padding será aplicado no final
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            
-            // --- 1. O NOVO CABEÇALHO ---
-            _buildHeader(), 
-            
-            // --- 2. AJUDA PWA (MOVIDA PARA CIMA) ---
-            if (kIsWeb && !isStandalone)
+      // --- ESTRUTURA DO BODY (Player Fixo, Conteúdo Rolável) ---
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          
+          // --- 1. CONTEÚDO ROLÁVEL (DENTRO DE 'EXPANDED') ---
+          Expanded(
+            child: SingleChildScrollView(
+              // Usa ClampingScrollPhysics para desabilitar o "bounce" do iOS
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  
+                  _buildHeader(), 
+                  
+                  if (kIsWeb && !isStandalone)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Column(
@@ -534,78 +497,115 @@ class _SplashScreenState extends State<SplashScreen> {
                   ],
                 ),
               ),
-            // --- FIM DA AJUDA PWA ---
 
-            // --- 3. AS NOVAS MÍDIAS (ROLAGEM HORIZONTAL) ---
-            _buildMediaFeed(), 
-            
-            const Divider(height: 24, thickness: 1, indent: 16, endIndent: 16),
+                  _buildMediaFeed(), 
+                  
+                  const Divider(height: 24, thickness: 1, indent: 16, endIndent: 16),
+                  
+                  _buildTeamsGrid(),
+                  
+                  const SizedBox(height: 10),
 
-            // --- 4. O PLAYER DO YOUTUBE ---
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'SPD Lives - Transmissão Ao Vivo',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 4,
-              clipBehavior: Clip.antiAlias,
-              margin: const EdgeInsets.symmetric(vertical: 0, horizontal: 8.0),
-              child: Column(
-                children: [
-                  _isLoadingVideoId
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 50.0),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      : (_isDrawerOpen
-                          ? AspectRatio(
-                              aspectRatio: 16 / 9,
-                              child: Container(
-                                color: Colors.black,
-                                alignment: Alignment.center,
-                                child: const Text(
-                                  'Player pausado.\nFeche o menu para continuar.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: Colors.white54),
-                                ),
-                              ),
-                            )
-                          : YoutubePlayer(controller: _ytController)
-                        ),
+                  // Copyright (movido para o final da rolagem)
+                  Text(
+                    'Desenvolvido por Wesley Ricardo.\nTodos os direitos reservados © FJF 2025.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                      height: 1.5,
+                    ),
+                  ),
                 ],
               ),
             ),
-            // --- FIM DO PLAYER ---
+          ),
+          // --- FIM DO CONTEÚDO ROLÁVEL ---
 
-            // --- 3. NOVA SEÇÃO DE EQUIPES ---
-              _buildTeamsGrid(),
-              // --- FIM DA SEÇÃO ---
-            
-            
-            const SizedBox(height: 50),
+          // --- 2. O PLAYER DO YOUTUBE (FIXO NO FIM DA COLUMN) (ATUALIZADO) ---
+          
+          
+          // Se o drawer estiver aberto, mostra o placeholder
+           _isDrawerOpen
+            ? AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Card( 
+                  color: Colors.black,
+                  margin: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
+                  child: Center(
+                    child: const Text(
+                      'Player pausado.\nFeche o menu para continuar.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  ),
+                ),
+              )
 
-            // --- 5. COPYRIGHT ---
-            Text(
-              'Desenvolvido por Wesley Ricardo.\nTodos os direitos reservados © FJF 2025.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
-                height: 1.5,
+             : Card(
+                elevation: 4,
+                clipBehavior: Clip.antiAlias,
+                margin: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0), // Margens
+                child: ExpansionTile(
+                  // --- TÍTULO CLICÁVEL (COM ÍCONE PISCANDO) ---
+                  title: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Ícone Piscando
+                      FadeTransition(
+                        opacity: _blinkController,
+                        child: Icon(Icons.circle, color: Colors.red[700], size: 14),
+                      ),
+                      const SizedBox(width: 8),
+                      // Título
+                      Text(
+                        'SPD Lives - Acompanhe Ao Vivo!',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  // --- FIM DO TÍTULO ---
+
+                  // Remove a seta padrão da direita
+                  trailing: const SizedBox.shrink(), 
+                  // Ícone de "play" que muda (no lugar do leading)
+                  leading: Icon(
+                    _isPlayerExpanded ? Icons.pause_circle_outline : Icons.play_circle_fill,
+                    color: Colors.red[700],
+                    size: 32.0,
+                  ),
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                  // Controla a expansão
+                  initiallyExpanded: _isPlayerExpanded,
+                  onExpansionChanged: (isExpanding) {
+                    setState(() {
+                      _isPlayerExpanded = isExpanding;
+                    });
+                    if (isExpanding) {
+                      _ytController.unMute();
+                      _ytController.playVideo();
+                    } else {
+                      _ytController.mute();
+                      _ytController.pauseVideo();
+                    }
+                  },
+                  // O player fica aqui, envolto em Visibility
+                  children: [
+                    Visibility(
+                      maintainState: true, // <-- Impede o player de quebrar
+                      visible: _isPlayerExpanded, 
+                      child: _isLoadingVideoId
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 50.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        : YoutubePlayer(controller: _ytController),
+                    ),
+                  ],
+                ),
               ),
-            ),
-
-            const SizedBox(height: 5.0), 
-            // --- FIM COPYRIGHT ---
-          ],
-        ),
-        
-        ),
+          // --- FIM DO PLAYER ---
+        ],
       ),
       bottomNavigationBar: const SponsorBannerRotator(),
     );
