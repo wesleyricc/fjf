@@ -20,7 +20,7 @@ class EditMediaScreen extends StatefulWidget {
 class _EditMediaScreenState extends State<EditMediaScreen> {
   final _formKey = GlobalKey<FormState>();
   final FirestoreService _firestoreService = FirestoreService();
-  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.appspot.com");
+  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.firebasestorage.app");
 
   // Controladores
   late TextEditingController _titleController;

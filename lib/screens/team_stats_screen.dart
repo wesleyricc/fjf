@@ -6,9 +6,68 @@ import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/rank_indicator.dart'; // Para rank Ouro/Prata/Bronze
 import 'package:cached_network_image/cached_network_image.dart';
 import 'team_detail_screen.dart'; // Opcional: para navegação
+import '../services/admin_service.dart'; // Para admin e regras
 
 class TeamStatsScreen extends StatelessWidget {
   const TeamStatsScreen({super.key});
+
+  // --- 1. NOVA FUNÇÃO: DIÁLOGO DE AJUDA ---
+  Future<void> _showTeamStatsHelp(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Ajuda: Estatísticas das Equipes'),
+          content: SingleChildScrollView(
+            child: RichText(
+              text: TextSpan(
+                // Define o estilo padrão do texto do diálogo
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 15), 
+                children: <TextSpan>[
+                  const TextSpan(text: 'Esta tela mostra os rankings e o status disciplinar das equipes.\n\n'),
+                  
+                  const TextSpan(text: 'Melhor Ataque:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Ranking de equipes com mais gols.\n\n'),
+
+                  const TextSpan(text: 'Melhor Defesa:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Ranking de equipes com menos gols sofridos.\n\n'),
+
+                  const TextSpan(text: 'Cartões Amarelos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Soma-se o total de cartões amarelos que a equipe levou e que contabilizam para a pontuação disciplinar. Conforme definido no regulamento do campeonato e pela CBFS. Ex: 2CA e 1CV no mesmo jogo, contabiliza-se nesta guia, apenas 1 CA.\n\n'),
+
+                  const TextSpan(text: 'Cartões Vermelhos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Soma-se o total de cartões vermelhos registrados em súmula.\n\n'),
+
+                  const TextSpan(text: 'Total de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Soma-se o total de CV e CA que a equipe levou e que contabilizam para a pontuação disciplinar. Conforme definido no regulamento do campeonato e pela CBFS. Ex: 2CA e 1CV no mesmo jogo, contabiliza-se nesta guia, apenas 1 CA e 1 CV.\n\n'),
+
+                  const TextSpan(text: 'Regra Geral de Suspensão:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextSpan(text: '- Um atleta é suspenso quando toma 1 CV ou ${AdminService.suspensionYellowCards} CA em jogos diferentes (2 CA no mesmo joga contabiliza-se apenas um para regra de Suspensão);\n'),
+                  const TextSpan(text: '- Se um atleta vem para o jogo com 1 CA acumulado e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão pelo CV, e seus CA seguem acumulados;\n'),
+                  TextSpan(text: '- Se um atleta vem para o jogo pendurado (${AdminService.pendingYellowCards} CA) e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão dobrada, pelo CV e pelos CA acumulados.\n\n'),
+                  
+                  const TextSpan(text: 'Regra Geral de Zeramento de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Um atleta tem seus CA zerados apenas quando cumpre suspensão por levar 3CA.\n'),
+
+
+
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Fechar'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
 
   // --- Função Auxiliar Reutilizável para Listas de Ranking (Ordenação Simples) ---
   Widget _buildRankingList({
@@ -226,6 +285,17 @@ class TeamStatsScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Estatísticas das Equipes'),
+          // --- 2. ADICIONA O BOTÃO DE AÇÃO (HELP) ---
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: 'Ajuda sobre as estatísticas',
+              onPressed: () {
+                _showTeamStatsHelp(context);
+              },
+            ),
+          ],
+          // --- FIM DA ADIÇÃO ---
           bottom: const TabBar(
             isScrollable: true,
             labelColor: Colors.white,

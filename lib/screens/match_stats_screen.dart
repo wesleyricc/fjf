@@ -705,9 +705,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     String displayText = '$numberPrefix$name';
 
     // Adiciona contagem de amarelos (se > 1)
-    if (yellowCount > 1) {
-      displayText += ' ($yellowCount)';
-    }
+    //if (yellowCount > 1) {
+      //displayText += ' ($yellowCount)';
+    //}
 
     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
         ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)

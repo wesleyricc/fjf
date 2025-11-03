@@ -7,7 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.appspot.com");
+  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.firebasestorage.app");
 
   // --- Função Auxiliar: Calcular Delta entre Mapas ---
   Map<String, int> _calculateDelta(

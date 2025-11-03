@@ -14,6 +14,74 @@ class PlayerStatsScreen extends StatelessWidget {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // --- 1. NOVA FUNÇÃO: DIÁLOGO DE AJUDA ---
+  Future<void> _showPlayerStatsHelp(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Ajuda: Estatísticas de Jogadores'),
+          content: SingleChildScrollView(
+            child: RichText(
+              text: TextSpan(
+                // Define o estilo padrão do texto do diálogo
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 15), 
+                children: <TextSpan>[
+                  const TextSpan(text: 'Esta tela mostra os rankings e o status disciplinar dos jogadores.\n\n'),
+                  
+                  const TextSpan(text: 'Artilheiros:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Ranking de jogadores com mais gols.\n\n'),
+                  
+                  const TextSpan(text: 'Assistências:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Ranking de jogadores com mais assistências.\n\n'),
+                  
+                  const TextSpan(text: 'Goleiro MV:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Goleiro Menos Vazado. Os gols sofridos sempre totalizam para o goleiro principal do time.\n\n'),
+                  
+                  const TextSpan(text: 'Craque do Jogo:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Ranking de jogadores que mais ganharam o prêmio.\n\n'),
+                  
+                  const TextSpan(text: 'Pendurados:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  // Puxa a regra dinâmica do AdminService
+                  TextSpan(text: 'Apresenta os jogadores com ${AdminService.pendingYellowCards} cartões amarelos.\n\n'), 
+                  
+                  const TextSpan(text: 'Suspensos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextSpan(text: 'Apresenta os jogadores que estão suspensos por CV ou ${AdminService.suspensionYellowCards} CAs.\n\n'),
+                  
+                  const TextSpan(text: 'Total Amarelos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Soma-se o total de cartões amarelos registrados em súmula para o atleta. Esse totalizador não impacta nas regras disciplinares do time, exclusivo para avaliação disciplinar do atleta.\n\n'),
+                  
+                  const TextSpan(text: 'Total Vermelhos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Soma-se o total de cartões vermelhos registrados em súmula para o atleta. Esse totalizador não impacta nas regras disciplinares do time, exclusivo para avaliação disciplinar do atleta.\n\n'),
+
+                  const TextSpan(text: 'Total Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Soma-se o total de cartões registrados em súmula para o atleta, CA e CV compõem o total. Esse totalizador não impacta nas regras disciplinares do time, exclusivo para avaliação disciplinar do atleta.\n\n'),
+
+                  const TextSpan(text: 'Regra Geral de Suspensão:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextSpan(text: '- Um atleta é suspenso quando toma 1 CV ou ${AdminService.suspensionYellowCards} CA em jogos diferentes (2 CA no mesmo joga contabiliza-se apenas um para regra de Suspensão);\n'),
+                  const TextSpan(text: '- Se um atleta vem para o jogo com 1 CA acumulado e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão pelo CV, e seus CA seguem acumulados;\n'),
+                  TextSpan(text: '- Se um atleta vem para o jogo pendurado (${AdminService.pendingYellowCards} CA) e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão dobrada, pelo CV e pelos CA acumulados.\n\n'),
+                  
+                  const TextSpan(text: 'Regra Geral de Zeramento de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Um atleta tem seus CA zerados apenas quando cumpre suspensão por levar 3CA.\n'),
+                
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Fechar'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
   // --- Função Auxiliar: Diálogo para Limpar Suspensão ---
   // (Copiada da antiga DisciplinaryScreen)
   Future<void> _showClearSuspensionDialog(
@@ -475,6 +543,17 @@ class PlayerStatsScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Estatísticas dos Jogadores'),
+          // --- 2. ADICIONA O BOTÃO DE AÇÃO (HELP) ---
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              tooltip: 'Ajuda sobre as estatísticas',
+              onPressed: () {
+                _showPlayerStatsHelp(context);
+              },
+            ),
+          ],
+          // --- FIM DA ADIÇÃO ---
           bottom: const TabBar(
             isScrollable: true,
             labelColor: Colors.white,
