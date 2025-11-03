@@ -19,7 +19,6 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-// --- 1. ADICIONA O MIXIN DE ANIMAÇÃO ---
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late YoutubePlayerController _ytController;
   bool _isLoadingVideoId = true;
@@ -38,14 +37,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   bool _showInstallButton = false;
   bool _isDrawerOpen = false; 
   String? _regulationUrl;
+  bool _isPlayerVisible = false;
 
-  // Estado do Player
-  bool _isPlayerExpanded = false;
-
-  // --- 2. CONTROLLER DA ANIMAÇÃO "PISCANDO" ---
+  // Controller da Animação "Piscando"
   late AnimationController _blinkController;
-  // --- FIM ---
-
+  
   @override
   void initState() {
     super.initState();
@@ -63,7 +59,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       ),
     );
 
-    // --- 3. INICIALIZA O CONTROLLER DA ANIMAÇÃO ---
+    // Inicializa o controller da Animação
     _blinkController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -430,7 +426,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           // --- 1. CONTEÚDO ROLÁVEL (DENTRO DE 'EXPANDED') ---
           Expanded(
             child: SingleChildScrollView(
-              // Usa ClampingScrollPhysics para desabilitar o "bounce" do iOS
               physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.only(bottom: 24.0),
               child: Column(
@@ -524,87 +519,105 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
           // --- 2. O PLAYER DO YOUTUBE (FIXO NO FIM DA COLUMN) (ATUALIZADO) ---
           
-          
-          // Se o drawer estiver aberto, mostra o placeholder
-           _isDrawerOpen
-            ? AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Card( 
-                  color: Colors.black,
-                  margin: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
-                  child: Center(
-                    child: const Text(
-                      'Player pausado.\nFeche o menu para continuar.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54),
-                    ),
+          if (_isDrawerOpen)
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Card( 
+                color: Colors.black,
+                margin: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
+                child: Center(
+                  child: const Text(
+                    'Player pausado.\nFeche o menu para continuar.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white54),
                   ),
-                ),
-              )
-
-             : Card(
-                elevation: 4,
-                clipBehavior: Clip.antiAlias,
-                margin: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0), // Margens
-                child: ExpansionTile(
-                  // --- TÍTULO CLICÁVEL (COM ÍCONE PISCANDO) ---
-                  title: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Ícone Piscando
-                      FadeTransition(
-                        opacity: _blinkController,
-                        child: Icon(Icons.circle, color: Colors.red[700], size: 14),
-                      ),
-                      const SizedBox(width: 8),
-                      // Título
-                      Text(
-                        'SPD Lives - Acompanhe Ao Vivo!',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  // --- FIM DO TÍTULO ---
-
-                  // Remove a seta padrão da direita
-                  trailing: const SizedBox.shrink(), 
-                  // Ícone de "play" que muda (no lugar do leading)
-                  leading: Icon(
-                    _isPlayerExpanded ? Icons.pause_circle_outline : Icons.play_circle_fill,
-                    color: Colors.red[700],
-                    size: 32.0,
-                  ),
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                  // Controla a expansão
-                  initiallyExpanded: _isPlayerExpanded,
-                  onExpansionChanged: (isExpanding) {
-                    setState(() {
-                      _isPlayerExpanded = isExpanding;
-                    });
-                    if (isExpanding) {
-                      _ytController.unMute();
-                      _ytController.playVideo();
-                    } else {
-                      _ytController.mute();
-                      _ytController.pauseVideo();
-                    }
-                  },
-                  // O player fica aqui, envolto em Visibility
-                  children: [
-                    Visibility(
-                      maintainState: true, // <-- Impede o player de quebrar
-                      visible: _isPlayerExpanded, 
-                      child: _isLoadingVideoId
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 50.0),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        : YoutubePlayer(controller: _ytController),
-                    ),
-                  ],
                 ),
               ),
-          // --- FIM DO PLAYER ---
+            )
+          else if (_isLoadingVideoId)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 50.0),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                
+                // 1. O PLAYER (Sempre no tree, mas escondido)
+                Visibility(
+                  maintainState: true,
+                  visible: _isPlayerVisible,
+                  child: Card( 
+                    elevation: 4,
+                    clipBehavior: Clip.antiAlias,
+                    margin: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0),
+                    child: Column(
+                      children: [
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: const Icon(Icons.close_fullscreen_outlined),
+                            iconSize: 20,
+                            color: Colors.grey[700],
+                            tooltip: 'Recolher Player',
+                            onPressed: () {
+                              setState(() {
+                                _isPlayerVisible = false;
+                              });
+                              _ytController.mute(); 
+                            },
+                          ),
+                        ),
+                        YoutubePlayer(controller: _ytController),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // 2. O BOTÃO "ASSISTIR" (Escondido se o player estiver visível)
+                Visibility(
+                  visible: !_isPlayerVisible,
+                  child: Padding( 
+                    padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+                    child: SizedBox( 
+                      width: double.infinity, 
+                      
+                      // --- CORREÇÃO 2: Substitui ElevatedButton.icon por ElevatedButton ---
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(255, 255, 0, 0),
+                          foregroundColor: const Color.fromARGB(255, 255, 255, 255),
+                          padding: const EdgeInsets.symmetric(vertical: 10.0), 
+                          textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), 
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isPlayerVisible = true;
+                          });
+                          _ytController.unMute();
+                          _ytController.playVideo();
+                        },
+                        // --- CORREÇÃO 3: O Child agora é uma Row com o ícone piscando ---
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Ícone Piscando
+                            FadeTransition(
+                              opacity: _blinkController,
+                              child: const Icon(Icons.circle, size: 16), // Ícone "REC"
+                            ),
+                            const SizedBox(width: 10),
+                            const Text('SPD Lives - Assistir Ao Vivo'),
+                          ],
+                        ),
+                        // --- FIM DA CORREÇÃO ---
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
       bottomNavigationBar: const SponsorBannerRotator(),
