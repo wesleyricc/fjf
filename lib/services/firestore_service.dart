@@ -645,6 +645,8 @@ class FirestoreService {
     required String? winnerTeamId,
     required String? newSumulaUrl,
     required List<Map<String, dynamic>> newMediaLinks,
+    required List<String> newStartersHome, // Lista de IDs
+    required List<String> newStartersAway, // Lista de IDs
   }) async {
     final String matchId = matchSnapshot.id;
     final matchDataBefore = matchSnapshot.data() as Map<String, dynamic>? ?? {};
@@ -750,6 +752,8 @@ class FirestoreService {
             'player_stats': newPlayerStatsToSave,
             'man_of_the_match': newManOfTheMatchId,
             'media_links': newMediaLinks,
+            'starters_home': newStartersHome,
+            'starters_away': newStartersAway,
           },
         });
         debugPrint(

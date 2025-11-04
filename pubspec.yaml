@@ -80,9 +80,10 @@ flutter:
     - assets/logo_fjf.jpg
     - assets/logo2_fjf.png
     - assets/logo3_fjf.png
-    - assets/data/teams.json    # <-- ADICIONE ESTA LINHA
-    - assets/data/players.json  # <-- ADICIONE ESTA LINHA
-    - assets/data/matches.json  # <-- ADICIONE ESTA LINHA
+    - assets/data/teams.json
+    - assets/data/players.json
+    - assets/data/matches.json
+    - assets/
 
 
 flutter_launcher_icons:

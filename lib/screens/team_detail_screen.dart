@@ -23,13 +23,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirestoreService _firestoreService = FirestoreService();
 
-  // --- 2. ADICIONE A CHAMADA DO ANALYTICS NO INITSTATE ---
+  // --- NOVO ESTADO: Para guardar a lista de jogadores para o diálogo ---
+  List<DocumentSnapshot> _allPlayers = [];
+  // --- FIM ---
+
   @override
   void initState() {
-    super.initState(); // Chame super.initState() primeiro
+    super.initState();
 
     try {
-      // Cria um nome de tela dinâmico (ex: /team/detail/NomeDoTime)
       final teamData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
       final teamName = teamData['name'] ?? 'TimeDesconhecido';
       FirebaseAnalytics.instance.logScreenView(
@@ -39,15 +41,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       debugPrint("Erro ao logar screen_view (TeamDetailScreen): $e");
     }
   }
-  // --- FIM ---
 
-  // --- Função para mostrar o diálogo de Pontos Extras ---
+  // --- Função para mostrar o diálogo de Pontos Extras (Sem alteração) ---
   Future<void> _showAddExtraPointsDialog() async {
     String? selectedReason;
     final pointsController = TextEditingController();
     bool isLoading = false;
     DateTime selectedDate =
-        DateTime.now(); // <-- Estado para a data (inicia com hoje)
+        DateTime.now();
 
     final Map<String, int> extraPointsOptions = {
       'Rainha FJF': 1,
@@ -60,27 +61,24 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       'Outro (Negativo)': 0,
     };
 
-    // --- Função auxiliar para mostrar o Date Picker ---
     Future<void> _pickDate(
       BuildContext context,
       StateSetter setDialogState,
     ) async {
       final DateTime? picked = await showDatePicker(
         context: context,
-        initialDate: selectedDate, // Data inicial é a selecionada atualmente
-        firstDate: DateTime(2020), // Limite inferior (ajuste se necessário)
-        lastDate: DateTime.now(), // Limite superior (não permite datas futuras)
-        locale: const Locale('pt', 'BR'), // Para português
+        initialDate: selectedDate,
+        firstDate: DateTime(2020),
+        lastDate: DateTime.now(),
+        locale: const Locale('pt', 'BR'),
       );
       if (picked != null && picked != selectedDate) {
         setDialogState(() {
-          // Atualiza o estado DENTRO do diálogo
           selectedDate = picked;
         });
       }
     }
 
-    // --- Fim da função auxiliar ---
     return showDialog<void>(
       context: context,
       barrierDismissible: !isLoading,
@@ -112,7 +110,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           : (value) {
                               setDialogState(() {
                                 selectedReason = value;
-                                // Preenche o campo de pontos se não for customizado
                                 if (value != null &&
                                     extraPointsOptions[value] != 0) {
                                   pointsController.text =
@@ -128,7 +125,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: pointsController,
-                      keyboardType: TextInputType.numberWithOptions(
+                      keyboardType: const TextInputType.numberWithOptions(
                         signed: true,
                       ),
                       decoration: const InputDecoration(
@@ -138,7 +135,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       enabled:
                           !isLoading &&
                           (selectedReason?.contains('Outro') ??
-                              false), // Habilita só para "Outro"
+                              false),
                       validator: (value) {
                         if (value == null || value.isEmpty)
                           return 'Informe os pontos';
@@ -149,14 +146,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         return null;
                       },
                     ),
-                    // --- SELETOR DE DATA ---
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(
-                          // Para o texto ocupar o espaço e poder quebrar linha
                           child: Text(
-                            'Data do Evento:\n${DateFormat('dd/MM/yyyy').format(selectedDate)}', // Mostra a data
+                            'Data do Evento:\n${DateFormat('dd/MM/yyyy').format(selectedDate)}',
                             style: const TextStyle(fontSize: 14),
                           ),
                         ),
@@ -168,12 +163,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               : () => _pickDate(
                                   dialogContext,
                                   setDialogState,
-                                ), // Chama o date picker
+                                ),
                           color: Theme.of(context).primaryColor,
                         ),
                       ],
                     ),
-                    // --- FIM DO SELETOR DE DATA ---
                   ],
                 ),
               ),
@@ -188,6 +182,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   onPressed: isLoading
                       ? null
                       : () async {
+                          // ... (lógica de validação de pontos idêntica) ...
                           if (selectedReason == null ||
                               pointsController.text.isEmpty) {
                             ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -205,7 +200,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                           if (points == 0 &&
                               !(selectedReason?.contains('Outro') ?? false)) {
-                            // Se não for 'Outro', pega o valor do mapa. Se ainda for 0, é erro.
                             final mapPoints =
                                 extraPointsOptions[selectedReason] ?? 0;
                             if (mapPoints == 0) {
@@ -218,10 +212,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               );
                               return;
                             }
-                            // Se chegou aqui, usa mapPoints
                             pointsController.text = mapPoints
-                                .toString(); // Atualiza o controller para consistência
-                            // Não precisa reatribuir 'points' pois ela será lida novamente abaixo
+                                .toString();
                           }
                           final finalPoints =
                               int.tryParse(pointsController.text) ?? 0;
@@ -235,6 +227,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             );
                             return;
                           }
+                          // --- Fim da validação ---
 
                           setDialogState(() {
                             isLoading = true;
@@ -249,7 +242,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                 .doc();
                             final WriteBatch batch = _firestore.batch();
 
-                            // --- ATUALIZA AMBOS OS CAMPOS ---
                             debugPrint(
                               "[PONTOS] Adicionando Extra Points: Time=${widget.teamDoc.id}, Pontos=$finalPoints",
                             );
@@ -259,9 +251,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             batch.update(teamRef, {
                               'points': FieldValue.increment(finalPoints),
                             });
-                            // --- FIM DA ATUALIZAÇÃO DUPLA ---
 
-                            // 2. Cria o registro no log
                             batch.set(logRef, {
                               'timestamp': Timestamp.fromDate(selectedDate),
                               'reason': selectedReason,
@@ -316,7 +306,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  // --- 4. NOVA FUNÇÃO AUXILIAR PARA LINHA DE ESTATÍSTICA ---
+  // --- Função _buildStatRow (Sem alteração) ---
   Widget _buildStatRow(
     String label,
     String value, {
@@ -327,10 +317,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment
-            .spaceBetween, // Alinha label à esquerda, valor à direita
+            .spaceBetween,
         children: [
           Row(
-            // Agrupa ícone e label
             children: [
               if (icon != null) ...[
                 Icon(icon, size: 18, color: iconColor ?? Colors.grey[700]),
@@ -350,9 +339,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       ),
     );
   }
-  // --- FIM DA FUNÇÃO AUXILIAR ---
 
-  // --- NOVA FUNÇÃO: DIÁLOGO EXCLUIR JOGADOR ---
+  // --- Função _showDeletePlayerDialog (Sem alteração) ---
   Future<void> _showDeletePlayerDialog(
     BuildContext context,
     DocumentSnapshot playerDoc,
@@ -385,17 +373,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     if (confirm == true && mounted) {
       final result = await _firestoreService.deletePlayer(
         playerDoc,
-      ); // Chama o serviço (soft delete)
+      );
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(result)));
     }
   }
-  // --- FIM ---
 
-  // --- NOVA FUNÇÃO AUXILIAR PARA ÍCONE DE STAFF ---
+  // --- Função _getStaffIcon (Sem alteração) ---
   IconData _getStaffIcon(String? role) {
-    if (role == null) return Icons.assignment_ind_outlined; // Padrão
+    if (role == null) return Icons.assignment_ind_outlined;
 
     String roleLower = role.toLowerCase();
 
@@ -403,33 +390,170 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       if (roleLower.contains('auxiliar')) {
         return Icons.support_agent;
       } else{
-        return Icons.content_paste; // Ícone de Prancheta
+        return Icons.content_paste;
       }
     }
     if (roleLower.contains('auxiliar')) {
-      return Icons.support_agent; // Ícone de Headset
+      return Icons.support_agent;
     }
     if (roleLower.contains('atendente')) {
-      return Icons.how_to_reg; // Ícone de Headset
+      return Icons.how_to_reg;
     }
     if (roleLower.contains('analista')) {
-      return Icons.analytics; // Ícone de Gráfico de Barras
+      return Icons.analytics;
     }
     if (roleLower.contains('massagista') || roleLower.contains('fisio')) {
-      return Icons.healing; // Ícone de Maleta Médica
+      return Icons.healing;
     }
-    // Adicione mais 'else if' para outras funções (ex: presidente, roupeiro)
-
-    return Icons.assignment_ind_outlined; // Padrão
+    
+    return Icons.assignment_ind_outlined;
   }
-  // --- FIM ---
+
+  // --- NOVA FUNÇÃO: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
+  // (Lógica copiada de 'admin_match_screen.dart' e adaptada)
+  // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
+  // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
+  // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
+  Future<void> _showSetStartersDialog(
+    BuildContext context, 
+    List<DocumentSnapshot> allTeamPlayers
+  ) async {
+    
+    // Lê os titulares padrão ATUAIS do documento do time
+    final currentData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
+    List<String> selectedIds = List<String>.from(currentData['default_starters'] ?? []);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            
+            // Lógica de validação (1 Goleiro, 4 Linha)
+            int selectedGkCount = 0;
+            int selectedLineCount = 0;
+            try {
+              for (String id in selectedIds) {
+                final player = allTeamPlayers.firstWhere((p) => p.id == id); 
+                final pData = player.data() as Map<String, dynamic>? ?? {};
+                if (pData['is_goalkeeper'] == true) {
+                  selectedGkCount++;
+                } else {
+                  selectedLineCount++;
+                }
+              }
+            } catch(e) {
+              debugPrint("Erro ao validar titulares: $e.");
+            }
+            
+            String validationMessage = '';
+            if (selectedGkCount != 1) validationMessage = 'Selecione 1 Goleiro.';
+            else if (selectedLineCount != 4) validationMessage = 'Selecione 4 Jogadores de Linha.';
+            else validationMessage = 'Escalação Correta (1 Goleiro, 4 Linha)';
+
+            return AlertDialog(
+              title: Text('Definir Titulares Padrão (${widget.teamDoc['name']})'),
+              content: Container(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      validationMessage,
+                      style: TextStyle(
+                        color: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)') ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Divider(),
+
+                    SizedBox(
+                      height: 300, // Altura fixa para a lista rolável
+                      width: double.maxFinite,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: allTeamPlayers.length,
+                        itemBuilder: (context, index) {
+                          final player = allTeamPlayers[index];
+                          final data = player.data() as Map<String, dynamic>;
+                          final bool isSelected = selectedIds.contains(player.id);
+                          
+                          // Lógica da Posição
+                          final bool isGk = data['is_goalkeeper'] ?? false;
+                          final String? position = data['position'];
+                          String displayPosition = 'Posição Indefinida';
+                          
+                          if (isGk) {
+                            displayPosition = 'Goleiro';
+                          } else if (position != null) {
+                            displayPosition = position;
+                          }
+
+                          // --- INÍCIO DA ALTERAÇÃO (Nome do Jogador) ---
+                          final String name = data['name'] ?? '...';
+                          final int? number = data['jersey_number'];
+                          // Formata o nome para "10. Craque do Time" ou "-. Jogador Sem Número"
+                          final String displayName = number != null ? '$number. $name' : '-. $name';
+                          // --- FIM DA ALTERAÇÃO ---
+
+                          return CheckboxListTile(
+                            title: Text(displayName), // <-- USA A VARIÁVEL 'displayName'
+                            subtitle: Text(displayPosition),
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  selectedIds.add(player.id);
+                                } else {
+                                  selectedIds.remove(player.id);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+                TextButton(
+                  onPressed: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)')
+                   ? () async {
+                      try {
+                        await widget.teamDoc.reference.update({
+                          'default_starters': selectedIds
+                        });
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Titulares padrão salvos!'))
+                        );
+                      } catch (e) {
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(content: Text('Erro ao salvar: ${e.toString()}'))
+                         );
+                      }
+                   } 
+                   : null,
+                  child: const Text('Confirmar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  // --- FIM DA FUNÇÃO CORRIGIDA ---
+
 
   @override
   Widget build(BuildContext context) {
     final teamData = widget.teamDoc.data() as Map<String, dynamic>;
     final teamId = widget.teamDoc.id;
     final teamName = teamData['name'] ?? 'Equipe';
-    final teamShieldUrl = teamData['shield_url'] ?? '';
+    //final teamShieldUrl = teamData['shield_url'] ?? ''; // (Removido pois não é mais passado para EditPlayerScreen)
 
     // Extrai as estatísticas para o resumo
     final points = (teamData['points'] ?? 0).toString();
@@ -446,27 +570,36 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(teamName),
-
-        // Adiciona o FloatingActionButton SÓ se for admin
         actions: AdminService.isAdmin
             ? [
-                // Mostra ações se for admin
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline),
                   tooltip: 'Adicionar Pontos Extras',
                   onPressed:
-                      _showAddExtraPointsDialog, // Chama a função existente
+                      _showAddExtraPointsDialog,
                 ),
+
+                // --- NOVO BOTÃO "DEFINIR TITULARES" ---
+                IconButton(
+                  icon: const Icon(Icons.shield_outlined),
+                  tooltip: 'Definir Titulares Padrão',
+                  // Desabilita se a lista de jogadores não foi carregada ainda
+                  onPressed: _allPlayers.isEmpty ? null : () {
+                    _showSetStartersDialog(context, _allPlayers);
+                  },
+                ),
+                // --- FIM DO NOVO BOTÃO ---
+
                 IconButton(
                   icon: const Icon(Icons.person_add_alt_1),
-                  tooltip: 'Adicionar Novo Jogador',
+                  tooltip: 'Adicionar Novo Membro (Jogador/Staff)',
                   onPressed: () {
+                    // *** CORREÇÃO: 'teamShieldUrl' removido da chamada ***
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (ctx) => EditPlayerScreen(
                           teamId: teamId,
                           teamName: teamName,
-                          teamShieldUrl: teamShieldUrl,
                           playerDoc: null, // Modo Criação
                         ),
                       ),
@@ -486,11 +619,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               child: Row(
                 children: [
                   SizedBox(
-                    // Garante tamanho
                     width: 60,
                     height: 60,
                     child: CachedNetworkImage(
-                      imageUrl: teamShieldUrl,
+                      imageUrl: teamData['shield_url'] ?? '',
                       placeholder: (context, url) => const Center(
                         child: Icon(Icons.shield, size: 50, color: Colors.grey),
                       ),
@@ -513,9 +645,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ],
               ),
             ),
-            //const Divider(),
-
-            // --- 3. CARD DE RESUMO DAS ESTATÍSTICAS (NOVO) ---
+            
+            // --- CARD DE RESUMO DAS ESTATÍSTICAS ---
             Card(
               margin: const EdgeInsets.symmetric(
                 vertical: 2.0,
@@ -545,7 +676,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       'Empates (E)',
                       draws,
                       icon: Icons.drag_handle,
-                    ), // Ícone de traço
+                    ),
                     _buildStatRow(
                       'Derrotas (D)',
                       losses,
@@ -576,8 +707,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
               ),
             ),
-            // --- FIM DO CARD DE RESUMO ---
-
+            
             // --- Botão para ver Histórico ---
             Padding(
               padding: const EdgeInsets.symmetric(
@@ -588,7 +718,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 icon: const Icon(Icons.history),
                 label: const Text('Ver Histórico de Pontos Extras'),
                 style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 40), // Ocupa largura
+                  minimumSize: const Size(double.infinity, 40),
                 ),
                 onPressed: () {
                   Navigator.of(context).push(
@@ -612,6 +742,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
+            
             StreamBuilder<QuerySnapshot>(
               stream: _firestore
                   .collection('players')
@@ -643,32 +774,54 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                 final players = playerSnapshot.data!.docs;
 
-                // --- SUBSTITUIÇÃO DO LISTVIEW PELA DATATABLE ---
+                // --- INÍCIO DA CORREÇÃO: Lógica anti-loop ---
+                // Vamos verificar se a lista de jogadores mudou antes de chamar setState
+                bool listsAreDifferent = false;
+                if (players.length != _allPlayers.length) {
+                  listsAreDifferent = true;
+                } else {
+                  // Se o tamanho for igual, verifica se os IDs são os mesmos na mesma ordem
+                  for (int i = 0; i < players.length; i++) {
+                    if (players[i].id != _allPlayers[i].id) {
+                      listsAreDifferent = true;
+                      break; // Encontrou uma diferença, pode parar
+                    }
+                  }
+                }
+
+                // Só chama setState SE a lista for realmente nova
+                if (listsAreDifferent) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(() => _allPlayers = players);
+                    }
+                  });
+                }
+                // --- FIM DA CORREÇÃO ---
+
                 return Padding(
-                  // Adiciona um padding lateral para a tabela
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
                   child: SingleChildScrollView(
-                    // Permite rolagem horizontal se a tabela for larga
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
-                      // --- Ajustes para Compactar ---
-                      columnSpacing: 12.0, // Espaço entre colunas
-                      horizontalMargin: 8.0, // Margem nas bordas da tabela
-                      dataRowMinHeight: 35.0, // Altura mínima da linha
-                      dataRowMaxHeight: 35.0, // Altura máxima da linha
-                      headingRowHeight: 40, // Altura do cabeçalho
-                      // --- Fim dos Ajustes ---
+                      columnSpacing: 12.0,
+                      horizontalMargin: 8.0,
+                      dataRowMinHeight: 35.0,
+                      dataRowMaxHeight: 35.0,
+                      headingRowHeight: 40,
                       columns: [
                         const DataColumn(
                           label: Center(child: Text('Nº')),
                           numeric: true,
                         ),
-                        const DataColumn(label: Text('Jogador')), // Coluna Nome
-                        // Colunas de Estatísticas com Ícones
+                        const DataColumn(label: Text('Jogador')),
+                        const DataColumn(
+                          label: Center(child: Text('Pos.')),
+                        ),
                         DataColumn(
                           label: Container(
                             alignment: Alignment.center,
-                            child: Tooltip(
+                            child: const Tooltip(
                               message: 'Gols',
                               child: Icon(Icons.sports_soccer, size: 20),
                             ),
@@ -677,7 +830,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         DataColumn(
                           label: Container(
                             alignment: Alignment.center,
-                            child: Tooltip(
+                            child: const Tooltip(
                               message: 'Assist.',
                               child: Icon(Icons.assistant, size: 20),
                             ),
@@ -722,11 +875,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             ),
                           ),
                         ),
-                        // --- NOVA COLUNA AÇÕES (SÓ ADMIN) ---
                         if (AdminService.isAdmin)
                           const DataColumn(label: Center(child: Text('Ações'))),
-
-                        // --- FIM ---
                       ],
                       rows: players.map((playerDoc) {
                         try {
@@ -735,6 +885,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           final bool isGoalkeeper =
                               playerData['is_goalkeeper'] ?? false;
                           final int? number = playerData['jersey_number'];
+                          final String? position = playerData['position'];
+                          String displayPosition = '-';
+                          if (isGoalkeeper) {
+                            displayPosition = 'GK';
+                          } else if (position != null) {
+                            switch (position) {
+                              case 'Fixo': displayPosition = 'FIXO'; break;
+                              case 'Ala': displayPosition = 'ALA'; break;
+                              case 'Pivô': displayPosition = 'PIVO'; break;
+                              default: displayPosition = 'LIN';
+                            }
+                          }
 
                           return DataRow(
                             cells: [
@@ -742,37 +904,33 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                 Center(
                                   child: Text(
                                     number?.toString() ??
-                                        '-', // Mostra '-' se nulo
+                                        '-',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
                               ),
-
                               DataCell(
-                                // Mostra ícone de goleiro + nome
-                                Row(
-                                  children: [
-                                    if (isGoalkeeper)
-                                      Padding(
-                                        padding: const EdgeInsets.only(
-                                          right: 4.0,
-                                        ),
-                                        child: Icon(
-                                          Icons.pan_tool_outlined,
-                                          size: 16,
-                                          color: Colors.blueGrey,
-                                        ), // Ícone Goleiro
-                                      ),
-                                    Flexible(
-                                      // Evita que nome longo quebre layout da célula
-                                      child: Text(
-                                        playerData['name'] ?? '...',
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                Container(
+                                  constraints: const BoxConstraints(maxWidth: 150),
+                                  child: Text(
+                                    playerData['name'] ?? '...',
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Center(
+                                  child: Text(
+                                    displayPosition,
+                                    style: TextStyle(
+                                      fontWeight: isGoalkeeper ? FontWeight.bold : FontWeight.normal,
+                                      color: isGoalkeeper ? Colors.blueGrey[700] : Colors.black,
+                                      fontSize: 12,
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ),
                               DataCell(
@@ -796,7 +954,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                         .toString(),
                                   ),
                                 ),
-                              ), // Usa Total
+                              ),
                               DataCell(
                                 Center(
                                   child: Text(
@@ -804,7 +962,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                         .toString(),
                                   ),
                                 ),
-                              ), // Usa Total
+                              ),
                               DataCell(
                                 Center(
                                   child: Text(
@@ -815,8 +973,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   ),
                                 ),
                               ),
-
-                              // --- NOVA CÉLULA AÇÕES (SÓ ADMIN) ---
                               if (AdminService.isAdmin)
                                 DataCell(
                                   Row(
@@ -836,9 +992,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                               builder: (ctx) => EditPlayerScreen(
                                                 teamId: teamId,
                                                 teamName: teamName,
-                                                teamShieldUrl: teamShieldUrl,
                                                 playerDoc:
-                                                    playerDoc, // Modo Edição
+                                                    playerDoc,
                                               ),
                                             ),
                                           );
@@ -862,29 +1017,22 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                     ],
                                   ),
                                 ),
-                              // --- FIM ---
                             ],
                           );
                         } catch (e) {
-                          // Retorna uma linha de erro se os dados estiverem inválidos
-                          return const DataRow(
-                            cells: [
-                              DataCell(Text('Erro')),
-                              DataCell(Text('-')),
-                              DataCell(Text('-')),
-                              DataCell(Text('-')),
-                              DataCell(Text('-')),
-                            ],
+                          debugPrint("Erro ao renderizar DataRow: $e"); // Log de erro
+                          return DataRow(
+                            cells: List.generate(AdminService.isAdmin ? 9 : 8, (index) => DataCell(Text('Erro'))),
                           );
                         }
                       }).toList(),
                     ),
                   ),
                 );
-                // --- FIM DA SUBSTITUIÇÃO ---
               },
-            ), // Fim StreamBuilder Jogadores
-            // --- 2. NOVA SEÇÃO PARA COMISSÃO TÉCNICA ---
+            ),
+            
+            // --- Seção Comissão Técnica ---
             const SizedBox(height: 24),
             const Divider(),
 
@@ -898,11 +1046,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
             StreamBuilder<QuerySnapshot>(
               stream: _firestore
-                  .collection('players') // Ainda usa a coleção 'players'
+                  .collection('players')
                   .where('team_id', isEqualTo: teamId)
                   .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: true) // <-- SÓ STAFF
-                  .orderBy('name') // Ordena por nome
+                  .where('is_staff', isEqualTo: true)
                   .snapshots(),
               builder: (context, staffSnapshot) {
                 if (staffSnapshot.connectionState == ConnectionState.waiting) {
@@ -920,43 +1067,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   );
                 }
 
-                //final staff = staffSnapshot.data!.docs;
-
-                // --- 2. LÓGICA DE ORDENAÇÃO PERSONALIZADA ---
-
-                // Pega a lista original (ordenada por nome)
                 List<DocumentSnapshot> staffList = staffSnapshot.data!.docs;
 
-                // Mapa de prioridade (número menor = mais alto na lista)
-                /*final rolePriority = {
-                  'técnico': 1,
-                  'treinador': 1, // Alias
-                  'auxiliar': 2,
-                  'atendente': 3,
-                  'massagista': 4,
-                  'analista': 5,
-                  // Outros cargos ficarão com prioridade 99
-                };*/
-
-                // Função auxiliar para obter a prioridade de um documento
                 int getPriority(DocumentSnapshot doc) {
                   final data = doc.data() as Map<String, dynamic>? ?? {};
                   final String role = (data['staff_role'] ?? '').toLowerCase();
-
-                  // 1. Verifica pela prioridade mais alta primeiro
-                  // (usamos .contains() para cobrir "Técnico" e "Treinador")
                   if (role.contains('treinador') || role.contains('técnico')) {
-                    // 2. VERIFICAÇÃO DE EXCEÇÃO:
-                    // Se também contém 'auxiliar', NÃO é prioridade 1
                     if (role.contains('auxiliar')) {
-                      return 2; // É "Auxiliar Técnico"
+                      return 2;
                     }
-                    return 1; // É "Técnico" ou "Treinador"
+                    return 1;
                   }
-
-                  // 3. Verifica as prioridades seguintes
                   if (role.contains('auxiliar')) {
-                    return 2; // "Auxiliar" (que não era "Auxiliar Técnico")
+                    return 2;
                   }
                   if (role.contains('atendente')) {
                     return 3;
@@ -967,31 +1090,23 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   if (role.contains('analista')) {
                     return 5;
                   }
-
-                  return 99; // Prioridade padrão para cargos não listados
+                  return 99;
                 }
 
-                // Reordena a lista 'staffList'
                 staffList.sort((a, b) {
                   int priorityA = getPriority(a);
                   int priorityB = getPriority(b);
-
-                  // Compara as prioridades
                   int priorityCompare = priorityA.compareTo(priorityB);
                   if (priorityCompare != 0) {
-                    return priorityCompare; // Ex: 1 (Técnico) vem antes de 2 (Auxiliar)
+                    return priorityCompare;
                   }
-
-                  // Se a prioridade for a mesma (ex: 2 auxiliares), usa a ordem alfabética
                   final aName =
                       (a.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
                   final bName =
                       (b.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
                   return aName.compareTo(bName);
                 });
-                // --- FIM DA LÓGICA DE ORDENAÇÃO ---
 
-                // Usa um ListView simples, pois não há stats
                 return ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -1000,7 +1115,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     final member = staffList[index];
                     final data = member.data() as Map<String, dynamic>;
                     final String staffRole =
-                        data['staff_role'] ?? 'Membro'; // Pega a função
+                        data['staff_role'] ?? 'Membro';
                     final IconData staffIcon = _getStaffIcon(staffRole);
 
                     return Card(
@@ -1015,7 +1130,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           color: Colors.blueGrey[700],
                           size: 28,
                         ),
-
                         title: Text(
                           data['name'] ?? '...',
                           style: const TextStyle(
@@ -1023,11 +1137,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             fontSize: 15,
                           ),
                         ),
-
                         subtitle: Text(staffRole),
                         trailing: AdminService.isAdmin
                             ? Row(
-                                // Botões Admin
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
@@ -1035,12 +1147,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                     color: Theme.of(context).primaryColor,
                                     tooltip: 'Editar Membro',
                                     onPressed: () {
+                                      // *** CORREÇÃO: 'teamShieldUrl' removido ***
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
                                           builder: (ctx) => EditPlayerScreen(
                                             teamId: teamId,
                                             teamName: teamName,
-                                            teamShieldUrl: teamShieldUrl,
                                             playerDoc: member, // Modo Edição
                                           ),
                                         ),
@@ -1060,15 +1172,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   ),
                                 ],
                               )
-                            : null, // Sem trailing para usuário normal
+                            : null,
                       ),
                     );
                   },
                 );
               },
             ),
-
-            // --- FIM DA SEÇÃO STAFF ---
           ],
         ),
       ),

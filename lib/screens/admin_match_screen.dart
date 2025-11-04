@@ -45,6 +45,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   List<DocumentSnapshot> _awayPlayers = [];
   bool _isLoadingPlayers = true;
   bool _isSaving = false;
+  
+  // --- ESTADOS DE TITULARES REMOVIDOS ---
+  // List<String> _startersHomeIds = []; // REMOVIDO
+  // List<String> _startersAwayIds = []; // REMOVIDO
 
   Map<String, int> _goals = {};
   Map<String, int> _assists = {};
@@ -88,13 +92,21 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       _goalsConceded = Map<String, int>.from(stats['goals_conceded'] ?? {});
       _selectedManOfTheMatchId = data['stats_applied']['man_of_the_match'];
       
-      // Carrega Mídias (Vídeos)
       if (data['stats_applied']['media_links'] != null) {
          final linksFromDb = data['stats_applied']['media_links'] as List<dynamic>;
          _mediaLinks = List<Map<String, dynamic>>.from(
            linksFromDb.map((item) => Map<String, dynamic>.from(item))
          );
       }
+
+      // --- LEITURA DOS TITULARES (NÃO É MAIS NECESSÁRIA AQUI) ---
+      // if (data['stats_applied']['starters_home'] != null) {
+      //   _startersHomeIds = List<String>.from(data['stats_applied']['starters_home']);
+      // }
+      // if (data['stats_applied']['starters_away'] != null) {
+      //   _startersAwayIds = List<String>.from(data['stats_applied']['starters_away']);
+      // }
+      // --- FIM ---
     }
 
     // Determina a regra de desempate
@@ -154,7 +166,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             ? widget.match['team_home_id']
             : widget.match['team_away_id'];
       } else if (_tiebreakerRule == 'extra_time_standing') {
-        // O vencedor é determinado pelo Rank, não selecionado manualmente
         winnerId = null; 
         penaltyScoreHome = null;
         penaltyScoreAway = null;
@@ -209,6 +220,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
 
     // 4. Chamada ao FirestoreService
+    // --- ALTERAÇÃO: REMOVIDO 'newStartersHome' e 'newStartersAway' ---
     String result = await _firestoreService.updateMatchStats(
       matchSnapshot: widget.match,
       newStatus: _selectedStatus,
@@ -225,6 +237,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       winnerTeamId: winnerId,
       newSumulaUrl: finalSumulaUrl,
       newMediaLinks: _mediaLinks,
+      // --- REMOVIDO ---
+      newStartersHome: [], // Envia lista vazia
+      newStartersAway: [], // Envia lista vazia
+      // --- FIM DA ALTERAÇÃO ---
     );
 
     if (mounted)
@@ -246,7 +262,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
   }
 
-
+  // --- Funções _checkShowTiebreakerSection e _fetchPlayers (Sem alterações) ---
   void _checkShowTiebreakerSection() {
     bool needsTiebreaker = false;
     final isPlayoff = ['semifinal', 'third_place', 'final'].contains(widget.match['phase']);
@@ -284,15 +300,16 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       if (mounted) setState(() => _isLoadingPlayers = false);
     }
   }
+  // --- Fim ---
 
-  // --- FUNÇÃO DE SELEÇÃO DE SÚMULA (PDF) ---
+  // --- Funções de Súmula e Mídia (Sem alterações) ---
   Future<void> _pickSumulaFile() async {
     if (_isSaving || _isUploadingSumula) return;
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
-        withData: true, // Força ler os bytes (PWA)
+        withData: true,
       );
       if (result != null && result.files.single.bytes != null) {
         setState(() {
@@ -307,7 +324,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
   }
   
-   // Constrói o Status da Súmula
   Widget _buildFileStatus() {
     if (_isUploadingSumula) {
       return const Row(
@@ -350,21 +366,15 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             constraints: const BoxConstraints(),
             tooltip: 'Remover súmula',
             onPressed: () async {
-
-              // --- CORREÇÃO AQUI: Usa o bucket correto para DELETAR ---
               try {
-                // --- CORREÇÃO: Deleta usando a instância PADRÃO ---
                 if(_existingSumulaUrl != null && _existingSumulaUrl!.isNotEmpty) {
                   final ref = FirebaseStorage.instance.refFromURL(_existingSumulaUrl!); 
                   await ref.delete();
                   debugPrint("Arquivo antigo da súmula deletado do Storage.");
                 }
               } catch (e) {
-                // Se falhar (ex: permissão, arquivo não existe), apenas loga o erro
                 debugPrint("Erro ao deletar súmula antiga do Storage: $e");
               }
-              // --- FIM DA CORREÇÃO ---
-
               setState(() {
                 _existingSumulaUrl = null;
                 _pickedFileBytes = null;
@@ -377,8 +387,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
     return const Text('Nenhuma súmula anexada.', style: TextStyle(color: Colors.grey));
   }
-
-  // --- FUNÇÃO DE SELEÇÃO DE VÍDEO (MÍDIA) ---
  
   Future<void> _pickVideoFile(StateSetter setDialogState) async {
     if (_isSaving || _isUploadingMedia) return;
@@ -399,7 +407,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
   }
 
-  // --- FUNÇÃO DE UPLOAD DE VÍDEO (MÍDIA) ---
   Future<void> _uploadMediaFile(BuildContext dialogContext, StateSetter setDialogState) async {
     final title = _mediaTitleController.text.trim();
     if (title.isEmpty || _pickedMediaBytes == null) {
@@ -426,7 +433,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       setState(() {
         _mediaLinks.add({
           'title': title,
-          'videoUrl': downloadURL, // Salva a URL do Storage
+          'videoUrl': downloadURL,
         });
       });
       
@@ -445,7 +452,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
   }
 
-  // --- DIÁLOGO DE MÍDIA ATUALIZADO ---
   Future<void> _showAddMediaDialog() async {
     _mediaTitleController.clear();
     _pickedMediaBytes = null;
@@ -519,8 +525,74 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       },
     );
   }
+  // --- Fim das funções de Mídia ---
 
+  // --- FUNÇÃO _showSetStartersDialog (REMOVIDA) ---
+  // (A lógica foi movida para team_detail_screen.dart)
+  // --- FIM ---
   
+  // --- Lista de Seleção de Jogador (MODIFICADA) ---
+  Widget _buildPlayerSelectList(List<DocumentSnapshot> players, bool isHomeTeam) {
+    if (players.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8.0),
+        child: Text(
+          'Nenhum jogador encontrado para este time.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        // --- BOTÃO "DEFINIR TITULARES" REMOVIDO DAQUI ---
+        
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: players.length,
+          itemBuilder: (context, index) {
+            final player = players[index];
+            final playerId = player.id;
+            final data = player.data() as Map<String, dynamic>;
+            final bool isSelected = _selectedPlayerId == playerId;
+            final int? number = data['jersey_number'];
+            final String playerName = data['name'] ?? 'Nome Indisponível';
+            final statsSummary = 'G:${_goals[playerId]??0} A:${_assists[playerId]??0} CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0} ${(data['is_goalkeeper']??false)?' GS:${_goalsConceded[playerId]??0}':''}';
+
+            return Column(
+              children: [
+                Card(
+                  margin: const EdgeInsets.symmetric(vertical: 2.0),
+                  color: isSelected ? Colors.lightBlue[50] : null,
+                  elevation: isSelected ? 3 : 1,
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(data['is_goalkeeper']==true ? Icons.pan_tool_outlined : Icons.person_outline),
+                    title: Text(
+                      number != null ? '$number. $playerName' : '-. $playerName',
+                      style: const TextStyle(fontWeight: FontWeight.w500)
+                    ),
+                    subtitle: Text(statsSummary, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+                    onTap: () {
+                      setState(() {
+                        if (isSelected) _selectedPlayerId = null;
+                        else _selectedPlayerId = playerId;
+                      });
+                    },
+                  ),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: isSelected ? _buildStatEditor(player) : const SizedBox.shrink(),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
 
   // --- WIDGET EDITOR DE STATS (sem mudança) ---
   Widget _buildStatEditor(DocumentSnapshot playerDoc) {
@@ -568,7 +640,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             ),
             if (isGoalkeeper)
                _buildStatCounter(
-                 icon: Icons.pan_tool_outlined, // Mudei o ícone de goleiro
+                 icon: Icons.pan_tool_outlined,
                  label: "GS",
                  color: Colors.blueGrey,
                  count: currentGoalsConceded,
@@ -619,7 +691,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     );
   }
 
-  // --- WIDGET PARA EXIBIR A LISTA DE MÍDIAS (sem mudança) ---
+  // --- Funções de Mídia, Exclusão e Regras (sem mudança) ---
   Widget _buildMediaListEditor() {
     return Card(
       child: Padding(
@@ -678,7 +750,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     );
   }
 
-  // --- DIÁLOGO DE EXCLUSÃO DE PARTIDA (sem mudança) ---
   Future<void> _showDeleteMatchDialog() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -707,13 +778,12 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
         if (result.startsWith('Sucesso')) {
-          Navigator.of(context).pop(); // Volta para a tela de jogos
+          Navigator.of(context).pop();
         }
       }
     }
   }
 
-  // --- Helper nome da regra (sem mudança) ---
   String _getTiebreakerRuleName(String ruleKey) {
     switch (ruleKey) {
       case 'penalties': return 'Pênaltis Direto';
@@ -722,6 +792,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       default: return 'Desconhecida';
     }
   }
+  // --- Fim ---
 
   // --- Card do Placar (sem mudança) ---
   Widget _buildScoreCard() {
@@ -841,73 +912,14 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     );
   }
 
-  // --- Lista de Seleção de Jogador (sem mudança) ---
-  Widget _buildPlayerSelectList(List<DocumentSnapshot> players) {
-    if (players.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.0),
-        child: Text(
-          'Nenhum jogador encontrado para este time.',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: players.length,
-      itemBuilder: (context, index) {
-        final player = players[index];
-        final playerId = player.id;
-        final data = player.data() as Map<String, dynamic>;
-        final bool isSelected = _selectedPlayerId == playerId;
-        final int? number = data['jersey_number'];
-        final String playerName = data['name'] ?? 'Nome Indisponível';
-        final statsSummary = 'G:${_goals[playerId]??0} A:${_assists[playerId]??0} CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0} ${(data['is_goalkeeper']??false)?' GS:${_goalsConceded[playerId]??0}':''}';
-
-        return Column(
-          children: [
-            Card(
-              margin: const EdgeInsets.symmetric(vertical: 2.0),
-              color: isSelected ? Colors.lightBlue[50] : null,
-              elevation: isSelected ? 3 : 1,
-              child: ListTile(
-                dense: true,
-                leading: Icon(data['is_goalkeeper']==true ? Icons.pan_tool_outlined : Icons.person_outline),
-                title: Text(
-                  number != null ? '$number. $playerName' : '-. $playerName', // Usa '-.' se nulo
-                  style: const TextStyle(fontWeight: FontWeight.w500)
-                ),
-                subtitle: Text(statsSummary, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
-                onTap: () {
-                  setState(() {
-                    if (isSelected) _selectedPlayerId = null;
-                    else _selectedPlayerId = playerId;
-                  });
-                },
-              ),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: isSelected ? _buildStatEditor(player) : const SizedBox.shrink(),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // --- Função Principal de Salvar (ATUALIZADA) ---
+  // --- Função Principal build() (sem mudança) ---
   @override
   Widget build(BuildContext context) {
-    // 1. Combina a lista
     final List<DocumentSnapshot> allPlayers = [..._homePlayers, ..._awayPlayers];
     final data = widget.match.data() as Map<String, dynamic>;
     final homeTeamName = data['team_home_name'] ?? 'Casa';
     final awayTeamName = data['team_away_name'] ?? 'Visitante';
 
-    // 2. Ordena TODAS as listas por número
     void sortPlayersByNumber(List<DocumentSnapshot> players) {
       players.sort((a, b) {
         final aData = a.data() as Map<String, dynamic>? ?? {};
@@ -924,7 +936,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     sortPlayersByNumber(_homePlayers);
     sortPlayersByNumber(_awayPlayers);
 
-    // 3. Valida o Craque do Jogo
     String? validSelectedMotmId = _selectedManOfTheMatchId;
     if (validSelectedMotmId != null && validSelectedMotmId.isNotEmpty && !_isLoadingPlayers) {
       final bool playerExistsInList = allPlayers.any((player) => player.id == validSelectedMotmId);
@@ -934,12 +945,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       }
     }
 
-    // 4. Constrói o Scaffold
     return Scaffold(
       appBar: AppBar(
         title: Text('$homeTeamName x $awayTeamName', overflow: TextOverflow.ellipsis),
         actions: [
-          // Botão Editar Detalhes
           IconButton(
             icon: const Icon(Icons.edit_calendar_outlined),
             tooltip: 'Editar Detalhes (Data, Local, Times)',
@@ -951,13 +960,11 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               );
             },
           ),
-          // Botão Excluir
           IconButton(
             icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
             tooltip: 'Excluir Partida',
             onPressed: _isSaving ? null : _showDeleteMatchDialog,
           ),
-          // Botão Salvar Stats
           if (_isSaving || _isUploadingSumula || _isUploadingMedia)
             const Padding(
               padding: EdgeInsets.all(16.0),
@@ -1005,10 +1012,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
                   const SizedBox(height: 24),
                   Text(homeTeamName, style: Theme.of(context).textTheme.titleLarge),
-                  _buildPlayerSelectList(_homePlayers),
+                  _buildPlayerSelectList(_homePlayers, true),
                   const SizedBox(height: 20),
                   Text(awayTeamName, style: Theme.of(context).textTheme.titleLarge),
-                  _buildPlayerSelectList(_awayPlayers),
+                  _buildPlayerSelectList(_awayPlayers, false),
                   
                   const SizedBox(height: 24),
                   Text('Craque do Jogo', style: Theme.of(context).textTheme.headlineSmall),
@@ -1044,7 +1051,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                   else
                     const Text('Carregando jogadores...'),
 
-                  // --- UI DA SÚMULA (ATUALIZADA) ---
                   const SizedBox(height: 24),
                   Card(
                     child: Padding(
@@ -1061,14 +1067,11 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                               ElevatedButton.icon(
                                 icon: const Icon(Icons.attach_file, size: 18),
                                 label: const Text('Selecionar PDF'),
-                                onPressed: (_isSaving || _isUploadingSumula) ? null : _pickSumulaFile, // Chama a função correta
+                                onPressed: (_isSaving || _isUploadingSumula) ? null : _pickSumulaFile,
                               ),
-                              // Espaçador para evitar que colem
                               const SizedBox(width: 8), 
-                              
-                              // Flexible permite que o widget de status encolha/quebre linha
                               Flexible(
-                                child: _buildFileStatus(), // Chama o status da Súmula
+                                child: _buildFileStatus(),
                               ),
                             ],
                           ),
@@ -1076,9 +1079,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                       ),
                     ),
                   ),
-                  // --- FIM SÚMULA ---
                   
-                  // Mídias (Vídeos)
                   const SizedBox(height: 24),
                   _buildMediaListEditor(),
                 ],

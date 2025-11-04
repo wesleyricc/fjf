@@ -1,22 +1,17 @@
 // lib/screens/edit_player_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/firestore_service.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // Para input formatters
 
 class EditPlayerScreen extends StatefulWidget {
-  // Recebe dados do time para associar
   final String teamId;
   final String teamName;
-  final String teamShieldUrl;
-  // Recebe 'null' se for CRIAR, ou o Doc se for EDITAR
-  final DocumentSnapshot? playerDoc;
+  final DocumentSnapshot? playerDoc; // Nulo se for 'Criar'
 
   const EditPlayerScreen({
-    super.key,
+    super.key, 
     required this.teamId,
     required this.teamName,
-    required this.teamShieldUrl,
     this.playerDoc,
   });
 
@@ -26,48 +21,44 @@ class EditPlayerScreen extends StatefulWidget {
 
 class _EditPlayerScreenState extends State<EditPlayerScreen> {
   final _formKey = GlobalKey<FormState>();
-  final FirestoreService _firestoreService = FirestoreService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Controladores do Formulário
+  // Controladores
   late TextEditingController _nameController;
   late TextEditingController _numberController;
-  String? _selectedStaffRole;
+  
+  // --- NOVOS ESTADOS PARA POSIÇÃO (REQ 2) ---
   bool _isGoalkeeper = false;
+  // Define as posições (Goleiro é tratado pelo bool)
+  final List<String> _positionOptions = ['Fixo', 'Ala', 'Pivô'];
+  String? _selectedPosition;
+  // --- FIM ---
+
+  bool _isActive = true;
   bool _isStaff = false;
   bool _isSaving = false;
-
-  final List<String> _staffRoleOptions = [
-    'Técnico',
-    'Auxiliar Técnico',
-    'Atendente',
-    'Massagista',
-    'Analista',
-    // Adicione outros cargos fixos aqui se desejar
-  ];
 
   @override
   void initState() {
     super.initState();
+    final data = widget.playerDoc?.data() as Map<String, dynamic>?;
+
+    _nameController = TextEditingController(text: data?['name'] ?? '');
+    _numberController = TextEditingController(text: data?['jersey_number']?.toString() ?? '');
+    _isActive = data?['isActive'] ?? true;
+    _isStaff = data?['is_staff'] ?? false;
     
-    if (widget.playerDoc != null) {
-      // Modo Edição: Preenche os campos
-      final data = widget.playerDoc!.data() as Map<String, dynamic>? ?? {};
-      _nameController = TextEditingController(text: data['name'] ?? '');
-      _numberController = TextEditingController(text: data['jersey_number']?.toString() ?? '');
-      _isGoalkeeper = data['is_goalkeeper'] ?? false;
-      _isStaff = data['is_staff'] ?? false;
-     final String? savedRole = data['staff_role'];
-    if (_isStaff && savedRole != null && _staffRoleOptions.contains(savedRole)) {
-      _selectedStaffRole = savedRole;
+    // --- LÓGICA DE POSIÇÃO (REQ 2) ---
+    _isGoalkeeper = data?['is_goalkeeper'] ?? false;
+    _selectedPosition = data?['position'];
+    
+    // Garante que a posição só seja válida se NÃO for goleiro
+    if (_isGoalkeeper) {
+      _selectedPosition = null;
+    } else if (data?['position'] == null) {
+       _selectedPosition = 'Ala'; // Define 'Ala' como padrão se for novo
     }
-      
-    } else {
-      // Modo Criação: Campos vazios
-      _nameController = TextEditingController();
-      _numberController = TextEditingController();
-      _isGoalkeeper = false;
-      _isStaff = false;
-    }
+    // --- FIM ---
   }
 
   @override
@@ -77,84 +68,80 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
     super.dispose();
   }
 
-  Future<void> _saveForm() async {
-    if (!_formKey.currentState!.validate()) {
-       return; // Validação falhou
-
-       
+  Future<void> _savePlayer() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    // Validação extra: Se não for goleiro, DEVE ter uma posição
+    if (!_isGoalkeeper && _selectedPosition == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, selecione a Posição (Fixo, Ala ou Pivô).')),
+      );
+      return;
     }
-
-    if (_isStaff && _selectedStaffRole == null) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecione a Função / Cargo.')));
-       return;
-    }
-
+    
     setState(() { _isSaving = true; });
 
-    String result;
+    final String name = _nameController.text.trim();
+    final int? number = int.tryParse(_numberController.text);
+    
+    // Prepara os dados
+    Map<String, dynamic> playerData = {
+      'name': name,
+      'jersey_number': number,
+      'team_id': widget.teamId,
+      'team_name': widget.teamName, // (Armazena o nome do time para facilitar)
+      'isActive': _isActive,
+      'is_staff': _isStaff,
+      'is_goalkeeper': _isGoalkeeper,
+      // --- SALVA A POSIÇÃO (REQ 2) ---
+      'position': _isGoalkeeper ? null : _selectedPosition, // Salva null se for goleiro
+      
+      // Reseta/Inicializa campos de estatísticas
+      'goals': widget.playerDoc != null ? (widget.playerDoc!['goals'] ?? 0) : 0,
+      'assists': widget.playerDoc != null ? (widget.playerDoc!['assists'] ?? 0) : 0,
+      'yellow_cards': widget.playerDoc != null ? (widget.playerDoc!['yellow_cards'] ?? 0) : 0,
+      'red_cards': widget.playerDoc != null ? (widget.playerDoc!['red_cards'] ?? 0) : 0,
+      'total_yellow_cards': widget.playerDoc != null ? (widget.playerDoc!['total_yellow_cards'] ?? 0) : 0,
+      'total_red_cards': widget.playerDoc != null ? (widget.playerDoc!['total_red_cards'] ?? 0) : 0,
+      'goals_conceded': widget.playerDoc != null ? (widget.playerDoc!['goals_conceded'] ?? 0) : 0,
+      'man_of_the_match_awards': widget.playerDoc != null ? (widget.playerDoc!['man_of_the_match_awards'] ?? 0) : 0,
+      'is_suspended': widget.playerDoc != null ? (widget.playerDoc!['is_suspended'] ?? false) : false,
+    };
+
     try {
-      final name = _nameController.text;
-
-      // Converte o texto para int?. Se for vazio, salva null.
-      final int? jerseyNumber = _numberController.text.isNotEmpty
-          ? int.tryParse(_numberController.text)
-          : null;
-      // --- FIM ---
-
-      // Se for staff, força 'isGoalkeeper' para false
-      final bool isGoalkeeperFinal = _isStaff ? false : _isGoalkeeper;
-      // Se for staff, força 'jerseyNumber' para null (opcional)
-      final int? jerseyNumberFinal = _isStaff ? null : jerseyNumber;
-      final String? staffRole = _isStaff ? _selectedStaffRole : null;
-
       if (widget.playerDoc == null) {
-        // --- MODO CRIAÇÃO ---
-        result = await _firestoreService.createPlayer(
-          name: name,
-          isGoalkeeper: isGoalkeeperFinal,
-          teamId: widget.teamId,
-          teamName: widget.teamName,
-          teamShieldUrl: widget.teamShieldUrl,
-          jerseyNumber: jerseyNumberFinal,
-          isStaff: _isStaff,
-          staffRole: staffRole,
-        );
+        // Modo Criação
+        await _firestore.collection('players').add(playerData);
       } else {
-        // --- MODO ATUALIZAÇÃO ---
-        result = await _firestoreService.updatePlayer(
-          playerDoc: widget.playerDoc!,
-          name: name,
-          isGoalkeeper: isGoalkeeperFinal,
-          jerseyNumber: jerseyNumberFinal,
-          isStaff: _isStaff,
-          staffRole: staffRole,
+        // Modo Edição
+        await widget.playerDoc!.reference.update(playerData);
+      }
+      
+      if (mounted) {
+        Navigator.of(context).pop(); // Volta para a tela de detalhes do time
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Jogador ${widget.playerDoc == null ? 'salvo' : 'atualizado'} com sucesso!')),
         );
       }
-
-       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-         if (result.startsWith('Sucesso')) {
-            Navigator.of(context).pop(); // Volta para a tela de detalhes do time
-         }
-       }
     } catch (e) {
-       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
-    } finally {
-       if (mounted) setState(() { _isSaving = false; });
+       if (mounted) {
+         setState(() { _isSaving = false; });
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Erro ao salvar jogador: $e')),
+         );
+       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    bool isEditing = widget.playerDoc != null;
-    
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Editar Jogador' : 'Adicionar Jogador'),
+        title: Text(widget.playerDoc == null ? 'Novo Jogador' : 'Editar Jogador'),
         actions: [
           IconButton(
-            icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save),
-            onPressed: _isSaving ? null : _saveForm,
+            icon: _isSaving ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Icon(Icons.save),
+            onPressed: _isSaving ? null : _savePlayer,
           ),
         ],
       ),
@@ -163,110 +150,92 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            Text(
-              'Equipe: ${widget.teamName}', // Mostra a qual time está sendo adicionado
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey[600]),
-            ),
-
-            const SizedBox(height: 16),
+            Text('Time: ${widget.teamName}', style: Theme.of(context).textTheme.titleMedium),
+            const Divider(height: 24),
             
-            // --- 4. NOVO SWITCH "COMISSÃO TÉCNICA" ---
-            SwitchListTile(
-               title: const Text('Membro da Comissão Técnica?'),
-               subtitle: const Text('(Treinador, Massagista, etc.)'),
-               value: _isStaff,
-               onChanged: _isSaving ? null : (bool value) {
-                 setState(() {
-                   _isStaff = value;
-                   // Se virou staff, desmarca 'goleiro'
-                   if (_isStaff) {
-                     _isGoalkeeper = false;
-                     _numberController.text = '';
-                   }else {
-                     // Se deixou de ser staff, limpa o cargo
-                     _selectedStaffRole = null;
-                   }
-                 });
-               },
-               secondary: Icon(_isStaff ? Icons.assignment_ind : Icons.person),
-               activeColor: Theme.of(context).primaryColor,
-             ),
-             // --- 6. CAMPO CONDICIONAL PARA O CARGO ---
-            if (_isStaff)
-              Padding(
-                padding: const EdgeInsets.only(top: 16.0),
-                child: DropdownButtonFormField<String>(
-                  value: _selectedStaffRole, // Valor atualmente selecionado
-                  hint: const Text('Selecione a Função / Cargo'),
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Função / Cargo',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _staffRoleOptions.map((String role) { // Mapeia a lista de opções
-                    return DropdownMenuItem<String>(
-                      value: role,
-                      child: Text(role),
-                    );
-                  }).toList(),
-                  onChanged: _isSaving ? null : (value) { // Salva a seleção no estado
-                    setState(() {
-                      _selectedStaffRole = value;
-                    });
-                  },
-                  validator: (value) {
-                    // Obrigatório se 'is_staff' for true
-                    if (_isStaff && value == null) {
-                      return 'A função é obrigatória para comissão técnica';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-            // --- FIM DO CAMPO ---
-            // --- FIM DO SWITCH ---
-            
-            const Divider(),
-            const SizedBox(height: 16),
-
-            // --- CAMPO NÚMERO (DESABILITADO SE FOR STAFF) ---
-            TextFormField(
-              controller: _numberController,
-              decoration: const InputDecoration(
-                labelText: 'Número da Camisa',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.numbers),
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              // Desabilita se estiver salvando OU se for staff
-              enabled: !_isSaving && !_isStaff, 
-            ),
-            // --- FIM ---
-
-            const SizedBox(height: 16),
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder()),
-              validator: (value) => (value == null || value.isEmpty) ? 'Obrigatório' : null,
+              decoration: const InputDecoration(labelText: 'Nome Completo do Jogador', border: OutlineInputBorder()),
+              validator: (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
               enabled: !_isSaving,
             ),
             const SizedBox(height: 16),
             
-            // --- SWITCH GOLEIRO (DESABILITADO SE FOR STAFF) ---
-             SwitchListTile(
-               title: const Text('É Goleiro?'),
-               value: _isGoalkeeper,
-               // Desabilita se estiver salvando OU se for staff
-               onChanged: (_isSaving || _isStaff) ? null : (bool value) {
-                 setState(() {
-                   _isGoalkeeper = value;
-                 });
-               },
-               secondary: Icon(_isGoalkeeper ? Icons.shield_outlined : Icons.person_outline),
-               activeColor: Theme.of(context).primaryColor,
-             ),
-             // --- FIM ---
+            TextFormField(
+              controller: _numberController,
+              decoration: const InputDecoration(labelText: 'Número da Camisa', border: OutlineInputBorder()),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              enabled: !_isSaving,
+            ),
+            const SizedBox(height: 16),
+
+            // --- LÓGICA DE POSIÇÃO (REQ 2) ---
+            Card(
+              elevation: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Column(
+                  children: [
+                    // É Goleiro? (Switch)
+                    SwitchListTile(
+                      title: const Text('É Goleiro?'),
+                      value: _isGoalkeeper,
+                      onChanged: _isSaving ? null : (value) {
+                        setState(() {
+                          _isGoalkeeper = value;
+                          // Se virar goleiro, anula a posição de linha
+                          if (value) _selectedPosition = null; 
+                          else _selectedPosition = 'Ala'; // Define um padrão ao desmarcar
+                        });
+                      },
+                    ),
+                    
+                    // Posição de Linha (Dropdown)
+                    // Fica desabilitado se for Goleiro
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedPosition,
+                        decoration: InputDecoration(
+                          labelText: 'Posição de Linha',
+                          border: const OutlineInputBorder(),
+                          // Mostra "Desabilitado" se for goleiro
+                          filled: _isGoalkeeper, 
+                          fillColor: Colors.grey[200],
+                        ),
+                        // Desabilita o dropdown se for goleiro
+                        onChanged: _isGoalkeeper || _isSaving ? null : (String? newValue) {
+                          setState(() {
+                            _selectedPosition = newValue;
+                          });
+                        },
+                        items: _positionOptions.map<DropdownMenuItem<String>>((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // --- FIM ---
+            
+            const SizedBox(height: 16),
+            SwitchListTile(
+              title: const Text('Faz parte da Comissão Técnica?'),
+              value: _isStaff,
+              onChanged: _isSaving ? null : (value) => setState(() => _isStaff = value),
+            ),
+            SwitchListTile(
+              title: const Text('Jogador Ativo?'),
+              subtitle: const Text('Desmarque para dispensar o jogador.'),
+              value: _isActive,
+              onChanged: _isSaving ? null : (value) => setState(() => _isActive = value),
+            ),
           ],
         ),
       ),

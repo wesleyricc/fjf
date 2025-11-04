@@ -386,39 +386,52 @@ class _FixturesScreenState extends State<FixturesScreen>
                     return Column(
                       children: [
                         Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 8.0,
-                            vertical: 4.0,
-                          ),
-
+                          margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                           child: InkWell(
-                            // InkWell principal para stats/admin
+                            // --- 1. ATUALIZE A LÓGICA DO onTap AQUI ---
                             onTap: () {
                               final gameStatus = data['status'] ?? 'pending';
 
                               if (AdminService.isAdmin) {
+                                // Admin sempre vai para a tela de edição
                                 Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (ctx) =>
-                                        AdminMatchScreen(match: match),
-                                  ),
+                                  MaterialPageRoute(builder: (ctx) => AdminMatchScreen(match: match)),
                                 );
                               } else if (gameStatus == 'finished') {
-                                // Não-Admin SÓ PODE ver stats de jogo FINALIZADO
+                                // Usuário, Jogo Finalizado -> Vai para Estatísticas
                                 Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (ctx) => MatchStatsScreen(
-                                      match: match,
-                                    ), // <-- Vai para a nova tela
-                                  ),
+                                  MaterialPageRoute(builder: (ctx) => MatchStatsScreen(match: match)),
                                 );
                               } else {
                                 // Usuário, Jogo Pendente ou Em Andamento -> Vai para Escalação
+                                
+                                // Extrai os dados de forma segura, garantindo que não sejam nulos
+                                final String team1Shield = (data['team_home_shield'] as String?) ?? '';
+                                final String team2Shield = (data['team_away_shield'] as String?) ?? '';
+                                final String team1Name = (data['team_home_name'] as String?) ?? 'Time Casa';
+                                final String team2Name = (data['team_away_name'] as String?) ?? 'Time Visitante';
+                                final String team1Id = (data['team_home_id'] as String?) ?? '';
+                                final String team2Id = (data['team_away_id'] as String?) ?? '';
+                                final String location = (data['location'] as String?) ?? 'Local a definir';
+                                final Timestamp? datetime = data['datetime'] as Timestamp?;
+
                                 Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (ctx) => MatchRosterScreen(match: match)),
+                                  MaterialPageRoute(builder: (ctx) => MatchRosterScreen(
+                                    matchId: match.id, 
+                                    team1Id: team1Id,
+                                    team2Id: team2Id,
+                                    team1Name: team1Name,
+                                    team2Name: team2Name,
+                                    team1ShieldUrl: team1Shield,
+                                    team2ShieldUrl: team2Shield,
+                                    datetime: datetime,
+                                    location: location,
+                                  )),
                                 );
+                                // --- FIM DA CORREÇÃO ---
                               }
                             },
+                            // --- FIM DA ATUALIZAÇÃO ---
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                 vertical: 12.0,

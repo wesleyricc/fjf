@@ -137,12 +137,12 @@ class SuspensionHistoryScreen extends StatelessWidget {
                   statusText = 'CUMPRIDA';
                   statusColor = Colors.green;
                 } else {
-                  statusText = 'PENDENTE';
-                  statusColor = Colors.orange;
+                  statusText = 'SUSPENSO';
+                  statusColor = Colors.red;
                 }
               } else {
-                statusText = 'PENDENTE';
-                statusColor = Colors.orange;
+                statusText = 'SUSPENSO';
+                statusColor = Colors.red;
               }
 
               IconData reasonIcon; Color reasonColor;
