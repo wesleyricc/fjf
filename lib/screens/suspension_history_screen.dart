@@ -149,7 +149,7 @@ class SuspensionHistoryScreen extends StatelessWidget {
               if (reason == 'CV' || reason.contains('CV')) {
                 reasonIcon = Icons.style; reasonColor = Colors.red;
               } else if (reason.contains('CA')) {
-                 reasonIcon = Icons.style_outlined; reasonColor = Colors.orange;
+                 reasonIcon = Icons.style_outlined; reasonColor = const Color.fromARGB(255, 192, 181, 23);
               } else {
                  reasonIcon = Icons.block; reasonColor = Colors.grey;
               }

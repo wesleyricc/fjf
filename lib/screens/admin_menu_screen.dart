@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import '../services/data_uploader_service.dart';
+//import '../services/data_uploader_service.dart';
 import '../services/admin_service.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
@@ -35,7 +35,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
 
   // --- NOVA FUNÇÃO PARA CHAMAR A MIGRAÇÃO ---
-  Future<void> _triggerMigrationV1() async {
+  /*Future<void> _triggerMigrationV1() async {
      final confirm = await showDialog<bool>(
        context: context,
        builder: (ctx) => AlertDialog(
@@ -56,6 +56,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
      }
   }
   // --- FIM ---
+  */
 
   // --- NOVA FUNÇÃO PARA CHAMAR CÁLCULO DE RANKS ---
   Future<void> _triggerCalculateRanks() async {
@@ -94,7 +95,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   // --- FIM ---
 
 // Diálogo de confirmação para o upload
-  Future<void> _showUploadConfirmDialog(BuildContext context) async {
+  /*Future<void> _showUploadConfirmDialog(BuildContext context) async {
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
@@ -134,7 +135,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
         );
       },
     );
-  }
+  }*/
 
   
 
@@ -234,7 +235,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
 
   // --- NOVA FUNÇÃO: VERIFICAR SENHA ADMIN ---
-  Future<bool> _verifyAdminPassword(BuildContext context) async {
+  /*Future<bool> _verifyAdminPassword(BuildContext context) async {
     final String? currentAdminUsername = AdminService.loggedInAdminUsername;
     if (currentAdminUsername == null) {
        // Se não houver admin logado (bug?), cancela
@@ -300,7 +301,8 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
       },
     );
     return passwordConfirmed ?? false;
-  }
+  }*/
+
   Future<void> _showChangePasswordDialog() async {
     final String? currentAdminUsername = AdminService.loggedInAdminUsername;
     if (currentAdminUsername == null) return; // Segurança

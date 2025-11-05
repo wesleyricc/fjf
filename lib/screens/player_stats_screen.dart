@@ -6,10 +6,9 @@ import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/rank_indicator.dart'; // Para rank Ouro/Prata/Bronze
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/admin_service.dart'; // Para admin e regras
+//import 'team_detail_screen.dart';
 
 class PlayerStatsScreen extends StatelessWidget {
-  // Tornando-se StatelessWidget (ou StatefulWidget se estado complexo for necessário)
-  // Mas vamos usar StatelessWidget e instanciar o _firestore onde for preciso.
   PlayerStatsScreen({super.key});
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -81,9 +80,7 @@ class PlayerStatsScreen extends StatelessWidget {
       },
     );
   }
-  // --- FIM DA NOVA FUNÇÃO ---
-  // --- Função Auxiliar: Diálogo para Limpar Suspensão ---
-  // (Copiada da antiga DisciplinaryScreen)
+  
   Future<void> _showClearSuspensionDialog(
       BuildContext context, DocumentSnapshot player) async {
     final playerName = player['name'] ?? 'Jogador desconhecido';
@@ -201,7 +198,7 @@ class PlayerStatsScreen extends StatelessWidget {
     required BuildContext context,
     required Query query,
     required String emptyMessage,
-    required bool isSuspendedList, // Para controlar a lógica de status
+    required bool isSuspendedList,
   }) {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
@@ -232,11 +229,12 @@ class PlayerStatsScreen extends StatelessWidget {
                    try {
                      final data = player.data() as Map<String, dynamic>;
                      final String shieldUrl = data['team_shield_url'] ?? '';
+                     final bool isStaff = data['is_staff'] ?? false;
                      final int? jerseyNumber = data['jersey_number'];
                      final String playerName = data['name'] ?? 'Nome Indisponível';
-                     final String displayName = jerseyNumber != null
-                          ? '$jerseyNumber. $playerName'
-                          : playerName;
+                     final String displayName = isStaff
+                        ? '(Comissão) $playerName' // Adiciona sufixo
+                        : (jerseyNumber != null ? '$jerseyNumber. $playerName' : playerName);
                      String status = '';
                      Color statusColor = Colors.black;
 
@@ -260,19 +258,19 @@ class PlayerStatsScreen extends StatelessWidget {
                      }
 
                      return ListTile(
-                       leading: const Icon(Icons.person_outline), // Ícone genérico
-                       title: Text(displayName),
+                       leading: Icon(isStaff ? Icons.assignment_ind_outlined : Icons.person_outline), // Ícone diferente
+                       title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)), // Estilo diferente
                        subtitle: Row(
                          children: [
                            if (shieldUrl.isNotEmpty)
                              Padding(
                                padding: const EdgeInsets.only(right: 6.0),
                                child: SizedBox(
-                                 width: 18, height: 18,
+                                 width: 25, height: 25,
                                  child: CachedNetworkImage(
                                    imageUrl: shieldUrl,
-                                   placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
-                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                   placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
                                    fit: BoxFit.contain,
                                  ),
                                ),
@@ -302,7 +300,7 @@ class PlayerStatsScreen extends StatelessWidget {
                       );
                    }
                 },
-              ), // Fim ListView
+              ), 
             ],
           ),
         );
@@ -329,7 +327,7 @@ class PlayerStatsScreen extends StatelessWidget {
         }
         if (snapshot.hasError) {
            debugPrint("Erro Stream PlayerStats ($statLabel): ${snapshot.error}");
-           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice.'));
+           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(child: Text(emptyMessage));
@@ -352,37 +350,37 @@ class PlayerStatsScreen extends StatelessWidget {
                     final rank = index + 1;
                     final String shieldUrl = data['team_shield_url'] ?? '';
                     final int statValue = data[statField] ?? 0;
-
+                    final bool isStaff = data['is_staff'] ?? false;
                     final int? jerseyNumber = data['jersey_number'];
                     final String playerName = data['name'] ?? 'Nome Indisponível';
-                    final String displayName = jerseyNumber != null
-                        ? '$jerseyNumber. $playerName'
-                        : playerName;
+                
+                    final String displayName = isStaff
+                        ? '(Comissão) $playerName'
+                        : (jerseyNumber != null ? '$jerseyNumber. $playerName' : playerName);
 
                     return ListTile(
-                      leading: RankIndicator(rank: rank), // Indicador Ouro/Prata/Bronze
-                      title: Text(displayName),
-                      subtitle: Row( // Escudo e nome do time
+                      leading: RankIndicator(rank: rank),
+                      title: Text(
+                        displayName,
+                        // Adiciona estilo itálico para staff
+                        style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal),
+                      ),
+                      subtitle: Row(
                          children: [
                            if (shieldUrl.isNotEmpty)
                              Padding(
                                padding: const EdgeInsets.only(right: 6.0),
                                child: SizedBox(
-                                 width: 18, height: 18,
+                                 width: 25, height: 25,
                                  child: CachedNetworkImage(
                                    imageUrl: shieldUrl,
-                                   placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
-                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                   placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
                                    fit: BoxFit.contain,
                                  ),
                                ),
                              ),
-                           Flexible(
-                             child: Text(
-                                data['team_name'] ?? 'Time Indisponível',
-                                overflow: TextOverflow.ellipsis,
-                             ),
-                           ),
+                           Expanded(child: Text(data['name'] ?? 'Nome Indisponível', overflow: TextOverflow.ellipsis)),
                          ],
                        ),
                       trailing: Text(
@@ -399,17 +397,15 @@ class PlayerStatsScreen extends StatelessWidget {
                       );
                   }
                 },
-              ), // Fim ListView
+              ),
             ],
           ),
         );
       },
     );
   }
-  // --- FIM _buildPlayerRankingList ---
 
-  // --- 3. NOVA FUNÇÃO: _buildTotalCardsList ---
-  // (Semelhante ao Ranking, mas consulta ambos os campos)
+  // --- Função _buildTotalCardsList ---
   Widget _buildTotalCardsList({
     required BuildContext context,
     required Stream<QuerySnapshot> stream,
@@ -474,16 +470,16 @@ class PlayerStatsScreen extends StatelessWidget {
                   final int totalCards = playerInfo['totalCards'];
                   final int totalYellows = playerInfo['totalYellows'];
                   final int totalReds = playerInfo['totalReds'];
-                  
+                  final bool isStaff = data['is_staff'] ?? false;
                   final int? jerseyNumber = data['jersey_number'];
                   final String playerName = data['name'] ?? 'Nome Indisponível';
-                  final String displayName = jerseyNumber != null
-                      ? '$jerseyNumber. $playerName'
-                      : playerName;
+                  final String displayName = isStaff
+                      ? '(Comissão) $playerName'
+                      : (jerseyNumber != null ? '$jerseyNumber. $playerName' : playerName);
 
                   return ListTile(
                     leading: RankIndicator(rank: rank),
-                    title: Text(displayName),
+                    title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
                     subtitle: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -491,11 +487,11 @@ class PlayerStatsScreen extends StatelessWidget {
                           Padding(
                             padding: const EdgeInsets.only(right: 6.0, top: 4.0),
                             child: SizedBox(
-                              width: 18, height: 18,
+                              width: 25, height: 25,
                               child: CachedNetworkImage(
                                 imageUrl: shieldUrl,
-                                placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
-                                errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
                                 fit: BoxFit.contain,
                               ),
                             ),
@@ -607,63 +603,57 @@ class PlayerStatsScreen extends StatelessWidget {
               statLabel: 'vezes',
               emptyMessage: 'Ranking de Craque do Jogo vazio.',
             ),
-            // 6. Pendurados (usa _buildPlayerStatusList)
+            // 5. Pendurados (usa _buildPlayerStatusList)
             _buildPlayerStatusList(
               context: context,
               query: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  .where('yellow_cards', isEqualTo: AdminService.pendingYellowCards) // Usa regra
-                  //.where('is_suspended', isEqualTo: false) // Não pode estar suspenso
+                  // .where('is_staff', isEqualTo: false)
+                  .where('yellow_cards', isEqualTo: AdminService.pendingYellowCards)
                   .orderBy('name'),
-              emptyMessage: 'Nenhum jogador pendurado (${AdminService.pendingYellowCards} CA).',
+              emptyMessage: 'Nenhum jogador ou membro da comissão pendurado (${AdminService.pendingYellowCards} CA).',
               isSuspendedList: false,
             ),
-            // 7. Suspensos (usa _buildPlayerStatusList)
+            // 6. Suspensos
             _buildPlayerStatusList(
               context: context,
               query: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  .where('is_suspended', isEqualTo: true) // Usa flag
+                  //.where('is_staff', isEqualTo: false)
+                  .where('is_suspended', isEqualTo: true)
                   .orderBy('name'),
-              emptyMessage: 'Nenhum jogador suspenso.',
+              emptyMessage: 'Nenhum jogador ou membro da comissão suspenso.',
               isSuspendedList: true,
             ),
-            // 8. Total Amarelos (usa total_yellow_cards)
+            // 7. Total Amarelos
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
               statField: 'total_yellow_cards',
               statLabel: 'CA',
-              emptyMessage: 'Nenhum jogador com cartão amarelo.',
+              emptyMessage: 'Nenhum cartão amarelo registrado.',
             ),
-             // 9. Total Vermelhos (usa total_red_cards)
+             // 8. Total Vermelhos
             _buildPlayerRankingList(
               context: context,
-              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
+              query: _firestore.collection('players').where('isActive', isEqualTo: true).where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
               statField: 'total_red_cards',
               statLabel: 'CV',
-              emptyMessage: 'Nenhum jogador com cartão vermelho.',
+              emptyMessage: 'Nenhum cartão vermelho registrado.',
             ),
-             // --- 5. CONTEÚDO DA NOVA ABA ---
+             // 9. Total Cartões
             _buildTotalCardsList(
               context: context,
-              // Busca todos os jogadores ativos que tenham pelo menos um cartão (amarelo OU vermelho)
-              // (Nota: Esta query é complexa e pode exigir um índice ou ser lenta.
-              //  Uma alternativa é buscar TODOS os jogadores e filtrar em Dart, como fizemos.)
               stream: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  // .where('total_yellow_cards', isGreaterThan: 0) // Não podemos fazer 'OU'
-                  // .where('total_red_cards', isGreaterThan: 0) // Não podemos fazer 'OU'
-                  .snapshots(), // Busca todos e filtra em Dart (dentro da função)
-              emptyMessage: 'Nenhum jogador com cartões registrados.',
+                  //.where('is_staff', isEqualTo: false)
+                  .snapshots(),
+              emptyMessage: 'Nenhum cartão registrado.',
             ),
             // --- FIM ---
           ],
         ),
-        bottomNavigationBar: const SponsorBannerRotator(), // Banner fixo
+        bottomNavigationBar: const SponsorBannerRotator(),
       ),
     );
   }

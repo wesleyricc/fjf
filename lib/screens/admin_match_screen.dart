@@ -285,15 +285,29 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       final homeQuery = await _firestore.collection('players')
           .where('team_id', isEqualTo: homeTeamId)
           .where('isActive', isEqualTo: true)
-          .where('is_staff', isEqualTo: false)
+          //.where('is_staff', isEqualTo: false)
           .get();
       _homePlayers = homeQuery.docs;
+
       final awayQuery = await _firestore.collection('players')
           .where('team_id', isEqualTo: awayTeamId)
           .where('isActive', isEqualTo: true)
-          .where('is_staff', isEqualTo: false)
+          //.where('is_staff', isEqualTo: false)
           .get();
       _awayPlayers = awayQuery.docs;
+
+      // 2. Ordena a lista para que jogadores venham ANTES da comissão
+      _homePlayers.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>;
+        final bData = b.data() as Map<String, dynamic>;
+        // Se 'is_staff' for false (jogador), vem antes (retorna -1)
+        return (aData['is_staff'] == true ? 1 : 0).compareTo(bData['is_staff'] == true ? 1 : 0);
+      });
+       _awayPlayers.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>;
+        final bData = b.data() as Map<String, dynamic>;
+        return (aData['is_staff'] == true ? 1 : 0).compareTo(bData['is_staff'] == true ? 1 : 0);
+      });
     } catch (e) {
       debugPrint('Erro ao buscar jogadores: $e');
     } finally {
@@ -537,7 +551,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 8.0),
         child: Text(
-          'Nenhum jogador encontrado para este time.',
+          'Nenhum jogador ou staff encontrado para este time.',
           style: TextStyle(color: Colors.grey),
         ),
       );
@@ -555,24 +569,43 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             final playerId = player.id;
             final data = player.data() as Map<String, dynamic>;
             final bool isSelected = _selectedPlayerId == playerId;
+            final bool isStaff = data['is_staff'] ?? false;
             final int? number = data['jersey_number'];
             final String playerName = data['name'] ?? 'Nome Indisponível';
-            final statsSummary = 'G:${_goals[playerId]??0} A:${_assists[playerId]??0} CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0} ${(data['is_goalkeeper']??false)?' GS:${_goalsConceded[playerId]??0}':''}';
+
+            // Define o nome de exibição
+            final String displayName = isStaff 
+                ? playerName 
+                : (number != null ? '$number. $playerName' : '-. $playerName');
+            
+            // Define o resumo de stats
+            final String statsSummary = isStaff
+                ? 'Comissão Técnica | CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0}'
+                : 'G:${_goals[playerId]??0} A:${_assists[playerId]??0} CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0} ${(data['is_goalkeeper']??false)?' GS:${_goalsConceded[playerId]??0}':''}';
+            
+            // Define o ícone
+            final IconData leadingIcon = isStaff 
+                ? Icons.assignment_ind_outlined // Ícone de Staff
+                : (data['is_goalkeeper']==true ? Icons.pan_tool_outlined : Icons.person_outline); // Ícones de Jogador
+            // --- FIM DA ALTERAÇÃO ---
 
             return Column(
               children: [
                 Card(
                   margin: const EdgeInsets.symmetric(vertical: 2.0),
-                  color: isSelected ? Colors.lightBlue[50] : null,
+                  color: isSelected ? Colors.lightBlue[50] : (isStaff ? Colors.grey[100] : null), // Cor diferente para staff
                   elevation: isSelected ? 3 : 1,
                   child: ListTile(
                     dense: true,
-                    leading: Icon(data['is_goalkeeper']==true ? Icons.pan_tool_outlined : Icons.person_outline),
+                    leading: Icon(leadingIcon),
                     title: Text(
-                      number != null ? '$number. $playerName' : '-. $playerName',
-                      style: const TextStyle(fontWeight: FontWeight.w500)
+                      displayName, // <-- Nome atualizado
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // Estilo diferente
+                      )
                     ),
-                    subtitle: Text(statsSummary, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+                    subtitle: Text(statsSummary, style: TextStyle(fontSize: 11, color: Colors.grey[700])), // <-- Resumo atualizado
                     onTap: () {
                       setState(() {
                         if (isSelected) _selectedPlayerId = null;
@@ -598,6 +631,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   Widget _buildStatEditor(DocumentSnapshot playerDoc) {
     final playerId = playerDoc.id;
     final data = playerDoc.data() as Map<String, dynamic>;
+    final bool isStaff = data['is_staff'] ?? false;
     final bool isGoalkeeper = data['is_goalkeeper'] ?? false;
     int currentGoals = _goals[playerId] ?? 0;
     int currentAssists = _assists[playerId] ?? 0;
@@ -614,18 +648,32 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStatCounter(
-              icon: Icons.sports_soccer, label: "Gols",
-              count: currentGoals,
-              onAdd: () => setState(() => _goals[playerId] = currentGoals + 1),
-              onRemove: () => setState(() => _goals[playerId] = (currentGoals > 0) ? currentGoals - 1 : 0),
-            ),
-             _buildStatCounter(
-              icon: Icons.assistant, label: "Assist.",
-              count: currentAssists,
-              onAdd: () => setState(() => _assists[playerId] = currentAssists + 1),
-              onRemove: () => setState(() => _assists[playerId] = (currentAssists > 0) ? currentAssists - 1 : 0),
-            ),
+            // --- INÍCIO DA ALTERAÇÃO (Esconde campos de Staff) ---
+            if (!isStaff) ...[ // Staff NÃO pode fazer Gol, Assistência ou Sofrer Gol
+              _buildStatCounter(
+                icon: Icons.sports_soccer, label: "Gols",
+                count: currentGoals,
+                onAdd: () => setState(() => _goals[playerId] = currentGoals + 1),
+                onRemove: () => setState(() => _goals[playerId] = (currentGoals > 0) ? currentGoals - 1 : 0),
+              ),
+              _buildStatCounter(
+                icon: Icons.assistant, label: "Assist.",
+                count: currentAssists,
+                onAdd: () => setState(() => _assists[playerId] = currentAssists + 1),
+                onRemove: () => setState(() => _assists[playerId] = (currentAssists > 0) ? currentAssists - 1 : 0),
+              ),
+              if (isGoalkeeper)
+                _buildStatCounter(
+                  icon: Icons.pan_tool_outlined,
+                  label: "GS",
+                  color: Colors.blueGrey,
+                  count: currentGoalsConceded,
+                  onAdd: () => setState(() => _goalsConceded[playerId] = currentGoalsConceded + 1),
+                  onRemove: () => setState(() => _goalsConceded[playerId] = (currentGoalsConceded > 0) ? currentGoalsConceded - 1 : 0),
+                ),
+            ],
+            // --- FIM DA ALTERAÇÃO ---
+            
              _buildStatCounter(
               icon: Icons.style, label: "CA", color: Colors.yellow[700],
               count: currentYellows,
