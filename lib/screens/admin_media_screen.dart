@@ -70,6 +70,14 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
               final data = doc.data() as Map<String, dynamic>;
               final String imageUrl = data['imageUrl'] ?? '';
 
+              // --- INÍCIO DA ALTERAÇÃO ---
+              final String author = data['author'] ?? '';
+              String subtitle = 'Ordem: ${data['order']}';
+              if (author.isNotEmpty) {
+                subtitle += ' • Por: $author'; // Adiciona o autor ao subtítulo
+              }
+              // --- FIM DA ALTERAÇÃO ---
+
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                 child: ListTile(
@@ -85,7 +93,7 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
                         ),
                   ),
                   title: Text(data['title'] ?? 'Sem Título'),
-                  subtitle: Text('Ordem: ${data['order']}'),
+                  subtitle: Text(subtitle),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

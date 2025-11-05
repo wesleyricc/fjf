@@ -564,7 +564,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.live_tv),
+            leading: const Icon(Icons.live_tv, color: Colors.red),
             title: const Text('Alterar Vídeo Ao Vivo'),
             subtitle: const Text('Muda o ID do vídeo na tela inicial'),
             trailing: const Icon(Icons.arrow_forward_ios),
@@ -572,7 +572,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.looks_one_outlined), // Ícone de número
+            leading: const Icon(Icons.looks_one_outlined, color: Colors.grey), // Ícone de número
             title: const Text('Definir Rodada Padrão'),
             subtitle: const Text('Define a rodada da Tabela de Jogos'),
             trailing: const Icon(Icons.arrow_forward_ios),
@@ -581,7 +581,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           const Divider(),
           
           ListTile(
-            leading: const Icon(Icons.rule_folder), // Ícone de regras
+            leading: const Icon(Icons.rule_folder, color: Colors.grey), // Ícone de regras
             title: const Text('Regras Disciplinares'),
             subtitle: const Text('Define limites de cartões para suspensão'),
             trailing: const Icon(Icons.arrow_forward_ios),
@@ -593,7 +593,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.sort_by_alpha), // Ícone de ordenação
+            leading: const Icon(Icons.sort_by_alpha, color: Colors.grey), // Ícone de ordenação
             title: const Text('Ordem Critérios Desempate'),
             subtitle: const Text('Define a ordem dos critérios na classificação'),
             trailing: const Icon(Icons.arrow_forward_ios),
@@ -605,7 +605,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.help_outline), // Ícone de interrogação/regra
+            leading: const Icon(Icons.help_outline, color: Colors.grey), // Ícone de interrogação/regra
             title: const Text('Regras Desempate Mata-Mata'),
             subtitle: const Text('Define Pênaltis, Prorrogação, etc.'),
             trailing: const Icon(Icons.arrow_forward_ios),
@@ -648,7 +648,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             onTap: _showChangePasswordDialog, // Chama a função movida
           ),
           const Divider(),
-          ListTile(
+          /*ListTile(
             leading: const Icon(Icons.upload_file, color: Colors.orange),
             title: const Text('Carregar Dados Iniciais'),
             subtitle: const Text('Apaga e recarrega Times, Jogadores e Jogos'),
@@ -679,6 +679,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           // --- FIM ---
+          */
           // Adicione mais opções administrativas aqui, se necessário
         ],
       ),

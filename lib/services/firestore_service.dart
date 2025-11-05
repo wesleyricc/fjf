@@ -56,6 +56,7 @@ class FirestoreService {
     required String targetUrl,
     required String imageUrl,
     required int order,
+    required String author, // <-- NOVO PARÂMETRO
   }) async {
     try {
       await _firestore.collection('media_feed').add({
@@ -63,7 +64,8 @@ class FirestoreService {
         'targetUrl': targetUrl,
         'imageUrl': imageUrl,
         'order': order,
-        'isActive': true, // Sempre ativo ao criar
+        'author': author, // <-- NOVO CAMPO
+        'isActive': true, 
       });
       return "Sucesso: Mídia criada.";
     } catch (e) {
@@ -77,6 +79,7 @@ class FirestoreService {
     required String targetUrl,
     required String imageUrl,
     required int order,
+    required String author, // <-- NOVO PARÂMETRO
   }) async {
     try {
       await _firestore.collection('media_feed').doc(docId).update({
@@ -84,6 +87,7 @@ class FirestoreService {
         'targetUrl': targetUrl,
         'imageUrl': imageUrl,
         'order': order,
+        'author': author, // <-- NOVO CAMPO
       });
       return "Sucesso: Mídia atualizada.";
     } catch (e) {

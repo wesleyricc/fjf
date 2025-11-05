@@ -26,6 +26,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
   late TextEditingController _titleController;
   late TextEditingController _targetUrlController;
   late TextEditingController _orderController;
+  late TextEditingController _authorController;
 
   // Estado da Imagem
   Uint8List? _pickedImageBytes;
@@ -42,6 +43,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
     _titleController = TextEditingController(text: data?['title'] ?? '');
     _targetUrlController = TextEditingController(text: data?['targetUrl'] ?? '');
     _orderController = TextEditingController(text: data?['order']?.toString() ?? '');
+    _authorController = TextEditingController(text: data?['author'] ?? '');
     _existingImageUrl = data?['imageUrl'];
 
     // Se for 'Criar' (mediaDoc == null), busca a próxima ordem
@@ -55,6 +57,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
     _titleController.dispose();
     _targetUrlController.dispose();
     _orderController.dispose();
+    _authorController.dispose();
     super.dispose();
   }
 
@@ -113,6 +116,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
       // 2. Prepara os dados para o Firestore
       final String title = _titleController.text;
       final String targetUrl = _targetUrlController.text;
+      final String author = _authorController.text;
       final int order = int.tryParse(_orderController.text) ?? 1;
 
       String result;
@@ -123,6 +127,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
           targetUrl: targetUrl,
           imageUrl: finalImageUrl,
           order: order,
+          author: author,
         );
       } else {
         // --- MODO ATUALIZAÇÃO ---
@@ -141,6 +146,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
           targetUrl: targetUrl,
           imageUrl: finalImageUrl,
           order: order,
+          author: author,
         );
       }
       
@@ -221,6 +227,17 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
               enabled: !_isUploading,
             ),
             const SizedBox(height: 16),
+
+            // --- NOVO CAMPO DE AUTOR ---
+            TextFormField(
+              controller: _authorController,
+              decoration: const InputDecoration(labelText: 'Autor da Notícia', hintText: 'Ex: Agora na Cidade', border: OutlineInputBorder()),
+              // Não é obrigatório, então não há validador
+              enabled: !_isUploading,
+            ),
+            const SizedBox(height: 16),
+            // --- FIM DO NOVO CAMPO ---
+            
             // URL de Destino
             TextFormField(
               controller: _targetUrlController,

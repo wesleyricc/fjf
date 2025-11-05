@@ -581,7 +581,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                 // --- NOVO BOTÃO "DEFINIR TITULARES" ---
                 IconButton(
-                  icon: const Icon(Icons.shield_outlined),
+                  icon: const Icon(Icons.dashboard),
                   tooltip: 'Definir Titulares Padrão',
                   // Desabilita se a lista de jogadores não foi carregada ainda
                   onPressed: _allPlayers.isEmpty ? null : () {

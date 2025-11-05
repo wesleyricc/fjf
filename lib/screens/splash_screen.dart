@@ -225,7 +225,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               .collection('media_feed')
               .where('isActive', isEqualTo: true)
               .orderBy('order', descending: true)
-              .limit(10)
+              .limit(20)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -236,18 +236,22 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             }
             final mediaItems = snapshot.data!.docs;
             return SizedBox(
-              height: 200,
+              height: 200, // Altura do card
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 10.0),
                 itemCount: mediaItems.length,
                 itemBuilder: (context, index) {
                   final itemData = mediaItems[index].data() as Map<String, dynamic>? ?? {};
+                  
+                  // --- INÍCIO DA ALTERAÇÃO ---
                   return _buildMediaItem(
                     itemData['title'] ?? 'Sem Título',
                     itemData['imageUrl'] ?? '',
                     itemData['targetUrl'] ?? '',
+                    itemData['author'] ?? '', // <-- NOVO: Passa o autor
                   );
+                  // --- FIM DA ALTERAÇÃO ---
                 },
               ),
             );
@@ -258,7 +262,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   // --- WIDGET: Item da Lista de Mídia (sem mudanças) ---
-  Widget _buildMediaItem(String title, String imageUrl, String targetUrl) {
+  Widget _buildMediaItem(String title, String imageUrl, String targetUrl, String author) {
     return SizedBox(
       width: 180,
       child: Card(
@@ -270,6 +274,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 1. Imagem (Sem mudança)
               SizedBox(
                 height: 100,
                 width: 180,
@@ -282,15 +287,45 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       errorWidget: (context, url, error) => Container(color: Colors.grey[200], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
                     ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  title,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
+              
+              // --- INÍCIO DA ALTERAÇÃO (Layout do Texto) ---
+              // 2. Título e Autor
+              Expanded( // Faz esta seção preencher o espaço restante do card
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    // 'spaceBetween' empurra o título para cima e o autor para baixo
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+                    children: [
+                      // Título
+                      Text(
+                        title,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        maxLines: 3, // Deixa 3 linhas para o título
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      
+                      // Autor (Só aparece se 'author' não estiver vazio)
+                      if (author.isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerRight, // Alinha à direita
+                          child: Text(
+                            'Por: $author',
+                            style: TextStyle(
+                              fontSize: 9, // Texto menor
+                              color: Colors.grey[600], // Cor cinza
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
+              // --- FIM DA ALTERAÇÃO ---
             ],
           ),
         ),
