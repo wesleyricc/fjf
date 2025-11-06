@@ -591,7 +591,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
   // --- FIM _buildStatItem ---
 
   // --- 3. NOVA FUNÇÃO: CONSTRÓI A ABA DE ESTATÍSTICAS ---
-  Widget _buildStatsTab() {
+  Widget _buildStatsTab(String status) {
     final data = widget.match.data() as Map<String, dynamic>;
     final homeTeamId = data['team_home_id'] ?? '';
     final awayTeamId = data['team_away_id'] ?? '';
@@ -639,7 +639,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                 ),
 
           // CRAQUE DO JOGO (O conteúdo antigo)
-          if (_manOfTheMatchName != null && !_isLoadingPlayerData) ...[
+          if (status == 'finished' && _manOfTheMatchName != null && !_isLoadingPlayerData) ...[
             const Divider(
               height: 16,
               thickness: 0.5,
@@ -787,6 +787,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
   Widget build(BuildContext context) {
     // ... (extração de dados como antes: scoreHome, scoreAway, ids, nomes, escudos, data) ...
     final data = widget.match.data() as Map<String, dynamic>;
+    final status = data['status'] ?? 'pending';
     final scoreHome = data['score_home']?.toString() ?? '-';
     final scoreAway = data['score_away']?.toString() ?? '-';
 
@@ -872,8 +873,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                   ),
 
                   // --- 4. ADICIONE O BOTÃO DA SÚMULA AQUI ---
-                  if (sumulaUrl != null &&
-                      sumulaUrl.isNotEmpty) // Mostra só se a URL existir
+                  if (status == 'finished' && sumulaUrl != null && sumulaUrl.isNotEmpty) // Mostra só se a URL existir
                     Padding(
                       padding: const EdgeInsets.only(top: 12.0),
                       child: TextButton.icon(
@@ -899,7 +899,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               child: TabBarView(
                 controller: _tabController, // Usa o controller
                 children: [
-                  _buildStatsTab(), // Aba 1
+                  _buildStatsTab(status), // Aba 1
                   _buildMediaTab(), // Aba 2
                 ],
               ),

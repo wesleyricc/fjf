@@ -397,13 +397,13 @@ class _FixturesScreenState extends State<FixturesScreen>
                                 Navigator.of(context).push(
                                   MaterialPageRoute(builder: (ctx) => AdminMatchScreen(match: match)),
                                 );
-                              } else if (gameStatus == 'finished') {
-                                // Usuário, Jogo Finalizado -> Vai para Estatísticas
+                              } else if (gameStatus == 'finished' || gameStatus == 'in_progress') {
+                                // Usuário, Jogo Finalizado ou Em Andamento -> Vai para Estatísticas
                                 Navigator.of(context).push(
                                   MaterialPageRoute(builder: (ctx) => MatchStatsScreen(match: match)),
                                 );
                               } else {
-                                // Usuário, Jogo Pendente ou Em Andamento -> Vai para Escalação
+                                // Usuário, Jogo Pendente -> Vai para Escalação
                                 
                                 // Extrai os dados de forma segura, garantindo que não sejam nulos
                                 final String team1Shield = (data['team_home_shield'] as String?) ?? '';
