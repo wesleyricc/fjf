@@ -110,6 +110,30 @@ class TeamStatsScreen extends StatelessWidget {
                     final String shieldUrl = data['shield_url'] ?? '';
                     final int statValue = data[statField] ?? 0; // Pega o valor da estatística
 
+                    // --- INÍCIO DA ALTERAÇÃO (Widget do Trailing) ---
+                    Widget trailingWidget;
+                    // Se for CA ou CV, mostra o ícone
+                    if (statLabel == 'CA') {
+                      trailingWidget = Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text('$statValue', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.style, color: Colors.yellow[700], size: 20),
+                      ]);
+                    } else if (statLabel == 'CV') {
+                      trailingWidget = Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text('$statValue', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.style, color: Colors.red[700], size: 20),
+                      ]);
+                    } else { 
+                      // Senão (GP, GC), mostra o texto
+                      trailingWidget = Text(
+                        '$statValue $statLabel',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      );
+                    }
+                    // --- FIM DA ALTERAÇÃO ---
+
                     return ListTile(
                       leading: RankIndicator(rank: rank), // Indicador Ouro/Prata/Bronze
                       title: Row(
@@ -130,13 +154,8 @@ class TeamStatsScreen extends StatelessWidget {
                            Expanded(child: Text(data['name'] ?? 'Nome Indisponível', overflow: TextOverflow.ellipsis)),
                         ],
                       ),
-                      // Exibe o valor da estatística no trailing
-                      trailing: Text(
-                        '$statValue $statLabel',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
+                      trailing: trailingWidget, // <-- USA O WIDGET ATUALIZADO
                       onTap: () {
-                        // Navega para TeamDetailScreen ao clicar
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: team))
                         );
@@ -201,15 +220,17 @@ class TeamStatsScreen extends StatelessWidget {
 
         // Ordena a lista
         teamsData.sort((a, b) {
-           int totalComp = b['total_cards'].compareTo(a['total_cards']); // Mais cartões primeiro
+           int totalComp = a['total_cards'].compareTo(b['total_cards']); // Mais cartões primeiro
            if (totalComp != 0) return totalComp;
-           int redComp = b['red_cards'].compareTo(a['red_cards']); // Desempate: mais vermelhos primeiro
+           int redComp = a['red_cards'].compareTo(b['red_cards']); // Desempate: mais vermelhos primeiro
             if (redComp != 0) return redComp;
            return a['name'].compareTo(b['name']); // Desempate: nome
         });
-        // --- FIM DA LÓGICA DE ORDENAÇÃO ---
 
-        // --- Estrutura com Banner ---
+        if (teamsData.isEmpty) {
+           return Center(child: Text(emptyMessage));
+        }
+
         return SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 16.0),
           child: Column(
@@ -255,10 +276,16 @@ class TeamStatsScreen extends StatelessWidget {
                           '$totalCards Cartões',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-                         Text(
-                          '$yellowCards CA / $redCards CV',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('$yellowCards', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            Icon(Icons.style, color: Colors.yellow[700], size: 14),
+                            const Text(' / ', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                            Text('$redCards', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            Icon(Icons.style, color: Colors.red[700], size: 14),
+                          ],
+                        )
                       ],
                     ),
                     onTap: () {
@@ -268,7 +295,7 @@ class TeamStatsScreen extends StatelessWidget {
                     },
                   );
                 },
-              ), // Fim ListView
+              ),
             ],
           ),
         );
@@ -335,7 +362,7 @@ class TeamStatsScreen extends StatelessWidget {
             _buildRankingList(
               context: context,
               // Query: Ordena por 'total_yellow_cards' (descendente)
-              query: FirebaseFirestore.instance.collection('teams').where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
+              query: FirebaseFirestore.instance.collection('teams').where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: false).orderBy('name'),
               statField: 'total_yellow_cards',
               statLabel: 'CA',
               emptyMessage: 'Nenhuma equipe com cartões amarelos.',
@@ -344,7 +371,7 @@ class TeamStatsScreen extends StatelessWidget {
             _buildRankingList(
               context: context,
               // Query: Ordena por 'total_red_cards' (descendente)
-              query: FirebaseFirestore.instance.collection('teams').where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
+              query: FirebaseFirestore.instance.collection('teams').where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: false).orderBy('name'),
               statField: 'total_red_cards',
               statLabel: 'CV',
               emptyMessage: 'Nenhuma equipe com cartões vermelhos.',

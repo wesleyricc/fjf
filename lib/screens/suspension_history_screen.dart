@@ -12,7 +12,6 @@ class SuspensionHistoryScreen extends StatelessWidget {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Instância
 
-  // --- FUNÇÃO PARA EDITAR DATA DE RETORNO (REQ 3) ---
   Future<void> _showEditReturnDateDialog(BuildContext context, DocumentSnapshot logDoc) async {
     final data = logDoc.data() as Map<String, dynamic>;
     DateTime initialDate = (data['return_date'] as Timestamp? ?? data['timestamp'] as Timestamp? ?? Timestamp.now()).toDate();
@@ -45,7 +44,6 @@ class SuspensionHistoryScreen extends StatelessWidget {
     }
   }
 
-  // --- FUNÇÃO PARA EXCLUIR LOG (REQ 3) ---
   Future<void> _showDeleteLogDialog(BuildContext context, DocumentSnapshot logDoc) async {
      final confirm = await showDialog<bool>(
        context: context,
@@ -167,27 +165,37 @@ class SuspensionHistoryScreen extends StatelessWidget {
                         playerName,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
+                      
+                      // --- INÍCIO DA ALTERAÇÃO ---
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // --- NOVO: Row para Nome da Equipe e Logo ---
                           Row(
-                        children: [
-                          Text(teamName, style: const TextStyle(fontSize: 13)),
-                          if (teamLogoUrl.isNotEmpty) // Só mostra se tiver URL
+                            children: [
+                              // 1. Logo vem PRIMEIRO
+                              if (teamLogoUrl.isNotEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.only(left: 8.0),
+                                  padding: const EdgeInsets.only(right: 6.0), // Espaçamento à direita
                                   child: CachedNetworkImage(
                                     imageUrl: teamLogoUrl,
-                                    width: 20, // Tamanho da logo
+                                    width: 20,
                                     height: 20,
-                                    fit: BoxFit.contain, // Ajusta a imagem
-                                    errorWidget: (context, url, error) => const Icon(Icons.group, size: 20), // Fallback
+                                    fit: BoxFit.contain,
+                                    errorWidget: (context, url, error) => const Icon(Icons.group, size: 20),
                                   ),
                                 ),
+                              // 2. Nome vem DEPOIS e é Flexible
+                              Flexible(
+                                child: Text(
+                                  teamName, 
+                                  style: const TextStyle(fontSize: 13),
+                                  overflow: TextOverflow.ellipsis, // Evita overflow
+                                ),
+                              ),
                             ],
                           ),
-                          // --- FIM NOVO ---
+                          // --- FIM DA ALTERAÇÃO ---
+                          
                           Text('Motivo: $reason (Jogo: $matchInfo)'),
                           Text('Suspenso em: $suspensionDateStr'),
                           Text(
@@ -199,12 +207,10 @@ class SuspensionHistoryScreen extends StatelessWidget {
                           )
                         ],
                       ),
+                      // --- FIM DA ALTERAÇÃO ---
                       
-                      // --- CORREÇÃO (TRAILING) ---
                       trailing: Container(
-                        // 1. Define uma largura fixa
                         width: 80, 
-                        // 2. Alinha o filho (Text) no centro verticalmente
                         alignment: Alignment.center,
                         child: Text(
                           statusText,
@@ -216,10 +222,8 @@ class SuspensionHistoryScreen extends StatelessWidget {
                           textAlign: TextAlign.right,
                         ),
                       ),
-                      // --- FIM DA CORREÇÃO ---
                     ),
                     
-                    // Botões do Admin (como na ID 594)
                     if (AdminService.isAdmin)
                       Padding(
                         padding: const EdgeInsets.only(right: 8.0, bottom: 8.0), 

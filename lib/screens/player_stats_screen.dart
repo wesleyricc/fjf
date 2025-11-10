@@ -5,15 +5,51 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/rank_indicator.dart'; // Para rank Ouro/Prata/Bronze
 import 'package:cached_network_image/cached_network_image.dart';
-import '../services/admin_service.dart'; // Para admin e regras
-//import 'team_detail_screen.dart';
+import 'team_detail_screen.dart';
+import '../services/admin_service.dart';
 
 class PlayerStatsScreen extends StatelessWidget {
   PlayerStatsScreen({super.key});
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // --- 1. NOVA FUNÇÃO: DIÁLOGO DE AJUDA ---
+  // --- NOVA FUNÇÃO HELPER PARA NAVEGAÇÃO ---
+  Future<void> _navigateToTeam(BuildContext context, String? teamId) async {
+    if (teamId == null || teamId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ID do time não encontrado.')),
+      );
+      return;
+    }
+    
+    // Mostra um loading rápido
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Carregando time...'), duration: Duration(seconds: 1)),
+    );
+    
+    try {
+      // Busca o documento do TIME correto
+      final teamDoc = await _firestore.collection('teams').doc(teamId).get();
+      
+      if (teamDoc.exists && context.mounted) {
+        // Navega para a TeamDetailScreen com o DOCUMENTO DO TIME
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc)),
+        );
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Time não encontrado.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao buscar time: $e')),
+        );
+      }
+    }
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
   Future<void> _showPlayerStatsHelp(BuildContext context) async {
     return showDialog<void>(
       context: context,
@@ -229,6 +265,8 @@ class PlayerStatsScreen extends StatelessWidget {
                    try {
                      final data = player.data() as Map<String, dynamic>;
                      final String shieldUrl = data['team_shield_url'] ?? '';
+                     final String teamId = data['team_id'] ?? ''; // <-- Pega o ID do time
+
                      final bool isStaff = data['is_staff'] ?? false;
                      final int? jerseyNumber = data['jersey_number'];
                      final String playerName = data['name'] ?? 'Nome Indisponível';
@@ -260,7 +298,11 @@ class PlayerStatsScreen extends StatelessWidget {
                      return ListTile(
                        leading: Icon(isStaff ? Icons.assignment_ind_outlined : Icons.person_outline), // Ícone diferente
                        title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)), // Estilo diferente
-                       subtitle: Row(
+                       subtitle: InkWell( // <-- Transforma o subtítulo em um botão
+                         onTap: () {
+                           _navigateToTeam(context, teamId); // <-- Chama a navegação
+                         },
+                         child: Row(
                          children: [
                            if (shieldUrl.isNotEmpty)
                              Padding(
@@ -279,9 +321,11 @@ class PlayerStatsScreen extends StatelessWidget {
                              child: Text(
                                 data['team_name'] ?? 'Time Indisponível',
                                 overflow: TextOverflow.ellipsis,
+                                //style: TextStyle(color: Theme.of(context).primaryColor, decoration: TextDecoration.underline), // <-- Estilo de link
+                               ),
                              ),
-                           ),
                          ],
+                         ),
                        ),
                        trailing: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
                        onTap: () {
@@ -350,13 +394,38 @@ class PlayerStatsScreen extends StatelessWidget {
                     final rank = index + 1;
                     final String shieldUrl = data['team_shield_url'] ?? '';
                     final int statValue = data[statField] ?? 0;
+                    final String teamId = data['team_id'] ?? ''; // <-- Pega o ID do time
+
                     final bool isStaff = data['is_staff'] ?? false;
                     final int? jerseyNumber = data['jersey_number'];
                     final String playerName = data['name'] ?? 'Nome Indisponível';
-                
                     final String displayName = isStaff
                         ? '(Comissão) $playerName'
                         : (jerseyNumber != null ? '$jerseyNumber. $playerName' : playerName);
+
+                        // --- INÍCIO DA ALTERAÇÃO (Widget do Trailing) ---
+                    Widget trailingWidget;
+                    // Se for CA ou CV, mostra o ícone
+                    if (statLabel == 'CA') {
+                      trailingWidget = Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text('$statValue', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.style, color: Colors.yellow[700], size: 20),
+                      ]);
+                    } else if (statLabel == 'CV') {
+                      trailingWidget = Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text('$statValue', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(width: 4),
+                        Icon(Icons.style, color: Colors.red[700], size: 20),
+                      ]);
+                    } else { 
+                      // Senão (Gols, Assists, etc), mostra o texto
+                      trailingWidget = Text(
+                        '$statValue $statLabel',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      );
+                    }
+                    // --- FIM DA ALTERAÇÃO ---
 
                     return ListTile(
                       leading: RankIndicator(rank: rank),
@@ -365,7 +434,12 @@ class PlayerStatsScreen extends StatelessWidget {
                         // Adiciona estilo itálico para staff
                         style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal),
                       ),
-                      subtitle: Row(
+                      // --- INÍCIO DA CORREÇÃO (Subtítulo Clicável) ---
+                      subtitle: InkWell(
+                        onTap: () {
+                          _navigateToTeam(context, teamId); // <-- Chama a navegação
+                        },
+                        child: Row(
                          children: [
                            if (shieldUrl.isNotEmpty)
                              Padding(
@@ -380,13 +454,18 @@ class PlayerStatsScreen extends StatelessWidget {
                                  ),
                                ),
                              ),
-                           Expanded(child: Text(data['name'] ?? 'Nome Indisponível', overflow: TextOverflow.ellipsis)),
+                           Flexible(
+                             child: Text(
+                                data['team_name'] ?? 'Time Indisponível',
+                                overflow: TextOverflow.ellipsis,
+                             ),
+                           ),
                          ],
+                        ),
                        ),
-                      trailing: Text(
-                        '$statValue $statLabel',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
+                      trailing: trailingWidget, // <-- USA O WIDGET ATUALIZADO
+                      onTap: () {
+                      },
                     );
                   } catch (e) {
                       debugPrint("Erro ao processar jogador (Ranking $statLabel) ${player.id}: $e");
@@ -470,6 +549,8 @@ class PlayerStatsScreen extends StatelessWidget {
                   final int totalCards = playerInfo['totalCards'];
                   final int totalYellows = playerInfo['totalYellows'];
                   final int totalReds = playerInfo['totalReds'];
+                  final String teamId = data['team_id'] ?? ''; // <-- Pega o ID do time
+
                   final bool isStaff = data['is_staff'] ?? false;
                   final int? jerseyNumber = data['jersey_number'];
                   final String playerName = data['name'] ?? 'Nome Indisponível';
@@ -480,7 +561,12 @@ class PlayerStatsScreen extends StatelessWidget {
                   return ListTile(
                     leading: RankIndicator(rank: rank),
                     title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
-                    subtitle: Row(
+                    // --- INÍCIO DA CORREÇÃO (Subtítulo Clicável) ---
+                    subtitle: InkWell(
+                      onTap: () {
+                         _navigateToTeam(context, teamId); // <-- Chama a navegação
+                      },
+                      child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         if (shieldUrl.isNotEmpty)
@@ -500,9 +586,11 @@ class PlayerStatsScreen extends StatelessWidget {
                           child: Text(
                             data['team_name'] ?? 'Time Indisponível',
                             overflow: TextOverflow.ellipsis,
+                            //style: TextStyle(color: Theme.of(context).primaryColor, decoration: TextDecoration.underline), // <-- Estilo de link
                           ),
                         ),
                       ],
+                      ),
                     ),
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -513,10 +601,16 @@ class PlayerStatsScreen extends StatelessWidget {
                           '$totalCards Cartões',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-                        // Linha 2: Breakdown
-                        Text(
-                          '($totalYellows CA, $totalReds CV)',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('$totalYellows', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            Icon(Icons.style, color: Colors.yellow[700], size: 14),
+                            const Text(' / ', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                            Text('$totalReds', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            Icon(Icons.style, color: Colors.red[700], size: 14),
+                          ],
                         )
                       ],
                     ),
@@ -535,7 +629,7 @@ class PlayerStatsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 9, // --- TOTAL DE 8 ABAS ---
+      length: 9, // --- TOTAL DE 9 ABAS ---
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Estatísticas dos Jogadores'),

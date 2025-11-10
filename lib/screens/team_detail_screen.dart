@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'edit_player_screen.dart';
 import '../services/firestore_service.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+//import 'player_profile_screen.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc; // Recebe o documento do time selecionado
@@ -47,8 +48,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     String? selectedReason;
     final pointsController = TextEditingController();
     bool isLoading = false;
-    DateTime selectedDate =
-        DateTime.now();
+    DateTime selectedDate = DateTime.now();
 
     final Map<String, int> extraPointsOptions = {
       'Rainha FJF': 1,
@@ -134,8 +134,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       ),
                       enabled:
                           !isLoading &&
-                          (selectedReason?.contains('Outro') ??
-                              false),
+                          (selectedReason?.contains('Outro') ?? false),
                       validator: (value) {
                         if (value == null || value.isEmpty)
                           return 'Informe os pontos';
@@ -160,10 +159,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           tooltip: 'Selecionar Data',
                           onPressed: isLoading
                               ? null
-                              : () => _pickDate(
-                                  dialogContext,
-                                  setDialogState,
-                                ),
+                              : () => _pickDate(dialogContext, setDialogState),
                           color: Theme.of(context).primaryColor,
                         ),
                       ],
@@ -182,7 +178,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   onPressed: isLoading
                       ? null
                       : () async {
-                          // ... (lógica de validação de pontos idêntica) ...
                           if (selectedReason == null ||
                               pointsController.text.isEmpty) {
                             ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -212,8 +207,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               );
                               return;
                             }
-                            pointsController.text = mapPoints
-                                .toString();
+                            pointsController.text = mapPoints.toString();
                           }
                           final finalPoints =
                               int.tryParse(pointsController.text) ?? 0;
@@ -316,8 +310,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment
-            .spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
@@ -371,9 +364,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
 
     if (confirm == true && mounted) {
-      final result = await _firestoreService.deletePlayer(
-        playerDoc,
-      );
+      final result = await _firestoreService.deletePlayer(playerDoc);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(result)));
@@ -389,7 +380,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     if (roleLower.contains('treinador') || roleLower.contains('técnico')) {
       if (roleLower.contains('auxiliar')) {
         return Icons.support_agent;
-      } else{
+      } else {
         return Icons.content_paste;
       }
     }
@@ -405,7 +396,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     if (roleLower.contains('massagista') || roleLower.contains('fisio')) {
       return Icons.healing;
     }
-    
+
     return Icons.assignment_ind_outlined;
   }
 
@@ -415,26 +406,26 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
   // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
   Future<void> _showSetStartersDialog(
-    BuildContext context, 
-    List<DocumentSnapshot> allTeamPlayers
+    BuildContext context,
+    List<DocumentSnapshot> allTeamPlayers,
   ) async {
-    
     // Lê os titulares padrão ATUAIS do documento do time
     final currentData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
-    List<String> selectedIds = List<String>.from(currentData['default_starters'] ?? []);
+    List<String> selectedIds = List<String>.from(
+      currentData['default_starters'] ?? [],
+    );
 
     await showDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
-            
             // Lógica de validação (1 Goleiro, 4 Linha)
             int selectedGkCount = 0;
             int selectedLineCount = 0;
             try {
               for (String id in selectedIds) {
-                final player = allTeamPlayers.firstWhere((p) => p.id == id); 
+                final player = allTeamPlayers.firstWhere((p) => p.id == id);
                 final pData = player.data() as Map<String, dynamic>? ?? {};
                 if (pData['is_goalkeeper'] == true) {
                   selectedGkCount++;
@@ -442,17 +433,22 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   selectedLineCount++;
                 }
               }
-            } catch(e) {
+            } catch (e) {
               debugPrint("Erro ao validar titulares: $e.");
             }
-            
+
             String validationMessage = '';
-            if (selectedGkCount != 1) validationMessage = 'Selecione 1 Goleiro.';
-            else if (selectedLineCount != 4) validationMessage = 'Selecione 4 Jogadores de Linha.';
-            else validationMessage = 'Escalação Correta (1 Goleiro, 4 Linha)';
+            if (selectedGkCount != 1)
+              validationMessage = 'Selecione 1 Goleiro.';
+            else if (selectedLineCount != 4)
+              validationMessage = 'Selecione 4 Jogadores de Linha.';
+            else
+              validationMessage = 'Escalação Correta (1 Goleiro, 4 Linha)';
 
             return AlertDialog(
-              title: Text('Definir Titulares Padrão (${widget.teamDoc['name']})'),
+              title: Text(
+                'Definir Titulares Padrão (${widget.teamDoc['name']})',
+              ),
               content: Container(
                 width: double.maxFinite,
                 child: Column(
@@ -461,7 +457,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     Text(
                       validationMessage,
                       style: TextStyle(
-                        color: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)') ? Colors.green : Colors.red,
+                        color:
+                            (validationMessage ==
+                                'Escalação Correta (1 Goleiro, 4 Linha)')
+                            ? Colors.green
+                            : Colors.red,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -476,13 +476,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         itemBuilder: (context, index) {
                           final player = allTeamPlayers[index];
                           final data = player.data() as Map<String, dynamic>;
-                          final bool isSelected = selectedIds.contains(player.id);
-                          
+                          final bool isSelected = selectedIds.contains(
+                            player.id,
+                          );
+
                           // Lógica da Posição
                           final bool isGk = data['is_goalkeeper'] ?? false;
                           final String? position = data['position'];
                           String displayPosition = 'Posição Indefinida';
-                          
+
                           if (isGk) {
                             displayPosition = 'Goleiro';
                           } else if (position != null) {
@@ -493,11 +495,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           final String name = data['name'] ?? '...';
                           final int? number = data['jersey_number'];
                           // Formata o nome para "10. Craque do Time" ou "-. Jogador Sem Número"
-                          final String displayName = number != null ? '$number. $name' : '-. $name';
+                          final String displayName = number != null
+                              ? '$number. $name'
+                              : '-. $name';
                           // --- FIM DA ALTERAÇÃO ---
 
                           return CheckboxListTile(
-                            title: Text(displayName), // <-- USA A VARIÁVEL 'displayName'
+                            title: Text(
+                              displayName,
+                            ), // <-- USA A VARIÁVEL 'displayName'
                             subtitle: Text(displayPosition),
                             value: isSelected,
                             onChanged: (bool? value) {
@@ -517,25 +523,36 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
                 TextButton(
-                  onPressed: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)')
-                   ? () async {
-                      try {
-                        await widget.teamDoc.reference.update({
-                          'default_starters': selectedIds
-                        });
-                        Navigator.of(ctx).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Titulares padrão salvos!'))
-                        );
-                      } catch (e) {
-                         ScaffoldMessenger.of(context).showSnackBar(
-                           SnackBar(content: Text('Erro ao salvar: ${e.toString()}'))
-                         );
-                      }
-                   } 
-                   : null,
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed:
+                      (validationMessage ==
+                          'Escalação Correta (1 Goleiro, 4 Linha)')
+                      ? () async {
+                          try {
+                            await widget.teamDoc.reference.update({
+                              'default_starters': selectedIds,
+                            });
+                            Navigator.of(ctx).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Titulares padrão salvos!'),
+                              ),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Erro ao salvar: ${e.toString()}',
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      : null,
                   child: const Text('Confirmar'),
                 ),
               ],
@@ -546,7 +563,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
   // --- FIM DA FUNÇÃO CORRIGIDA ---
-
 
   @override
   Widget build(BuildContext context) {
@@ -575,8 +591,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline),
                   tooltip: 'Adicionar Pontos Extras',
-                  onPressed:
-                      _showAddExtraPointsDialog,
+                  onPressed: _showAddExtraPointsDialog,
                 ),
 
                 // --- NOVO BOTÃO "DEFINIR TITULARES" ---
@@ -584,12 +599,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   icon: const Icon(Icons.dashboard),
                   tooltip: 'Definir Titulares Padrão',
                   // Desabilita se a lista de jogadores não foi carregada ainda
-                  onPressed: _allPlayers.isEmpty ? null : () {
-                    _showSetStartersDialog(context, _allPlayers);
-                  },
+                  onPressed: _allPlayers.isEmpty
+                      ? null
+                      : () {
+                          _showSetStartersDialog(context, _allPlayers);
+                        },
                 ),
-                // --- FIM DO NOVO BOTÃO ---
 
+                // --- FIM DO NOVO BOTÃO ---
                 IconButton(
                   icon: const Icon(Icons.person_add_alt_1),
                   tooltip: 'Adicionar Novo Membro (Jogador/Staff)',
@@ -645,7 +662,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ],
               ),
             ),
-            
+
             // --- CARD DE RESUMO DAS ESTATÍSTICAS ---
             Card(
               margin: const EdgeInsets.symmetric(
@@ -707,7 +724,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
               ),
             ),
-            
+
             // --- Botão para ver Histórico ---
             Padding(
               padding: const EdgeInsets.symmetric(
@@ -742,7 +759,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
-            
+
             StreamBuilder<QuerySnapshot>(
               stream: _firestore
                   .collection('players')
@@ -815,9 +832,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           numeric: true,
                         ),
                         const DataColumn(label: Text('Jogador')),
-                        const DataColumn(
-                          label: Center(child: Text('Pos.')),
-                        ),
+                        const DataColumn(label: Center(child: Text('Pos.'))),
                         DataColumn(
                           label: Container(
                             alignment: Alignment.center,
@@ -891,10 +906,17 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             displayPosition = 'GK';
                           } else if (position != null) {
                             switch (position) {
-                              case 'Fixo': displayPosition = 'FIXO'; break;
-                              case 'Ala': displayPosition = 'ALA'; break;
-                              case 'Pivô': displayPosition = 'PIVO'; break;
-                              default: displayPosition = 'LIN';
+                              case 'Fixo':
+                                displayPosition = 'FIXO';
+                                break;
+                              case 'Ala':
+                                displayPosition = 'ALA';
+                                break;
+                              case 'Pivô':
+                                displayPosition = 'PIVO';
+                                break;
+                              default:
+                                displayPosition = 'LIN';
                             }
                           }
 
@@ -903,8 +925,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               DataCell(
                                 Center(
                                   child: Text(
-                                    number?.toString() ??
-                                        '-',
+                                    number?.toString() ?? '-',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -913,21 +934,40 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               ),
                               DataCell(
                                 Container(
-                                  constraints: const BoxConstraints(maxWidth: 150),
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 150,
+                                  ),
                                   child: Text(
                                     playerData['name'] ?? '...',
                                     overflow: TextOverflow.ellipsis,
                                     maxLines: 1,
                                   ),
                                 ),
+
+                                onTap: () {
+                                  // TODO: Descomente este bloco para ativar a navegação
+                                  // para a tela de perfil do jogador na próxima temporada.
+
+                                  
+                                  //Navigator.of(context).push(
+                                    //MaterialPageRoute(
+                                      //builder: (ctx) => PlayerProfileScreen(playerDoc: playerDoc),
+                                    //),
+                                  //);
+                                  
+                                },
                               ),
                               DataCell(
                                 Center(
                                   child: Text(
                                     displayPosition,
                                     style: TextStyle(
-                                      fontWeight: isGoalkeeper ? FontWeight.bold : FontWeight.normal,
-                                      color: isGoalkeeper ? Colors.blueGrey[700] : Colors.black,
+                                      fontWeight: isGoalkeeper
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                      color: isGoalkeeper
+                                          ? Colors.blueGrey[700]
+                                          : Colors.black,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -989,12 +1029,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                         onPressed: () {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
-                                              builder: (ctx) => EditPlayerScreen(
-                                                teamId: teamId,
-                                                teamName: teamName,
-                                                playerDoc:
-                                                    playerDoc,
-                                              ),
+                                              builder: (ctx) =>
+                                                  EditPlayerScreen(
+                                                    teamId: teamId,
+                                                    teamName: teamName,
+                                                    playerDoc: playerDoc,
+                                                  ),
                                             ),
                                           );
                                         },
@@ -1020,9 +1060,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             ],
                           );
                         } catch (e) {
-                          debugPrint("Erro ao renderizar DataRow: $e"); // Log de erro
+                          debugPrint(
+                            "Erro ao renderizar DataRow: $e",
+                          ); // Log de erro
                           return DataRow(
-                            cells: List.generate(AdminService.isAdmin ? 9 : 8, (index) => DataCell(Text('Erro'))),
+                            cells: List.generate(
+                              AdminService.isAdmin ? 9 : 8,
+                              (index) => DataCell(Text('Erro')),
+                            ),
                           );
                         }
                       }).toList(),
@@ -1031,7 +1076,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 );
               },
             ),
-            
+
             // --- Seção Comissão Técnica ---
             const SizedBox(height: 24),
             const Divider(),
@@ -1114,8 +1159,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   itemBuilder: (context, index) {
                     final member = staffList[index];
                     final data = member.data() as Map<String, dynamic>;
-                    final String staffRole =
-                        data['staff_role'] ?? 'Membro';
+                    final String staffRole = data['staff_role'] ?? 'Membro';
                     final IconData staffIcon = _getStaffIcon(staffRole);
 
                     return Card(
