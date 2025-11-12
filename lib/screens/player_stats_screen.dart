@@ -84,13 +84,13 @@ class PlayerStatsScreen extends StatelessWidget {
                   TextSpan(text: 'Apresenta os jogadores que estão suspensos por CV ou ${AdminService.suspensionYellowCards} CAs.\n\n'),
                   
                   const TextSpan(text: 'Total Amarelos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const TextSpan(text: 'Soma-se o total de cartões amarelos registrados em súmula para o atleta. Esse totalizador não impacta nas regras disciplinares do time, exclusivo para avaliação disciplinar do atleta.\n\n'),
+                  const TextSpan(text: 'Soma-se o total de cartões amarelos registrados em súmula para o atleta. Exclusivo para avaliação disciplinar do atleta.\n\n'),
                   
                   const TextSpan(text: 'Total Vermelhos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const TextSpan(text: 'Soma-se o total de cartões vermelhos registrados em súmula para o atleta. Esse totalizador não impacta nas regras disciplinares do time, exclusivo para avaliação disciplinar do atleta.\n\n'),
+                  const TextSpan(text: 'Soma-se o total de cartões vermelhos registrados em súmula para o atleta. Exclusivo para avaliação disciplinar do atleta.\n\n'),
 
                   const TextSpan(text: 'Total Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const TextSpan(text: 'Soma-se o total de cartões registrados em súmula para o atleta, CA e CV compõem o total. Esse totalizador não impacta nas regras disciplinares do time, exclusivo para avaliação disciplinar do atleta.\n\n'),
+                  const TextSpan(text: 'Soma-se o total de cartões registrados em súmula para o atleta, CA e CV compõem o total. Exclusivo para avaliação disciplinar do atleta.\n\n'),
 
                   const TextSpan(text: 'Regra Geral de Suspensão:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextSpan(text: '- Um atleta é suspenso quando toma 1 CV ou ${AdminService.suspensionYellowCards} CA em jogos diferentes (2 CA no mesmo joga contabiliza-se apenas um para regra de Suspensão);\n'),

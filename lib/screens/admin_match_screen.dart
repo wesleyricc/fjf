@@ -631,8 +631,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   Widget _buildStatEditor(DocumentSnapshot playerDoc) {
     final playerId = playerDoc.id;
     final data = playerDoc.data() as Map<String, dynamic>;
+
     final bool isStaff = data['is_staff'] ?? false;
     final bool isGoalkeeper = data['is_goalkeeper'] ?? false;
+
     int currentGoals = _goals[playerId] ?? 0;
     int currentAssists = _assists[playerId] ?? 0;
     int currentYellows = _yellowCards[playerId] ?? 0;
@@ -648,8 +650,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- INÍCIO DA ALTERAÇÃO (Esconde campos de Staff) ---
-            if (!isStaff) ...[ // Staff NÃO pode fazer Gol, Assistência ou Sofrer Gol
+            if (!isStaff) ...[
               _buildStatCounter(
                 icon: Icons.sports_soccer, label: "Gols",
                 count: currentGoals,
@@ -677,8 +678,8 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
              _buildStatCounter(
               icon: Icons.style, label: "CA", color: Colors.yellow[700],
               count: currentYellows,
-              onAdd: () => setState(() => _yellowCards[playerId] = currentYellows + 1),
-              onRemove: () => setState(() => _yellowCards[playerId] = (currentYellows > 0) ? currentYellows - 1 : 0),
+              onAdd: () => setState(() => _yellowCards[playerId] = 1), // <-- MUDANÇA AQUI
+              onRemove: () => setState(() => _yellowCards[playerId] = 0), // <-- MUDANÇA AQUI
             ),
              _buildStatCounter(
               icon: Icons.style, label: "CV", color: Colors.red[700],

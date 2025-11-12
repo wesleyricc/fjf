@@ -8,9 +8,9 @@ import '../services/admin_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class SuspensionHistoryScreen extends StatelessWidget {
-  SuspensionHistoryScreen({super.key}); // 'const' removido
+  SuspensionHistoryScreen({super.key});
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Instância
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<void> _showEditReturnDateDialog(BuildContext context, DocumentSnapshot logDoc) async {
     final data = logDoc.data() as Map<String, dynamic>;
@@ -109,6 +109,7 @@ class SuspensionHistoryScreen extends StatelessWidget {
               final data = logDoc.data() as Map<String, dynamic>;
 
               final String playerName = data['playerName'] ?? 'Jogador';
+              final bool isStaff = data['is_staff'] ?? false;
               final String teamName = data['teamName'] ?? 'Time';
               final String teamLogoUrl = data['teamLogoUrl'] ?? '';
               final String reason = data['reason'] ?? 'Indefinido';
@@ -162,8 +163,11 @@ class SuspensionHistoryScreen extends StatelessWidget {
                       isThreeLine: true,
                       leading: Icon(reasonIcon, color: reasonColor, size: 30),
                       title: Text(
-                        playerName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        isStaff ? '$playerName (Comissão)' : playerName, // Adiciona sufixo
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // Adiciona itálico
+                        ),
                       ),
                       
                       // --- INÍCIO DA ALTERAÇÃO ---

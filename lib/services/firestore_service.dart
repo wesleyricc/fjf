@@ -649,8 +649,8 @@ class FirestoreService {
     required String? winnerTeamId,
     required String? newSumulaUrl,
     required List<Map<String, dynamic>> newMediaLinks,
-    required List<String> newStartersHome, // Lista de IDs
-    required List<String> newStartersAway, // Lista de IDs
+    required List<String> newStartersHome,
+    required List<String> newStartersAway,
   }) async {
     final String matchId = matchSnapshot.id;
     final matchDataBefore = matchSnapshot.data() as Map<String, dynamic>? ?? {};
@@ -722,7 +722,7 @@ class FirestoreService {
           }
         }
 
-        // --- CORREÇÃO: Lê os dados dos times AGORA ---
+
         final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
         final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
         final DocumentSnapshot homeTeamSnap = await transaction.get(homeTeamRef);
@@ -730,7 +730,6 @@ class FirestoreService {
         
         final homeLogoUrl = (homeTeamSnap.data() as Map<String, dynamic>?)?['shield_url'] ?? '';
         final awayLogoUrl = (awayTeamSnap.data() as Map<String, dynamic>?)?['shield_url'] ?? '';
-        // --- FIM DA CORREÇÃO (LEITURA) ---
 
         debugPrint(
           "[SERVICE_UPDATE] Leitura concluída. ${playerSnaps.length} jogadores encontrados.",
@@ -756,8 +755,8 @@ class FirestoreService {
             'player_stats': newPlayerStatsToSave,
             'man_of_the_match': newManOfTheMatchId,
             'media_links': newMediaLinks,
-            'starters_home': newStartersHome,
-            'starters_away': newStartersAway,
+            'starters_home': [],
+            'starters_away': [],
           },
         });
         debugPrint(
@@ -772,7 +771,6 @@ class FirestoreService {
         int totalRedHomeDelta = 0;
         int totalRedAwayDelta = 0;
 
-        // Calcula deltas
         Map<String, int> goalDelta = _calculateDelta(oldGoals, newGoals);
         Map<String, int> assistDelta = _calculateDelta(oldAssists, newAssists);
         Map<String, int> goalsConcededDelta = _calculateDelta(
@@ -782,15 +780,7 @@ class FirestoreService {
         Map<String, int> yellowDelta = _calculateDelta(oldYellows, newYellows);
         Map<String, int> redDelta = _calculateDelta(oldReds, newReds);
 
-        // Zera os acumuladores de delta ANTES do loop
-        disciplinaryHomeDelta = 0;
-        disciplinaryAwayDelta = 0;
-        totalYellowHomeDelta = 0;
-        totalYellowAwayDelta = 0;
-        totalRedHomeDelta = 0;
-        totalRedAwayDelta = 0;
-
-        // Aplica deltas simples (Gols, Assists, Gols Sofridos) aos jogadores
+        // Aplica deltas simples (Gols, Assists, Gols Sofridos)
         goalDelta.forEach((playerId, delta) {
           if (delta != 0 && playerSnaps.containsKey(playerId))
             transaction.update(playerSnaps[playerId]!.reference, {
@@ -824,7 +814,7 @@ class FirestoreService {
             });
         }
 
-        // --- LÓGICA COMPLEXA PARA CARTÕES (CORRIGIDA) ---
+        // --- Lógica de Cartões (Simplificada) ---
         
         Set<String> affectedCardPlayerIds = {...yellowDelta.keys, ...redDelta.keys};
         debugPrint("[DISCIPLINA] Iniciando cálculo de delta. Jogadores afetados: ${affectedCardPlayerIds.length}");
@@ -832,19 +822,16 @@ class FirestoreService {
         for (String playerId in affectedCardPlayerIds) {
           debugPrint("[DISCIPLINA] Processando jogador: $playerId");
           if (!playerSnaps.containsKey(playerId)) {
-            debugPrint(
-              "[DISCIPLINA] Jogador $playerId não encontrado. Pulando.",
-            );
+          debugPrint("[DISCIPLINA] Jogador $playerId não encontrado. Pulando.");
             continue;
           }
 
           final playerSnap = playerSnaps[playerId]!;
           final playerData = playerSnap.data() as Map<String, dynamic>? ?? {};
 
-          int yDelta = yellowDelta[playerId] ?? 0; // Ex: +2 (Adicionando) ou -2 (Removendo)
-          int rDelta = redDelta[playerId] ?? 0;   // Ex: +1 (Adicionando) ou -1 (Removendo)
+          int yDelta = yellowDelta[playerId] ?? 0;
+          int rDelta = redDelta[playerId] ?? 0;
           debugPrint("[DISCIPLINA] Deltas do Jogo para $playerId: yDelta=$yDelta, rDelta=$rDelta");
-
 
           int currentYellows = playerData['yellow_cards'] ?? 0;
           int currentReds = playerData['red_cards'] ?? 0;
@@ -854,40 +841,20 @@ class FirestoreService {
 
           // --- 1. Calcula incrementos para JOGADOR e TIME (REGRAS NOVAS) ---
            
-           // REGRA JOGADOR: `total_yellow_cards` soma TODOS os cartões.
-           int playerTotalYellowIncrement = yDelta; // Ex: +2 (ou -2 se removendo)
-           int playerTotalRedIncrement = rDelta;   // Ex: +1 (ou -1 se removendo)
+           // Agora, o delta do jogo (yDelta) é o mesmo para todas as contagens.
+           int playerTotalYellowIncrement = yDelta;
+           int playerTotalRedIncrement = rDelta;
+           int yellowIncrementForCurrent = yDelta;
            
-           // REGRA JOGADOR: `yellow_cards` (corrente) soma apenas 1 por jogo
-           int yellowIncrementForCurrent = 0;
-           if (yDelta > 0) yellowIncrementForCurrent = 1; // Se levou 1, 2, ou mais CA, só conta +1
-           else if (yDelta < 0) yellowIncrementForCurrent = -1; // Se removeu 1, 2, ou mais CA, só remove 1
-           
-           // REGRA TIME: `total_yellow_cards` e PD seguem regra especial
-           int teamYellowTotalIncrement = yDelta; // Padrão: +2
-           int teamRedTotalIncrement = rDelta;     // Padrão: +1
-           int teamDisciplinaryPointsIncrement = (yDelta * 10) + (rDelta * 21); // Padrão: 41
+           // REGRA TIME: PD e Totais agora são diretos
+           int teamYellowTotalIncrement = yDelta;
+           int teamRedTotalIncrement = rDelta;
+           int teamDisciplinaryPointsIncrement = (yDelta * 10) + (rDelta * 21);
 
-           // Cenário Especial: 2 CA + 1 CV (Adição)
-          bool isSecondYellowRedScenario_Add = (rDelta > 0 && yDelta == 2);
-          // Cenário Especial: Remoção de 2 CA + 1 CV
-          bool isSecondYellowRedScenario_Remove = (rDelta < 0 && yDelta == -2);
 
-          if (isSecondYellowRedScenario_Add) {
-             // Time: Só +1 CA no total, 31 PD
-             teamYellowTotalIncrement = 1; // Regra Time: Só +1 CA no total
-             teamDisciplinaryPointsIncrement = (1 * 10) + (1 * 21); // 31
-             debugPrint("Jogador $playerId: Cenário 2CA+CV (Adição). Inc Time CA: $teamYellowTotalIncrement, Inc PD: $teamDisciplinaryPointsIncrement");
-           } else if (isSecondYellowRedScenario_Remove) {
-             // Time: Só -1 CA no total, -31 PD
-             teamYellowTotalIncrement = -1; // Regra Time: Só -1 CA do total
-             teamDisciplinaryPointsIncrement = -((1 * 10) + (1 * 21)); // -31
-             debugPrint("Jogador $playerId: Cenário 2CA+CV (Remoção). Inc Time CA: $teamYellowTotalIncrement, Inc PD: $teamDisciplinaryPointsIncrement");
-           }
-
-          // --- 2. Lógica do Jogador (Corrente e Suspensão) ---
+          // --- 3. Lógica do Jogador (Corrente e Suspensão) ---
           int theoreticalNewYellows = currentYellows + yellowIncrementForCurrent;
-          int theoreticalNewReds = currentReds + rDelta; // Vermelho corrente usa delta normal
+          int theoreticalNewReds = currentReds + rDelta;
            
           if (theoreticalNewYellows < 0) theoreticalNewYellows = 0;
           if (theoreticalNewReds < 0) theoreticalNewReds = 0;
@@ -895,31 +862,6 @@ class FirestoreService {
           int finalYellows = theoreticalNewYellows;
           int finalReds = theoreticalNewReds;
           bool finalSuspension = currentlySuspended;
-
-          // Verifica suspensão/reset por Amarelos
-          if (yellowIncrementForCurrent > 0 &&
-              theoreticalNewYellows >= AdminService.suspensionYellowCards &&
-              currentYellows < AdminService.suspensionYellowCards) {
-            finalSuspension = true;
-            if (AdminService.resetYellowsOnSuspension) finalYellows = 0;
-            debugPrint(
-              "Jogador $playerId: Suspenso por CA. CA Corrente final: $finalYellows",
-            );
-          }
-
-          // Verifica suspensão/reset por Vermelho
-          if (rDelta > 0 && AdminService.suspensionOnRed) {
-            finalSuspension = true;
-            // A regra 'reset_yellows_on_red_while_pending' foi removida (ID 496)
-            if (AdminService.resetYellowsOnRed) {
-              finalYellows = 0;
-              debugPrint(
-                "Jogador $playerId: Zerando amarelos CORRENTES por CV (Regra ResetRed=true).",
-              );
-            }
-          }
-
-          // --- LÓGICA DE CRIAÇÃO DE LOG (ATUALIZADA) ---
            String suspensionReason = ""; 
 
            // Verifica suspensão/reset por Amarelos
@@ -943,22 +885,17 @@ class FirestoreService {
               if (AdminService.resetYellowsOnRed) finalYellows = 0;
            }
 
-           // Se uma nova suspensão foi detectada...
+           // Cria o Log de Suspensão (lógica idêntica, sem mudanças)
            if (suspensionReason.isNotEmpty) {
              debugPrint("[SUSPENSION LOG] Registrando nova suspensão para $playerId. Motivo: $suspensionReason");
              final logRef = _firestore.collection('suspension_log').doc();
              
-             // --- LÓGICA DAS DATAS (NOVA) ---
-             // Pega a data da partida do documento do jogo
-             DateTime matchDate = DateTime.now(); // Fallback
+             DateTime matchDate = DateTime.now();
              if (currentMatchData['datetime'] != null && currentMatchData['datetime'] is Timestamp) {
                 matchDate = (currentMatchData['datetime'] as Timestamp).toDate();
              }
-             // Calcula a data de retorno (Data da Partida + 10 dias)
              final DateTime returnDate = matchDate.add(const Duration(days: 10));
 
-             // --- NOVO: BUSCAR E SALVAR A LOGO DA EQUIPE ---
-            // --- Usa os dados do time pré-buscados (SEM transaction.get) ---
              String teamLogoUrl = ''; 
              final teamId = playerData['team_id'];
              if (teamId == homeTeamId) {
@@ -966,26 +903,22 @@ class FirestoreService {
              } else if (teamId == awayTeamId) {
                teamLogoUrl = awayLogoUrl;
              }
-             // --- Fim da correção ---
-             // --- FIM NOVO ---
-             // --- FIM ---
-             
+
              transaction.set(logRef, {
                'playerId': playerId,
                'playerName': playerData['name'] ?? '?',
                'teamId': playerData['team_id'] ?? '?',
                'teamName': playerData['team_name'] ?? '?',
-               'teamLogoUrl': teamLogoUrl, // <-- NOVO CAMPO
-               'timestamp': Timestamp.fromDate(matchDate), // <-- USA A DATA DA PARTIDA
-               'return_date': Timestamp.fromDate(returnDate), // <-- SALVA A DATA DE RETORNO
+               'teamLogoUrl': teamLogoUrl,
+               'is_staff': playerData['is_staff'] ?? false,
+               'timestamp': Timestamp.fromDate(matchDate),
+               'return_date': Timestamp.fromDate(returnDate),
                'reason': suspensionReason,
                'matchId_occurred': matchId,
                'match_description': "Rodada ${currentMatchData['round']}: ${currentMatchData['team_home_name']} vs ${currentMatchData['team_away_name']}",
-               // 'status': 'pending', // Não precisamos mais de 'status'
              });
            }
-           // --- FIM DA LÓGICA DE LOG ---
-           
+
           // Verifica remoção de suspensão
           if (rDelta < 0 && finalYellows < AdminService.suspensionYellowCards)
             finalSuspension = false;
@@ -996,8 +929,8 @@ class FirestoreService {
             finalSuspension = false;
 
           // --- 3. Prepara update do jogador ---
-          int finalTotalYellows = currentTotalYellows + playerTotalYellowIncrement; // Usa o delta real (yDelta)
-          int finalTotalReds = currentTotalReds + playerTotalRedIncrement;     // Usa o delta real (rDelta)
+          int finalTotalYellows = currentTotalYellows + playerTotalYellowIncrement;
+          int finalTotalReds = currentTotalReds + playerTotalRedIncrement;
           if (finalTotalYellows < 0) finalTotalYellows = 0;
           if (finalTotalReds < 0) finalTotalReds = 0;
 
@@ -1016,9 +949,9 @@ class FirestoreService {
           // --- 5. Acumula Deltas para Times (Totais e Disciplinares) ---
           final String? playerTeamId = playerData['team_id'];
            if (playerTeamId == homeTeamId) {
-             disciplinaryHomeDelta += teamDisciplinaryPointsIncrement; // Ex: +31 ou -31
-             totalYellowHomeDelta += teamYellowTotalIncrement;       // Ex: +1 ou -1
-             totalRedHomeDelta += teamRedTotalIncrement;         // Ex: +1 ou -1
+             disciplinaryHomeDelta += teamDisciplinaryPointsIncrement;
+             totalYellowHomeDelta += teamYellowTotalIncrement;
+             totalRedHomeDelta += teamRedTotalIncrement;
            } else if (playerTeamId == awayTeamId) {
              disciplinaryAwayDelta += teamDisciplinaryPointsIncrement;
              totalYellowAwayDelta += teamYellowTotalIncrement;
@@ -1028,10 +961,6 @@ class FirestoreService {
         debugPrint(
           "[PONTOS] Antes Update Disc.: TimeCasa=$homeTeamId, DeltaPD=$disciplinaryHomeDelta | TimeFora=$awayTeamId, DeltaPD=$disciplinaryAwayDelta",
         );
-
-        // --- Aplica deltas acumulados aos TIMES ---
-        //final homeTeamRef = _firestore.collection('teams').doc(homeTeamId);
-        //final awayTeamRef = _firestore.collection('teams').doc(awayTeamId);
 
         // Cria mapas de update apenas se houver o que mudar
         Map<String, dynamic> homeUpdateData = {};
@@ -1093,8 +1022,8 @@ class FirestoreService {
         debugPrint(
           "[SERVICE_UPDATE] Recalculando stats 1ª Fase para $homeTeamId e $awayTeamId...",
         );
-        await _recalculateTeamStats(homeTeamId); // Chamada correta
-        await _recalculateTeamStats(awayTeamId); // Chamada correta
+        await _recalculateTeamStats(homeTeamId);
+        await _recalculateTeamStats(awayTeamId);
       } else {
         debugPrint("[SERVICE_UPDATE] Recálculo stats 1ª Fase não necessário.");
       }
