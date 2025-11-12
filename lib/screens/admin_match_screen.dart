@@ -687,15 +687,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               onAdd: () => setState(() => _redCards[playerId] = 1),
               onRemove: () => setState(() => _redCards[playerId] = 0),
             ),
-            if (isGoalkeeper)
-               _buildStatCounter(
-                 icon: Icons.pan_tool_outlined,
-                 label: "GS",
-                 color: Colors.blueGrey,
-                 count: currentGoalsConceded,
-                 onAdd: () => setState(() => _goalsConceded[playerId] = currentGoalsConceded + 1),
-                 onRemove: () => setState(() => _goalsConceded[playerId] = (currentGoalsConceded > 0) ? currentGoalsConceded - 1 : 0),
-               ),
           ],
         ),
       ),

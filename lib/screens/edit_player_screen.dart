@@ -1,17 +1,17 @@
 // lib/screens/edit_player_screen.dart
-import 'dart:typed_data'; // <-- NOVO
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart'; // <-- NOVO
-import 'package:firebase_storage/firebase_storage.dart'; // <-- NOVO
-import 'package:cached_network_image/cached_network_image.dart'; // <-- NOVO
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class EditPlayerScreen extends StatefulWidget {
   final String teamId;
   final String teamName;
-  final DocumentSnapshot? playerDoc; // Nulo se for 'Criar'
+  final DocumentSnapshot? playerDoc;
 
   const EditPlayerScreen({
     super.key, 
@@ -48,7 +48,18 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
   bool _isActive = true;
   bool _isStaff = false;
-  bool _isSaving = false; // Renomeado de _isUploadingOrSaving para clareza
+  bool _isSaving = false;
+
+  // --- NOVO: Variáveis de Função (Staff Role) ---
+  final List<String> _staffRoleOptions = [
+    'Técnico', 
+    'Auxiliar Técnico', 
+    'Atendente', 
+    'Analista', 
+    'Massagista'
+  ];
+  String? _selectedStaffRole;
+  // --- FIM ---
 
   // --- NOVO: Estado da Imagem ---
   Uint8List? _pickedImageBytes;
@@ -71,7 +82,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
     
     if (_isGoalkeeper) {
       _selectedPosition = null;
-    } else if (data?['position'] == null) {
+    } else if (data?['position'] == null && !_isStaff) { // Só define padrão se não for staff
        _selectedPosition = 'Ala';
     }
     
@@ -88,6 +99,13 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
     // --- NOVO: Carrega foto existente ---
     _existingPhotoUrl = data?['photo_url'];
+
+    // --- NOVO: Inicializa a Função (Staff Role) ---
+    _selectedStaffRole = data?['staff_role'];
+    if (_isStaff && _selectedStaffRole == null) {
+      _selectedStaffRole = 'Técnico'; // Define um padrão se for staff
+    }
+    // --- FIM ---
     // --- FIM ---
   }
 
@@ -127,7 +145,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
         setState(() {
           _pickedImageBytes = result.files.single.bytes;
           _pickedImageName = result.files.single.name;
-          _existingPhotoUrl = null; // Remove a foto antiga da pré-visualização
+          _existingPhotoUrl = null;
         });
       }
     } catch (e) {
@@ -175,6 +193,15 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       );
       return;
     }
+
+    // --- NOVO: Validação de Função (só para staff) ---
+    if (_isStaff && _selectedStaffRole == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, selecione a Função na comissão.')),
+      );
+      return;
+    }
+    // --- FIM ---
     
     setState(() { _isSaving = true; });
 
@@ -219,22 +246,27 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
       Map<String, dynamic> playerData = {
         'name': name,
-        'jersey_number': number,
         'team_id': widget.teamId,
         'team_name': widget.teamName,
         'isActive': _isActive,
         'is_staff': _isStaff,
-        'is_goalkeeper': _isGoalkeeper,
-        'position': _isGoalkeeper || _isStaff ? null : _selectedPosition,
         
-        'date_of_birth': dobTimestamp,
-        'height_cm': height,
-        'weight_kg': weight,
+        // --- NOVO: Salva a Função (Staff Role) ---
+        'staff_role': _isStaff ? _selectedStaffRole : null,
+        // --- FIM ---
+        
+        // Campos específicos de Jogador (nulos se for staff)
+        'jersey_number': _isStaff ? null : number,
+        'is_goalkeeper': _isStaff ? false : _isGoalkeeper,
+        'position': _isGoalkeeper || _isStaff ? null : _selectedPosition,
+        'date_of_birth': _isStaff ? null : dobTimestamp,
+        'height_cm': _isStaff ? null : height,
+        'weight_kg': _isStaff ? null : weight,
         'preferred_foot': _isGoalkeeper || _isStaff ? null : _selectedPreferredFoot,
 
-        'photo_url': finalPhotoUrl, // <-- NOVO CAMPO SALVO
+        'photo_url': finalPhotoUrl,
 
-        // Estatísticas
+        // Estatísticas (são salvas para staff também, para cartões)
         'goals': widget.playerDoc != null ? (widget.playerDoc!['goals'] ?? 0) : 0,
         'assists': widget.playerDoc != null ? (widget.playerDoc!['assists'] ?? 0) : 0,
         'yellow_cards': widget.playerDoc != null ? (widget.playerDoc!['yellow_cards'] ?? 0) : 0,
@@ -256,13 +288,13 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Jogador ${widget.playerDoc == null ? 'salvo' : 'atualizado'} com sucesso!')),
+          SnackBar(content: Text('Membro ${widget.playerDoc == null ? 'salvo' : 'atualizado'} com sucesso!')),
         );
       }
     } catch (e) {
        if (mounted) {
          ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text('Erro ao salvar jogador: $e')),
+           SnackBar(content: Text('Erro ao salvar membro: $e')),
          );
        }
     } finally {
@@ -274,7 +306,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.playerDoc == null ? 'Novo Jogador' : 'Editar Jogador'),
+        title: Text(widget.playerDoc == null ? 'Novo Membro' : 'Editar Membro'),
         actions: [
           IconButton(
             icon: _isSaving ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Icon(Icons.save),
@@ -314,8 +346,47 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
             SwitchListTile(
               title: const Text('Faz parte da Comissão Técnica?'),
               value: _isStaff,
-              onChanged: _isSaving ? null : (value) => setState(() => _isStaff = value),
+              onChanged: _isSaving ? null : (value) {
+                setState(() {
+                  _isStaff = value;
+                  // Define/reseta o valor padrão da função
+                  if (_isStaff && _selectedStaffRole == null) {
+                    _selectedStaffRole = 'Técnico';
+                  }
+                });
+              },
             ),
+
+            // --- NOVO: Dropdown da Função (só aparece se _isStaff == true) ---
+            if (_isStaff)
+              Padding(
+                padding: const EdgeInsets.only(top: 16.0),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedStaffRole,
+                  decoration: const InputDecoration(
+                    labelText: 'Função na Comissão',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _staffRoleOptions.map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    );
+                  }).toList(),
+                  onChanged: _isSaving ? null : (String? newValue) {
+                    setState(() {
+                      _selectedStaffRole = newValue;
+                    });
+                  },
+                  validator: (value) {
+                    if (_isStaff && value == null) {
+                      return 'Por favor, selecione uma função.';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+            // --- FIM DO NOVO DROPDOWN ---
             
             if (!_isStaff) ...[
               const SizedBox(height: 16),
