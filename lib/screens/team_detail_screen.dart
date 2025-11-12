@@ -9,10 +9,9 @@ import 'package:intl/intl.dart';
 import 'edit_player_screen.dart';
 import '../services/firestore_service.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
-//import 'player_profile_screen.dart';
 
 class TeamDetailScreen extends StatefulWidget {
-  final DocumentSnapshot teamDoc; // Recebe o documento do time selecionado
+  final DocumentSnapshot teamDoc;
 
   const TeamDetailScreen({super.key, required this.teamDoc});
 
@@ -24,14 +23,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirestoreService _firestoreService = FirestoreService();
 
-  // --- NOVO ESTADO: Para guardar a lista de jogadores para o diálogo ---
   List<DocumentSnapshot> _allPlayers = [];
-  // --- FIM ---
 
   @override
   void initState() {
     super.initState();
-
     try {
       final teamData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
       final teamName = teamData['name'] ?? 'TimeDesconhecido';
@@ -43,7 +39,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
   }
 
-  // --- Função para mostrar o diálogo de Pontos Extras (Sem alteração) ---
+  // --- Funções _showAddExtraPointsDialog, _buildStatRow, _showDeletePlayerDialog, _getStaffIcon, _showSetStartersDialog ---
+  // (Estas funções permanecem idênticas às versões anteriores)
+
   Future<void> _showAddExtraPointsDialog() async {
     String? selectedReason;
     final pointsController = TextEditingController();
@@ -221,7 +219,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             );
                             return;
                           }
-                          // --- Fim da validação ---
 
                           setDialogState(() {
                             isLoading = true;
@@ -300,7 +297,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  // --- Função _buildStatRow (Sem alteração) ---
   Widget _buildStatRow(
     String label,
     String value, {
@@ -333,7 +329,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  // --- Função _showDeletePlayerDialog (Sem alteração) ---
   Future<void> _showDeletePlayerDialog(
     BuildContext context,
     DocumentSnapshot playerDoc,
@@ -371,12 +366,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
   }
 
-  // --- Função _getStaffIcon (Sem alteração) ---
   IconData _getStaffIcon(String? role) {
     if (role == null) return Icons.assignment_ind_outlined;
-
     String roleLower = role.toLowerCase();
-
     if (roleLower.contains('treinador') || roleLower.contains('técnico')) {
       if (roleLower.contains('auxiliar')) {
         return Icons.support_agent;
@@ -396,20 +388,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     if (roleLower.contains('massagista') || roleLower.contains('fisio')) {
       return Icons.healing;
     }
-
     return Icons.assignment_ind_outlined;
   }
 
-  // --- NOVA FUNÇÃO: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
-  // (Lógica copiada de 'admin_match_screen.dart' e adaptada)
-  // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
-  // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
-  // --- FUNÇÃO CORRIGIDA: DIÁLOGO PARA DEFINIR TITULARES PADRÃO ---
   Future<void> _showSetStartersDialog(
     BuildContext context,
     List<DocumentSnapshot> allTeamPlayers,
   ) async {
-    // Lê os titulares padrão ATUAIS do documento do time
     final currentData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
     List<String> selectedIds = List<String>.from(
       currentData['default_starters'] ?? [],
@@ -420,7 +405,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
-            // Lógica de validação (1 Goleiro, 4 Linha)
             int selectedGkCount = 0;
             int selectedLineCount = 0;
             try {
@@ -468,7 +452,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     const Divider(),
 
                     SizedBox(
-                      height: 300, // Altura fixa para a lista rolável
+                      height: 300,
                       width: double.maxFinite,
                       child: ListView.builder(
                         shrinkWrap: true,
@@ -480,7 +464,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             player.id,
                           );
 
-                          // Lógica da Posição
                           final bool isGk = data['is_goalkeeper'] ?? false;
                           final String? position = data['position'];
                           String displayPosition = 'Posição Indefinida';
@@ -491,19 +474,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             displayPosition = position;
                           }
 
-                          // --- INÍCIO DA ALTERAÇÃO (Nome do Jogador) ---
                           final String name = data['name'] ?? '...';
                           final int? number = data['jersey_number'];
-                          // Formata o nome para "10. Craque do Time" ou "-. Jogador Sem Número"
                           final String displayName = number != null
                               ? '$number. $name'
                               : '-. $name';
-                          // --- FIM DA ALTERAÇÃO ---
 
                           return CheckboxListTile(
-                            title: Text(
-                              displayName,
-                            ), // <-- USA A VARIÁVEL 'displayName'
+                            title: Text(displayName),
                             subtitle: Text(displayPosition),
                             value: isSelected,
                             onChanged: (bool? value) {
@@ -562,14 +540,90 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       },
     );
   }
-  // --- FIM DA FUNÇÃO CORRIGIDA ---
+
+  // --- INÍCIO DA NOVA FUNÇÃO (Histórico de Títulos) ---
+  Widget _buildChampionshipHistory(Map<String, dynamic> teamData) {
+    // Lê a lista de histórico.
+    final List<dynamic>? historyList =
+        teamData['championship_history'] as List<dynamic>?;
+
+    if (historyList == null || historyList.isEmpty) {
+      // Se não houver histórico, não mostra nada
+      return const SizedBox.shrink();
+    }
+
+    // Converte a lista dinâmica em widgets
+    List<Widget> trophyWidgets = historyList.map((item) {
+      if (item is! Map) return const SizedBox.shrink(); // Validação
+      final data = item as Map<String, dynamic>;
+      final int rank = data['rank'] ?? 0;
+      final String year = (data['year'] ?? '????').toString();
+
+      Color trophyColor;
+      IconData trophyIcon = Icons.emoji_events; // O ícone de troféu
+
+      if (rank == 1) {
+        trophyColor = Colors.amber; // Ouro
+      } else if (rank == 2) {
+        trophyColor = Colors.grey[600]!; // Prata
+      } else {
+        return const SizedBox.shrink(); // Ignora se não for 1º ou 2º
+      }
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12.0),
+        child: Column(
+          children: [
+            Icon(trophyIcon, color: trophyColor, size: 30),
+            const SizedBox(height: 4),
+            Text(
+              year,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[700],
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+
+    // Retorna um Card envolvendo uma lista rolável horizontalmente
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Sala de Troféus',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const Divider(),
+            // Usa um SingleChildScrollView horizontal caso a lista
+            // de troféus seja muito longa
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Row(children: trophyWidgets),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
 
   @override
   Widget build(BuildContext context) {
     final teamData = widget.teamDoc.data() as Map<String, dynamic>;
     final teamId = widget.teamDoc.id;
     final teamName = teamData['name'] ?? 'Equipe';
-    //final teamShieldUrl = teamData['shield_url'] ?? ''; // (Removido pois não é mais passado para EditPlayerScreen)
 
     // Extrai as estatísticas para o resumo
     final points = (teamData['points'] ?? 0).toString();
@@ -593,31 +647,25 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   tooltip: 'Adicionar Pontos Extras',
                   onPressed: _showAddExtraPointsDialog,
                 ),
-
-                // --- NOVO BOTÃO "DEFINIR TITULARES" ---
                 IconButton(
-                  icon: const Icon(Icons.dashboard),
+                  icon: const Icon(Icons.shield_outlined),
                   tooltip: 'Definir Titulares Padrão',
-                  // Desabilita se a lista de jogadores não foi carregada ainda
                   onPressed: _allPlayers.isEmpty
                       ? null
                       : () {
                           _showSetStartersDialog(context, _allPlayers);
                         },
                 ),
-
-                // --- FIM DO NOVO BOTÃO ---
                 IconButton(
                   icon: const Icon(Icons.person_add_alt_1),
                   tooltip: 'Adicionar Novo Membro (Jogador/Staff)',
                   onPressed: () {
-                    // *** CORREÇÃO: 'teamShieldUrl' removido da chamada ***
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (ctx) => EditPlayerScreen(
                           teamId: teamId,
                           teamName: teamName,
-                          playerDoc: null, // Modo Criação
+                          playerDoc: null,
                         ),
                       ),
                     );
@@ -662,6 +710,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ],
               ),
             ),
+
+            // --- INÍCIO DA ALTERAÇÃO (CHAMADA DO NOVO WIDGET) ---
+            _buildChampionshipHistory(teamData),
+            // --- FIM DA ALTERAÇÃO ---
 
             // --- CARD DE RESUMO DAS ESTATÍSTICAS ---
             Card(
@@ -759,7 +811,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
-
             StreamBuilder<QuerySnapshot>(
               stream: _firestore
                   .collection('players')
@@ -791,22 +842,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                 final players = playerSnapshot.data!.docs;
 
-                // --- INÍCIO DA CORREÇÃO: Lógica anti-loop ---
-                // Vamos verificar se a lista de jogadores mudou antes de chamar setState
                 bool listsAreDifferent = false;
                 if (players.length != _allPlayers.length) {
                   listsAreDifferent = true;
                 } else {
-                  // Se o tamanho for igual, verifica se os IDs são os mesmos na mesma ordem
                   for (int i = 0; i < players.length; i++) {
                     if (players[i].id != _allPlayers[i].id) {
                       listsAreDifferent = true;
-                      break; // Encontrou uma diferença, pode parar
+                      break;
                     }
                   }
                 }
 
-                // Só chama setState SE a lista for realmente nova
                 if (listsAreDifferent) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) {
@@ -814,7 +861,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     }
                   });
                 }
-                // --- FIM DA CORREÇÃO ---
 
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -943,18 +989,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                     maxLines: 1,
                                   ),
                                 ),
-
                                 onTap: () {
-                                  // TODO: Descomente este bloco para ativar a navegação
-                                  // para a tela de perfil do jogador na próxima temporada.
-
-                                  
-                                  //Navigator.of(context).push(
-                                    //MaterialPageRoute(
-                                      //builder: (ctx) => PlayerProfileScreen(playerDoc: playerDoc),
-                                    //),
-                                  //);
-                                  
+                                  // TODO: Descomente para ativar a navegação
+                                  /*
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (ctx) => PlayerProfileScreen(playerDoc: playerDoc),
+                                    ),
+                                  );
+                                  */
                                 },
                               ),
                               DataCell(
@@ -1060,9 +1103,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             ],
                           );
                         } catch (e) {
-                          debugPrint(
-                            "Erro ao renderizar DataRow: $e",
-                          ); // Log de erro
+                          debugPrint("Erro ao renderizar DataRow: $e");
                           return DataRow(
                             cells: List.generate(
                               AdminService.isAdmin ? 9 : 8,
@@ -1191,13 +1232,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                     color: Theme.of(context).primaryColor,
                                     tooltip: 'Editar Membro',
                                     onPressed: () {
-                                      // *** CORREÇÃO: 'teamShieldUrl' removido ***
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
                                           builder: (ctx) => EditPlayerScreen(
                                             teamId: teamId,
                                             teamName: teamName,
-                                            playerDoc: member, // Modo Edição
+                                            playerDoc: member,
                                           ),
                                         ),
                                       );

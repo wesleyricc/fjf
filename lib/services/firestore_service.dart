@@ -305,15 +305,16 @@ class FirestoreService {
     required String name,
     required String shortName,
     required String shieldUrl,
+    required List<Map<String, dynamic>> championshipHistory,
   }) async {
     try {
-      final newTeamRef = _firestore.collection('teams').doc(); // ID automático
+      final newTeamRef = _firestore.collection('teams').doc();
 
-      // Define todos os campos de estatísticas como 0
       await newTeamRef.set({
         'name': name,
         'short_name': shortName,
         'shield_url': shieldUrl,
+        'championship_history': championshipHistory,
         // Stats de Classificação (1ª Fase)
         'points': 0,
         'match_points': 0,
@@ -345,12 +346,14 @@ class FirestoreService {
     required String name,
     required String shortName,
     required String shieldUrl,
+    required List<Map<String, dynamic>> championshipHistory,
   }) async {
     try {
       await teamDoc.reference.update({
         'name': name,
         'short_name': shortName,
         'shield_url': shieldUrl,
+        'championship_history': championshipHistory,
       });
 
       // ATENÇÃO: Se o nome ou escudo mudou, idealmente deveríamos
