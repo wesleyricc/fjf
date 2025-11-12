@@ -9,6 +9,8 @@ import 'package:intl/intl.dart';
 import 'edit_player_screen.dart';
 import '../services/firestore_service.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+// (Import da PlayerProfileScreen removido se não estiver a ser usado)
+// import 'player_profile_screen.dart'; 
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc;
@@ -25,6 +27,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   List<DocumentSnapshot> _allPlayers = [];
 
+  // --- NOVO: Scroll Controller para Histórico ---
+  late ScrollController _historyScrollController;
+  bool _showHistoryScrollIndicator = false;
+  // --- FIM ---
+
   @override
   void initState() {
     super.initState();
@@ -37,7 +44,44 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     } catch (e) {
       debugPrint("Erro ao logar screen_view (TeamDetailScreen): $e");
     }
+
+    // --- NOVO: Inicializa o Controller e o Listener ---
+    _historyScrollController = ScrollController();
+    _historyScrollController.addListener(_checkScroll);
+    // --- FIM ---
   }
+
+  @override
+  void dispose() {
+    // --- NOVO: Dispose do Controller ---
+    _historyScrollController.removeListener(_checkScroll);
+    _historyScrollController.dispose();
+    // --- FIM ---
+    super.dispose();
+  }
+
+  // --- NOVA FUNÇÃO: Listener do Scroll ---
+  void _checkScroll() {
+    bool shouldShow = false;
+    if (_historyScrollController.hasClients) {
+      // Se o scroll máximo for maior que 0, significa que há conteúdo para rolar
+      // Adicionamos uma pequena tolerância (ex: 5 pixels)
+      shouldShow = _historyScrollController.position.maxScrollExtent > 5.0;
+    }
+    
+    // Só atualiza o estado se o valor realmente mudou
+    if (shouldShow != _showHistoryScrollIndicator) {
+      // Usamos 'addPostFrameCallback' para evitar 'setState' durante o build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+         if (mounted) {
+           setState(() {
+             _showHistoryScrollIndicator = shouldShow;
+           });
+         }
+      });
+    }
+  }
+  // --- FIM ---
 
   // --- Funções _showAddExtraPointsDialog, _buildStatRow, _showDeletePlayerDialog, _getStaffIcon, _showSetStartersDialog ---
   // (Estas funções permanecem idênticas às versões anteriores)
@@ -46,7 +90,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     String? selectedReason;
     final pointsController = TextEditingController();
     bool isLoading = false;
-    DateTime selectedDate = DateTime.now();
+    DateTime selectedDate =
+        DateTime.now();
 
     final Map<String, int> extraPointsOptions = {
       'Rainha FJF': 1,
@@ -132,7 +177,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       ),
                       enabled:
                           !isLoading &&
-                          (selectedReason?.contains('Outro') ?? false),
+                          (selectedReason?.contains('Outro') ??
+                              false),
                       validator: (value) {
                         if (value == null || value.isEmpty)
                           return 'Informe os pontos';
@@ -157,7 +203,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           tooltip: 'Selecionar Data',
                           onPressed: isLoading
                               ? null
-                              : () => _pickDate(dialogContext, setDialogState),
+                              : () => _pickDate(
+                                  dialogContext,
+                                  setDialogState,
+                                ),
                           color: Theme.of(context).primaryColor,
                         ),
                       ],
@@ -205,7 +254,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               );
                               return;
                             }
-                            pointsController.text = mapPoints.toString();
+                            pointsController.text = mapPoints
+                                .toString();
                           }
                           final finalPoints =
                               int.tryParse(pointsController.text) ?? 0;
@@ -306,7 +356,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment
+            .spaceBetween,
         children: [
           Row(
             children: [
@@ -359,7 +410,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
 
     if (confirm == true && mounted) {
-      final result = await _firestoreService.deletePlayer(playerDoc);
+      final result = await _firestoreService.deletePlayer(
+        playerDoc,
+      );
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(result)));
@@ -372,7 +425,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     if (roleLower.contains('treinador') || roleLower.contains('técnico')) {
       if (roleLower.contains('auxiliar')) {
         return Icons.support_agent;
-      } else {
+      } else{
         return Icons.content_paste;
       }
     }
@@ -392,24 +445,23 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 
   Future<void> _showSetStartersDialog(
-    BuildContext context,
-    List<DocumentSnapshot> allTeamPlayers,
+    BuildContext context, 
+    List<DocumentSnapshot> allTeamPlayers
   ) async {
     final currentData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
-    List<String> selectedIds = List<String>.from(
-      currentData['default_starters'] ?? [],
-    );
+    List<String> selectedIds = List<String>.from(currentData['default_starters'] ?? []);
 
     await showDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
+            
             int selectedGkCount = 0;
             int selectedLineCount = 0;
             try {
               for (String id in selectedIds) {
-                final player = allTeamPlayers.firstWhere((p) => p.id == id);
+                final player = allTeamPlayers.firstWhere((p) => p.id == id); 
                 final pData = player.data() as Map<String, dynamic>? ?? {};
                 if (pData['is_goalkeeper'] == true) {
                   selectedGkCount++;
@@ -417,22 +469,17 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   selectedLineCount++;
                 }
               }
-            } catch (e) {
+            } catch(e) {
               debugPrint("Erro ao validar titulares: $e.");
             }
-
+            
             String validationMessage = '';
-            if (selectedGkCount != 1)
-              validationMessage = 'Selecione 1 Goleiro.';
-            else if (selectedLineCount != 4)
-              validationMessage = 'Selecione 4 Jogadores de Linha.';
-            else
-              validationMessage = 'Escalação Correta (1 Goleiro, 4 Linha)';
+            if (selectedGkCount != 1) validationMessage = 'Selecione 1 Goleiro.';
+            else if (selectedLineCount != 4) validationMessage = 'Selecione 4 Jogadores de Linha.';
+            else validationMessage = 'Escalação Correta (1 Goleiro, 4 Linha)';
 
             return AlertDialog(
-              title: Text(
-                'Definir Titulares Padrão (${widget.teamDoc['name']})',
-              ),
+              title: Text('Definir Titulares Padrão (${widget.teamDoc['name']})'),
               content: Container(
                 width: double.maxFinite,
                 child: Column(
@@ -441,11 +488,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     Text(
                       validationMessage,
                       style: TextStyle(
-                        color:
-                            (validationMessage ==
-                                'Escalação Correta (1 Goleiro, 4 Linha)')
-                            ? Colors.green
-                            : Colors.red,
+                        color: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)') ? Colors.green : Colors.red,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -460,14 +503,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         itemBuilder: (context, index) {
                           final player = allTeamPlayers[index];
                           final data = player.data() as Map<String, dynamic>;
-                          final bool isSelected = selectedIds.contains(
-                            player.id,
-                          );
-
+                          final bool isSelected = selectedIds.contains(player.id);
+                          
                           final bool isGk = data['is_goalkeeper'] ?? false;
                           final String? position = data['position'];
                           String displayPosition = 'Posição Indefinida';
-
+                          
                           if (isGk) {
                             displayPosition = 'Goleiro';
                           } else if (position != null) {
@@ -476,9 +517,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                           final String name = data['name'] ?? '...';
                           final int? number = data['jersey_number'];
-                          final String displayName = number != null
-                              ? '$number. $name'
-                              : '-. $name';
+                          final String displayName = number != null ? '$number. $name' : '-. $name';
 
                           return CheckboxListTile(
                             title: Text(displayName),
@@ -501,36 +540,25 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
               ),
               actions: [
+                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
                 TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed:
-                      (validationMessage ==
-                          'Escalação Correta (1 Goleiro, 4 Linha)')
-                      ? () async {
-                          try {
-                            await widget.teamDoc.reference.update({
-                              'default_starters': selectedIds,
-                            });
-                            Navigator.of(ctx).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Titulares padrão salvos!'),
-                              ),
-                            );
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Erro ao salvar: ${e.toString()}',
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      : null,
+                  onPressed: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)')
+                   ? () async {
+                      try {
+                        await widget.teamDoc.reference.update({
+                          'default_starters': selectedIds
+                        });
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Titulares padrão salvos!'))
+                        );
+                      } catch (e) {
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(content: Text('Erro ao salvar: ${e.toString()}'))
+                         );
+                      }
+                   } 
+                   : null,
                   child: const Text('Confirmar'),
                 ),
               ],
@@ -541,33 +569,29 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  // --- INÍCIO DA NOVA FUNÇÃO (Histórico de Títulos) ---
+  // --- FUNÇÃO DE HISTÓRICO DE TÍTULOS (MODIFICADA) ---
   Widget _buildChampionshipHistory(Map<String, dynamic> teamData) {
-    // Lê a lista de histórico.
-    final List<dynamic>? historyList =
-        teamData['championship_history'] as List<dynamic>?;
+    final List<dynamic>? historyList = teamData['championship_history'] as List<dynamic>?;
 
     if (historyList == null || historyList.isEmpty) {
-      // Se não houver histórico, não mostra nada
-      return const SizedBox.shrink();
+      return const SizedBox.shrink(); 
     }
 
-    // Converte a lista dinâmica em widgets
     List<Widget> trophyWidgets = historyList.map((item) {
-      if (item is! Map) return const SizedBox.shrink(); // Validação
+      if (item is! Map) return const SizedBox.shrink();
       final data = item as Map<String, dynamic>;
       final int rank = data['rank'] ?? 0;
       final String year = (data['year'] ?? '????').toString();
-
+      
       Color trophyColor;
-      IconData trophyIcon = Icons.emoji_events; // O ícone de troféu
+      IconData trophyIcon = Icons.emoji_events;
 
       if (rank == 1) {
         trophyColor = Colors.amber; // Ouro
       } else if (rank == 2) {
         trophyColor = Colors.grey[600]!; // Prata
       } else {
-        return const SizedBox.shrink(); // Ignora se não for 1º ou 2º
+        return const SizedBox.shrink();
       }
 
       return Padding(
@@ -589,7 +613,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       );
     }).toList();
 
-    // Retorna um Card envolvendo uma lista rolável horizontalmente
+    // --- NOVO: Adiciona um callback para checar o scroll após o build ---
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkScroll());
+    // --- FIM ---
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
       elevation: 1,
@@ -600,24 +627,65 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           children: [
             Text(
               'Sala de Troféus',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const Divider(),
-            // Usa um SingleChildScrollView horizontal caso a lista
-            // de troféus seja muito longa
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Row(children: trophyWidgets),
+            
+            // --- INÍCIO DA ALTERAÇÃO (Stack com Seta) ---
+            Stack(
+              alignment: Alignment.centerRight,
+              children: [
+                SingleChildScrollView(
+                  controller: _historyScrollController, // <-- Associa o controller
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    children: [
+                      ...trophyWidgets,
+                      // Adiciona um espaço extra no final
+                      // para a seta não ficar em cima do último troféu
+                      const SizedBox(width: 20), 
+                    ],
+                  ),
+                ),
+                
+                // Seta (só aparece se _showHistoryScrollIndicator for true)
+                // Usando 'IgnorePointer' para que a seta não bloqueie o scroll
+                IgnorePointer(
+                  child: Visibility(
+                    visible: _showHistoryScrollIndicator,
+                    child: Container(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      // Gradiente suave para a seta
+                      decoration: BoxDecoration(
+                        gradient: RadialGradient(
+                          center: Alignment.centerRight,
+                          radius: 1.5,
+                          colors: [
+                            Theme.of(context).cardColor.withOpacity(0.8),
+                            Theme.of(context).cardColor.withOpacity(0.0),
+                          ],
+                        )
+                      ),
+                      child: Icon(
+                        Icons.arrow_forward_ios, 
+                        size: 16, 
+                        color: Colors.grey[600]
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            // --- FIM DA ALTERAÇÃO ---
           ],
         ),
       ),
     );
   }
-  // --- FIM DA NOVA FUNÇÃO ---
+  // --- FIM DA FUNÇÃO ---
 
   @override
   Widget build(BuildContext context) {
@@ -625,7 +693,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final teamId = widget.teamDoc.id;
     final teamName = teamData['name'] ?? 'Equipe';
 
-    // Extrai as estatísticas para o resumo
     final points = (teamData['points'] ?? 0).toString();
     final gamesPlayed = (teamData['games_played'] ?? 0).toString();
     final wins = (teamData['wins'] ?? 0).toString();
@@ -645,16 +712,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline),
                   tooltip: 'Adicionar Pontos Extras',
-                  onPressed: _showAddExtraPointsDialog,
+                  onPressed:
+                      _showAddExtraPointsDialog,
                 ),
                 IconButton(
                   icon: const Icon(Icons.shield_outlined),
                   tooltip: 'Definir Titulares Padrão',
-                  onPressed: _allPlayers.isEmpty
-                      ? null
-                      : () {
-                          _showSetStartersDialog(context, _allPlayers);
-                        },
+                  onPressed: _allPlayers.isEmpty ? null : () {
+                    _showSetStartersDialog(context, _allPlayers);
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.person_add_alt_1),
@@ -710,10 +776,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ],
               ),
             ),
-
-            // --- INÍCIO DA ALTERAÇÃO (CHAMADA DO NOVO WIDGET) ---
+            
+            // --- CHAMADA DO NOVO WIDGET ---
             _buildChampionshipHistory(teamData),
-            // --- FIM DA ALTERAÇÃO ---
+            // --- FIM ---
 
             // --- CARD DE RESUMO DAS ESTATÍSTICAS ---
             Card(
@@ -776,7 +842,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
               ),
             ),
-
+            
             // --- Botão para ver Histórico ---
             Padding(
               padding: const EdgeInsets.symmetric(
@@ -841,7 +907,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 }
 
                 final players = playerSnapshot.data!.docs;
-
+                
                 bool listsAreDifferent = false;
                 if (players.length != _allPlayers.length) {
                   listsAreDifferent = true;
@@ -878,7 +944,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           numeric: true,
                         ),
                         const DataColumn(label: Text('Jogador')),
-                        const DataColumn(label: Center(child: Text('Pos.'))),
+                        const DataColumn(
+                          label: Center(child: Text('Pos.')),
+                        ),
                         DataColumn(
                           label: Container(
                             alignment: Alignment.center,
@@ -952,17 +1020,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             displayPosition = 'GK';
                           } else if (position != null) {
                             switch (position) {
-                              case 'Fixo':
-                                displayPosition = 'FIXO';
-                                break;
-                              case 'Ala':
-                                displayPosition = 'ALA';
-                                break;
-                              case 'Pivô':
-                                displayPosition = 'PIVO';
-                                break;
-                              default:
-                                displayPosition = 'LIN';
+                              case 'Fixo': displayPosition = 'FIX'; break;
+                              case 'Ala': displayPosition = 'ALA'; break;
+                              case 'Pivô': displayPosition = 'PIV'; break;
+                              default: displayPosition = 'LIN';
                             }
                           }
 
@@ -971,7 +1032,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               DataCell(
                                 Center(
                                   child: Text(
-                                    number?.toString() ?? '-',
+                                    number?.toString() ??
+                                        '-',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -980,9 +1042,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               ),
                               DataCell(
                                 Container(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 150,
-                                  ),
+                                  constraints: const BoxConstraints(maxWidth: 150),
                                   child: Text(
                                     playerData['name'] ?? '...',
                                     overflow: TextOverflow.ellipsis,
@@ -1005,12 +1065,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   child: Text(
                                     displayPosition,
                                     style: TextStyle(
-                                      fontWeight: isGoalkeeper
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: isGoalkeeper
-                                          ? Colors.blueGrey[700]
-                                          : Colors.black,
+                                      fontWeight: isGoalkeeper ? FontWeight.bold : FontWeight.normal,
+                                      color: isGoalkeeper ? Colors.blueGrey[700] : Colors.black,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -1072,12 +1128,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                         onPressed: () {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
-                                              builder: (ctx) =>
-                                                  EditPlayerScreen(
-                                                    teamId: teamId,
-                                                    teamName: teamName,
-                                                    playerDoc: playerDoc,
-                                                  ),
+                                              builder: (ctx) => EditPlayerScreen(
+                                                teamId: teamId,
+                                                teamName: teamName,
+                                                playerDoc:
+                                                    playerDoc,
+                                              ),
                                             ),
                                           );
                                         },
@@ -1105,10 +1161,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         } catch (e) {
                           debugPrint("Erro ao renderizar DataRow: $e");
                           return DataRow(
-                            cells: List.generate(
-                              AdminService.isAdmin ? 9 : 8,
-                              (index) => DataCell(Text('Erro')),
-                            ),
+                            cells: List.generate(AdminService.isAdmin ? 9 : 8, (index) => DataCell(Text('Erro'))),
                           );
                         }
                       }).toList(),
@@ -1117,7 +1170,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 );
               },
             ),
-
+            
             // --- Seção Comissão Técnica ---
             const SizedBox(height: 24),
             const Divider(),
@@ -1200,7 +1253,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   itemBuilder: (context, index) {
                     final member = staffList[index];
                     final data = member.data() as Map<String, dynamic>;
-                    final String staffRole = data['staff_role'] ?? 'Membro';
+                    final String staffRole =
+                        data['staff_role'] ?? 'Membro';
                     final IconData staffIcon = _getStaffIcon(staffRole);
 
                     return Card(
