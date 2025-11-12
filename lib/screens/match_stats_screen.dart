@@ -368,27 +368,31 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     // Função auxiliar de ordenação
     void sortPlayersByNumber(List<Map<String, dynamic>> players) {
       players.sort((a, b) {
+        // Ordena por Staff (false) antes de Staff (true)
+        int staffCompare = (a['is_staff'] ? 1 : 0).compareTo(b['is_staff'] ? 1 : 0);
+        if (staffCompare != 0) return staffCompare;
+
         final int? aNum = a['number'];
         final int? bNum = b['number'];
         if (aNum != null && bNum != null) {
-          return aNum.compareTo(bNum); // 1. Numérico
+          return aNum.compareTo(bNum);
         } else if (aNum != null && bNum == null) {
-          return -1; // 2. Com número vem antes
+          return -1;
         } else if (aNum == null && bNum != null) {
-          return 1; // 3. Com número vem antes
+          return 1;
         } else {
-          return a['name'].compareTo(b['name']); // 4. Alfabético
+          return a['name'].compareTo(b['name']);
         }
       });
     }
 
-    List<Map<String, dynamic>> goalPlayers =
-        []; // Guarda {'name': 'Nome', 'count': Qtd}
+    List<Map<String, dynamic>> goalPlayers = [];
     _goals.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
         int? number = _playerDataCache[playerId]?['jersey_number'];
-        goalPlayers.add({'name': name, 'count': count, 'number': number});
+        bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false;
+        goalPlayers.add({'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
       }
     });
     sortPlayersByNumber(goalPlayers); // Ordena
@@ -398,7 +402,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
         int? number = _playerDataCache[playerId]?['jersey_number'];
-        assistPlayers.add({'name': name, 'count': count, 'number': number});
+        bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false;
+        assistPlayers.add({'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
       }
     });
     sortPlayersByNumber(assistPlayers); // Ordena
@@ -429,7 +434,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     playersWithCardsData.forEach((playerId, cardCounts) {
       String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
       int? number = _playerDataCache[playerId]?['jersey_number'];
-      cardPlayers.add({'name': name, 'counts': cardCounts, 'number': number});
+      bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false; // <-- LÊ AQUI
+      cardPlayers.add({'name': name, 'counts': cardCounts, 'number': number, 'is_staff': isStaff}); // <-- PASSA AQUI
     });
     sortPlayersByNumber(cardPlayers); // Ordena
 
@@ -445,7 +451,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
           child: SizedBox(
             width: double.infinity,
             child: Text(
-              teamName, // Usa o nome do time passado como parâmetro
+              teamName,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
@@ -462,6 +468,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                   name: player['name'],
                   count: player['count'],
                   number: player['number'],
+                  isStaff: player['is_staff'], 
                   alignment: alignment,
                 ),
               )
@@ -471,19 +478,20 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         // Seção Assists (Itera sobre a lista ordenada)
         /*if (assistPlayers.isNotEmpty) ...[
           _buildStatHeader('Assistências', Icons.assistant, alignment),
-          ...assistPlayersr
+          ...assistPlayers
               .map(
                 (player) => _buildStatItem(
                   name: player['name'],
                   count: player['count'],
                   number: player['number'],
+                  isStaff: player['is_staff'], 
                   alignment: alignment,
                 ),
               )
               .toList(),
           const SizedBox(height: 12),
-        ],*/
-
+        ],
+        */
         // Seção Cartões (Itera sobre a lista ordenada)
         if (cardPlayers.isNotEmpty) ...[
           _buildStatHeader('Cartões', Icons.style_outlined, alignment),
@@ -495,6 +503,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                       player['counts']
                           as Map<String, int>, // Pega o mapa de contagens
                   number: player['number'],
+                  isStaff: player['is_staff'],
                   alignment: alignment,
                 ),
               )
@@ -559,12 +568,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     required String name,
     required int count,
     required CrossAxisAlignment alignment,
+    required bool isStaff,
     int? number,
   }) {
     // Formata o nome: "Nº. Nome (Qtd)" ou "-. Nome (Qtd)"
     String numberPrefix = number != null ? '#$number ' : '';
     String countSuffix = (count > 1) ? ' ($count)' : '';
-    String displayText = '$numberPrefix$name$countSuffix';
+    String staffSuffix = isStaff ? ' (Comissão)' : ''; // <-- NOVO
+    String displayText = '$numberPrefix$name$staffSuffix$countSuffix';
 
     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
         ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
@@ -580,7 +591,10 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         child: Text(
           // Removido Flexible, pode não ser necessário aqui
           displayText,
-          style: const TextStyle(fontSize: 14),
+          style: TextStyle(
+            fontSize: 14,
+            fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // <-- NOVO
+          ),
           textAlign: alignment == CrossAxisAlignment.start
               ? TextAlign.start
               : TextAlign.end,
@@ -693,8 +707,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
   // --- NOVA FUNÇÃO AUXILIAR PARA ITEM DE CARTÃO ---
   Widget _buildCardStatItem({
     required String name,
-    required Map<String, int> cardCounts, // {'yellow': count, 'red': count}
+    required Map<String, int> cardCounts,
     required CrossAxisAlignment alignment,
+    required bool isStaff,
     int? number,
   }) {
     int yellowCount = cardCounts['yellow'] ?? 0;
@@ -702,12 +717,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
 
     // Formata o nome: "Nº. Nome"
     String numberPrefix = number != null ? '#$number ' : '';
-    String displayText = '$numberPrefix$name';
-
-    // Adiciona contagem de amarelos (se > 1)
-    //if (yellowCount > 1) {
-      //displayText += ' ($yellowCount)';
-    //}
+    String staffSuffix = isStaff ? ' (Comissão)' : ''; // <-- NOVO
+    String displayText = '$numberPrefix$name$staffSuffix';
 
     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
         ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
@@ -753,7 +764,10 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               Flexible(
                 child: Text(
                   displayText,
-                  style: const TextStyle(fontSize: 14),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // <-- NOVO
+                  ),
                   textAlign: TextAlign.end,
                 ),
               ),
@@ -761,17 +775,20 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: cardIndicators,
-              ), // Agrupa indicadores
+              ), 
             ] else ...[
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: cardIndicators,
-              ), // Agrupa indicadores
+              ),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   displayText,
-                  style: const TextStyle(fontSize: 14),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // <-- NOVO
+                  ),
                   textAlign: TextAlign.start,
                 ),
               ),
