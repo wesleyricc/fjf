@@ -901,7 +901,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
                   playerName,
                   style: TextStyle(
                     decoration: isSuspended ? TextDecoration.lineThrough : TextDecoration.none,
-                    color: isSuspended ? Colors.grey[600] : null,
+                    color: isSuspended ? Colors.grey[800] : null,
                   ),
                 ),
                 subtitle: Text('${isGoalkeeper ? 'Goleiro' : position}'),

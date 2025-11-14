@@ -41,18 +41,23 @@ class _StandingsScreenState extends State<StandingsScreen> {
 
   // Função _loadStandings (sem mudanças)
   Future<List<TeamStanding>> _loadStandings() async {
-    final teamsSnapshot = await _firestore.collection('teams').get();
+    final teamsSnapshot = await _firestore.collection('teams').get(
+          const GetOptions(source: Source.server),
+        );
     final matchesSnapshot = await _firestore
         .collection('matches')
         .where('status', isEqualTo: 'finished')
-        .get();
+        .get(
+          const GetOptions(source: Source.server),
+        );
+
     _finishedMatches = matchesSnapshot.docs;
     List<TeamStanding> standings = teamsSnapshot.docs
         .map((doc) => TeamStanding(doc))
         .toList();
     // Cria o Sorter e ordena
     final sorter = StandingsSorter(finishedMatches: _finishedMatches);
-    List<TeamStanding> sortedStandings = sorter.sort(standings); // Chama a função do utilitário
+    List<TeamStanding> sortedStandings = sorter.sort(standings);
 
     return sortedStandings;
   }

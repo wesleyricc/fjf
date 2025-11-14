@@ -625,10 +625,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            Center(
+              child: Text(
               'Sala de Troféus',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
+              ),
               ),
             ),
             const Divider(),
@@ -637,17 +639,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             Stack(
               alignment: Alignment.centerRight,
               children: [
-                SingleChildScrollView(
-                  controller: _historyScrollController, // <-- Associa o controller
+                Center(
+                  child: SingleChildScrollView(
+                  controller: _historyScrollController,
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(top: 8.0),
+                  padding: const EdgeInsets.only(top: 2.0, left: 12.0),
                   child: Row(
-                    children: [
+                    mainAxisAlignment: MainAxisAlignment.center, 
+                      children: [
                       ...trophyWidgets,
-                      // Adiciona um espaço extra no final
-                      // para a seta não ficar em cima do último troféu
                       const SizedBox(width: 20), 
                     ],
+                  ),
                   ),
                 ),
                 
@@ -744,34 +747,33 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- Cabeçalho do Time ---
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Row(
+              child: Column( // Alterado de Row para Column
+                crossAxisAlignment: CrossAxisAlignment.center, // Centraliza
                 children: [
                   SizedBox(
-                    width: 60,
-                    height: 60,
+                    width: 150, // Logo Maior
+                    height: 150, // Logo Maior
                     child: CachedNetworkImage(
                       imageUrl: teamData['shield_url'] ?? '',
                       placeholder: (context, url) => const Center(
-                        child: Icon(Icons.shield, size: 50, color: Colors.grey),
+                        child: Icon(Icons.shield, size: 80, color: Colors.grey),
                       ),
                       errorWidget: (context, url, error) => const Icon(
                         Icons.shield,
-                        size: 60,
+                        size: 150,
                         color: Colors.grey,
                       ),
                       fit: BoxFit.contain,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      teamName,
-                      style: Theme.of(context).textTheme.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ),
+                  const SizedBox(height: 12), // Espaço entre logo e nome
+                  Text(
+                    teamName,
+                    style: Theme.of(context).textTheme.headlineMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center, // Garante que o nome centralize
                   ),
                 ],
               ),
