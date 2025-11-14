@@ -1058,7 +1058,16 @@ class FirestoreService {
       List<TeamStanding> standings = teamsSnapshot.docs
           .map((doc) => TeamStanding(doc))
           .toList();
-      final sorter = StandingsSorter(finishedMatches: matchesSnapshot.docs);
+
+      // --- INÍCIO DA CORREÇÃO ---
+      // Converte List<DocumentSnapshot> para List<Map<String, dynamic>>
+      final List<Map<String, dynamic>> finishedMatchesData = 
+          matchesSnapshot.docs.map((doc) => doc.data()).toList();
+      
+      // Passa a lista de Mapas para o Sorter
+      final sorter = StandingsSorter(finishedMatches: finishedMatchesData);
+      // --- FIM DA CORREÇÃO ---
+
       List<TeamStanding> sortedStandings = sorter.sort(standings);
       debugPrint("[SERVICE_RANK] Classificação ordenada.");
 
@@ -1095,7 +1104,16 @@ class FirestoreService {
       List<TeamStanding> standings = teamsSnapshot.docs
           .map((doc) => TeamStanding(doc))
           .toList();
-      final sorter = StandingsSorter(finishedMatches: matchesSnapshot.docs);
+          
+      // --- INÍCIO DA CORREÇÃO ---
+      // Converte List<DocumentSnapshot> para List<Map<String, dynamic>>
+      final List<Map<String, dynamic>> finishedMatchesData = 
+          matchesSnapshot.docs.map((doc) => doc.data()).toList();
+          
+      // Passa a lista de Mapas para o Sorter
+      final sorter = StandingsSorter(finishedMatches: finishedMatchesData);
+      // --- FIM DA CORREÇÃO ---
+
       List<TeamStanding> sortedStandings = sorter.sort(standings);
 
       if (sortedStandings.length < 4)
