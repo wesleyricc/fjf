@@ -237,10 +237,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       winnerTeamId: winnerId,
       newSumulaUrl: finalSumulaUrl,
       newMediaLinks: _mediaLinks,
-      // --- REMOVIDO ---
-      newStartersHome: [], // Envia lista vazia
-      newStartersAway: [], // Envia lista vazia
-      // --- FIM DA ALTERAÇÃO ---
     );
 
     if (mounted)
