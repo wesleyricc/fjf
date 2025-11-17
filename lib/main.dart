@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fjf_app/firebase_options.dart'; 
+import 'package:fjf_app/firebase_options_test.dart' as test_options;
 import 'screens/splash_screen.dart';
 import 'services/admin_service.dart';
 import 'services/notification_service.dart';
@@ -18,12 +19,35 @@ import 'package:fjf_app/screens/report_bug_screen.dart';
 import 'package:fjf_app/screens/admin_menu_screen.dart';
 import 'package:fjf_app/screens/team_stats_screen.dart';
 
+// --- INÍCIO DA ALTERAÇÃO (Função helper) ---
+FirebaseOptions _getFirebaseOptions(String env) {
+  switch (env) {
+    case 'test':
+      debugPrint("--- USANDO AMBIENTE DE TESTE ---");
+      return test_options.DefaultFirebaseOptions.currentPlatform;
+    case 'prod':
+    default:
+      debugPrint("--- USANDO AMBIENTE DE PRODUÇÃO ---");
+      return DefaultFirebaseOptions.currentPlatform;
+  }
+}
+// --- FIM DA ALTERAÇÃO ---
 
-void main() async {
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('pt_BR', null);
+
+   // --- INÍCIO DA ALTERAÇÃO (Escolher Firebase) ---
+  // 1. Ler a variável de ambiente
+  const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
+  
+  // 2. Obter as opções corretas
+  final FirebaseOptions options = _getFirebaseOptions(environment);
+
+  // 3. Inicializar o Firebase com as opções CORRETAS
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+    options: options,
   );
 
    // --- 2. HABILITAR PERSISTÊNCIA OFFLINE ---
@@ -41,9 +65,9 @@ void main() async {
   // --- FIM DA ADIÇÃO ---
 
   await AdminService.loadDisciplinaryRules();
-  await AdminService.loadTiebreakerRules();
+  await AdminService.loadTiebreakerOrder();
   await AdminService.loadPlayoffRules();
-  await AdminService.loadDefaultRound();
+  await AdminService.loadAppSettings();
   await NotificationService().init();
 
   runApp(const MyApp());

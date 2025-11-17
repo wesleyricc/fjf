@@ -11,8 +11,8 @@ import '../services/admin_service.dart'; // Para admin e regras
 class TeamStatsScreen extends StatelessWidget {
   const TeamStatsScreen({super.key});
 
-  // --- 1. NOVA FUNÇÃO: DIÁLOGO DE AJUDA ---
   Future<void> _showTeamStatsHelp(BuildContext context) async {
+    // ... (A sua função de ajuda, sem alterações)
     return showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -21,7 +21,6 @@ class TeamStatsScreen extends StatelessWidget {
           content: SingleChildScrollView(
             child: RichText(
               text: TextSpan(
-                // Define o estilo padrão do texto do diálogo
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 15), 
                 children: <TextSpan>[
                   const TextSpan(text: 'Esta tela mostra os rankings e o status disciplinar das equipes.\n\n'),
@@ -41,6 +40,11 @@ class TeamStatsScreen extends StatelessWidget {
                   const TextSpan(text: 'Total de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Soma-se o total de CV e CA que a equipe levou e que contabilizam para a pontuação disciplinar. Conforme definido no regulamento do campeonato e pela CBFS. Ex: 2CA e 1CV no mesmo jogo, contabiliza-se nesta guia, apenas 1 CA e 1 CV.\n\n'),
 
+                  // --- INÍCIO DA ALTERAÇÃO (Adicionada nova legenda) ---
+                  const TextSpan(text: 'Fair Play (PD):\n', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const TextSpan(text: 'Ranking de equipes com menos Pontos Disciplinares (ordem ascendente). Este é o critério de desempate na classificação.\n\n'),
+                  // --- FIM DA ALTERAÇÃO ---
+
                   const TextSpan(text: 'Regra Geral de Suspensão:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextSpan(text: '- Um atleta é suspenso quando toma 1 CV ou ${AdminService.suspensionYellowCards} CA em jogos diferentes (2 CA no mesmo joga contabiliza-se apenas um para regra de Suspensão);\n'),
                   const TextSpan(text: '- Se um atleta vem para o jogo com 1 CA acumulado e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão pelo CV, e seus CA seguem acumulados;\n'),
@@ -48,9 +52,6 @@ class TeamStatsScreen extends StatelessWidget {
                   
                   const TextSpan(text: 'Regra Geral de Zeramento de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Um atleta tem seus CA zerados apenas quando cumpre suspensão por levar 3CA.\n'),
-
-
-
                 ],
               ),
             ),
@@ -67,14 +68,12 @@ class TeamStatsScreen extends StatelessWidget {
       },
     );
   }
-  // --- FIM DA NOVA FUNÇÃO ---
 
-  // --- Função Auxiliar Reutilizável para Listas de Ranking (Ordenação Simples) ---
   Widget _buildRankingList({
     required BuildContext context,
     required Query query,
-    required String statField, // Campo a ser exibido (ex: 'goals_for')
-    required String statLabel, // Rótulo (ex: 'GP')
+    required String statField,
+    required String statLabel,
     required String emptyMessage,
   }) {
     return StreamBuilder<QuerySnapshot>(
@@ -93,7 +92,6 @@ class TeamStatsScreen extends StatelessWidget {
 
         final teams = snapshot.data!.docs;
 
-        // --- Estrutura com Banner ---
         return SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 16.0),
           child: Column(
@@ -108,11 +106,9 @@ class TeamStatsScreen extends StatelessWidget {
                     final data = team.data() as Map<String, dynamic>;
                     final rank = index + 1;
                     final String shieldUrl = data['shield_url'] ?? '';
-                    final int statValue = data[statField] ?? 0; // Pega o valor da estatística
+                    final int statValue = data[statField] ?? 0;
 
-                    // --- INÍCIO DA ALTERAÇÃO (Widget do Trailing) ---
                     Widget trailingWidget;
-                    // Se for CA ou CV, mostra o ícone
                     if (statLabel == 'CA') {
                       trailingWidget = Row(mainAxisSize: MainAxisSize.min, children: [
                         Text('$statValue', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -126,16 +122,14 @@ class TeamStatsScreen extends StatelessWidget {
                         Icon(Icons.style, color: Colors.red[700], size: 20),
                       ]);
                     } else { 
-                      // Senão (GP, GC), mostra o texto
                       trailingWidget = Text(
                         '$statValue $statLabel',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       );
                     }
-                    // --- FIM DA ALTERAÇÃO ---
 
                     return ListTile(
-                      leading: RankIndicator(rank: rank), // Indicador Ouro/Prata/Bronze
+                      leading: RankIndicator(rank: rank),
                       title: Row(
                         children: [
                           if (shieldUrl.isNotEmpty)
@@ -154,7 +148,7 @@ class TeamStatsScreen extends StatelessWidget {
                            Expanded(child: Text(data['name'] ?? 'Nome Indisponível', overflow: TextOverflow.ellipsis)),
                         ],
                       ),
-                      trailing: trailingWidget, // <-- USA O WIDGET ATUALIZADO
+                      trailing: trailingWidget,
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: team))
@@ -170,19 +164,16 @@ class TeamStatsScreen extends StatelessWidget {
                      );
                   }
                 },
-              ), // Fim ListView
+              ),
             ],
           ),
         );
-        // --- FIM ---
       },
     );
   }
-  // --- FIM _buildRankingList ---
 
 
-   // --- Função Auxiliar para Lista de Total de Cartões (Ordenação no Cliente) ---
-  Widget _buildTotalCardsList({
+   Widget _buildTotalCardsList({
     required BuildContext context,
     required Stream<QuerySnapshot> stream,
     required String emptyMessage,
@@ -201,7 +192,6 @@ class TeamStatsScreen extends StatelessWidget {
           return Center(child: Text(emptyMessage));
         }
 
-        // --- LÓGICA DE ORDENAÇÃO NO CLIENTE ---
         List<Map<String, dynamic>> teamsData = snapshot.data!.docs.map((doc) {
            final data = doc.data() as Map<String, dynamic>;
            final yellow = data['total_yellow_cards'] ?? 0;
@@ -212,21 +202,21 @@ class TeamStatsScreen extends StatelessWidget {
              'shield_url': data['shield_url'] ?? '',
              'yellow_cards': yellow,
              'red_cards': red,
-             'total_cards': yellow + red, // Calcula o total
+             'total_cards': yellow + red,
            };
         }).toList();
 
-        teamsData.removeWhere((team) => team['total_cards'] == 0); // Remove times sem cartões
+        teamsData.removeWhere((team) => team['total_cards'] == 0);
 
-        // Ordena a lista
+        // Ordena por MENOS cartões primeiro
         teamsData.sort((a, b) {
-           int totalComp = a['total_cards'].compareTo(b['total_cards']); // Mais cartões primeiro
+           int totalComp = a['total_cards'].compareTo(b['total_cards']); 
            if (totalComp != 0) return totalComp;
-           int redComp = a['red_cards'].compareTo(b['red_cards']); // Desempate: mais vermelhos primeiro
+           int redComp = a['red_cards'].compareTo(b['red_cards']);
             if (redComp != 0) return redComp;
-           return a['name'].compareTo(b['name']); // Desempate: nome
+           return a['name'].compareTo(b['name']);
         });
-
+        
         if (teamsData.isEmpty) {
            return Center(child: Text(emptyMessage));
         }
@@ -268,7 +258,8 @@ class TeamStatsScreen extends StatelessWidget {
                            Expanded(child: Text(teamMap['name'], overflow: TextOverflow.ellipsis)),
                         ],
                     ),
-                    trailing: Column( // Mostra total e detalhe
+                    
+                    trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -276,7 +267,7 @@ class TeamStatsScreen extends StatelessWidget {
                           '$totalCards Cartões',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-                        Row(
+                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text('$yellowCards', style: const TextStyle(fontSize: 11, color: Colors.grey)),
@@ -288,6 +279,7 @@ class TeamStatsScreen extends StatelessWidget {
                         )
                       ],
                     ),
+
                     onTap: () {
                        Navigator.of(context).push(
                           MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc))
@@ -302,17 +294,125 @@ class TeamStatsScreen extends StatelessWidget {
       },
     );
   }
-  // --- FIM _buildTotalCardsList ---
+
+  // --- INÍCIO DA NOVA FUNÇÃO (Fair Play) ---
+  Widget _buildFairPlayList({
+    required BuildContext context,
+    required Query query,
+    required String emptyMessage,
+  }) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: query.snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+           debugPrint("Erro Stream TeamStats (Fair Play): ${snapshot.error}");
+           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(child: Text(emptyMessage));
+        }
+
+        final teams = snapshot.data!.docs;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 16.0),
+          child: Column(
+            children: [
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: teams.length,
+                itemBuilder: (context, index) {
+                  final team = teams[index];
+                  try {
+                    final data = team.data() as Map<String, dynamic>;
+                    final rank = index + 1;
+                    final String shieldUrl = data['shield_url'] ?? '';
+                    
+                    // Pega os 3 campos necessários
+                    final int statValue = data['disciplinary_points'] ?? 0;
+                    final int yellowCards = data['total_yellow_cards'] ?? 0;
+                    final int redCards = data['total_red_cards'] ?? 0;
+
+                    return ListTile(
+                      leading: RankIndicator(rank: rank),
+                      title: Row(
+                        children: [
+                          if (shieldUrl.isNotEmpty)
+                             Padding(
+                               padding: const EdgeInsets.only(right: 8.0),
+                               child: SizedBox(
+                                 width: 25, height: 25,
+                                 child: CachedNetworkImage(
+                                   imageUrl: shieldUrl,
+                                   placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
+                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
+                                   fit: BoxFit.contain,
+                                 ),
+                               ),
+                             ),
+                           Expanded(child: Text(data['name'] ?? 'Nome Indisponível', overflow: TextOverflow.ellipsis)),
+                        ],
+                      ),
+                      
+                      // Trailing personalizado com o resumo
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$statValue PD', // Pontos Disciplinares
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          // Legenda (Resumo)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('$yellowCards', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              Icon(Icons.style, color: Colors.yellow[700], size: 14),
+                              const Text(' / ', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                              Text('$redCards', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              Icon(Icons.style, color: Colors.red[700], size: 14),
+                            ],
+                          )
+                        ],
+                      ),
+                      
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: team))
+                        );
+                      },
+                    );
+                  } catch (e) {
+                     debugPrint("Erro ao processar time ${team.id} (Ranking Fair Play): $e");
+                     return ListTile(
+                       leading: CircleAvatar(child: Text('${index + 1}')),
+                       title: Text('Erro ao carregar time ${team.id}'),
+                       subtitle: Text(e.toString()),
+                     );
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
 
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5, // 5 Abas
+      length: 6, // <-- ALTERADO PARA 6 ABAS
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Estatísticas das Equipes'),
-          // --- 2. ADICIONA O BOTÃO DE AÇÃO (HELP) ---
           actions: [
             IconButton(
               icon: const Icon(Icons.help_outline),
@@ -322,7 +422,6 @@ class TeamStatsScreen extends StatelessWidget {
               },
             ),
           ],
-          // --- FIM DA ADIÇÃO ---
           bottom: const TabBar(
             isScrollable: true,
             labelColor: Colors.white,
@@ -334,6 +433,7 @@ class TeamStatsScreen extends StatelessWidget {
               Tab(text: 'Cartões Amarelos'),
               Tab(text: 'Cartões Vermelhos'),
               Tab(text: 'Total de Cartões'),
+              Tab(text: 'Fair Play (PD)'), // <-- NOVA ABA
             ],
           ),
         ),
@@ -343,7 +443,6 @@ class TeamStatsScreen extends StatelessWidget {
             // 1. Melhor Ataque (Mais GP)
             _buildRankingList(
               context: context,
-              // Query: Ordena por 'goals_for' (descendente)
               query: FirebaseFirestore.instance.collection('teams').orderBy('goals_for', descending: true).orderBy('name'),
               statField: 'goals_for',
               statLabel: 'GP',
@@ -352,37 +451,44 @@ class TeamStatsScreen extends StatelessWidget {
             // 2. Melhor Defesa (Menos GC)
             _buildRankingList(
               context: context,
-              // Query: Ordena por 'goals_against' (ascendente)
               query: FirebaseFirestore.instance.collection('teams').orderBy('goals_against', descending: false).orderBy('name'),
               statField: 'goals_against',
               statLabel: 'GC',
               emptyMessage: 'Nenhuma equipe com gols sofridos.',
             ),
-             // 3. Cartões Amarelos (Mais CA)
+            
+             // 4. Cartões Amarelos (Mais CA)
             _buildRankingList(
               context: context,
-              // Query: Ordena por 'total_yellow_cards' (descendente)
-              query: FirebaseFirestore.instance.collection('teams').where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: false).orderBy('name'),
+              query: FirebaseFirestore.instance.collection('teams').where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
               statField: 'total_yellow_cards',
               statLabel: 'CA',
               emptyMessage: 'Nenhuma equipe com cartões amarelos.',
             ),
-             // 4. Cartões Vermelhos (Mais CV)
+             // 5. Cartões Vermelhos (Mais CV)
             _buildRankingList(
               context: context,
-              // Query: Ordena por 'total_red_cards' (descendente)
-              query: FirebaseFirestore.instance.collection('teams').where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: false).orderBy('name'),
+              query: FirebaseFirestore.instance.collection('teams').where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
               statField: 'total_red_cards',
               statLabel: 'CV',
               emptyMessage: 'Nenhuma equipe com cartões vermelhos.',
             ),
-             // 5. Total de Cartões (Calculado)
+             // 6. Total de Cartões (Calculado)
              _buildTotalCardsList(
                context: context,
-               // Stream: Busca todos os times (filtra no Dart)
                stream: FirebaseFirestore.instance.collection('teams').snapshots(),
                emptyMessage: 'Nenhuma equipe com cartões registrados.',
              ),
+
+             // --- INÍCIO DA NOVA ABA ---
+            // 3. Fair Play (Menos PD)
+            _buildFairPlayList(
+              context: context,
+              // Ordena por 'disciplinary_points' (ascendente)
+              query: FirebaseFirestore.instance.collection('teams').where('disciplinary_points', isGreaterThan: 0).orderBy('disciplinary_points', descending: false).orderBy('name'),
+              emptyMessage: 'Nenhuma equipe com pontos disciplinares.',
+            ),
+            // --- FIM DA NOVA ABA ---
           ],
         ),
         bottomNavigationBar: const SponsorBannerRotator(),

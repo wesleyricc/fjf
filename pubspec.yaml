@@ -55,6 +55,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   youtube_player_iframe: ^5.2.2
   material_design_icons_flutter: ^7.0.7296
+  image_picker: ^1.2.1
 
 dev_dependencies:
   flutter_test:

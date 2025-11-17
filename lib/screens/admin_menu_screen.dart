@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
-import 'package:flutter/services.dart';
-import '../services/data_uploader_service.dart';
+//import 'package:flutter/services.dart';
+//import '../services/data_uploader_service.dart';
 import '../services/admin_service.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
@@ -32,7 +32,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     return digest.toString();
   }
 
-  Future<void> _triggerMigrationV1() async {
+  /*Future<void> _triggerMigrationV1() async {
      final confirm = await showDialog<bool>(
        context: context,
        builder: (ctx) => AlertDialog(
@@ -51,7 +51,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
        setState(() { _isSaving = false; });
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
      }
-  }
+  }*/
 
   Future<void> _triggerCalculateRanks() async {
      final confirm = await showDialog<bool>(
@@ -85,7 +85,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
      }
   }
 
-  Future<void> _showUploadConfirmDialog(BuildContext context) async {
+  /*Future<void> _showUploadConfirmDialog(BuildContext context) async {
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
@@ -125,7 +125,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
       },
     );
   }
-
+*/
   
 
   Future<void> _showChangeVideoIdDialog() async {
@@ -218,7 +218,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  Future<bool> _verifyAdminPassword(BuildContext context) async {
+  /*Future<bool> _verifyAdminPassword(BuildContext context) async {
     final String? currentAdminUsername = AdminService.loggedInAdminUsername;
     if (currentAdminUsername == null) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro: Admin não identificado. Tente relogar.')));
@@ -283,7 +283,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
     return passwordConfirmed ?? false;
   }
-  
+  */
   Future<void> _showChangePasswordDialog() async {
     final String? currentAdminUsername = AdminService.loggedInAdminUsername;
     if (currentAdminUsername == null) return;
@@ -412,38 +412,88 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
      }
   }
 
-  Future<void> _showSetDefaultRoundDialog() async {
-    final roundController = TextEditingController(
-      text: AdminService.defaultRound.toString(),
-    );
+  // --- INÍCIO DA ALTERAÇÃO (Diálogo de Definir Padrão) ---
+  Future<void> _showSetDefaultViewDialog() async {
     bool isDialogSaving = false;
+    
+    String selectedPhase = AdminService.defaultPhase;
+    String selectedStage = AdminService.defaultStage;
+
+    final List<DropdownMenuItem<String>> roundOptions = List.generate(
+      7, (i) => DropdownMenuItem(value: (i + 1).toString(), child: Text('Rodada ${i + 1}'))
+    );
+    
+    final List<DropdownMenuItem<String>> playoffOptions = [
+      const DropdownMenuItem(value: 'semifinal', child: Text('Semifinais')),
+      const DropdownMenuItem(value: 'third_place', child: Text('Disputa de 3º Lugar')),
+      const DropdownMenuItem(value: 'final_game', child: Text('Final')),
+    ];
 
     return showDialog<void>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: !isDialogSaving,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            
+            void _updatePhase(String newPhase) {
+              setDialogState(() {
+                selectedPhase = newPhase;
+                if (selectedPhase == 'first') {
+                  selectedStage = '1';
+                } else {
+                  selectedStage = 'semifinal';
+                }
+              });
+            }
+
             return AlertDialog(
-              title: const Text('Definir Rodada Padrão'),
+              title: const Text('Definir Visualização Padrão'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    'Informe a rodada que deve ser exibida ao abrir a "Tabela de Jogos". Isso afetará todos os usuários.',
+                    'Selecione a tela que os usuários verão ao abrir a Tabela de Jogos.',
                     style: TextStyle(fontSize: 14),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: roundController,
-                    decoration: const InputDecoration(
-                      labelText: 'Número da Rodada',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    enabled: !isDialogSaving,
+                  
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment<String>(value: 'first', label: Text('1ª Fase')),
+                      ButtonSegment<String>(value: 'second', label: Text('Mata-Mata')),
+                    ],
+                    selected: {selectedPhase},
+                    onSelectionChanged: (Set<String> newSelection) {
+                      _updatePhase(newSelection.first);
+                    },
                   ),
+                  const SizedBox(height: 16),
+
+                  if (selectedPhase == 'first')
+                    DropdownButtonFormField<String>(
+                      value: selectedStage,
+                      items: roundOptions,
+                      onChanged: isDialogSaving ? null : (value) {
+                        if (value != null) setDialogState(() => selectedStage = value);
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Rodada Padrão',
+                        border: OutlineInputBorder(),
+                      ),
+                    )
+                  else // selectedPhase == 'second'
+                    DropdownButtonFormField<String>(
+                      value: selectedStage,
+                      items: playoffOptions,
+                      onChanged: isDialogSaving ? null : (value) {
+                        if (value != null) setDialogState(() => selectedStage = value);
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Etapa Padrão (Mata-Mata)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
                 ],
               ),
               actions: [
@@ -453,36 +503,33 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                 ),
                 TextButton(
                   onPressed: isDialogSaving ? null : () async {
-                    final int? newRound = int.tryParse(roundController.text);
-                    if (newRound != null && newRound > 0 && newRound <= 7) { 
-                      
-                      setDialogState(() { isDialogSaving = true; });
-                      
-                      try {
-                        await _firestore.collection('config').doc('app_settings').set(
-                          { 'default_fixtures_round': newRound },
-                          SetOptions(merge: true)
-                        );
-                        
-                        AdminService.defaultRound = newRound; 
-                        
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Rodada padrão definida como $newRound.')),
-                          );
-                          Navigator.of(dialogContext).pop();
-                        }
-                      } catch (e) {
-                          ScaffoldMessenger.of(dialogContext).showSnackBar(
-                            SnackBar(content: Text('Erro ao salvar no Firestore: $e')),
-                          );
-                      } finally {
-                           setDialogState(() { isDialogSaving = false; });
-                      }
-                    } else {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(content: Text('Por favor, insira um número de rodada válido (1-7).')),
+                    setDialogState(() { isDialogSaving = true; });
+                    
+                    try {
+                      await _firestore.collection('config').doc('app_settings').set(
+                        { 
+                          'default_phase': selectedPhase,
+                          'default_stage': selectedStage,
+                          'default_fixtures_round': FieldValue.delete(), // Apaga o campo antigo
+                        },
+                        SetOptions(merge: true)
                       );
+                      
+                      AdminService.defaultPhase = selectedPhase; 
+                      AdminService.defaultStage = selectedStage;
+                      
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Visualização padrão atualizada.')),
+                        );
+                        Navigator.of(dialogContext).pop();
+                      }
+                    } catch (e) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(content: Text('Erro ao salvar: $e')),
+                        );
+                    } finally {
+                         setDialogState(() { isDialogSaving = false; });
                     }
                   },
                   child: isDialogSaving 
@@ -496,8 +543,9 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
       },
     );
   }
+  // --- FIM DA ALTERAÇÃO ---
 
-  // --- NOVO: Diálogo de Confirmação da Sincronização de Logos ---
+/*
   Future<void> _showSyncLogosConfirmDialog() async {
      final confirm = await showDialog<bool>(
        context: context,
@@ -528,14 +576,13 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
      }
   }
-  // --- FIM ---
-
+*/
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Menu Administrativo')),
-      body: _isSaving // --- NOVO: Overlay de Loading ---
+      body: _isSaving
         ? const Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -546,7 +593,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
               ],
             ),
           )
-        : ListView( // --- FIM ---
+        : ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
           ListTile(
@@ -569,15 +616,18 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             onTap: _isSaving ? null : _showChangeVideoIdDialog,
           ),
           const Divider(),
+
+          // --- INÍCIO DA ALTERAÇÃO (Chamada do novo diálogo) ---
           ListTile(
             leading: const Icon(Icons.looks_one_outlined),
-            title: const Text('Definir Rodada Padrão'),
-            subtitle: const Text('Define a rodada da Tabela de Jogos'),
+            title: const Text('Definir Visualização Padrão'),
+            subtitle: const Text('Define a tela inicial da Tabela de Jogos'),
             trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : _showSetDefaultRoundDialog,
+            onTap: _isSaving ? null : _showSetDefaultViewDialog,
           ),
+          // --- FIM DA ALTERAÇÃO ---
+
           const Divider(),
-          
           ListTile(
             leading: const Icon(Icons.rule_folder),
             title: const Text('Regras Disciplinares'),

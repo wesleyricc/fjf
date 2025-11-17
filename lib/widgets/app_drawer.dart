@@ -58,7 +58,7 @@ class AppDrawer extends StatelessWidget {
           // --- ITENS DO MENU (Com a lógica de navegação corrigida) ---
           _buildDrawerItem(
             context,
-            Icons.home, // Ícone de TV ao vivo
+            Icons.home,
             'Início',
             () {
               Navigator.of(context).pop();
@@ -72,7 +72,7 @@ class AppDrawer extends StatelessWidget {
             Icons.calendar_today,
             'Tabela de Jogos',
             () {
-              Navigator.of(context).pop(); // Fecha o drawer
+              Navigator.of(context).pop();
               Navigator.of(context).pushReplacementNamed('/fixtures');
             },
           ),
@@ -86,7 +86,7 @@ class AppDrawer extends StatelessWidget {
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
-            Icons.group, // Ícone de grupo/times
+            Icons.group,
             'Equipes',
             () {
               Navigator.of(context).pop();
@@ -97,7 +97,7 @@ class AppDrawer extends StatelessWidget {
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
-            Icons.query_stats, // Ícone de estatísticas
+            Icons.query_stats,
             'Estatísticas das Equipes',
             () {
               Navigator.of(context).pop();
@@ -108,7 +108,7 @@ class AppDrawer extends StatelessWidget {
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
-            Icons.person_search, // Ícone de stats individual
+            Icons.person_search,
             'Estatísticas dos Jogadores',
             () {
               Navigator.of(context).pop();
@@ -119,7 +119,7 @@ class AppDrawer extends StatelessWidget {
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
-            Icons.history_toggle_off, // Ícone de histórico
+            Icons.history_toggle_off,
             'Histórico de Suspensões',
             () {
               Navigator.of(context).pop();
@@ -130,11 +130,10 @@ class AppDrawer extends StatelessWidget {
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
-            Icons.bug_report_outlined, // Ícone de bug
+            Icons.bug_report_outlined,
             'Reportar Erro',
             () {
-              Navigator.of(context).pop(); // Fecha o drawer
-              // Usa push (não pushReplacement) para poder voltar
+              Navigator.of(context).pop();
               Navigator.of(context).pushNamed('/report-bug');
             },
             denseOverride: true,
@@ -142,28 +141,41 @@ class AppDrawer extends StatelessWidget {
           ),
 
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            AdminService.isAdmin
-                ? Icons.admin_panel_settings
-                : Icons.lock_outline, // Ícone muda se logado
-            AdminService.isAdmin
-                ? 'Menu Administrador'
-                : 'Modo Administrador', // Texto muda
-            () {
-              //Navigator.of(
-                //context,
-              //).pop(); // Fecha o drawer ANTES de mostrar o diálogo
-              adminService.promptAdminPassword(
-                context,
-              ); // Chama a função do serviço
-            },
-            denseOverride: true, // Força compacto
-            contentPaddingOverride: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 4.0,
-            ), // Força compacto
-          ),
+
+         // --- INÍCIO DA ALTERAÇÃO ---
+ _buildDrawerItem(
+ context,
+ AdminService.isAdmin
+ ? Icons.admin_panel_settings
+ : Icons.lock_outline,
+ AdminService.isAdmin
+ ? 'Menu Administrador'
+ : 'Modo Administrador',
+ // Torna o onTap assíncrono
+ () async { 
+ if (AdminService.isAdmin) {
+ // 1. Se já é admin, apenas navega
+Navigator.of(context).pop();
+ Navigator.of(context).pushNamed('/admin-menu');
+ } else {
+ // 2. Se não é admin, chama o login e AGUARDA (await) o resultado
+ final bool loginSuccess = await adminService.promptAdminPassword(context);
+
+ // 3. Se o login foi bem-sucedido, navega
+if (loginSuccess && (context as Element).mounted) {
+ Navigator.of(context).pop(); // Fecha o drawer
+ Navigator.of(context).pushNamed('/admin-menu');
+ }
+ // Se loginSuccess for false (cancelado), não faz nada (o drawer continua aberto)
+ }
+},
+denseOverride: true,
+ contentPaddingOverride: const EdgeInsets.symmetric(
+ horizontal: 16.0,
+ vertical: 4.0,
+),
+),
+          // --- FIM DA ALTERAÇÃO ---
 
           // --- ITEM DE LOGOUT (SÓ SE LOGADO) ---
           if (AdminService.isAdmin)

@@ -442,7 +442,7 @@ class FirestoreService {
       final teamsSnapshot = await _firestore.collection('teams').get();
       final Map<String, String> teamLogoCache = {};
       for (var teamDoc in teamsSnapshot.docs) {
-        final data = teamDoc.data() as Map<String, dynamic>;
+        final data = teamDoc.data();
         teamLogoCache[teamDoc.id] = data['shield_url'] ?? '';
       }
       debugPrint("[SINCRONIZAÇÃO] Mapa de logos de ${teamLogoCache.length} times criado.");
@@ -451,7 +451,7 @@ class FirestoreService {
       final playersSnapshot = await _firestore.collection('players').get();
       debugPrint("[SINCRONIZAÇÃO] Verificando ${playersSnapshot.docs.length} jogadores...");
       for (var playerDoc in playersSnapshot.docs) {
-        final data = playerDoc.data() as Map<String, dynamic>;
+        final data = playerDoc.data();
         final String? teamId = data['team_id'];
         final String currentLogo = data['team_shield_url'] ?? '';
         
@@ -469,7 +469,7 @@ class FirestoreService {
       final matchesSnapshot = await _firestore.collection('matches').get();
       debugPrint("[SINCRONIZAÇÃO] Verificando ${matchesSnapshot.docs.length} partidas...");
       for (var matchDoc in matchesSnapshot.docs) {
-        final data = matchDoc.data() as Map<String, dynamic>;
+        final data = matchDoc.data();
         final String? homeId = data['team_home_id'];
         final String? awayId = data['team_away_id'];
         
@@ -495,7 +495,7 @@ class FirestoreService {
       final suspensionSnapshot = await _firestore.collection('suspension_log').get();
       debugPrint("[SINCRONIZAÇÃO] Verificando ${suspensionSnapshot.docs.length} logs de suspensão...");
       for (var logDoc in suspensionSnapshot.docs) {
-         final data = logDoc.data() as Map<String, dynamic>;
+         final data = logDoc.data();
          final String? teamId = data['teamId'];
          final String currentLogo = data['teamLogoUrl'] ?? '';
          

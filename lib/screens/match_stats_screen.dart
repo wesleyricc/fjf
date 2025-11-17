@@ -8,6 +8,7 @@ import '../widgets/sponsor_banner_rotator.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'player_profile_screen.dart';
 
 class MatchStatsScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -392,7 +393,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
         int? number = _playerDataCache[playerId]?['jersey_number'];
         bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false;
-        goalPlayers.add({'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
+        goalPlayers.add({'id': playerId, 'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
       }
     });
     sortPlayersByNumber(goalPlayers); // Ordena
@@ -403,7 +404,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
         int? number = _playerDataCache[playerId]?['jersey_number'];
         bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false;
-        assistPlayers.add({'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
+        assistPlayers.add({'id': playerId, 'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
       }
     });
     sortPlayersByNumber(assistPlayers); // Ordena
@@ -434,8 +435,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     playersWithCardsData.forEach((playerId, cardCounts) {
       String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
       int? number = _playerDataCache[playerId]?['jersey_number'];
-      bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false; // <-- LÊ AQUI
-      cardPlayers.add({'name': name, 'counts': cardCounts, 'number': number, 'is_staff': isStaff}); // <-- PASSA AQUI
+      bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false;
+      cardPlayers.add({'id': playerId, 'name': name, 'counts': cardCounts, 'number': number, 'is_staff': isStaff});
     });
     sortPlayersByNumber(cardPlayers); // Ordena
 
@@ -465,6 +466,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
           ...goalPlayers
               .map(
                 (player) => _buildStatItem(
+                  playerId: player['id'],
                   name: player['name'],
                   count: player['count'],
                   number: player['number'],
@@ -498,10 +500,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
           ...cardPlayers
               .map(
                 (player) => _buildCardStatItem(
+                  playerId: player['id'],
                   name: player['name'],
-                  cardCounts:
-                      player['counts']
-                          as Map<String, int>, // Pega o mapa de contagens
+                  cardCounts: player['counts'] as Map<String, int>,
                   number: player['number'],
                   isStaff: player['is_staff'],
                   alignment: alignment,
@@ -565,6 +566,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
 
   // --- FUNÇÃO _buildStatItem SIMPLIFICADA (só para Gols/Assists) ---
   Widget _buildStatItem({
+    required String playerId,
     required String name,
     required int count,
     required CrossAxisAlignment alignment,
@@ -581,15 +583,22 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
         : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
 
-    // Retorna apenas o texto alinhado
-    return Align(
+    // Envolve o widget num InkWell para navegação
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (ctx) => PlayerProfileScreen(playerId: playerId),
+          ),
+        );
+      },
+      child: Align(
       alignment: alignment == CrossAxisAlignment.start
           ? Alignment.centerLeft
           : Alignment.centerRight,
       child: Padding(
         padding: itemPadding,
         child: Text(
-          // Removido Flexible, pode não ser necessário aqui
           displayText,
           style: TextStyle(
             fontSize: 14,
@@ -599,6 +608,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               ? TextAlign.start
               : TextAlign.end,
         ),
+      ),
       ),
     );
   }
@@ -665,6 +675,18 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                 padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
                 child: Card(
                    elevation: 2,
+                   clipBehavior: Clip.antiAlias, // Garante que o InkWell siga a borda
+                   child: InkWell( // <-- ADICIONADO InkWell
+                    onTap: () {
+                      // Navega apenas se o ID for válido
+                      if (_manOfTheMatchId != null && _manOfTheMatchId!.isNotEmpty) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => PlayerProfileScreen(playerId: _manOfTheMatchId!),
+                          ),
+                        );
+                      }
+                    },
                    child: Padding(
                      padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
                      child: Column(
@@ -688,6 +710,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                          ),
                        ],
                      ),
+                     ),
                    ),
                  ),
               ),
@@ -706,6 +729,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
 
   // --- NOVA FUNÇÃO AUXILIAR PARA ITEM DE CARTÃO ---
   Widget _buildCardStatItem({
+    required String playerId,
     required String name,
     required Map<String, int> cardCounts,
     required CrossAxisAlignment alignment,
@@ -750,7 +774,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       // Vermelho geralmente é só 1, não precisa de contador
     }
 
-    return Align(
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (ctx) => PlayerProfileScreen(playerId: playerId),
+          ),
+        );
+      },
+      child: Align(
       alignment: alignment == CrossAxisAlignment.start
           ? Alignment.centerLeft
           : Alignment.centerRight,
@@ -759,7 +791,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Ordem Nome / Indicadores baseada no alinhamento
             if (alignment == CrossAxisAlignment.end) ...[
               Flexible(
                 child: Text(
@@ -794,6 +825,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               ),
             ],
           ],
+        ),
         ),
       ),
     );

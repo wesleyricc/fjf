@@ -3,17 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../widgets/rank_indicator.dart'; // Para rank Ouro/Prata/Bronze
+// import '../widgets/rank_indicator.dart'; // Removido
 import 'package:cached_network_image/cached_network_image.dart';
 import 'team_detail_screen.dart';
 import '../services/admin_service.dart';
+import 'player_profile_screen.dart';
 
 class PlayerStatsScreen extends StatelessWidget {
   PlayerStatsScreen({super.key});
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // --- NOVA FUNÇÃO HELPER PARA NAVEGAÇÃO ---
   Future<void> _navigateToTeam(BuildContext context, String? teamId) async {
     if (teamId == null || teamId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -22,17 +22,14 @@ class PlayerStatsScreen extends StatelessWidget {
       return;
     }
     
-    // Mostra um loading rápido
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Carregando time...'), duration: Duration(seconds: 1)),
     );
     
     try {
-      // Busca o documento do TIME correto
       final teamDoc = await _firestore.collection('teams').doc(teamId).get();
       
       if (teamDoc.exists && context.mounted) {
-        // Navega para a TeamDetailScreen com o DOCUMENTO DO TIME
         Navigator.of(context).push(
           MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc)),
         );
@@ -49,8 +46,9 @@ class PlayerStatsScreen extends StatelessWidget {
       }
     }
   }
-  // --- FIM DA NOVA FUNÇÃO ---
+
   Future<void> _showPlayerStatsHelp(BuildContext context) async {
+    // ... (código idêntico ao anterior)
     return showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -59,7 +57,6 @@ class PlayerStatsScreen extends StatelessWidget {
           content: SingleChildScrollView(
             child: RichText(
               text: TextSpan(
-                // Define o estilo padrão do texto do diálogo
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 15), 
                 children: <TextSpan>[
                   const TextSpan(text: 'Esta tela mostra os rankings e o status disciplinar dos jogadores.\n\n'),
@@ -116,17 +113,15 @@ class PlayerStatsScreen extends StatelessWidget {
       },
     );
   }
-  
+
   Future<void> _showClearSuspensionDialog(
       BuildContext context, DocumentSnapshot player) async {
     final playerName = player['name'] ?? 'Jogador desconhecido';
 
-    // Pega os dados atuais para usar na lógica
     final data = player.data() as Map<String, dynamic>? ?? {};
-    final int currentYellows = data['yellow_cards'] ?? 0; // Pega a contagem CORRENTE
+    final int currentYellows = data['yellow_cards'] ?? 0;
     final int currentReds = data['red_cards'] ?? 0;
 
-    // Determina o(s) motivo(s) da suspensão para o diálogo
     bool suspendedByRed = (currentReds > 0 && AdminService.suspensionOnRed);
     bool suspendedByYellow = (currentYellows >= AdminService.suspensionYellowCards);
     
@@ -158,34 +153,20 @@ class PlayerStatsScreen extends StatelessWidget {
               child: const Text('Confirmar Liberação'),
               onPressed: () async {
                 try {
-                  // --- LÓGICA DE ATUALIZAÇÃO CONDICIONAL ---
-                  
-                  // Prepara os dados para o update
                   Map<String, dynamic> updateData = {
-                    'is_suspended': false, // Sempre libera a suspensão
-                    'red_cards': 0,    // Sempre zera o contador de CV corrente
+                    'is_suspended': false,
+                    'red_cards': 0,
                   };
 
-                  // REGRA: Só zera o 'yellow_cards' corrente SE
-                  // ele for igual ou maior que o limite de suspensão.
                   if (currentYellows >= AdminService.suspensionYellowCards) {
                     updateData['yellow_cards'] = 0;
-                    debugPrint("Limpando suspensão: Zerando yellow_cards (era $currentYellows).");
-                  } else {
-                    // Se 'currentYellows' for 1 ou 2, 'yellow_cards' não é
-                    // adicionado ao 'updateData' e seu valor é mantido no Firestore.
-                    debugPrint("Limpando suspensão: Mantendo yellow_cards (era $currentYellows).");
                   }
-                  // --- FIM DA LÓGICA ---
 
-                  // Executa a atualização com o mapa de dados preparado
                   await _firestore
                       .collection('players')
                       .doc(player.id)
                       .update(updateData);
-
-                      // --- 2. ATUALIZA O LOG DE SUSPENSÃO ---
-                  // Busca o último log pendente para este jogador
+                      
                   final logQuery = await _firestore
                       .collection('suspension_log')
                       .where('playerId', isEqualTo: player.id)
@@ -194,15 +175,12 @@ class PlayerStatsScreen extends StatelessWidget {
                       .limit(1)
                       .get();
                   
-                  // Se encontrou um log pendente, marca como 'cleared'
                   if (logQuery.docs.isNotEmpty) {
                     await logQuery.docs.first.reference.update({
                       'status': 'cleared',
                       'cleared_timestamp': FieldValue.serverTimestamp(),
                     });
-                    debugPrint("Log de suspensão ${logQuery.docs.first.id} atualizado para 'cleared'.");
                   }
-                  // --- FIM DA ATUALIZAÇÃO DO LOG ---
 
                   Navigator.of(dialogContext).pop();
                   if (Navigator.of(context).canPop()) { 
@@ -225,11 +203,9 @@ class PlayerStatsScreen extends StatelessWidget {
       },
     );
   }
-  // --- FIM _showClearSuspensionDialog ---
 
 
-  // --- Função Auxiliar: Lista para Status (Pendurados/Suspensos) ---
-  // (Adaptada de _buildPlayersListWithBanner da antiga DisciplinaryScreen)
+  // --- Função Auxiliar: Lista para Status (COM FOTO) ---
   Widget _buildPlayerStatusList({
     required BuildContext context,
     required Query query,
@@ -265,18 +241,20 @@ class PlayerStatsScreen extends StatelessWidget {
                    try {
                      final data = player.data() as Map<String, dynamic>;
                      final String shieldUrl = data['team_shield_url'] ?? '';
-                     final String teamId = data['team_id'] ?? ''; // <-- Pega o ID do time
-
+                     final String teamId = data['team_id'] ?? '';
+                     
                      final bool isStaff = data['is_staff'] ?? false;
                      final int? jerseyNumber = data['jersey_number'];
                      final String playerName = data['name'] ?? 'Nome Indisponível';
                      final String displayName = isStaff
-                        ? '(Comissão) $playerName' // Adiciona sufixo
+                        ? '$playerName (Comissão)'
                         : (jerseyNumber != null ? '$jerseyNumber. $playerName' : playerName);
+                     
+                     final String? photoUrl = (data.containsKey('photo_url')) ? data['photo_url'] as String? : null;
+
                      String status = '';
                      Color statusColor = Colors.black;
 
-                     // Lógica de Cor/Status (baseada nas regras do AdminService)
                      if (isSuspendedList) {
                        int reds = data['red_cards'] ?? 0;
                        int yellows = data['yellow_cards'] ?? 0;
@@ -296,42 +274,69 @@ class PlayerStatsScreen extends StatelessWidget {
                      }
 
                      return ListTile(
-                       leading: Icon(isStaff ? Icons.assignment_ind_outlined : Icons.person_outline), // Ícone diferente
-                       title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)), // Estilo diferente
-                       subtitle: InkWell( // <-- Transforma o subtítulo em um botão
+                       // --- INÍCIO DA CORREÇÃO (Leading com Foto) ---
+                       leading: CircleAvatar(
+                         radius: 20,
+                         backgroundColor: Colors.grey[300], 
+                         backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                             ? CachedNetworkImageProvider(photoUrl)
+                             : null,
+                         child: (photoUrl == null || photoUrl.isEmpty)
+                             ? Icon(
+                                 isStaff ? Icons.assignment_ind_outlined : Icons.person,
+                                 color: Colors.grey[700], // <-- COR CORRIGIDA
+                                 size: 24,
+                               )
+                             : null,
+                       ),
+                       // --- FIM DA CORREÇÃO ---
+                       
+                       title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
+                       
+                       // --- INÍCIO DA CORREÇÃO (Subtítulo sem sublinhado) ---
+                       subtitle: InkWell(
                          onTap: () {
-                           _navigateToTeam(context, teamId); // <-- Chama a navegação
+                           _navigateToTeam(context, teamId);
                          },
                          child: Row(
-                         children: [
-                           if (shieldUrl.isNotEmpty)
-                             Padding(
-                               padding: const EdgeInsets.only(right: 6.0),
-                               child: SizedBox(
-                                 width: 25, height: 25,
-                                 child: CachedNetworkImage(
-                                   imageUrl: shieldUrl,
-                                   placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
-                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
-                                   fit: BoxFit.contain,
+                           children: [
+                             if (shieldUrl.isNotEmpty)
+                               Padding(
+                                 padding: const EdgeInsets.only(right: 6.0),
+                                 child: SizedBox(
+                                   width: 18, height: 18,
+                                   child: CachedNetworkImage(
+                                     imageUrl: shieldUrl,
+                                     placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
+                                     errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                     fit: BoxFit.contain,
+                                   ),
                                  ),
                                ),
-                             ),
-                           Flexible(
-                             child: Text(
-                                data['team_name'] ?? 'Time Indisponível',
-                                overflow: TextOverflow.ellipsis,
-                                //style: TextStyle(color: Theme.of(context).primaryColor, decoration: TextDecoration.underline), // <-- Estilo de link
+                             Flexible(
+                               child: Text(
+                                  data['team_name'] ?? 'Time Indisponível',
+                                  overflow: TextOverflow.ellipsis,
+                                  // 'style' removido para usar a cor padrão
                                ),
                              ),
-                         ],
+                           ],
                          ),
                        ),
+                       // --- FIM DA CORREÇÃO ---
+                       
                        trailing: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
                        onTap: () {
-                         // Só permite limpar suspensão se for admin e estiver na lista de suspensos
+                         // Se for Admin E estiver suspenso, mostra o diálogo
                          if (isSuspendedList && AdminService.isAdmin) {
                            _showClearSuspensionDialog(context, player);
+                         } else {
+                           // Senão, navega para o perfil do jogador
+                           Navigator.of(context).push(
+                             MaterialPageRoute(
+                               builder: (ctx) => PlayerProfileScreen(playerId: player.id),
+                             ),
+                           );
                          }
                        },
                      );
@@ -344,7 +349,7 @@ class PlayerStatsScreen extends StatelessWidget {
                       );
                    }
                 },
-              ), 
+              ),
             ],
           ),
         );
@@ -354,7 +359,7 @@ class PlayerStatsScreen extends StatelessWidget {
   // --- FIM _buildPlayerStatusList ---
 
 
-  // --- Função Auxiliar: Lista para Rankings (Gols, Assists, etc.) ---
+  // --- Função Auxiliar: Lista para Rankings (COM FOTO) ---
   Widget _buildPlayerRankingList({
     required BuildContext context,
     required Query query,
@@ -365,13 +370,12 @@ class PlayerStatsScreen extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
-        // ... (Verificações de estado: waiting, error, empty) ...
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
            debugPrint("Erro Stream PlayerStats ($statLabel): ${snapshot.error}");
-           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
+           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice.'));
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return Center(child: Text(emptyMessage));
@@ -391,21 +395,20 @@ class PlayerStatsScreen extends StatelessWidget {
                   final player = players[index];
                   try {
                     final data = player.data() as Map<String, dynamic>;
-                    final rank = index + 1;
                     final String shieldUrl = data['team_shield_url'] ?? '';
                     final int statValue = data[statField] ?? 0;
-                    final String teamId = data['team_id'] ?? ''; // <-- Pega o ID do time
+                    final String teamId = data['team_id'] ?? '';
+                    
+                    final String? photoUrl = (data.containsKey('photo_url')) ? data['photo_url'] as String? : null;
 
                     final bool isStaff = data['is_staff'] ?? false;
                     final int? jerseyNumber = data['jersey_number'];
                     final String playerName = data['name'] ?? 'Nome Indisponível';
                     final String displayName = isStaff
-                        ? '(Comissão) $playerName'
+                        ? '$playerName (Comissão)'
                         : (jerseyNumber != null ? '$jerseyNumber. $playerName' : playerName);
-
-                        // --- INÍCIO DA ALTERAÇÃO (Widget do Trailing) ---
+                    
                     Widget trailingWidget;
-                    // Se for CA ou CV, mostra o ícone
                     if (statLabel == 'CA') {
                       trailingWidget = Row(mainAxisSize: MainAxisSize.min, children: [
                         Text('$statValue', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -419,61 +422,84 @@ class PlayerStatsScreen extends StatelessWidget {
                         Icon(Icons.style, color: Colors.red[700], size: 20),
                       ]);
                     } else { 
-                      // Senão (Gols, Assists, etc), mostra o texto
                       trailingWidget = Text(
                         '$statValue $statLabel',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       );
                     }
-                    // --- FIM DA ALTERAÇÃO ---
 
                     return ListTile(
-                      leading: RankIndicator(rank: rank),
+                      // --- INÍCIO DA CORREÇÃO (Leading com Foto) ---
+                      leading: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.grey[300], // Cor de fundo
+                        backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                            ? CachedNetworkImageProvider(photoUrl)
+                            : null,
+                        child: (photoUrl == null || photoUrl.isEmpty)
+                            ? Icon(
+                                isStaff ? Icons.assignment_ind_outlined : Icons.person,
+                                color: Colors.grey[700], // <-- COR CORRIGIDA
+                                size: 24,
+                              )
+                            : null,
+                      ),
+                      // --- FIM DA CORREÇÃO ---
+                      
                       title: Text(
                         displayName,
-                        // Adiciona estilo itálico para staff
                         style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal),
                       ),
-                      // --- INÍCIO DA CORREÇÃO (Subtítulo Clicável) ---
+                      
+                      // --- INÍCIO DA CORREÇÃO (Subtítulo sem sublinhado) ---
                       subtitle: InkWell(
                         onTap: () {
-                          _navigateToTeam(context, teamId); // <-- Chama a navegação
+                           _navigateToTeam(context, teamId);
                         },
                         child: Row(
-                         children: [
-                           if (shieldUrl.isNotEmpty)
-                             Padding(
-                               padding: const EdgeInsets.only(right: 6.0),
-                               child: SizedBox(
-                                 width: 25, height: 25,
-                                 child: CachedNetworkImage(
-                                   imageUrl: shieldUrl,
-                                   placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
-                                   errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
-                                   fit: BoxFit.contain,
+                           children: [
+                             if (shieldUrl.isNotEmpty)
+                               Padding(
+                                 padding: const EdgeInsets.only(right: 6.0),
+                                 child: SizedBox(
+                                   width: 18, height: 18,
+                                   child: CachedNetworkImage(
+                                     imageUrl: shieldUrl,
+                                     placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
+                                     errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                     fit: BoxFit.contain,
+                                   ),
                                  ),
                                ),
+                             Flexible(
+                               child: Text(
+                                  data['team_name'] ?? 'Time Indisponível',
+                                  overflow: TextOverflow.ellipsis,
+                                  // 'style' removido
+                               ),
                              ),
-                           Flexible(
-                             child: Text(
-                                data['team_name'] ?? 'Time Indisponível',
-                                overflow: TextOverflow.ellipsis,
-                             ),
-                           ),
-                         ],
-                        ),
+                           ],
+                         ),
                        ),
-                      trailing: trailingWidget, // <-- USA O WIDGET ATUALIZADO
+                       // --- FIM DA CORREÇÃO ---
+                       
+                      trailing: trailingWidget,
+
                       onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => PlayerProfileScreen(playerId: player.id),
+                          ),
+                        );
                       },
                     );
                   } catch (e) {
-                      debugPrint("Erro ao processar jogador (Ranking $statLabel) ${player.id}: $e");
-                      return ListTile(
-                        leading: CircleAvatar(child: Text('${index + 1}')),
-                        title: Text('Erro ao carregar jogador ${player.id}'),
-                        subtitle: Text(e.toString()),
-                      );
+                     debugPrint("Erro ao processar jogador (Ranking $statLabel) ${player.id}: $e");
+                     return ListTile(
+                       leading: const CircleAvatar(child: Icon(Icons.error_outline, color: Colors.red)),
+                       title: Text('Erro ao carregar jogador ${player.id}'),
+                       subtitle: Text(e.toString()),
+                     );
                   }
                 },
               ),
@@ -483,8 +509,10 @@ class PlayerStatsScreen extends StatelessWidget {
       },
     );
   }
+  // --- FIM _buildPlayerRankingList ---
 
-  // --- Função _buildTotalCardsList ---
+
+  // --- Função Auxiliar: Lista para Total de Cartões (COM FOTO) ---
   Widget _buildTotalCardsList({
     required BuildContext context,
     required Stream<QuerySnapshot> stream,
@@ -504,10 +532,8 @@ class PlayerStatsScreen extends StatelessWidget {
           return Center(child: Text(emptyMessage));
         }
 
-        // Processa e ordena os jogadores em Dart
         List<DocumentSnapshot> players = snapshot.data!.docs;
         
-        // Cria uma lista de "jogadores com cartão"
         List<Map<String, dynamic>> playersWithCards = [];
         for (var player in players) {
           final data = player.data() as Map<String, dynamic>;
@@ -526,7 +552,6 @@ class PlayerStatsScreen extends StatelessWidget {
           }
         }
         
-        // Ordena a nova lista pelo total (maior primeiro)
         playersWithCards.sort((a, b) => b['totalCards'].compareTo(a['totalCards']));
         
         if (playersWithCards.isEmpty) {
@@ -543,65 +568,84 @@ class PlayerStatsScreen extends StatelessWidget {
                 itemCount: playersWithCards.length,
                 itemBuilder: (context, index) {
                   final playerInfo = playersWithCards[index];
+                  final player = playerInfo['doc'] as DocumentSnapshot; // Pega o DocumentSnapshot
                   final data = playerInfo['data'] as Map<String, dynamic>;
-                  final rank = index + 1;
                   final String shieldUrl = data['team_shield_url'] ?? '';
                   final int totalCards = playerInfo['totalCards'];
                   final int totalYellows = playerInfo['totalYellows'];
                   final int totalReds = playerInfo['totalReds'];
-                  final String teamId = data['team_id'] ?? ''; // <-- Pega o ID do time
-
+                  final String teamId = data['team_id'] ?? '';
+                  
                   final bool isStaff = data['is_staff'] ?? false;
                   final int? jerseyNumber = data['jersey_number'];
                   final String playerName = data['name'] ?? 'Nome Indisponível';
                   final String displayName = isStaff
-                      ? '(Comissão) $playerName'
+                      ? '$playerName (Comissão)'
                       : (jerseyNumber != null ? '$jerseyNumber. $playerName' : playerName);
 
+                  final String? photoUrl = (data.containsKey('photo_url')) ? data['photo_url'] as String? : null;
+
                   return ListTile(
-                    leading: RankIndicator(rank: rank),
+                    // --- INÍCIO DA CORREÇÃO (Leading com Foto) ---
+                    leading: CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.grey[300], // Cor de fundo
+                      backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                          ? CachedNetworkImageProvider(photoUrl)
+                          : null,
+                      child: (photoUrl == null || photoUrl.isEmpty)
+                          ? Icon(
+                              isStaff ? Icons.assignment_ind_outlined : Icons.person,
+                              color: Colors.grey[700], // <-- COR CORRIGIDA
+                              size: 24,
+                            )
+                          : null,
+                    ),
+                    // --- FIM DA CORREÇÃO ---
+                    
                     title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
-                    // --- INÍCIO DA CORREÇÃO (Subtítulo Clicável) ---
+                    
+                    // --- INÍCIO DA CORREÇÃO (Subtítulo sem sublinhado) ---
                     subtitle: InkWell(
                       onTap: () {
-                         _navigateToTeam(context, teamId); // <-- Chama a navegação
+                         _navigateToTeam(context, teamId);
                       },
                       child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (shieldUrl.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6.0, top: 4.0),
-                            child: SizedBox(
-                              width: 25, height: 25,
-                              child: CachedNetworkImage(
-                                imageUrl: shieldUrl,
-                                placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
-                                errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
-                                fit: BoxFit.contain,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (shieldUrl.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6.0, top: 4.0),
+                              child: SizedBox(
+                                width: 18, height: 18,
+                                child: CachedNetworkImage(
+                                  imageUrl: shieldUrl,
+                                  placeholder: (c, u) => const Icon(Icons.shield, size: 16, color: Colors.grey),
+                                  errorWidget: (c, u, e) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                  fit: BoxFit.contain,
+                                ),
                               ),
                             ),
+                          Flexible(
+                            child: Text(
+                              data['team_name'] ?? 'Time Indisponível',
+                              overflow: TextOverflow.ellipsis,
+                              // 'style' removido
+                            ),
                           ),
-                        Flexible(
-                          child: Text(
-                            data['team_name'] ?? 'Time Indisponível',
-                            overflow: TextOverflow.ellipsis,
-                            //style: TextStyle(color: Theme.of(context).primaryColor, decoration: TextDecoration.underline), // <-- Estilo de link
-                          ),
-                        ),
-                      ],
+                        ],
                       ),
                     ),
+                    // --- FIM DA CORREÇÃO ---
+                    
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        // Linha 1: Total
                         Text(
                           '$totalCards Cartões',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -614,6 +658,13 @@ class PlayerStatsScreen extends StatelessWidget {
                         )
                       ],
                     ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (ctx) => PlayerProfileScreen(playerId: player.id),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -623,17 +674,16 @@ class PlayerStatsScreen extends StatelessWidget {
       },
     );
   }
-  // --- FIM DA NOVA FUNÇÃO ---
+  // --- FIM _buildTotalCardsList ---
 
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 9, // --- TOTAL DE 9 ABAS ---
+      length: 9,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Estatísticas dos Jogadores'),
-          // --- 2. ADICIONA O BOTÃO DE AÇÃO (HELP) ---
           actions: [
             IconButton(
               icon: const Icon(Icons.help_outline),
@@ -643,7 +693,6 @@ class PlayerStatsScreen extends StatelessWidget {
               },
             ),
           ],
-          // --- FIM DA ADIÇÃO ---
           bottom: const TabBar(
             isScrollable: true,
             labelColor: Colors.white,
@@ -665,7 +714,7 @@ class PlayerStatsScreen extends StatelessWidget {
         drawer: const AppDrawer(),
         body: TabBarView(
           children: [
-            // 1. Artilheiros (Gols)
+            // 1. Artilheiros
             _buildPlayerRankingList(
               context: context,
               query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('goals', isGreaterThan: 0).orderBy('goals', descending: true).orderBy('name'),
@@ -681,7 +730,7 @@ class PlayerStatsScreen extends StatelessWidget {
               statLabel: 'Ass',
               emptyMessage: 'Nenhum líder em assistências.',
             ),
-             // 3. Goleiro Menos Vazado (Gols Sofridos)
+             // 3. Goleiro MV
             _buildPlayerRankingList(
               context: context,
               query: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('is_goalkeeper', isEqualTo: true).where('goals_conceded', isGreaterThanOrEqualTo: 0).orderBy('goals_conceded', descending: false).orderBy('name'),
@@ -697,12 +746,11 @@ class PlayerStatsScreen extends StatelessWidget {
               statLabel: 'vezes',
               emptyMessage: 'Ranking de Craque do Jogo vazio.',
             ),
-            // 5. Pendurados (usa _buildPlayerStatusList)
+            // 5. Pendurados
             _buildPlayerStatusList(
               context: context,
               query: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
-                  // .where('is_staff', isEqualTo: false)
                   .where('yellow_cards', isEqualTo: AdminService.pendingYellowCards)
                   .orderBy('name'),
               emptyMessage: 'Nenhum jogador ou membro da comissão pendurado (${AdminService.pendingYellowCards} CA).',
@@ -713,7 +761,6 @@ class PlayerStatsScreen extends StatelessWidget {
               context: context,
               query: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
-                  //.where('is_staff', isEqualTo: false)
                   .where('is_suspended', isEqualTo: true)
                   .orderBy('name'),
               emptyMessage: 'Nenhum jogador ou membro da comissão suspenso.',
@@ -737,14 +784,12 @@ class PlayerStatsScreen extends StatelessWidget {
             ),
              // 9. Total Cartões
             _buildTotalCardsList(
-              context: context,
-              stream: _firestore.collection('players')
+               context: context,
+               stream: _firestore.collection('players')
                   .where('isActive', isEqualTo: true)
-                  //.where('is_staff', isEqualTo: false)
                   .snapshots(),
-              emptyMessage: 'Nenhum cartão registrado.',
-            ),
-            // --- FIM ---
+               emptyMessage: 'Nenhum cartão registrado.',
+             ),
           ],
         ),
         bottomNavigationBar: const SponsorBannerRotator(),

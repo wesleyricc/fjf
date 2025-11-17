@@ -6,6 +6,7 @@ import '../widgets/player_display_card.dart';
 import '../services/admin_service.dart';
 import '../widgets/sponsor_banner_rotator.dart'; 
 import 'package:intl/intl.dart';
+import 'player_profile_screen.dart';
 
 // --- CLASSE 'FakeDocumentSnapshot' REMOVIDA ---
 // (Não é mais necessária, corrigindo o alerta 'sealed')
@@ -80,6 +81,45 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     } catch (e) {
       debugPrint("Erro ao converter cor: $hexColor. $e");
       return null;
+    }
+  }
+
+  // --- NOVA FUNÇÃO PARA SALVAR NO FIRESTORE ---
+  Future<void> _saveLineupToFirestore(bool isTeam1) async {
+    try {
+      List<String> newStartersIds = [];
+
+      // Coleta os jogadores titulares atuais baseados no estado da tela
+      if (isTeam1) {
+        if (_team1TitularGoalkeeper != null) newStartersIds.add(_team1TitularGoalkeeper!['id']);
+        if (_team1Fixo != null) newStartersIds.add(_team1Fixo!['id']);
+        if (_team1Ala1 != null) newStartersIds.add(_team1Ala1!['id']);
+        if (_team1Ala2 != null) newStartersIds.add(_team1Ala2!['id']);
+        if (_team1Pivo != null) newStartersIds.add(_team1Pivo!['id']);
+      } else {
+        if (_team2TitularGoalkeeper != null) newStartersIds.add(_team2TitularGoalkeeper!['id']);
+        if (_team2Fixo != null) newStartersIds.add(_team2Fixo!['id']);
+        if (_team2Ala1 != null) newStartersIds.add(_team2Ala1!['id']);
+        if (_team2Ala2 != null) newStartersIds.add(_team2Ala2!['id']);
+        if (_team2Pivo != null) newStartersIds.add(_team2Pivo!['id']);
+      }
+
+      final String teamId = isTeam1 ? widget.team1Id : widget.team2Id;
+
+      // Atualiza o campo 'default_starters' no documento do time
+      await _firestore.collection('teams').doc(teamId).update({
+        'default_starters': newStartersIds,
+      });
+
+      debugPrint("Escalação salva para o time $teamId: $newStartersIds");
+
+    } catch (e) {
+      debugPrint("Erro ao salvar escalação: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao salvar substituição: $e')),
+        );
+      }
     }
   }
 
@@ -355,13 +395,22 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
                 itemBuilder: (context, index) {
                    final reserve = availableReserves[index];
                    
-                   if ((reserve['is_goalkeeper'] ?? false) != isGoalkeeper) {
-                      return const SizedBox.shrink(); 
-                   }
+                   // --- FILTRO REMOVIDO ---
+                   // Agora todos os reservas aparecem, independente se a vaga é para GK ou Linha
+                   
+                   // Define o subtítulo para ajudar a identificar a posição real do jogador
+                   final bool reserveIsGk = reserve['is_goalkeeper'] ?? false;
+                   final String posDescription = reserveIsGk 
+                       ? 'Goleiro' 
+                       : (reserve['position'] ?? 'Linha');
 
                    return ListTile(
+                      leading: Icon(
+                        reserveIsGk ? Icons.pan_tool : Icons.person,
+                        color: Colors.grey[600],
+                      ),
                       title: Text(reserve['name'] ?? '...'),
-                      subtitle: Text("#${reserve['jersey_number'] ?? '-'} - ${reserve['position'] ?? 'Linha'}"),
+                      subtitle: Text("#${reserve['jersey_number'] ?? '-'} - $posDescription"),
                       onTap: () => Navigator.of(ctx).pop(reserve),
                    );
                 }
@@ -400,6 +449,8 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
           _team1Reserves.sort((a,b) => (a['jersey_number'] ?? 99).compareTo(b['jersey_number'] ?? 99));
           _team2Reserves.sort((a,b) => (a['jersey_number'] ?? 99).compareTo(b['jersey_number'] ?? 99));
        });
+
+       await _saveLineupToFirestore(isTeam1); 
     }
   }
 
@@ -435,12 +486,25 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       left: adjustedLeft.clamp(0.0, quadraWidth - playerCardWidth),
       top: adjustedTop.clamp(0.0, quadraHeight - playerCardHeight),
       child: GestureDetector(
-        onTap: () => _showPlayerSelectionDialog(
-          isTeam1: isTeam1,
-          isGoalkeeper: positionKey == 'GK',
-          currentPlayerOnCourt: player,
-          positionKey: positionKey,
-        ),
+        onTap: () {
+          // Se for Admin, a ação é SUBSTITUIR
+          if (AdminService.isAdmin) {
+            _showPlayerSelectionDialog(
+              isTeam1: isTeam1,
+              isGoalkeeper: positionKey == 'GK',
+              currentPlayerOnCourt: player,
+              positionKey: positionKey,
+            );
+          } else {
+            // Se for Utilizador, a ação é VER PERFIL
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (ctx) => PlayerProfileScreen(playerId: player['id']),
+              ),
+            );
+          }
+        },
+        // --- FIM DA ALTERAÇÃO ---
         child: playerCard,
       ),
     );
@@ -799,15 +863,27 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
             spacing: 8.0, 
             runSpacing: 8.0,
             children: reserves.map((player) {
-              return PlayerDisplayCard(
-                playerName: player['name'],
-                jerseyNumber: player['jersey_number'] ?? 0,
-                yellowCards: player['yellow_cards'] ?? 0,
-                redCards: player['red_cards'] ?? 0,
-                isSuspended: player['is_suspended'] ?? false,
-                compactMode: false,
-                teamColor: teamColor,
+              // --- INÍCIO DA ALTERAÇÃO ---
+              return InkWell( // <-- Envolvido em InkWell
+                onTap: () {
+                  // Ação de ver perfil (para todos, admin ou não)
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (ctx) => PlayerProfileScreen(playerId: player['id']),
+                    ),
+                  );
+                },
+                child: PlayerDisplayCard(
+                  playerName: player['name'],
+                  jerseyNumber: player['jersey_number'] ?? 0,
+                  yellowCards: player['yellow_cards'] ?? 0,
+                  redCards: player['red_cards'] ?? 0,
+                  isSuspended: player['is_suspended'] ?? false,
+                  compactMode: false,
+                  teamColor: teamColor,
+                ),
               );
+              // --- FIM DA ALTERAÇÃO ---
             }).toList(),
           ),
       ],
@@ -901,7 +977,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
                   playerName,
                   style: TextStyle(
                     decoration: isSuspended ? TextDecoration.lineThrough : TextDecoration.none,
-                    color: isSuspended ? Colors.grey[800] : null,
+                    color: isSuspended ? Colors.grey[600] : null,
                   ),
                 ),
                 subtitle: Text('${isGoalkeeper ? 'Goleiro' : position}'),
@@ -934,23 +1010,31 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
                       ),
                     
                     if (AdminService.isAdmin && isSuspended)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8.0),
-                        child: Icon(
-                          Icons.admin_panel_settings_outlined, 
-                          color: Theme.of(context).primaryColor, 
-                          size: 20,
-                          semanticLabel: 'Gerenciar Suspensão',
+                      GestureDetector( // Envolve com GestureDetector
+                        onTap: () {
+                          // Passa o Map 'player' e o 'playerId'
+                          _showClearSuspensionDialog(context, player, playerId);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: Icon(
+                            Icons.admin_panel_settings_outlined, 
+                            color: Theme.of(context).primaryColor, 
+                            size: 20,
+                            semanticLabel: 'Gerenciar Suspensão',
+                          ),
                         ),
                       ),
                   ],
                 ),
 
                 onTap: () {
-                  if (AdminService.isAdmin && isSuspended) {
-                    // Passa o Map e o ID diretamente
-                    _showClearSuspensionDialog(context, player, playerId);
-                  }
+                  // Ação padrão: navegar para o perfil
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (ctx) => PlayerProfileScreen(playerId: player['id']),
+                    ),
+                  );
                 },
               ),
             );

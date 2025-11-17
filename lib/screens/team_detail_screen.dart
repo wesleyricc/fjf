@@ -9,8 +9,7 @@ import 'package:intl/intl.dart';
 import 'edit_player_screen.dart';
 import '../services/firestore_service.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
-// (Import da PlayerProfileScreen removido se não estiver a ser usado)
-// import 'player_profile_screen.dart'; 
+import 'player_profile_screen.dart'; 
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc;
@@ -1052,14 +1051,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   ),
                                 ),
                                 onTap: () {
-                                  // TODO: Descomente para ativar a navegação
-                                  /*
+                                  // Ativa a navegação
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (ctx) => PlayerProfileScreen(playerDoc: playerDoc),
+                                      // Passa o ID do jogador
+                                      builder: (ctx) => PlayerProfileScreen(playerId: playerDoc.id),
                                     ),
                                   );
-                                  */
                                 },
                               ),
                               DataCell(

@@ -6,6 +6,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../services/admin_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'player_profile_screen.dart';
 
 class SuspensionHistoryScreen extends StatelessWidget {
   SuspensionHistoryScreen({super.key});
@@ -110,6 +111,7 @@ class SuspensionHistoryScreen extends StatelessWidget {
 
               final String playerName = data['playerName'] ?? 'Jogador';
               final bool isStaff = data['is_staff'] ?? false;
+              final String playerId = data['playerId'] ?? '';
               final String teamName = data['teamName'] ?? 'Time';
               final String teamLogoUrl = data['teamLogoUrl'] ?? '';
               final String reason = data['reason'] ?? 'Indefinido';
@@ -226,6 +228,16 @@ class SuspensionHistoryScreen extends StatelessWidget {
                           textAlign: TextAlign.right,
                         ),
                       ),
+                      onTap: () {
+                        // Navega para o perfil do jogador se o ID existir
+                        if (playerId.isNotEmpty) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (ctx) => PlayerProfileScreen(playerId: playerId),
+                            ),
+                          );
+                        }
+                      }
                     ),
                     
                     if (AdminService.isAdmin)

@@ -643,7 +643,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                               child: const Icon(Icons.circle, size: 16), // Ícone "REC"
                             ),
                             const SizedBox(width: 10),
-                            const Text('SPD Lives - Assistir Ao Vivo'),
+                            const Text('SDP Lives - Assistir Ao Vivo'),
                           ],
                         ),
                         // --- FIM DA CORREÇÃO ---
