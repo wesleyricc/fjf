@@ -237,7 +237,7 @@ class FirestoreService {
         'is_goalkeeper': isGoalkeeper,
         'team_id': teamId,
         'team_name': teamName,
-        'team_shield_url': teamShieldUrl, // <-- Adicionado
+        'team_shield_url': teamShieldUrl,
         'jersey_number': jerseyNumber,
         'goals': 0, 'assists': 0,
         'yellow_cards': 0, 'red_cards': 0,
@@ -1005,30 +1005,95 @@ class FirestoreService {
 
       final String phaseBeforeUpdate = matchDataBefore['phase'] ?? 'first';
       final String statusBeforeUpdate = matchDataBefore['status'] ?? 'pending';
-
       bool isFirstPhaseGame = (phaseBeforeUpdate == 'first');
       bool wasFinished = (statusBeforeUpdate == 'finished');
       bool isNowNotFinished = (newStatus != 'finished');
       bool didGameUnfinish = (wasFinished && isNowNotFinished);
 
-      bool shouldRecalculate = isFirstPhaseGame || didGameUnfinish;
-
-      if (shouldRecalculate) {
-        debugPrint(
-          "[SERVICE_UPDATE] Recalculando stats 1ª Fase para $homeTeamId e $awayTeamId...",
-        );
+      if (isFirstPhaseGame || didGameUnfinish) {
+        debugPrint("[SERVICE_UPDATE] Recalculando stats 1ª Fase para $homeTeamId e $awayTeamId...");
         await _recalculateTeamStats(homeTeamId);
         await _recalculateTeamStats(awayTeamId);
-      } else {
-        debugPrint("[SERVICE_UPDATE] Recálculo stats 1ª Fase não necessário.");
       }
+
+      // --- AUTOMAÇÃO DE FASES (LÓGICA NOVA) ---
+      
+      // Dados para decisão
+      final int currentRound = matchDataBefore['round'] ?? 0;
+      final String currentPhase = phaseBeforeUpdate;
+      const int TOTAL_RODADAS = 7; // Defina a última rodada da 1ª fase
+
+      // 1. Automação SEMIFINAL (Gatilho: Rodada 7)
+      if (currentPhase == 'first' && currentRound == TOTAL_RODADAS) {
+         // Verifica status de TODOS jogos da R7
+         final r7Query = await _firestore.collection('matches')
+             .where('phase', isEqualTo: 'first')
+             .where('round', isEqualTo: TOTAL_RODADAS)
+             .get();
+         
+         bool allR7Finished = r7Query.docs.every((d) {
+            // Se for o jogo atual, usa o status novo, senão o do banco
+            if (d.id == matchId) return newStatus == 'finished';
+            return d['status'] == 'finished';
+         });
+
+         if (allR7Finished) {
+            debugPrint("[AUTOMAÇÃO] Rodada 7 completa. Gerando Semifinais...");
+            // Limpa para regenerar com dados atualizados
+            await _deleteSemifinalsAndFinals(); 
+            await calculateAndStorePhase1Ranks(); // Salva rank para desempate futuro
+            await generateSemifinals();
+         } else {
+            // Se deixou de ser "tudo finalizado", apaga as fases futuras
+            debugPrint("[AUTOMAÇÃO] Rodada 7 incompleta. Removendo fases futuras...");
+            await _deleteSemifinalsAndFinals();
+         }
+      }
+
+      // 2. Automação FINAL (Gatilho: Semifinal)
+      if (currentPhase == 'semifinal') {
+         final semiQuery = await _firestore.collection('matches')
+             .where('phase', isEqualTo: 'semifinal')
+             .get();
+         
+         bool allSemisFinished = semiQuery.docs.every((d) {
+             if (d.id == matchId) return newStatus == 'finished';
+             return d['status'] == 'finished';
+         });
+         
+         if (allSemisFinished) {
+            debugPrint("[AUTOMAÇÃO] Semifinais completas. Gerando Finais...");
+            await _deleteFinals(); // Limpa para regenerar
+            await generateFinals();
+         } else {
+             debugPrint("[AUTOMAÇÃO] Semifinais incompletas. Removendo Finais...");
+            await _deleteFinals();
+         }
+      }
+      // --- FIM DA AUTOMAÇÃO ---
 
       return "Sucesso";
     } catch (e) {
-      debugPrint('[SERVICE_UPDATE] Erro na transação updateMatchStats: $e');
+      debugPrint('[SERVICE_UPDATE] Erro: $e');
       return "Erro: ${e.toString()}";
     }
   }
+
+  // --- Helpers para Automação ---
+  Future<void> _deleteSemifinalsAndFinals() async {
+    final semis = await _firestore.collection('matches').where('phase', isEqualTo: 'semifinal').get();
+    for(var doc in semis.docs) await doc.reference.delete();
+    await _deleteFinals(); // Apaga finais também (cascata)
+  }
+
+  Future<void> _deleteFinals() async {
+    final finals = await _firestore.collection('matches').where('phase', isEqualTo: 'final').get();
+    for(var doc in finals.docs) await doc.reference.delete();
+    
+    final third = await _firestore.collection('matches').where('phase', isEqualTo: 'third_place').get();
+    for(var doc in third.docs) await doc.reference.delete();
+  }
+  // ------------------------------
 
   // --- Funções de Playoff (Corrigidas para o Sorter) ---
   Future<String> calculateAndStorePhase1Ranks() async {
@@ -1093,56 +1158,30 @@ class FirestoreService {
       List<TeamStanding> sortedStandings = sorter.sort(standings);
 
       if (sortedStandings.length < 4)
-        return "Erro: Menos de 4 times classificados (${sortedStandings.length}).";
+       return "Erro: Menos de 4 times classificados.";
       final team1 = sortedStandings[0];
       final team2 = sortedStandings[1];
       final team3 = sortedStandings[2];
       final team4 = sortedStandings[3];
-      debugPrint("[SERVICE_SEMI] Classificação Top 4 definida.");
 
-      final existingSemis = await _firestore
-          .collection('matches')
-          .where('phase', isEqualTo: 'semifinal')
-          .limit(1)
-          .get();
-      if (existingSemis.docs.isNotEmpty) return "Aviso: Semifinais já existem.";
 
       final WriteBatch batch = _firestore.batch();
       final semiFinalRef1 = _firestore.collection('matches').doc();
       final semiFinalRef2 = _firestore.collection('matches').doc();
 
       batch.set(semiFinalRef1, {
-        'phase': 'semifinal',
-        'order': 1,
-        'round': null,
-        'datetime': null,
-        'location': 'A definir',
-        'status': 'pending',
-        'score_home': null,
-        'score_away': null,
-        'team_home_id': team1.id,
-        'team_home_name': team1.data['name'] ?? '?',
-        'team_home_shield': team1.data['shield_url'] ?? '',
-        'team_away_id': team4.id,
-        'team_away_name': team4.data['name'] ?? '?',
-        'team_away_shield': team4.data['shield_url'] ?? '',
+        'phase': 'semifinal', 'order': 1, 'round': null, 'datetime': null,
+        'location': 'Ginásio de Esportes Jorge Silva', 'status': 'pending', 'score_home': null, 'score_away': null,
+        'team_home_id': team1.id, 'team_home_name': team1.data['name'] ?? '?', 'team_home_shield': team1.data['shield_url'] ?? '',
+        'team_away_id': team4.id, 'team_away_name': team4.data['name'] ?? '?', 'team_away_shield': team4.data['shield_url'] ?? '',
       });
       batch.set(semiFinalRef2, {
-        'phase': 'semifinal',
-        'order': 2,
-        'round': null,
-        'datetime': null,
-        'location': 'A definir',
-        'status': 'pending',
-        'score_home': null,
-        'score_away': null,
-        'team_home_id': team2.id,
-        'team_home_name': team2.data['name'] ?? '?',
-        'team_home_shield': team2.data['shield_url'] ?? '',
-        'team_away_id': team3.id,
-        'team_away_name': team3.data['name'] ?? '?',
-        'team_away_shield': team3.data['shield_url'] ?? '',
+        'phase': 'semifinal', 'order': 2, 'round': null, 'datetime': null,
+        'location': 'Ginásio de Esportes Jorge Silva', 'status': 'pending', 'score_home': null, 'score_away': null,
+        'team_home_id': team2.id, 'team_home_name': team2.data['name'] ?? '?', 'team_home_shield': team2.data['shield_url'] ?? '',
+        'team_away_id': team3.id, 'team_away_name': team3.data['name'] ?? '?', 'team_away_shield': team3.data['shield_url'] ?? '',
       });
+
 
       await batch.commit();
       debugPrint("[SERVICE_SEMI] Batch commit Semifinais concluído.");

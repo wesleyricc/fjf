@@ -14,6 +14,7 @@ class SuspensionHistoryScreen extends StatelessWidget {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<void> _showEditReturnDateDialog(BuildContext context, DocumentSnapshot logDoc) async {
+    // ... (Mesma lógica anterior)
     final data = logDoc.data() as Map<String, dynamic>;
     DateTime initialDate = (data['return_date'] as Timestamp? ?? data['timestamp'] as Timestamp? ?? Timestamp.now()).toDate();
     
@@ -46,6 +47,7 @@ class SuspensionHistoryScreen extends StatelessWidget {
   }
 
   Future<void> _showDeleteLogDialog(BuildContext context, DocumentSnapshot logDoc) async {
+     // ... (Mesma lógica anterior)
      final confirm = await showDialog<bool>(
        context: context,
        builder: (ctx) => AlertDialog(
@@ -76,6 +78,46 @@ class SuspensionHistoryScreen extends StatelessWidget {
        }
      }
   }
+
+  // --- NOVA LÓGICA: Gera spans de texto e ícones misturados ---
+  List<InlineSpan> _buildReasonSpans(String reason) {
+    List<InlineSpan> spans = [];
+    final String upperReason = reason.toUpperCase();
+    const double iconSize = 14.0; // Tamanho do ícone no texto
+
+    bool hasIcon = false;
+
+    // 1. Lógica para 3 CAs
+    if (upperReason.contains('3 CA') || upperReason.contains('ACÚMULO')) {
+      hasIcon = true;
+      spans.addAll([
+        WidgetSpan(alignment: PlaceholderAlignment.middle, child: Icon(Icons.style, size: iconSize, color: Colors.yellow[700])),
+        const TextSpan(text: ' '),
+        WidgetSpan(alignment: PlaceholderAlignment.middle, child: Icon(Icons.style, size: iconSize, color: Colors.yellow[700])),
+        const TextSpan(text: ' '),
+        WidgetSpan(alignment: PlaceholderAlignment.middle, child: Icon(Icons.style, size: iconSize, color: Colors.yellow[700])),
+        const TextSpan(text: ' '),
+      ]);
+    }
+
+    // 2. Lógica para CV
+    if (upperReason.contains('CV') || upperReason.contains('VERMELHO')) {
+      if (hasIcon) spans.add(const TextSpan(text: '+ ')); // Separador se for dupla suspensão
+      hasIcon = true;
+      spans.add(
+        WidgetSpan(alignment: PlaceholderAlignment.middle, child: Icon(Icons.style, size: iconSize, color: Colors.red[700])),
+      );
+      spans.add(const TextSpan(text: ' '));
+    }
+
+    // 3. Se não reconheceu palavras-chave, mostra o texto original
+    if (!hasIcon) {
+      spans.add(TextSpan(text: reason));
+    }
+
+    return spans;
+  }
+  // -----------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -146,15 +188,6 @@ class SuspensionHistoryScreen extends StatelessWidget {
                 statusColor = Colors.red;
               }
 
-              IconData reasonIcon; Color reasonColor;
-              if (reason == 'CV' || reason.contains('CV')) {
-                reasonIcon = Icons.style; reasonColor = Colors.red;
-              } else if (reason.contains('CA')) {
-                 reasonIcon = Icons.style_outlined; reasonColor = const Color.fromARGB(255, 192, 181, 23);
-              } else {
-                 reasonIcon = Icons.block; reasonColor = Colors.grey;
-              }
-
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 elevation: 1,
@@ -163,73 +196,77 @@ class SuspensionHistoryScreen extends StatelessWidget {
                   children: [
                     ListTile(
                       isThreeLine: true,
-                      leading: Icon(reasonIcon, color: reasonColor, size: 30),
+                      
+                      // --- LEADING AGORA É O ESCUDO DO TIME ---
+                      leading: teamLogoUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: teamLogoUrl,
+                            width: 40, height: 40, fit: BoxFit.contain,
+                            placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
+                            errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.grey),
+                          )
+                        : const Icon(Icons.shield, color: Colors.grey, size: 40),
+                      // ----------------------------------------
+
                       title: Text(
-                        isStaff ? '$playerName (Comissão)' : playerName, // Adiciona sufixo
+                        isStaff ? '$playerName (Comissão)' : playerName,
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // Adiciona itálico
+                          fontStyle: isStaff ? FontStyle.italic : FontStyle.normal,
                         ),
                       ),
                       
-                      // --- INÍCIO DA ALTERAÇÃO ---
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              // 1. Logo vem PRIMEIRO
-                              if (teamLogoUrl.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 6.0), // Espaçamento à direita
-                                  child: CachedNetworkImage(
-                                    imageUrl: teamLogoUrl,
-                                    width: 20,
-                                    height: 20,
-                                    fit: BoxFit.contain,
-                                    errorWidget: (context, url, error) => const Icon(Icons.group, size: 20),
-                                  ),
-                                ),
-                              // 2. Nome vem DEPOIS e é Flexible
-                              Flexible(
-                                child: Text(
-                                  teamName, 
-                                  style: const TextStyle(fontSize: 13),
-                                  overflow: TextOverflow.ellipsis, // Evita overflow
-                                ),
-                              ),
-                            ],
+                          // Nome do time
+                          Text(teamName, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                          const SizedBox(height: 4),
+
+                          // --- AQUI A MÁGICA DO TEXTO COM ÍCONES ---
+                          Text.rich(
+                            TextSpan(
+                              style: const TextStyle(fontSize: 14, color: Colors.black87), // Estilo base
+                              children: [
+                                const TextSpan(text: 'Motivo: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ..._buildReasonSpans(reason), // Insere ícones ou texto
+                                //TextSpan(text: ' ($matchInfo)', style: const TextStyle(fontSize: 14, color: Colors.grey)),
+                              ],
+                            ),
                           ),
-                          // --- FIM DA ALTERAÇÃO ---
+                          // -----------------------------------------
+                          //const SizedBox(height: 2),
                           
-                          Text('Motivo: $reason (Jogo: $matchInfo)'),
-                          Text('Suspenso em: $suspensionDateStr'),
+                          Text('$matchInfo', style: const TextStyle(fontSize: 14)),
+                          
+                          const SizedBox(height: 2),
+                          Text('Suspenso em: $suspensionDateStr', style: const TextStyle(fontSize: 14)),
                           Text(
                             'Retorno Previsto: $returnDateStr',
                             style: const TextStyle(
                               color: Colors.black,
                               fontWeight: FontWeight.w500,
+                              fontSize: 14
                             ),
                           )
                         ],
                       ),
-                      // --- FIM DA ALTERAÇÃO ---
                       
-                      trailing: Container(
-                        width: 80, 
-                        alignment: Alignment.center,
-                        child: Text(
-                          statusText,
-                          style: TextStyle(
-                            color: statusColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            statusText,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
                           ),
-                          textAlign: TextAlign.right,
-                        ),
+                        ],
                       ),
+                      
                       onTap: () {
-                        // Navega para o perfil do jogador se o ID existir
                         if (playerId.isNotEmpty) {
                           Navigator.of(context).push(
                             MaterialPageRoute(
@@ -242,24 +279,27 @@ class SuspensionHistoryScreen extends StatelessWidget {
                     
                     if (AdminService.isAdmin)
                       Padding(
-                        padding: const EdgeInsets.only(right: 8.0, bottom: 8.0), 
+                        padding: const EdgeInsets.only(right: 8.0, bottom: 4.0), 
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             IconButton(
-                              icon: Icon(Icons.edit_calendar_outlined, size: 22),
+                              icon: Icon(Icons.edit_calendar_outlined, size: 20),
                               color: Theme.of(context).primaryColor,
                               tooltip: 'Editar Data de Retorno',
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              constraints: const BoxConstraints(),
                               onPressed: () {
                                 _showEditReturnDateDialog(context, logDoc);
                               },
                             ),
+                            const SizedBox(width: 16),
                             IconButton(
-                              icon: Icon(Icons.delete_outline, size: 22),
+                              icon: Icon(Icons.delete_outline, size: 20),
                               color: Colors.red[700],
                               tooltip: 'Excluir do Histórico',
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              constraints: const BoxConstraints(),
                               onPressed: () {
                                 _showDeleteLogDialog(context, logDoc);
                               },

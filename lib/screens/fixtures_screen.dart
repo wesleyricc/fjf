@@ -41,8 +41,21 @@ class _FixturesScreenState extends State<FixturesScreen>
     switch(stage) {
       case 'semifinal': return PlayoffStage.semifinal;
       case 'third_place': return PlayoffStage.third_place;
+      case 'final':      return PlayoffStage.final_game;
       case 'final_game': return PlayoffStage.final_game;
       default: return PlayoffStage.semifinal;
+    }
+  }
+
+  // Função para converter o Enum do app para a String do Firebase
+  String _getDatabasePhaseName(PlayoffStage stage) {
+    switch (stage) {
+      case PlayoffStage.semifinal:
+        return 'semifinal';
+      case PlayoffStage.third_place:
+        return 'third_place';
+      case PlayoffStage.final_game:
+        return 'final'; // <--- AQUI ESTÁ O PULO DO GATO
     }
   }
 
@@ -190,7 +203,7 @@ class _FixturesScreenState extends State<FixturesScreen>
                       .snapshots()
                   : _firestore
                       .collection('matches')
-                      .where('phase', isEqualTo: _selectedPlayoffStage.name)
+                      .where('phase', isEqualTo: _getDatabasePhaseName(_selectedPlayoffStage))
                       .orderBy('order')
                       .snapshots(),
               builder: (context, snapshot) {
@@ -335,6 +348,7 @@ class _FixturesScreenState extends State<FixturesScreen>
       _selectedPlayoffStage == PlayoffStage.third_place,
       _selectedPlayoffStage == PlayoffStage.final_game,
     ];
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
       child: LayoutBuilder(
@@ -453,7 +467,7 @@ class _FixturesScreenState extends State<FixturesScreen>
                         child: GestureDetector(
                           onTap: () => _navigateToTeamDetail(context, data['team_home_id']),
                           child: Column(children: [
-                             CachedNetworkImage(imageUrl: data['team_home_shield'] ?? '', width: 50, height: 50, errorWidget: (c,u,e)=>const Icon(Icons.error)),
+                             CachedNetworkImage(imageUrl: data['team_home_shield'] ?? '', width: 60, height: 60, errorWidget: (c,u,e)=>const Icon(Icons.error)),
                              const SizedBox(height: 4),
                              Text(data['team_home_name'] ?? 'Casa', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
                           ]),
@@ -472,7 +486,7 @@ class _FixturesScreenState extends State<FixturesScreen>
                         child: GestureDetector(
                           onTap: () => _navigateToTeamDetail(context, data['team_away_id']),
                           child: Column(children: [
-                             CachedNetworkImage(imageUrl: data['team_away_shield'] ?? '', width: 50, height: 50, errorWidget: (c,u,e)=>const Icon(Icons.error)),
+                             CachedNetworkImage(imageUrl: data['team_away_shield'] ?? '', width: 60, height: 60, errorWidget: (c,u,e)=>const Icon(Icons.error)),
                              const SizedBox(height: 4),
                              Text(data['team_away_name'] ?? 'Fora', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
                           ]),

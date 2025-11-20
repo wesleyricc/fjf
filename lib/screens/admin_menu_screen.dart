@@ -8,7 +8,7 @@ import 'dart:convert';
 import '../services/admin_service.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
-import '../services/firestore_service.dart';
+//import '../services/firestore_service.dart';
 import 'playoff_rules_screen.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'admin_media_screen.dart';
@@ -22,7 +22,7 @@ class AdminMenuScreen extends StatefulWidget {
 
 class _AdminMenuScreenState extends State<AdminMenuScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirestoreService _firestoreService = FirestoreService();
+  //final FirestoreService _firestoreService = FirestoreService();
 
   bool _isSaving = false;
 
@@ -51,7 +51,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
        setState(() { _isSaving = false; });
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
      }
-  }*/
+  }
 
   Future<void> _triggerCalculateRanks() async {
      final confirm = await showDialog<bool>(
@@ -85,7 +85,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
      }
   }
 
-  /*Future<void> _showUploadConfirmDialog(BuildContext context) async {
+  Future<void> _showUploadConfirmDialog(BuildContext context) async {
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
@@ -370,7 +370,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
   
-  Future<void> _triggerGenerateSemifinals() async {
+  /*Future<void> _triggerGenerateSemifinals() async {
      final confirm = await showDialog<bool>(
        context: context,
        builder: (ctx) => AlertDialog(
@@ -410,7 +410,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
        setState(() { _isSaving = false; });
        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
      }
-  }
+  }*/
 
   // --- INÍCIO DA ALTERAÇÃO (Diálogo de Definir Padrão) ---
   Future<void> _showSetDefaultViewDialog() async {
@@ -510,7 +510,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         { 
                           'default_phase': selectedPhase,
                           'default_stage': selectedStage,
-                          'default_fixtures_round': FieldValue.delete(), // Apaga o campo antigo
+                          'default_fixtures_round': FieldValue.delete(),
                         },
                         SetOptions(merge: true)
                       );
@@ -609,7 +609,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.live_tv),
+            leading: const Icon(Icons.live_tv, color: Colors.red),
             title: const Text('Alterar Vídeo Ao Vivo'),
             subtitle: const Text('Muda o ID do vídeo na tela inicial'),
             trailing: const Icon(Icons.arrow_forward_ios),
@@ -663,7 +663,8 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
               );
             },
           ),
-          const Divider(),
+          
+          /*const Divider(),
           ListTile(
             leading: const Icon(Icons.format_list_numbered, color: Colors.purple),
             title: const Text('Calcular Ranks da 1ª Fase'),
@@ -686,7 +687,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             subtitle: const Text('Cria os jogos com vencedores e perdedores das semis'),
             trailing: const Icon(Icons.arrow_forward_ios),
             onTap: _isSaving ? null : _triggerGenerateFinals,
-          ),
+          ),*/
           const Divider(),
           ListTile(
             leading: const Icon(Icons.password),

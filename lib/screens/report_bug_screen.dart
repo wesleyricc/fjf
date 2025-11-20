@@ -1,8 +1,8 @@
 // lib/screens/report_bug_screen.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart'; // Import necessário para abrir o WhatsApp
 import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart'; // Para o banner no rodapé
+import '../widgets/sponsor_banner_rotator.dart';
 
 class ReportBugScreen extends StatefulWidget {
   const ReportBugScreen({super.key});
@@ -13,13 +13,17 @@ class ReportBugScreen extends StatefulWidget {
 
 class _ReportBugScreenState extends State<ReportBugScreen> {
   final _formKey = GlobalKey<FormState>();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  
+  // --- CONFIGURAÇÃO ---
+  // Coloque aqui o número do WhatsApp com o código do país e DDD (sem o +)
+  // Exemplo: 55 (Brasil) + 48 (DDD) + 999999999
+  final String supportNumber = "5548996381626"; 
+  // --------------------
 
-  // Controladores
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  String _reportType = 'Erro de Estatística'; // Valor padrão
-  bool _isSaving = false;
+  String _reportType = 'Erro de Estatística'; 
+  bool _isSending = false;
 
   @override
   void dispose() {
@@ -28,52 +32,60 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
     super.dispose();
   }
 
-  Future<void> _sendReport() async {
-    // Valida o formulário
+  Future<void> _sendReportToWhatsApp() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    setState(() { _isSaving = true; });
+    setState(() { _isSending = true; });
 
     try {
-      // Envia os dados para a coleção 'bug_reports'
-      await _firestore.collection('bug_reports').add({
-        'type': _reportType, // Tipo (Bug ou Estatística)
-        'title': _titleController.text, // Título curto
-        'description': _descriptionController.text, // Descrição longa
-        'timestamp': FieldValue.serverTimestamp(), // Data/Hora do envio
-        'status': 'new', // Status inicial (para o admin gerenciar)
-      });
+      // 1. Formatar a mensagem
+      final String cleanNumber = supportNumber.replaceAll(RegExp(r'[^\d]'), '');
+      final String message = 
+          "*REPORT DE BUG/ERRO - FJF APP*\n\n"
+          "*Tipo:* $_reportType\n"
+          "*Título:* ${_titleController.text}\n"
+          "*Descrição:* ${_descriptionController.text}\n\n"
+          "Enviado pelo App.";
 
-      if (mounted) {
-        // Limpa o formulário
-        _titleController.clear();
-        _descriptionController.clear();
-        setState(() {
-           _reportType = 'Erro de Estatística'; // Reseta o tipo
-        });
+      // 2. Codificar a mensagem para URL (tratar espaços, acentos, quebras de linha)
+      final String encodedMessage = Uri.encodeComponent(message);
+      
+      // 3. Criar a URL do WhatsApp
+      final Uri whatsappUrl = Uri.parse("https://api.whatsapp.com/send?phone=$cleanNumber&text=$encodedMessage");
+
+      // 4. Tentar abrir o WhatsApp
+      if (await canLaunchUrl(whatsappUrl)) {
+        await launchUrl(
+          whatsappUrl,
+          mode: LaunchMode.externalApplication,
+        );
         
-        // Mostra SnackBar de sucesso
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Report enviado com sucesso! Obrigado pela ajuda.'),
-            backgroundColor: Colors.green,
-          ),
+        // Limpa o formulário após o envio bem-sucedido (opcional)
+        if (mounted) {
+          _titleController.clear();
+          _descriptionController.clear();
+          setState(() { _reportType = 'Erro de Estatística'; });
+        }
+      }  else {
+        // Fallback: Tenta lançar sem verificar o canLaunchUrl (às vezes necessário no Android 11+)
+        await launchUrl(
+          whatsappUrl,
+          mode: LaunchMode.externalApplication,
         );
       }
+
     } catch (e) {
-      debugPrint("Erro ao enviar report: $e");
+      debugPrint("Erro ao abrir WhatsApp: $e");
       if (mounted) {
          ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao enviar report: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+       
+            SnackBar(content: Text('Não foi possível abrir o WhatsApp: $e')),
+          );
       }
     } finally {
-       if (mounted) setState(() { _isSaving = false; });
+       if (mounted) setState(() { _isSending = false; });
     }
   }
 
@@ -81,7 +93,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reportar Erro ou Bug'),
+        title: const Text('Reportar via WhatsApp'),
       ),
       drawer: const AppDrawer(),
       body: Form(
@@ -91,14 +103,15 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Icon(Icons.chat_outlined, size: 60, color: Colors.green),
+              const SizedBox(height: 16),
               Text(
-                'Encontrou um erro nas estatísticas ou um bug no aplicativo? Descreva o problema abaixo.',
+                'Encontrou um problema? Preencha abaixo e envie diretamente para nosso suporte no WhatsApp.',
                 style: Theme.of(context).textTheme.bodyLarge,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
 
-              // Seletor de Tipo
               DropdownButtonFormField<String>(
                 value: _reportType,
                 decoration: const InputDecoration(
@@ -119,7 +132,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
                     child: Text('Outro Assunto'),
                   ),
                 ],
-                onChanged: _isSaving ? null : (value) {
+                onChanged: _isSending ? null : (value) {
                   if (value != null) {
                     setState(() { _reportType = value; });
                   }
@@ -127,52 +140,49 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Título
               TextFormField(
                 controller: _titleController,
                 decoration: const InputDecoration(
-                  labelText: 'Título Resumido',
-                  hintText: 'Ex: Placar jogo Overdoso x Fio Dental R1',
+                  labelText: 'Assunto Resumido',
+                  hintText: 'Ex: Placar jogo X vs Y',
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) => (value == null || value.isEmpty) ? 'O título é obrigatório.' : null,
-                enabled: !_isSaving,
+                validator: (value) => (value == null || value.isEmpty) ? 'Obrigatório.' : null,
+                enabled: !_isSending,
               ),
               const SizedBox(height: 16),
 
-              // Descrição
               TextFormField(
                 controller: _descriptionController,
                 decoration: const InputDecoration(
-                  labelText: 'Descrição Detalhada',
-                  hintText: 'Por favor, inclua o máximo de detalhes possível...',
+                  labelText: 'Detalhes',
+                  hintText: 'Descreva o que está errado...',
                   border: OutlineInputBorder(),
                 ),
-                maxLines: 6, // Campo de texto maior
-                validator: (value) => (value == null || value.isEmpty) ? 'A descrição é obrigatória.' : null,
-                enabled: !_isSaving,
+                maxLines: 6,
+                validator: (value) => (value == null || value.isEmpty) ? 'Obrigatório.' : null,
+                enabled: !_isSending,
               ),
               const SizedBox(height: 32),
 
-              // Botão Enviar
               ElevatedButton.icon(
-                icon: _isSaving
+                icon: _isSending
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Icon(Icons.send),
-                label: Text(_isSaving ? 'Enviando...' : 'Enviar Report'),
+                label: Text(_isSending ? 'Abrindo WhatsApp...' : 'Enviar para o WhatsApp'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
+                  backgroundColor: Colors.green, // Cor do WhatsApp
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16.0),
                   textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                onPressed: _isSaving ? null : _sendReport,
+                onPressed: _isSending ? null : _sendReportToWhatsApp,
               ),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: const SponsorBannerRotator(), // Banner fixo
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 }
