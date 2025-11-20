@@ -130,6 +130,17 @@ class AppDrawer extends StatelessWidget {
           const Divider(color: Colors.white24, indent: 16, endIndent: 16),
           _buildDrawerItem(
             context,
+            Icons.compare_arrows,
+            'Comparador de Atletas',
+            () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pushReplacementNamed('/player-comparison');
+            },
+          ),
+
+          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
+          _buildDrawerItem(
+            context,
             Icons.bug_report_outlined,
             'Reportar Erro',
             () {

@@ -18,6 +18,7 @@ import 'package:fjf_app/screens/suspension_history_screen.dart';
 import 'package:fjf_app/screens/report_bug_screen.dart';
 import 'package:fjf_app/screens/admin_menu_screen.dart';
 import 'package:fjf_app/screens/team_stats_screen.dart';
+import 'package:fjf_app/screens/player_comparison_screen.dart';
 
 // --- INÍCIO DA ALTERAÇÃO (Função helper) ---
 FirebaseOptions _getFirebaseOptions(String env) {
@@ -184,6 +185,7 @@ class MyApp extends StatelessWidget {
         '/suspension-history': (context) => SuspensionHistoryScreen(),
         '/report-bug': (context) => const ReportBugScreen(),
         '/admin-menu': (context) => const AdminMenuScreen(),
+        '/player-comparison': (context) => const PlayerComparisonScreen(),
       },
       // --- FIM DA ATUALIZAÇÃO ---
 
