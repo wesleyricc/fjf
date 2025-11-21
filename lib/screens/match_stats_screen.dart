@@ -10,6 +10,13 @@ import 'package:chewie/chewie.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'player_profile_screen.dart';
 
+// --- IMPORTS DE COMPARTILHAMENTO ATUALIZADOS (PWA FRIENDLY) ---
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:typed_data'; // Necessário para Uint8List
+// NOTA: Removemos 'dart:io' e 'path_provider' para funcionar na Web
+import '../widgets/match_result_card.dart';
+
 class MatchStatsScreen extends StatefulWidget {
   final DocumentSnapshot match;
   const MatchStatsScreen({super.key, required this.match});
@@ -20,6 +27,8 @@ class MatchStatsScreen extends StatefulWidget {
 
 class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ScreenshotController _screenshotController = ScreenshotController();
+
   Map<String, Map<String, dynamic>> _playerDataCache = {};
   bool _isLoadingPlayerData = true;
   String? _manOfTheMatchName;
@@ -29,7 +38,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
   Map<String, int> _yellows = {};
   Map<String, int> _reds = {};
   String? _manOfTheMatchId;
-
 
   late TabController _tabController;
   List<Map<String, dynamic>> _mediaLinks = [];
@@ -45,9 +53,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     _extractStatsAndFetchPlayers();
     _loadMediaLinks();
 
-    // --- 2. ADICIONE A CHAMADA DO ANALYTICS ---
     try {
-      // Cria um nome de tela dinâmico (ex: /match/stats/TimeA-vs-TimeB)
       final data = widget.match.data() as Map<String, dynamic>? ?? {};
       final String homeName = data['team_home_name'] ?? 'Casa';
       final String awayName = data['team_away_name'] ?? 'Fora';
@@ -57,7 +63,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     } catch (e) {
       debugPrint("Erro ao logar screen_view (MatchStatsScreen): $e");
     }
-    // --- FIM ---
   }
 
  @override  
@@ -68,7 +73,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     super.dispose();
   }
 
-  // Carrega a lista de mídias do documento do jogo
   void _loadMediaLinks() {
     final data = widget.match.data() as Map<String, dynamic>;
     if (data.containsKey('stats_applied') &&
@@ -80,9 +84,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         linksFromDb.map((item) => Map<String, dynamic>.from(item))
       );
       
-      // --- 3. INICIALIZA O PRIMEIRO VÍDEO (se houver mídias) ---
       if (_mediaLinks.isNotEmpty) {
-        // Atraso de 1 frame para garantir que o build inicial termine
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
              _changeMediaVideo(
@@ -93,27 +95,17 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
           }
         });
       }
-      // --- FIM ---
     }
-    
-    // Atualiza o estado (mesmo que a lista esteja vazia)
     if(mounted) setState(() {});
   }
 
-  // --- 4. NOVA FUNÇÃO PARA TROCAR O VÍDEO NO PLAYER ---
   void _changeMediaVideo(String videoUrl, String title, {bool autoPlay = true}) {
     if (!mounted) return;
-    
-    // Se clicar no vídeo que já está carregado, não faz nada
     if (_activeVideoPlayerController?.dataSource == videoUrl) return;
 
-    debugPrint("Trocando mídia para: $title ($videoUrl)");
-
-    // Limpa os controllers antigos (se existirem)
     _activeVideoPlayerController?.dispose();
     _activeChewieController?.dispose();
 
-    // Cria os novos controllers
     try {
       _activeVideoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(videoUrl),
@@ -140,7 +132,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         },
       );
 
-      // Atualiza a UI para mostrar o novo player e título
       setState(() {
         _activeMediaTitle = title;
       });
@@ -148,12 +139,128 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
        debugPrint("Erro ao criar VideoPlayerController: $e");
        setState(() {
          _activeMediaTitle = "Erro ao carregar vídeo";
-         _activeChewieController = null; // Remove o player
+         _activeChewieController = null;
        });
     }
   }
-  // --- FIM DA FUNÇÃO ---
-  // --- 5. FUNÇÃO: CONSTRÓI A ABA DE MÍDIAS (REFEITA) ---
+
+  // --- FUNÇÃO ATUALIZADA PARA PWA (WEB) ---
+  Future<void> _shareMatchCard() async {
+    final data = widget.match.data() as Map<String, dynamic>;
+    final homeName = data['team_home_name'] ?? 'Casa';
+    final awayName = data['team_away_name'] ?? 'Fora';
+    final homeId = data['team_home_id'];
+    final awayId = data['team_away_id'];
+    final homeShield = data['team_home_shield'] ?? '';
+    final awayShield = data['team_away_shield'] ?? '';
+    final scoreHome = data['score_home']?.toString() ?? '-';
+    final scoreAway = data['score_away']?.toString() ?? '-';
+    final location = data['location'] ?? '';
+    
+    String dateStr = '';
+    if (data['datetime'] != null) {
+      dateStr = DateFormat('dd/MM/yyyy HH:mm').format((data['datetime'] as Timestamp).toDate());
+    }
+
+    // --- NOVA LÓGICA: Preparar lista de autores dos gols ---
+
+    final String phase = data['phase'] ?? 'first';
+    final int round = data['round'] ?? 0;
+    
+    String calculatedLabel = 'JOGO'; // Padrão
+    
+    if (phase == 'first') {
+      calculatedLabel = '${round}ª RODADA';
+    } else if (phase == 'semifinal') {
+      calculatedLabel = 'SEMIFINAL';
+    } else if (phase == 'third_place') {
+      calculatedLabel = 'DISPUTA 3º LUGAR';
+    } else if (phase == 'final') {
+      calculatedLabel = 'GRANDE FINAL';
+    }
+    List<String> homeScorersList = [];
+    List<String> awayScorersList = [];
+
+    // Verifica se os dados dos jogadores já foram carregados no cache
+    if (!_isLoadingPlayerData && _goals.isNotEmpty) {
+      _goals.forEach((playerId, count) {
+        if (count > 0 && _playerDataCache.containsKey(playerId)) {
+          final playerData = _playerDataCache[playerId]!;
+          final String rawName = playerData['name'] ?? 'Desconhecido';
+          
+          // Tenta encurtar o nome (Primeiro e Último) para caber melhor no card
+          List<String> nameParts = rawName.trim().split(' ');
+          String shortName = rawName;
+          if (nameParts.length > 1) {
+             shortName = "${nameParts[0]} ${nameParts.last}";
+          }
+
+          // Formata: "Nome (Qtd)" se for mais de 1 gol, senão só "Nome"
+          String scorerText = count > 1 ? "$shortName ($count)" : shortName;
+          
+          // Adiciona na lista correta baseado no ID do time do jogador
+          if (playerData['team_id'] == homeId) {
+            homeScorersList.add(scorerText);
+          } else if (playerData['team_id'] == awayId) {
+            awayScorersList.add(scorerText);
+          }
+        }
+      });
+    }
+    // -------------------------------------------------------
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        contentPadding: EdgeInsets.zero,
+        backgroundColor: Colors.transparent,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Envolve o card no Screenshot para capturar
+            Screenshot(
+              controller: _screenshotController,
+              child: MatchResultCard(
+                homeName: homeName,
+                awayName: awayName,
+                homeShield: homeShield,
+                awayShield: awayShield,
+                scoreHome: scoreHome,
+                scoreAway: scoreAway,
+                date: dateStr,
+                location: location,
+                // Passa as novas listas para o card
+                homeScorers: homeScorersList,
+                awayScorers: awayScorersList,
+                matchLabel: calculatedLabel,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // ... (resto do botão de compartilhar igual ao anterior)
+            ElevatedButton.icon(
+              icon: const Icon(Icons.share),
+              label: const Text('Compartilhar'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+              onPressed: () async {
+                final Uint8List? imageBytes = await _screenshotController.capture(pixelRatio: 4.0);
+                if (imageBytes != null) {
+                  if (mounted) Navigator.of(ctx).pop();
+                  final XFile file = XFile.fromData(imageBytes, mimeType: 'image/png', name: 'resultado_jogo.png');
+                  try {
+                    await Share.shareXFiles([file], text: 'Confira o resultado do jogo! #FJF2025');
+                  } catch (e) {
+                     // Tratamento de erro PWA
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // ----------------------------------------
+
   Widget _buildMediaTab() {
     if (_mediaLinks.isEmpty) {
       return const Center(
@@ -161,14 +268,11 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       );
     }
 
-    // A lógica de inicialização foi movida para _loadMediaLinks
-
-    return SingleChildScrollView( // Permite rolar a lista de vídeos
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // --- A. O PLAYER ÚNICO ---
           Card(
             elevation: 3,
             clipBehavior: Clip.antiAlias,
@@ -178,8 +282,8 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
                   child: Container(
-                    width: double.infinity, // Força largura total
-                    alignment: Alignment.center, // Centraliza o filho
+                    width: double.infinity,
+                    alignment: Alignment.center,
                     child: Text(
                     _activeMediaTitle,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -189,24 +293,17 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                 AspectRatio(
                   aspectRatio: 16 / 9,
                   child: (_activeChewieController == null)
-                      // Se nenhum vídeo foi carregado (ou deu erro)
                       ? Container(color: Colors.black, child: const Center(child: CircularProgressIndicator()))
-                      // Mostra o player de vídeo ativo
                       : Chewie(controller: _activeChewieController!),
                 ),
               ],
             ),
           ),
-          // --- FIM DO PLAYER ---
-
-          //const SizedBox(height: 5),
           const Divider(),
           Padding(
              padding: const EdgeInsets.symmetric(vertical: 2.0),
              child: Text('Lista de Reprodução', style: Theme.of(context).textTheme.titleMedium),
           ),
-
-          // --- B. A LISTA DE VÍDEOS (PLAYLIST) ---
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -215,14 +312,12 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               final media = _mediaLinks[index];
               final String title = media['title'] ?? 'Vídeo';
               final String videoUrl = media['videoUrl'];
-              
-              // Verifica se este item é o que está tocando
               final bool isPlaying = (_activeVideoPlayerController?.dataSource == videoUrl);
 
               return ListTile(
-                dense: true, // Reduz altura
-                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8.0), // Reduz padding
-                visualDensity: VisualDensity.compact, // Mais compacto
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8.0),
+                visualDensity: VisualDensity.compact,
                 leading: Icon(
                   isPlaying ? Icons.play_circle_fill : Icons.play_circle_outline,
                   color: isPlaying ? Theme.of(context).primaryColor : Colors.grey,
@@ -231,62 +326,49 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                 selected: isPlaying,
                 selectedTileColor: Theme.of(context).primaryColor.withOpacity(0.05),
                 onTap: () {
-                  _changeMediaVideo(videoUrl, title); // Troca o vídeo ao clicar
+                  _changeMediaVideo(videoUrl, title);
                 },
               );
             },
           ),
-          // --- FIM DA LISTA ---
         ],
       ),
     );
   }
-  // --- FIM MEDIA TAB ---
-  // --- FUNÇÃO QUE FALTAVA ---
+
   Future<void> _extractStatsAndFetchPlayers() async {
-    // Garante que o estado de loading está ativo
     if (mounted) {
       setState(() {
         _isLoadingPlayerData = true;
       });
     }
 
-    // 1. Extrai as estatísticas do documento do jogo
     final data = widget.match.data() as Map<String, dynamic>;
     Map<String, dynamic> statsApplied = {};
     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
       statsApplied = data['stats_applied'];
     }
     Map<String, dynamic> playerStats = statsApplied['player_stats'] ?? {};
-    _manOfTheMatchId = statsApplied['man_of_the_match']; // Define o ID do MotM
+    _manOfTheMatchId = statsApplied['man_of_the_match'];
 
-    // Preenche os mapas de estatísticas da tela
     _goals = Map<String, int>.from(playerStats['goals'] ?? {});
     _assists = Map<String, int>.from(playerStats['assists'] ?? {});
     _yellows = Map<String, int>.from(playerStats['yellows'] ?? {});
     _reds = Map<String, int>.from(playerStats['reds'] ?? {});
-    // Adicionar _goalsConceded se for usar:
-    // _goalsConceded = Map<String, int>.from(playerStats['goals_conceded'] ?? {});
 
-    // 2. Coleta todos os IDs de jogadores únicos mencionados
     Set<String> playerIds = {};
     playerIds.addAll(_goals.keys);
     playerIds.addAll(_assists.keys);
     playerIds.addAll(_yellows.keys);
     playerIds.addAll(_reds.keys);
-    // playerIds.addAll(_goalsConceded.keys); // Se usar GS
     if (_manOfTheMatchId != null) {
       playerIds.add(_manOfTheMatchId!);
     }
-    playerIds.removeWhere((id) => id.isEmpty); // Remove IDs vazios
+    playerIds.removeWhere((id) => id.isEmpty);
 
-    // 3. Chama a função para buscar os dados desses jogadores
-    // _fetchPlayerData atualizará _isLoadingPlayerData para false no final
     await _fetchPlayerData(playerIds);
   }
-  // --- FIM DA FUNÇÃO QUE FALTAVA ---
 
-  // Função para extrair stats do jogo e buscar dados dos jogadores
   Future<void> _fetchPlayerData(Set<String> playerIds) async {
     if (playerIds.isEmpty) {
       if (mounted) setState(() => _isLoadingPlayerData = false);
@@ -294,9 +376,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     }
 
     try {
-      // Busca documentos dos jogadores cujos IDs estão na lista
-      // Firestore limita 'whereIn' a 10 itens por consulta,
-      // então dividimos em lotes se necessário.
       List<String> idList = playerIds.toList();
       Map<String, Map<String, dynamic>> fetchedData = {};
 
@@ -315,17 +394,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       }
       _playerDataCache = fetchedData;
 
-      // Busca o nome do Craque do Jogo separadamente se houver ID
       if (_manOfTheMatchId != null &&
           _playerDataCache.containsKey(_manOfTheMatchId)) {
         _manOfTheMatchName =
             _playerDataCache[_manOfTheMatchId]?['name'] ?? 'Não encontrado';
         _manOfTheMatchNumber =
-            _playerDataCache[_manOfTheMatchId]?['jersey_number']; // Pega o número
+            _playerDataCache[_manOfTheMatchId]?['jersey_number'];
       }
     } catch (e) {
       debugPrint("Erro ao buscar dados dos jogadores: $e");
-      // Tratar erro, talvez mostrando uma mensagem
     } finally {
       if (mounted) {
         setState(() {
@@ -335,19 +412,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     }
   }
 
-  // --- 2. ADICIONE A FUNÇÃO _launchURL ---
   Future<void> _launchURL(String? urlString) async {
     if (urlString == null || urlString.isEmpty) {
-      debugPrint('URL da súmula está vazia.');
       if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Súmula não disponível.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Súmula não disponível.')));
       return;
     }
     final Uri url = Uri.parse(urlString);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      debugPrint('Não foi possível abrir $urlString');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Não foi possível abrir o link: $urlString')),
@@ -355,21 +427,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       }
     }
   }
-  // --- FIM DA ADIÇÃO --
 
-  // --- FUNÇÃO ATUALIZADA PARA CONSTRUIR COLUNA DE STATS ---
-  // --- FUNÇÃO ATUALIZADA PARA ORDENAR E MOSTRAR NOME DO TIME ---
   Widget _buildTeamStatsColumn(
     String teamId,
     String teamName,
     CrossAxisAlignment alignment,
   ) {
-    // Listas temporárias para guardar jogadores e permitir ordenação
-
-    // Função auxiliar de ordenação
     void sortPlayersByNumber(List<Map<String, dynamic>> players) {
       players.sort((a, b) {
-        // Ordena por Staff (false) antes de Staff (true)
         int staffCompare = (a['is_staff'] ? 1 : 0).compareTo(b['is_staff'] ? 1 : 0);
         if (staffCompare != 0) return staffCompare;
 
@@ -396,41 +461,22 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         goalPlayers.add({'id': playerId, 'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
       }
     });
-    sortPlayersByNumber(goalPlayers); // Ordena
+    sortPlayersByNumber(goalPlayers);
 
-    List<Map<String, dynamic>> assistPlayers = [];
-    _assists.forEach((playerId, count) {
-      if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
-        String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
-        int? number = _playerDataCache[playerId]?['jersey_number'];
-        bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false;
-        assistPlayers.add({'id': playerId, 'name': name, 'count': count, 'number': number, 'is_staff': isStaff});
-      }
-    });
-    sortPlayersByNumber(assistPlayers); // Ordena
-
-    // Lógica unificada para cartões (coleta dados)
-    Map<String, Map<String, int>> playersWithCardsData =
-        {}; // { playerId: {'yellow': count, 'red': count} }
+    Map<String, Map<String, int>> playersWithCardsData = {}; 
     _yellows.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
-        playersWithCardsData.putIfAbsent(
-          playerId,
-          () => {'yellow': 0, 'red': 0},
-        );
+        playersWithCardsData.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
         playersWithCardsData[playerId]!['yellow'] = count;
       }
     });
     _reds.forEach((playerId, count) {
       if (count > 0 && _playerDataCache[playerId]?['team_id'] == teamId) {
-        playersWithCardsData.putIfAbsent(
-          playerId,
-          () => {'yellow': 0, 'red': 0},
-        );
+        playersWithCardsData.putIfAbsent(playerId, () => {'yellow': 0, 'red': 0});
         playersWithCardsData[playerId]!['red'] = count;
       }
     });
-    // Converte para lista ordenada para exibição
+    
     List<Map<String, dynamic>> cardPlayers = [];
     playersWithCardsData.forEach((playerId, cardCounts) {
       String name = _playerDataCache[playerId]?['name'] ?? 'Jogador desc.';
@@ -438,17 +484,13 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       bool isStaff = _playerDataCache[playerId]?['is_staff'] ?? false;
       cardPlayers.add({'id': playerId, 'name': name, 'counts': cardCounts, 'number': number, 'is_staff': isStaff});
     });
-    sortPlayersByNumber(cardPlayers); // Ordena
+    sortPlayersByNumber(cardPlayers);
 
-    // Constrói a coluna
     return Column(
       crossAxisAlignment: alignment,
       children: [
-        // --- 2. MOSTRAR NOME DO TIME ---
         Padding(
-          padding: const EdgeInsets.only(
-            bottom: 12.0,
-          ), // Aumenta espaço abaixo do nome
+          padding: const EdgeInsets.only(bottom: 12.0),
           child: SizedBox(
             width: double.infinity,
             child: Text(
@@ -458,105 +500,53 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
             ),
           ),
         ),
-        // --- FIM ---
 
-        // Seção Gols (Itera sobre a lista ordenada)
         if (goalPlayers.isNotEmpty) ...[
           _buildStatHeader('Gols', Icons.sports_soccer, alignment),
-          ...goalPlayers
-              .map(
-                (player) => _buildStatItem(
+          ...goalPlayers.map((player) => _buildStatItem(
                   playerId: player['id'],
                   name: player['name'],
                   count: player['count'],
                   number: player['number'],
                   isStaff: player['is_staff'], 
                   alignment: alignment,
-                ),
-              )
-              .toList(), // Constrói widgets a partir da lista ordenada
+                )).toList(),
           const SizedBox(height: 12),
         ],
-        // Seção Assists (Itera sobre a lista ordenada)
-        /*if (assistPlayers.isNotEmpty) ...[
-          _buildStatHeader('Assistências', Icons.assistant, alignment),
-          ...assistPlayers
-              .map(
-                (player) => _buildStatItem(
-                  name: player['name'],
-                  count: player['count'],
-                  number: player['number'],
-                  isStaff: player['is_staff'], 
-                  alignment: alignment,
-                ),
-              )
-              .toList(),
-          const SizedBox(height: 12),
-        ],
-        */
-        // Seção Cartões (Itera sobre a lista ordenada)
+        
         if (cardPlayers.isNotEmpty) ...[
           _buildStatHeader('Cartões', Icons.style_outlined, alignment),
-          ...cardPlayers
-              .map(
-                (player) => _buildCardStatItem(
+          ...cardPlayers.map((player) => _buildCardStatItem(
                   playerId: player['id'],
                   name: player['name'],
                   cardCounts: player['counts'] as Map<String, int>,
                   number: player['number'],
                   isStaff: player['is_staff'],
                   alignment: alignment,
-                ),
-              )
-              .toList(),
+                )).toList(),
         ],
       ],
     );
   }
-  // --- FIM _buildTeamStatsColumn ---
 
-  // Função _buildStatHeader (sem mudanças)
-  Widget _buildStatHeader(
-    String title,
-    IconData icon,
-    CrossAxisAlignment alignment, [
-    Color? iconColor,
-  ]) {
-    // Usa Align para controlar a posição do conteúdo (Row)
+  Widget _buildStatHeader(String title, IconData icon, CrossAxisAlignment alignment, [Color? iconColor]) {
     return Align(
       alignment: alignment == CrossAxisAlignment.start
           ? Alignment.centerLeft
           : Alignment.centerRight,
       child: Padding(
-        padding: const EdgeInsets.only(
-          bottom: 4.0,
-          left: 8.0,
-          right: 8.0,
-        ), // Padding lateral
+        padding: const EdgeInsets.only(bottom: 4.0, left: 8.0, right: 8.0),
         child: Row(
-          mainAxisSize: MainAxisSize.min, // Row encolhe para o conteúdo
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Ordem Ícone/Texto baseada no alinhamento
             if (alignment == CrossAxisAlignment.end) ...[
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(width: 6),
               Icon(icon, color: iconColor ?? Colors.black54, size: 16),
             ] else ...[
               Icon(icon, color: iconColor ?? Colors.black54, size: 16),
               const SizedBox(width: 6),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             ],
           ],
         ),
@@ -564,7 +554,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     );
   }
 
-  // --- FUNÇÃO _buildStatItem SIMPLIFICADA (só para Gols/Assists) ---
   Widget _buildStatItem({
     required String playerId,
     required String name,
@@ -573,17 +562,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     required bool isStaff,
     int? number,
   }) {
-    // Formata o nome: "Nº. Nome (Qtd)" ou "-. Nome (Qtd)"
     String numberPrefix = number != null ? '#$number ' : '';
     String countSuffix = (count > 1) ? ' ($count)' : '';
-    String staffSuffix = isStaff ? ' (Comissão)' : ''; // <-- NOVO
+    String staffSuffix = isStaff ? ' (Comissão)' : '';
     String displayText = '$numberPrefix$name$staffSuffix$countSuffix';
 
     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
         ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
         : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
 
-    // Envolve o widget num InkWell para navegação
     return InkWell(
       onTap: () {
         Navigator.of(context).push(
@@ -602,7 +589,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
           displayText,
           style: TextStyle(
             fontSize: 14,
-            fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // <-- NOVO
+            fontStyle: isStaff ? FontStyle.italic : FontStyle.normal,
           ),
           textAlign: alignment == CrossAxisAlignment.start
               ? TextAlign.start
@@ -612,73 +599,51 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       ),
     );
   }
-  // --- FIM _buildStatItem ---
 
-  // --- 3. NOVA FUNÇÃO: CONSTRÓI A ABA DE ESTATÍSTICAS ---
   Widget _buildStatsTab(String status) {
     final data = widget.match.data() as Map<String, dynamic>;
     final homeTeamId = data['team_home_id'] ?? '';
     final awayTeamId = data['team_away_id'] ?? '';
     final homeTeamName = data['team_home_name'] ?? 'Time Casa';
     final awayTeamName = data['team_away_name'] ?? 'Time Visitante';
-    //final String? sumulaUrl = data['sumula_url'] as String?;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Column(
         children: [
-          // SEÇÃO DE ESTATÍSTICAS (O conteúdo antigo)
           _isLoadingPlayerData
               ? const Padding(
                   padding: EdgeInsets.symmetric(vertical: 40.0),
                   child: Center(child: CircularProgressIndicator()),
                 )
               : Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8.0,
-                    vertical: 8.0,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
                   child: IntrinsicHeight(
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: _buildTeamStatsColumn(
-                            homeTeamId,
-                            homeTeamName,
-                            CrossAxisAlignment.start,
-                          ),
+                          child: _buildTeamStatsColumn(homeTeamId, homeTeamName, CrossAxisAlignment.start),
                         ),
                         Container(width: 1, color: Colors.grey.shade300),
                         Expanded(
-                          child: _buildTeamStatsColumn(
-                            awayTeamId,
-                            awayTeamName,
-                            CrossAxisAlignment.end,
-                          ),
+                          child: _buildTeamStatsColumn(awayTeamId, awayTeamName, CrossAxisAlignment.end),
                         ),
                       ],
                     ),
                   ),
                 ),
 
-          // CRAQUE DO JOGO (O conteúdo antigo)
           if (status == 'finished' && _manOfTheMatchName != null && !_isLoadingPlayerData) ...[
-            const Divider(
-              height: 16,
-              thickness: 0.5,
-              indent: 16,
-              endIndent: 16,
-            ),
+            const Divider(height: 16, thickness: 0.5, indent: 16, endIndent: 16),
             Center(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
                 child: Card(
                    elevation: 2,
-                   clipBehavior: Clip.antiAlias, // Garante que o InkWell siga a borda
-                   child: InkWell( // <-- ADICIONADO InkWell
+                   clipBehavior: Clip.antiAlias,
+                   child: InkWell(
                     onTap: () {
-                      // Navega apenas se o ID for válido
                       if (_manOfTheMatchId != null && _manOfTheMatchId!.isNotEmpty) {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -701,7 +666,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                          ),
                          const SizedBox(height: 4),
                          Text(
-                           // Formata com número se existir
                            _manOfTheMatchNumber != null
                              ? '${_manOfTheMatchNumber}. $_manOfTheMatchName'
                              : _manOfTheMatchName!,
@@ -716,18 +680,11 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               ),
             ),
           ],
-
         ],
       ),
     );
   }
-  // --- FIM STATS TAB ---
 
-  // --- 6. FUNÇÃO: CONSTRÓI A ABA DE MÍDIAS (REFEITA) ---
-   
-  // --- FIM MEDIA TAB ---
-
-  // --- NOVA FUNÇÃO AUXILIAR PARA ITEM DE CARTÃO ---
   Widget _buildCardStatItem({
     required String playerId,
     required String name,
@@ -739,39 +696,25 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     int yellowCount = cardCounts['yellow'] ?? 0;
     int redCount = cardCounts['red'] ?? 0;
 
-    // Formata o nome: "Nº. Nome"
     String numberPrefix = number != null ? '#$number ' : '';
-    String staffSuffix = isStaff ? ' (Comissão)' : ''; // <-- NOVO
+    String staffSuffix = isStaff ? ' (Comissão)' : ''; 
     String displayText = '$numberPrefix$name$staffSuffix';
 
     EdgeInsets itemPadding = alignment == CrossAxisAlignment.start
         ? const EdgeInsets.only(left: 8.0, right: 4.0, bottom: 2.0)
         : const EdgeInsets.only(left: 4.0, right: 8.0, bottom: 2.0);
 
-    // Cria a lista de ícones/contadores de cartões
     List<Widget> cardIndicators = [];
     if (yellowCount > 0) {
-      cardIndicators.add(
-        Icon(Icons.style, size: 16, color: Colors.yellow[700]),
-      );
+      cardIndicators.add(Icon(Icons.style, size: 16, color: Colors.yellow[700]));
       if (yellowCount > 1) {
-        // Adiciona contador se for mais de 1 amarelo
         cardIndicators.add(const SizedBox(width: 2));
-        cardIndicators.add(
-          Text(
-            '($yellowCount)',
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-        );
+        cardIndicators.add(Text('($yellowCount)', style: const TextStyle(fontSize: 12, color: Colors.black54)));
       }
     }
     if (redCount > 0) {
-      if (cardIndicators.isNotEmpty) {
-        // Adiciona espaço se já tiver amarelo
-        cardIndicators.add(const SizedBox(width: 5));
-      }
+      if (cardIndicators.isNotEmpty) cardIndicators.add(const SizedBox(width: 5));
       cardIndicators.add(Icon(Icons.style, size: 16, color: Colors.red[700]));
-      // Vermelho geralmente é só 1, não precisa de contador
     }
 
     return InkWell(
@@ -795,31 +738,19 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
               Flexible(
                 child: Text(
                   displayText,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // <-- NOVO
-                  ),
+                  style: TextStyle(fontSize: 14, fontStyle: isStaff ? FontStyle.italic : FontStyle.normal),
                   textAlign: TextAlign.end,
                 ),
               ),
               const SizedBox(width: 6),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: cardIndicators,
-              ), 
+              Row(mainAxisSize: MainAxisSize.min, children: cardIndicators), 
             ] else ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: cardIndicators,
-              ),
+              Row(mainAxisSize: MainAxisSize.min, children: cardIndicators),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   displayText,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // <-- NOVO
-                  ),
+                  style: TextStyle(fontSize: 14, fontStyle: isStaff ? FontStyle.italic : FontStyle.normal),
                   textAlign: TextAlign.start,
                 ),
               ),
@@ -830,11 +761,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
       ),
     );
   }
-  // --- FIM _buildCardStatItem ---
 
   @override
   Widget build(BuildContext context) {
-    // ... (extração de dados como antes: scoreHome, scoreAway, ids, nomes, escudos, data) ...
     final data = widget.match.data() as Map<String, dynamic>;
     final status = data['status'] ?? 'pending';
     final scoreHome = data['score_home']?.toString() ?? '-';
@@ -846,23 +775,26 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
     final awayShield = data['team_away_shield'] ?? '';
     String formattedDate = 'Data Indisponível';
     if (data['datetime'] != null && data['datetime'] is Timestamp) {
-      formattedDate = DateFormat(
-        'dd/MM/yyyy HH:mm',
-        'pt_BR',
-      ).format((data['datetime'] as Timestamp).toDate());
+      formattedDate = DateFormat('dd/MM/yyyy HH:mm', 'pt_BR').format((data['datetime'] as Timestamp).toDate());
     }
     final String location = data['location'] ?? 'Local a definir';
     final String? sumulaUrl = data['sumula_url'] as String?;
 
     return DefaultTabController(
-      length: 2, // Estatísticas e Mídias
+      length: 2, 
       child: Scaffold(
         appBar: AppBar(
           title: Text(
             '$homeTeamName $scoreHome x $scoreAway $awayTeamName',
             overflow: TextOverflow.ellipsis,
           ),
-          // Adiciona as Abas
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.share),
+              tooltip: 'Compartilhar Card do Jogo',
+              onPressed: _shareMatchCard,
+            ),
+          ],
           bottom: TabBar(
             controller: _tabController,
             labelColor: Colors.white,
@@ -876,7 +808,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         ),
         body: Column(
           children: [
-            // --- Info Cabeçalho (sem mudanças) ---
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -886,70 +817,50 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
                     children: [
                       if (homeShield.isNotEmpty)
                         SizedBox(
-                          width: 80,
-                          height: 80,
-                          child: CachedNetworkImage(
-                            imageUrl: homeShield,
-                            fit: BoxFit.contain,
-                          ),
+                          width: 80, height: 80,
+                          child: CachedNetworkImage(imageUrl: homeShield, fit: BoxFit.contain),
                         ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20.0),
                         child: Text(
                           '$scoreHome x $scoreAway',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
                       if (awayShield.isNotEmpty)
                         SizedBox(
-                          width: 80,
-                          height: 80,
-                          child: CachedNetworkImage(
-                            imageUrl: awayShield,
-                            fit: BoxFit.contain,
-                          ),
+                          width: 80, height: 80,
+                          child: CachedNetworkImage(imageUrl: awayShield, fit: BoxFit.contain),
                         ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '$formattedDate - $location',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
                     textAlign: TextAlign.center,
                   ),
 
-                  // --- 4. ADICIONE O BOTÃO DA SÚMULA AQUI ---
-                  if (status == 'finished' && sumulaUrl != null && sumulaUrl.isNotEmpty) // Mostra só se a URL existir
+                  if (status == 'finished' && sumulaUrl != null && sumulaUrl.isNotEmpty) 
                     Padding(
                       padding: const EdgeInsets.only(top: 12.0),
                       child: TextButton.icon(
                         icon: const Icon(Icons.description_outlined, size: 20),
                         label: const Text('Súmula da Partida (PDF)'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Theme.of(
-                            context,
-                          ).primaryColor, // Cor do texto/ícone
-                        ),
-                        onPressed: () {
-                          _launchURL(sumulaUrl); // Chama a função
-                        },
+                        style: TextButton.styleFrom(foregroundColor: Theme.of(context).primaryColor),
+                        onPressed: () => _launchURL(sumulaUrl),
                       ),
                     ),
-
-                  // --- FIM DA ADIÇÃO ---
                 ],
               ),
             ),
             const Divider(height: 1, thickness: 1),
             Expanded(
               child: TabBarView(
-                controller: _tabController, // Usa o controller
+                controller: _tabController,
                 children: [
-                  _buildStatsTab(status), // Aba 1
-                  _buildMediaTab(), // Aba 2
+                  _buildStatsTab(status),
+                  _buildMediaTab(),
                 ],
               ),
             ),
@@ -958,8 +869,5 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with TickerProvider
         bottomNavigationBar: const SponsorBannerRotator(),
       ),
     );
-    
-    // --- FIM DA ATUALIZAÇÃO ---
   }
-  
-} // Fim da classe _MatchStatsScreenState
+}

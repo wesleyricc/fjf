@@ -56,6 +56,9 @@ dependencies:
   youtube_player_iframe: ^5.2.2
   material_design_icons_flutter: ^7.0.7296
   image_picker: ^1.2.1
+  share_plus: ^12.0.1  # Para compartilhar a imagem
+  path_provider: ^2.1.5 # Para salvar a imagem temporária
+  screenshot: ^3.0.0 # Facilita muito a captura de widgets invisíveis/visíveis
 
 dev_dependencies:
   flutter_test:
