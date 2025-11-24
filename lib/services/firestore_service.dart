@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart'; // Para debugPrint
 import 'admin_service.dart'; // Para acessar regras globais
+import '../models/match_event.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -123,6 +124,236 @@ class FirestoreService {
       return "Sucesso: Mídia deletada.";
     } catch (e) { return "Erro: $e"; }
   }
+
+  // ===========================================================================
+  // ⚡ ASSISTENTE DE SÚMULA (EVENTOS EM TEMPO REAL)
+  // ===========================================================================
+
+  /// Adiciona um evento (Gol, Cartão) e atualiza TODOS os placares e stats automaticamente
+  Future<String> addMatchEvent({
+    required String seasonId,
+    required String matchId,
+    required MatchEvent event,
+  }) async {
+    // Referências
+    final matchRef = _getMatchesRef(seasonId).doc(matchId);
+    final eventRef = matchRef.collection('timeline').doc(); // Novo doc na timeline
+    final seasonPlayerRef = _getPlayerStatsRef(seasonId).doc(event.playerId);
+    // Nota: Se for legado, seasonPlayerRef aponta para /players (global)
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        // 1. Ler dados atuais da partida para saber quem é Home/Away
+        final matchSnap = await transaction.get(matchRef);
+        if (!matchSnap.exists) throw Exception("Partida não encontrada");
+        
+        final matchData = matchSnap.data() as Map<String, dynamic>;
+        final homeId = matchData['team_home_id'];
+        final awayId = matchData['team_away_id'];
+        
+        // 2. Ler stats do jogador da temporada (para incrementar o acumulado)
+        final playerSnap = await transaction.get(seasonPlayerRef);
+        
+        // 3. Define os incrementos baseados no tipo de evento
+        // Mapas para atualizar 'stats_applied.player_stats' dentro da partida
+        String fieldInMatchStats = ''; 
+        String fieldInSeasonStats = '';
+        int scoreHomeIncrement = 0;
+        int scoreAwayIncrement = 0;
+        
+        // Lógica de Pontos Disciplinares
+        int disciplinaryPoints = 0;
+
+        switch (event.type) {
+          case MatchEventType.goal:
+            fieldInMatchStats = 'goals';
+            fieldInSeasonStats = 'goals';
+            if (event.teamId == homeId) scoreHomeIncrement = 1;
+            if (event.teamId == awayId) scoreAwayIncrement = 1;
+            break;
+          case MatchEventType.assist:
+            fieldInMatchStats = 'assists';
+            fieldInSeasonStats = 'assists';
+            break;
+          case MatchEventType.yellowCard:
+            fieldInMatchStats = 'yellows';
+            fieldInSeasonStats = 'total_yellow_cards'; // Nome do campo no acumulado
+            disciplinaryPoints = 10;
+            break;
+          case MatchEventType.redCard:
+            fieldInMatchStats = 'reds';
+            fieldInSeasonStats = 'total_red_cards';
+            disciplinaryPoints = 21;
+            break;
+        }
+
+        // 4. Escrita: Salvar o Evento na Timeline
+        transaction.set(eventRef, event.toMap());
+
+        // 5. Escrita: Atualizar Placar da Partida e Status
+        Map<String, dynamic> matchUpdates = {
+          'status': 'in_progress', // Força status em andamento ao registrar evento
+        };
+        
+        if (scoreHomeIncrement != 0) matchUpdates['score_home'] = FieldValue.increment(scoreHomeIncrement);
+        if (scoreAwayIncrement != 0) matchUpdates['score_away'] = FieldValue.increment(scoreAwayIncrement);
+
+        // Atualiza Stats do Jogador DENTRO da Partida (stats_applied)
+        // Ex: stats_applied.player_stats.goals.{playerId}
+        if (fieldInMatchStats.isNotEmpty) {
+           matchUpdates['stats_applied.player_stats.$fieldInMatchStats.${event.playerId}'] = FieldValue.increment(1);
+        }
+
+        if (event.type == MatchEventType.goal && event.concededByPlayerId != null) {
+           matchUpdates['stats_applied.player_stats.goals_conceded.${event.concededByPlayerId}'] = FieldValue.increment(1);
+        }
+        
+        transaction.update(matchRef, matchUpdates);
+
+        // 6. Escrita: Atualizar Stats ACUMULADOS do Jogador (Temporada)
+        if (playerSnap.exists && fieldInSeasonStats.isNotEmpty) {
+           Map<String, dynamic> playerUpdates = {
+             fieldInSeasonStats: FieldValue.increment(1),
+           };
+           
+           // Lógica simples de suspensão (pode ser refinada)
+           if (event.type == MatchEventType.yellowCard) {
+              playerUpdates['yellow_cards'] = FieldValue.increment(1); // Acumulador para suspensão
+           } else if (event.type == MatchEventType.redCard) {
+              playerUpdates['red_cards'] = FieldValue.increment(1);
+              if (AdminService.suspensionOnRed) {
+                 playerUpdates['is_suspended'] = true;
+              }
+           }
+           
+           transaction.update(seasonPlayerRef, playerUpdates);
+        }
+
+        if (event.type == MatchEventType.goal && event.concededByPlayerId != null) {
+           final goalkeeperRef = _getPlayerStatsRef(seasonId).doc(event.concededByPlayerId);
+           transaction.update(goalkeeperRef, {
+             'goals_conceded': FieldValue.increment(1),
+           });
+        }
+
+        // 7. Escrita: Atualizar Pontos Disciplinares da Equipe (Se for cartão)
+        if (disciplinaryPoints > 0) {
+           final teamRef = _getTeamsRef(seasonId).doc(event.teamId);
+           transaction.update(teamRef, {
+             'disciplinary_points': FieldValue.increment(disciplinaryPoints),
+             if (event.type == MatchEventType.yellowCard) 'total_yellow_cards': FieldValue.increment(1),
+             if (event.type == MatchEventType.redCard) 'total_red_cards': FieldValue.increment(1),
+           });
+        }
+      });
+
+      return "Sucesso";
+    } catch (e) {
+      return "Erro ao registrar evento: $e";
+    }
+  }
+
+  /// Remove um evento e reverte todas as estatísticas
+  Future<String> deleteMatchEvent({
+    required String seasonId,
+    required String matchId,
+    required MatchEvent event,
+  }) async {
+    final matchRef = _getMatchesRef(seasonId).doc(matchId);
+    final eventRef = matchRef.collection('timeline').doc(event.id);
+    final seasonPlayerRef = _getPlayerStatsRef(seasonId).doc(event.playerId);
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        // 1. Verificar Match
+        final matchSnap = await transaction.get(matchRef);
+        final matchData = matchSnap.data() as Map<String, dynamic>;
+        final homeId = matchData['team_home_id'];
+        final awayId = matchData['team_away_id'];
+
+        // 2. Identificar campos para decrementar (Lógica inversa do Add)
+        String fieldInMatchStats = '';
+        String fieldInSeasonStats = '';
+        int scoreHomeDecrement = 0;
+        int scoreAwayDecrement = 0;
+        int disciplinaryPoints = 0;
+
+        switch (event.type) {
+          case MatchEventType.goal:
+            fieldInMatchStats = 'goals';
+            fieldInSeasonStats = 'goals';
+            if (event.teamId == homeId) scoreHomeDecrement = -1;
+            if (event.teamId == awayId) scoreAwayDecrement = -1;
+            break;
+          case MatchEventType.assist:
+            fieldInMatchStats = 'assists';
+            fieldInSeasonStats = 'assists';
+            break;
+          case MatchEventType.yellowCard:
+            fieldInMatchStats = 'yellows';
+            fieldInSeasonStats = 'total_yellow_cards';
+            disciplinaryPoints = -10; // Remove pontos
+            break;
+          case MatchEventType.redCard:
+            fieldInMatchStats = 'reds';
+            fieldInSeasonStats = 'total_red_cards';
+            disciplinaryPoints = -21;
+            break;
+        }
+
+        // 3. Deletar Evento
+        transaction.delete(eventRef);
+
+        // 4. Atualizar Partida (Reverter Placar e Stats)
+        Map<String, dynamic> matchUpdates = {};
+        if (scoreHomeDecrement != 0) matchUpdates['score_home'] = FieldValue.increment(scoreHomeDecrement);
+        if (scoreAwayDecrement != 0) matchUpdates['score_away'] = FieldValue.increment(scoreAwayDecrement);
+        
+        if (fieldInMatchStats.isNotEmpty) {
+           matchUpdates['stats_applied.player_stats.$fieldInMatchStats.${event.playerId}'] = FieldValue.increment(-1);
+        }
+
+        if (event.type == MatchEventType.goal && event.concededByPlayerId != null) {
+           matchUpdates['stats_applied.player_stats.goals_conceded.${event.concededByPlayerId}'] = FieldValue.increment(-1);
+        }
+        transaction.update(matchRef, matchUpdates);
+
+        // 5. Atualizar Jogador (Reverter Stats da Temporada)
+        if (fieldInSeasonStats.isNotEmpty) {
+           Map<String, dynamic> playerUpdates = {
+             fieldInSeasonStats: FieldValue.increment(-1),
+           };
+           if (event.type == MatchEventType.yellowCard) {
+              playerUpdates['yellow_cards'] = FieldValue.increment(-1);
+           } else if (event.type == MatchEventType.redCard) {
+              playerUpdates['red_cards'] = FieldValue.increment(-1);
+              // Nota: Não removemos suspensão automaticamente pois pode haver outro motivo
+           }
+           transaction.update(seasonPlayerRef, playerUpdates);
+        }
+
+        if (event.type == MatchEventType.goal && event.concededByPlayerId != null) {
+           final goalkeeperRef = _getPlayerStatsRef(seasonId).doc(event.concededByPlayerId);
+           transaction.update(goalkeeperRef, { 'goals_conceded': FieldValue.increment(-1) });
+        }
+
+        // 6. Atualizar Equipe
+        if (disciplinaryPoints != 0) {
+           final teamRef = _getTeamsRef(seasonId).doc(event.teamId);
+           transaction.update(teamRef, {
+             'disciplinary_points': FieldValue.increment(disciplinaryPoints),
+             if (event.type == MatchEventType.yellowCard) 'total_yellow_cards': FieldValue.increment(-1),
+             if (event.type == MatchEventType.redCard) 'total_red_cards': FieldValue.increment(-1),
+           });
+        }
+      });
+      return "Sucesso";
+    } catch (e) {
+      return "Erro ao reverter evento: $e";
+    }
+  }
+
+
 
   // ===========================================================================
   // ⚽ CÁLCULOS DE ESTATÍSTICAS (Adaptados para SeasonId)

@@ -9,6 +9,7 @@ import 'edit_match_screen.dart';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'match_live_scout_screen.dart';
 
 class AdminMatchScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -636,6 +637,17 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       appBar: AppBar(
         title: const Text('Editar Súmula'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.flash_on, color: Colors.amber),
+            tooltip: 'Assistente de Súmula (Ao Vivo)',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (ctx) => MatchLiveScoutScreen(match: widget.match),
+                ),
+              );
+            },
+          ),
           // --- CORREÇÃO: Botão de Edição de Detalhes Adicionado ---
           IconButton(
             icon: const Icon(Icons.edit_calendar_outlined),
