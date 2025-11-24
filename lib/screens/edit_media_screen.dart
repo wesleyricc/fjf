@@ -7,6 +7,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import '../services/firestore_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart'; // <-- Importante
+import '../services/championship_service.dart'; // <-- Importante
 
 class EditMediaScreen extends StatefulWidget {
   final DocumentSnapshot? mediaDoc; // Null se for 'Criar', preenchido se for 'Editar'
@@ -62,8 +64,11 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
   }
 
   Future<void> _fetchNextOrderNumber() async {
+    // Pega o seasonId sem ouvir mudanças (listen: false)
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    
     setState(() { _isLoadingNextOrder = true; });
-    final nextOrder = await _firestoreService.getNextMediaOrder();
+    final nextOrder = await _firestoreService.getNextMediaOrder(seasonId); // <-- Passa SeasonId
     _orderController.text = nextOrder.toString();
     setState(() { _isLoadingNextOrder = false; });
   }
@@ -96,6 +101,10 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
 
     setState(() { _isUploading = true; });
 
+    // Obtém a temporada atual
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
+
     String finalImageUrl = _existingImageUrl ?? '';
 
     try {
@@ -123,6 +132,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
       if (widget.mediaDoc == null) {
         // --- MODO CRIAÇÃO ---
         result = await _firestoreService.createMediaItem(
+          seasonId: seasonId, // <-- NOVO
           title: title,
           targetUrl: targetUrl,
           imageUrl: finalImageUrl,
@@ -141,6 +151,7 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
         }
         
         result = await _firestoreService.updateMediaItem(
+          seasonId: seasonId, // <-- NOVO
           docId: widget.mediaDoc!.id,
           title: title,
           targetUrl: targetUrl,

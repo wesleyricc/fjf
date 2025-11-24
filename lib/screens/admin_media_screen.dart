@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart'; // <-- Importante
 import '../services/firestore_service.dart';
+import '../services/championship_service.dart'; // <-- Importante
 import 'edit_media_screen.dart';
 
 class AdminMediaScreen extends StatefulWidget {
@@ -17,49 +19,54 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
   final FirestoreService _firestoreService = FirestoreService();
 
   // Diálogo de confirmação para exclusão
-  Future<void> _showDeleteMediaDialog(DocumentSnapshot doc) async {
+  Future<void> _showDeleteMediaDialog(DocumentSnapshot doc, String seasonId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Excluir Mídia?'),
-        content: const Text('Tem certeza que deseja excluir este item de mídia? A imagem no Storage também será deletada.'),
+        content: const Text('Tem certeza que deseja excluir este item de mídia?'),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
 
     if (confirm == true && mounted) {
-      final result = await _firestoreService.deleteMediaItem(doc);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+      final result = await _firestoreService.deleteMediaItem(doc, seasonId);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final championshipService = Provider.of<ChampionshipService>(context);
+    final seasonId = championshipService.currentSeasonId;
+    final seasonName = championshipService.currentSeasonName;
+
+    Query mediaQuery;
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      mediaQuery = _firestore.collection('media_feed');
+    } else {
+      mediaQuery = _firestore.collection('championships').doc(seasonId).collection('news');
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gerenciar Mídias'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Gerenciar Mídias'),
+            Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+          ],
+        ),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore
-            .collection('media_feed')
-            .orderBy('order', descending: true) // Ordena pela ordem
-            .snapshots(),
+        stream: mediaQuery.orderBy('order', descending: true).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Erro: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('Nenhuma mídia cadastrada.'));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: Text('Erro: ${snapshot.error}'));
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('Nenhuma mídia cadastrada.'));
 
           final mediaItems = snapshot.data!.docs;
 
@@ -69,14 +76,7 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
               final doc = mediaItems[index];
               final data = doc.data() as Map<String, dynamic>;
               final String imageUrl = data['imageUrl'] ?? '';
-
-              // --- INÍCIO DA ALTERAÇÃO ---
               final String author = data['author'] ?? '';
-              String subtitle = 'Ordem: ${data['order']}';
-              if (author.isNotEmpty) {
-                subtitle += ' • Por: $author'; // Adiciona o autor ao subtítulo
-              }
-              // --- FIM DA ALTERAÇÃO ---
 
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -93,7 +93,7 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
                         ),
                   ),
                   title: Text(data['title'] ?? 'Sem Título'),
-                  subtitle: Text(subtitle),
+                  subtitle: Text('Ordem: ${data['order']}${author.isNotEmpty ? " • $author" : ""}'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -109,7 +109,7 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         tooltip: 'Excluir',
-                        onPressed: () => _showDeleteMediaDialog(doc),
+                        onPressed: () => _showDeleteMediaDialog(doc, seasonId),
                       ),
                     ],
                   ),

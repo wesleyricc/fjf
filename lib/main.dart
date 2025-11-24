@@ -1,194 +1,145 @@
-// lib/main.dart
+import 'dart:async'; // Import necessário para runZonedGuarded
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:fjf_app/firebase_options.dart'; 
-import 'package:fjf_app/firebase_options_test.dart' as test_options;
-import 'screens/splash_screen.dart';
-import 'services/admin_service.dart';
-import 'services/notification_service.dart';
-import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:fjf_app/screens/fixtures_screen.dart';
-import 'package:fjf_app/screens/standings_screen.dart';
-import 'package:fjf_app/screens/teams_list_screen.dart';
-import 'package:fjf_app/screens/player_stats_screen.dart';
-import 'package:fjf_app/screens/suspension_history_screen.dart';
-import 'package:fjf_app/screens/report_bug_screen.dart';
-import 'package:fjf_app/screens/admin_menu_screen.dart';
-import 'package:fjf_app/screens/team_stats_screen.dart';
-import 'package:fjf_app/screens/player_comparison_screen.dart';
+import 'firebase_options.dart'; 
+import 'firebase_options_test.dart'; 
 
-// --- INÍCIO DA ALTERAÇÃO (Função helper) ---
-FirebaseOptions _getFirebaseOptions(String env) {
-  switch (env) {
-    case 'test':
-      debugPrint("--- USANDO AMBIENTE DE TESTE ---");
-      return test_options.DefaultFirebaseOptions.currentPlatform;
-    case 'prod':
-    default:
-      debugPrint("--- USANDO AMBIENTE DE PRODUÇÃO ---");
-      return DefaultFirebaseOptions.currentPlatform;
+// Services
+import 'services/auth_service.dart';
+import 'services/notification_service.dart';
+import 'services/admin_service.dart';
+import 'services/championship_service.dart'; // Import do novo serviço
+
+// Screens
+import 'screens/splash_screen.dart';
+import 'screens/fixtures_screen.dart';
+import 'screens/standings_screen.dart';
+import 'screens/teams_list_screen.dart';
+import 'screens/team_stats_screen.dart';
+import 'screens/player_stats_screen.dart';
+import 'screens/suspension_history_screen.dart';
+import 'screens/player_comparison_screen.dart';
+import 'screens/report_bug_screen.dart';
+import 'screens/admin_menu_screen.dart';
+import 'screens/manage_seasons_screen.dart'; // Se já tiver criado
+
+// --- FUNÇÃO AUXILIAR PARA DETECTAR ERRO DE ÍNDICE ---
+void _logFirestoreIndexError(Object error) {
+  final e = error.toString();
+  if (e.contains('failed-precondition') || e.contains('requires an index')) {
+    debugPrint('\n🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥');
+    debugPrint('🔥 FALTA DE ÍNDICE DETECTADA NO FIRESTORE! 🔥');
+    debugPrint('👉 CLIQUE NESTE LINK PARA CRIAR AUTOMATICAMENTE:');
+    debugPrint(e); // O link estará aqui dentro
+    debugPrint('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n');
   }
 }
-// --- FIM DA ALTERAÇÃO ---
 
+void main() async {
+  // Envolvemos tudo no runZonedGuarded para capturar erros de Streams (Assíncronos)
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('pt_BR', null);
+    const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
+    FirebaseOptions firebaseOptions;
 
-   // --- INÍCIO DA ALTERAÇÃO (Escolher Firebase) ---
-  // 1. Ler a variável de ambiente
-  const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
+    if (environment == 'test') {
+      debugPrint("⚠️ INICIANDO EM AMBIENTE DE TESTE (fjfapp-test) ⚠️");
+      firebaseOptions = TestFirebaseOptions.currentPlatform;
+    } else {
+      debugPrint("✅ INICIANDO EM AMBIENTE DE PRODUÇÃO");
+      firebaseOptions = DefaultFirebaseOptions.currentPlatform;
+    }
+
+    await Firebase.initializeApp(options: firebaseOptions);
+
+    // Inicializações
+    await NotificationService().init();
+    await AdminService.loadAllRules('legacy_2025'); 
+
+    // Intercepta erros síncronos do Flutter
+    FlutterError.onError = (FlutterErrorDetails details) {
+      _logFirestoreIndexError(details.exception);
+      FlutterError.presentError(details); // Continua mostrando o erro na tela vermelha (em debug)
+    };
+
+    runApp(const FjfApp());
   
-  // 2. Obter as opções corretas
-  final FirebaseOptions options = _getFirebaseOptions(environment);
-
-  // 3. Inicializar o Firebase com as opções CORRETAS
-  await Firebase.initializeApp(
-    options: options,
-  );
-
-   // --- 2. HABILITAR PERSISTÊNCIA OFFLINE ---
-  try {
-    // Tenta habilitar o cache de dados offline do Firestore
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-    );
-    debugPrint("Persistência offline do Firestore habilitada.");
-  } catch (e) {
-    debugPrint("Erro ao habilitar persistência offline: $e");
-    // Isso geralmente falha em modos de navegação privada ou se
-    // várias abas estiverem abertas. O app continuará online.
-  }
-  // --- FIM DA ADIÇÃO ---
-
-  await AdminService.loadDisciplinaryRules();
-  await AdminService.loadTiebreakerOrder();
-  await AdminService.loadPlayoffRules();
-  await AdminService.loadAppSettings();
-  await NotificationService().init();
-
-  runApp(const MyApp());
+  }, (error, stack) {
+    // Intercepta erros assíncronos (Streams, Futures soltos)
+    _logFirestoreIndexError(error);
+    debugPrint("Erro assíncrono capturado: $error");
+  });
 }
 
-// --- 2. CLASSE DO OBSERVADOR DO ANALYTICS ---
-// Esta classe escuta a navegação e envia eventos de 'screen_view'
-class FjfAnalyticsObserver extends NavigatorObserver {
-  final FirebaseAnalytics analytics = FirebaseAnalytics.instance;
-
-  // Função auxiliar para logar a tela
-  void _logScreenView(Route<dynamic> route) {
-    final String? screenName = route.settings.name;
-    // Só loga se o nome não for nulo (evita logar rotas internas do Flutter)
-    if (screenName != null && screenName.startsWith('/')) {
-      debugPrint('[Analytics] Logando tela: $screenName');
-      analytics.logScreenView(screenName: screenName);
-    }
-  }
-
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPush(route, previousRoute);
-    _logScreenView(route); // Loga a tela que foi "empurrada" (ex: /report-bug)
-  }
-
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPop(route, previousRoute);
-    if (previousRoute != null) {
-      _logScreenView(previousRoute); // Loga a tela para a qual "voltamos"
-    }
-  }
-
-  // --- ESTA É A FUNÇÃO QUE FALTAVA ---
-  @override
-  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
-    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
-    if (newRoute != null) {
-      _logScreenView(newRoute); // Loga a tela que "substituiu" (ex: /fixtures)
-    }
-  }
-  // --- FIM DA ADIÇÃO ---
-}
-// --- FIM DO OBSERVADOR ---
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class FjfApp extends StatelessWidget {
+  const FjfApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'FJF App',
-      theme: ThemeData(
-        // --- CORES DO TEMA ---
-        primaryColor: const Color(0xFFC25F22), // Laranja/Terracota da logo (aproximado)
-        colorScheme: ColorScheme.fromSwatch().copyWith(
-          secondary: const Color(0xFF333333), // Um cinza escuro/preto para acentuação
-          primary: const Color(0xFFC25F22), // Definindo primary color no ColorScheme
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF0F0F0), // Um cinza bem claro para o fundo das telas
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFC25F22), // Mesma cor principal para a AppBar
-          foregroundColor: Colors.white, // Texto da AppBar branco
-          titleTextStyle: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+    const bool isTestEnv = String.fromEnvironment('ENV') == 'test';
+
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => ChampionshipService()),
+      ],
+      child: MaterialApp(
+        title: 'FJF 2025',
+        debugShowCheckedModeBanner: false,
+        builder: (context, child) {
+          if (isTestEnv) {
+            return Banner(
+              message: "TESTE",
+              location: BannerLocation.topStart,
+              color: Colors.red,
+              child: child!,
+            );
+          }
+          return child!;
+        },
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [Locale('pt', 'BR')],
+        
+        theme: ThemeData(
+          primaryColor: const Color(0xFFC25F22),
+          colorScheme: ColorScheme.fromSwatch().copyWith(
+            primary: const Color(0xFFC25F22),
+            secondary: Colors.black,
+          ),
+          scaffoldBackgroundColor: Colors.grey[50],
+          fontFamily: 'Roboto', 
+          useMaterial3: false,
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Color(0xFFC25F22),
+            foregroundColor: Colors.white,
+            centerTitle: false,
+            elevation: 2,
           ),
         ),
-        drawerTheme: const DrawerThemeData(
-          backgroundColor: Color(0xFFC25F22), // Cor principal para o Drawer também
-        ),
-        // --- FIM DAS CORES DO TEMA ---
-        useMaterial3: true,
+
+        // 6. Rotas
+        initialRoute: SplashScreen.routeName,
+        routes: {
+          '/': (ctx) => const SplashScreen(), // Rota raiz para evitar erro
+          SplashScreen.routeName: (ctx) => const SplashScreen(),
+          '/fixtures': (ctx) => const FixturesScreen(),
+          '/standings': (ctx) => const StandingsScreen(),
+          '/teams': (ctx) => const TeamsListScreen(),
+          '/team-stats': (ctx) => const TeamStatsScreen(),
+          '/player-stats': (ctx) => PlayerStatsScreen(),
+          '/suspension-history': (ctx) => SuspensionHistoryScreen(),
+          '/player-comparison': (ctx) => const PlayerComparisonScreen(),
+          '/report-bug': (ctx) => const ReportBugScreen(),
+          '/admin-menu': (ctx) => const AdminMenuScreen(),
+        },
       ),
-      //home: const SplashScreen(),
-
-
-// --- 2. ADICIONAR DELEGATES E LOCALES ---
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate, // Para widgets Material
-        GlobalWidgetsLocalizations.delegate,  // Para direção do texto, etc.
-        GlobalCupertinoLocalizations.delegate, // Para widgets Cupertino (iOS style)
-      ],
-      supportedLocales: const [
-        Locale('pt', 'BR'), // Português (Brasil)
-        // Locale('en', ''), // Adicione outros idiomas se precisar
-      ],
-      // Define o locale padrão (opcional, mas bom ter)
-      locale: const Locale('pt', 'BR'),
-      
-      // --- FIM DAS ADIÇÕES ---
-
-      // --- 3. ATUALIZAÇÃO DO MATERIALAPP ---
-      
-      // Remove 'home' e usa 'initialRoute'
-      // home: const SplashScreen(), 
-      initialRoute: '/', // Define a rota inicial
-
-      // Adiciona o observador do Analytics
-      navigatorObservers: [
-        FjfAnalyticsObserver(),
-      ],
-
-      // Define as rotas nomeadas
-      routes: {
-        '/': (context) => const SplashScreen(),
-        '/fixtures': (context) => const FixturesScreen(),
-        '/standings': (context) => StandingsScreen(),
-        '/teams': (context) => const TeamsListScreen(),
-        '/team-stats': (context) => const TeamStatsScreen(),
-        '/player-stats': (context) => PlayerStatsScreen(),
-        '/suspension-history': (context) => SuspensionHistoryScreen(),
-        '/report-bug': (context) => const ReportBugScreen(),
-        '/admin-menu': (context) => const AdminMenuScreen(),
-        '/player-comparison': (context) => const PlayerComparisonScreen(),
-      },
-      // --- FIM DA ATUALIZAÇÃO ---
-
     );
   }
 }

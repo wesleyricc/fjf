@@ -1,9 +1,11 @@
-// lib/screens/player_comparison_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../widgets/app_drawer.dart'; // <--- 1. Importar o Drawer
+import 'package:provider/provider.dart'; // <-- Importante
+import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
+import '../services/firestore_service.dart';
+import '../services/championship_service.dart'; // <-- Importante
 
 class PlayerComparisonScreen extends StatefulWidget {
   const PlayerComparisonScreen({super.key});
@@ -24,15 +26,29 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
   @override
   void initState() {
     super.initState();
+    // Chamada inicial sem contexto (será carregado no didChangeDependencies ou build)
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Carrega times quando as dependências (Provider) estiverem prontas
     _fetchAllTeams();
   }
 
   Future<void> _fetchAllTeams() async {
+    // 1. Pega a Temporada
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    
     try {
-      final snapshot = await _firestore
-          .collection('teams')
-          .orderBy('name')
-          .get();
+      Query query;
+      if (seasonId == FirestoreService.LEGACY_ID) {
+        query = _firestore.collection('teams').orderBy('name');
+      } else {
+        query = _firestore.collection('championships').doc(seasonId).collection('teams_participation').orderBy('name');
+      }
+
+      final snapshot = await query.get();
       
       if (mounted) {
         setState(() {
@@ -83,11 +99,7 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                               },
                             ),
                             Expanded(
-                              child: Text(
-                                selectedTeamName, 
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                              child: Text(selectedTeamName, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                             ),
                           ],
                         ),
@@ -120,6 +132,8 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                                       });
                                       
                                       try {
+                                        // Jogadores ainda são Globais na arquitetura atual
+                                        // Então buscamos na coleção raiz filtrando pelo ID do time
                                         final pSnaps = await _firestore
                                             .collection('players')
                                             .where('team_id', isEqualTo: team.id)
@@ -150,10 +164,7 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                                     itemBuilder: (ctx, index) {
                                       final player = teamPlayers[index];
                                       final pData = player.data() as Map<String, dynamic>;
-                                      
-                                      final bool isAlreadySelected = 
-                                          (player.id == _player1?.id) || (player.id == _player2?.id);
-                                      
+                                      final bool isAlreadySelected = (player.id == _player1?.id) || (player.id == _player2?.id);
                                       final int? number = pData['jersey_number'];
                                       final String name = pData['name'] ?? 'Nome';
 
@@ -171,10 +182,7 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                                         ),
                                         title: Text(
                                           number != null ? '#$number - $name' : name,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            color: isAlreadySelected ? Colors.grey : Colors.black,
-                                          ),
+                                          style: TextStyle(fontWeight: FontWeight.w500, color: isAlreadySelected ? Colors.grey : Colors.black),
                                         ),
                                         subtitle: Text(pData['position'] ?? 'Jogador'),
                                         onTap: isAlreadySelected ? null : () {
@@ -201,22 +209,22 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
     );
   }
 
-  /*String _calculateAge(Timestamp? dobTimestamp) {
-    if (dobTimestamp == null) return '-';
-    final DateTime dob = dobTimestamp.toDate();
-    final DateTime today = DateTime.now();
-    int age = today.year - dob.year;
-    if (today.month < dob.month || (today.month == dob.month && today.day < dob.day)) {
-      age--;
-    }
-    return '$age anos';
-  }*/
-
   @override
   Widget build(BuildContext context) {
+    // Consome o serviço apenas para mostrar o nome na AppBar (opcional)
+    final seasonName = Provider.of<ChampionshipService>(context).currentSeasonName;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Comparador de Atletas')),
-      drawer: const AppDrawer(), // <--- 2. Adicionar o Drawer aqui
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Comparador de Atletas'),
+            Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+          ],
+        ),
+      ),
+      drawer: const AppDrawer(),
       body: _isLoadingTeams
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -225,29 +233,20 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                   width: double.infinity,
                   color: Colors.amber[50],
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: const Text(
-                    'Estatísticas - Temporada Atual',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
+                  child: const Text('Estatísticas - Temporada Selecionada', textAlign: TextAlign.center, style: TextStyle(color: Colors.brown, fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
-
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 16.0),
                   color: Colors.grey[100],
                   child: Row(
                     children: [
                       Expanded(child: _buildPlayerHeader(1, _player1)),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Text("VS", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.grey)),
-                      ),
+                      const Padding(padding: EdgeInsets.symmetric(horizontal: 8.0), child: Text("VS", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: Colors.grey))),
                       Expanded(child: _buildPlayerHeader(2, _player2)),
                     ],
                   ),
                 ),
                 const Divider(height: 1, thickness: 2),
-
                 Expanded(
                   child: (_player1 == null || _player2 == null)
                       ? Center(
@@ -264,55 +263,12 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 16.0),
                           child: Column(
                             children: [
-                               /*Builder(
-                                 builder: (context) {
-                                   final d1 = _player1!.data() as Map<String, dynamic>;
-                                   final d2 = _player2!.data() as Map<String, dynamic>;
-
-                                   final age1 = _calculateAge(d1['date_of_birth']);
-                                   final age2 = _calculateAge(d2['date_of_birth']);
-                                   
-                                   final h1 = d1['height_cm'] != null ? '${d1['height_cm']} cm' : '-';
-                                   final h2 = d2['height_cm'] != null ? '${d2['height_cm']} cm' : '-';
-
-                                   final w1 = d1['weight_kg'] != null ? '${d1['weight_kg']} kg' : '-';
-                                   final w2 = d2['weight_kg'] != null ? '${d2['weight_kg']} kg' : '-';
-
-                                   final f1 = d1['preferred_foot'] ?? '-';
-                                   final f2 = d2['preferred_foot'] ?? '-';
-
-                                   return Column(
-                                     children: [
-                                       _buildPhysicalRow('Idade', age1, age2),
-                                       _buildPhysicalRow('Altura', h1, h2),
-                                       _buildPhysicalRow('Peso', w1, w2),
-                                       _buildPhysicalRow('Pé', f1, f2),
-                                       
-                                       const Divider(thickness: 8, color: Color(0xFFEEEEEE)),
-                                       const SizedBox(height: 8),
-                                     ],
-                                   );
-                                 }
-                               ),*/
-
                                _buildComparisonRow('Gols', 'goals', higherIsBetter: true),
-                               
                                _buildComparisonRow('Assistências', 'assists', higherIsBetter: true),
-                               
-                               _buildComparisonRow(
-                                 'Participações', 
-                                 'goals', 
-                                 secondaryField: 'assists', 
-                                 labelOverride: 'Participações em Gols',
-                                 higherIsBetter: true
-                               ),
-
+                               _buildComparisonRow('Participações', 'goals', secondaryField: 'assists', labelOverride: 'Participações em Gols', higherIsBetter: true),
                                _buildComparisonRow('Cartões Amarelos', 'total_yellow_cards', higherIsBetter: false),
-                               
                                _buildComparisonRow('Cartões Vermelhos', 'total_red_cards', higherIsBetter: false),
-                               
                                _buildComparisonRow('Craque do Jogo', 'man_of_the_match_awards', higherIsBetter: true),
-                               
                                if ((_player1!['is_goalkeeper'] ?? false) || (_player2!['is_goalkeeper'] ?? false))
                                  _buildComparisonRow('Gols Sofridos', 'goals_conceded', higherIsBetter: false),
                             ],
@@ -331,20 +287,12 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
         children: [
           GestureDetector(
             onTap: () => _showSelectionFlow(slot),
-            child: CircleAvatar(
-              radius: 40,
-              backgroundColor: Colors.grey[300],
-              child: const Icon(Icons.add, size: 40, color: Colors.grey),
-            ),
+            child: CircleAvatar(radius: 40, backgroundColor: Colors.grey[300], child: const Icon(Icons.add, size: 40, color: Colors.grey)),
           ),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () => _showSelectionFlow(slot),
-            style: ElevatedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white
-            ),
+            style: ElevatedButton.styleFrom(visualDensity: VisualDensity.compact, backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white),
             child: const Text('Selecionar'),
           ),
         ],
@@ -365,22 +313,15 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                child: CircleAvatar(
                 radius: 40,
                 backgroundColor: Colors.grey[200],
-                backgroundImage: (data['photo_url'] != null && data['photo_url'] != '')
-                    ? CachedNetworkImageProvider(data['photo_url'])
-                    : null,
-                child: (data['photo_url'] == null || data['photo_url'] == '')
-                    ? const Icon(Icons.person, size: 50, color: Colors.grey)
-                    : null,
+                backgroundImage: (data['photo_url'] != null && data['photo_url'] != '') ? CachedNetworkImageProvider(data['photo_url']) : null,
+                child: (data['photo_url'] == null || data['photo_url'] == '') ? const Icon(Icons.person, size: 50, color: Colors.grey) : null,
               ),
             ),
             Positioned(
-              right: 0,
-              top: 0,
+              right: 0, top: 0,
               child: GestureDetector(
                 onTap: () {
-                  setState(() {
-                    if (slot == 1) _player1 = null; else _player2 = null;
-                  });
+                  setState(() { if (slot == 1) _player1 = null; else _player2 = null; });
                 },
                 child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white)),
               ),
@@ -388,58 +329,11 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        Text(
-          number != null ? '#$number - $name' : name,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-        ),
-        Text(
-          data['team_name'] ?? '', 
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-        ),
+        Text(number != null ? '#$number - $name' : name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, maxLines: 1),
+        Text(data['team_name'] ?? '', style: const TextStyle(fontSize: 12, color: Colors.grey), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, maxLines: 1),
       ],
     );
   }
-
-  /*Widget _buildPhysicalRow(String label, String value1, String value2) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              value1, 
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              label, 
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value2, 
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      ),
-    );
-  }*/
 
   Widget _buildComparisonRow(String label, String fieldKey, {String? secondaryField, String? labelOverride, required bool higherIsBetter}) {
     final data1 = _player1!.data() as Map<String, dynamic>;
@@ -465,33 +359,12 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
-      ),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              val1.toString(), 
-              style: TextStyle(fontSize: 18, color: color1, fontWeight: weight1),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              labelOverride ?? label, 
-              style: TextStyle(color: Colors.grey[600], fontSize: 14, fontWeight: FontWeight.w500),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              val2.toString(), 
-              style: TextStyle(fontSize: 18, color: color2, fontWeight: weight2),
-              textAlign: TextAlign.center,
-            ),
-          ),
+          Expanded(child: Text(val1.toString(), style: TextStyle(fontSize: 18, color: color1, fontWeight: weight1), textAlign: TextAlign.center)),
+          Expanded(flex: 2, child: Text(labelOverride ?? label, style: TextStyle(color: Colors.grey[600], fontSize: 14, fontWeight: FontWeight.w500), textAlign: TextAlign.center)),
+          Expanded(child: Text(val2.toString(), style: TextStyle(fontSize: 18, color: color2, fontWeight: weight2), textAlign: TextAlign.center)),
         ],
       ),
     );

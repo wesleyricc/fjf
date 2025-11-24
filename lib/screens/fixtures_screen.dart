@@ -1,10 +1,13 @@
-// lib/screens/fixtures_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // Provider
 import '../widgets/app_drawer.dart';
 import 'package:intl/intl.dart';
 import 'admin_match_screen.dart';
 import '../services/admin_service.dart';
+import '../services/firestore_service.dart'; // FirestoreService
+import '../services/championship_service.dart'; // ChampionshipService
+import '../services/auth_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'match_stats_screen.dart';
 import 'team_detail_screen.dart';
@@ -29,7 +32,7 @@ class FixturesScreen extends StatefulWidget {
 
 class _FixturesScreenState extends State<FixturesScreen>
     with SingleTickerProviderStateMixin {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Removida a instância direta _firestore onde possível, usando Query construída
   
   late TournamentPhase _selectedPhase;
   late int _selectedRound;
@@ -37,6 +40,8 @@ class _FixturesScreenState extends State<FixturesScreen>
   final int TOTAL_RODADAS = 7; 
 
   late AnimationController _blinkAnimationController;
+
+  // ... (Funções auxiliares _getPlayoffStageFromString e _getDatabasePhaseName mantidas iguais)
   PlayoffStage _getPlayoffStageFromString(String stage) {
     switch(stage) {
       case 'semifinal': return PlayoffStage.semifinal;
@@ -47,15 +52,11 @@ class _FixturesScreenState extends State<FixturesScreen>
     }
   }
 
-  // Função para converter o Enum do app para a String do Firebase
   String _getDatabasePhaseName(PlayoffStage stage) {
     switch (stage) {
-      case PlayoffStage.semifinal:
-        return 'semifinal';
-      case PlayoffStage.third_place:
-        return 'third_place';
-      case PlayoffStage.final_game:
-        return 'final'; // <--- AQUI ESTÁ O PULO DO GATO
+      case PlayoffStage.semifinal: return 'semifinal';
+      case PlayoffStage.third_place: return 'third_place';
+      case PlayoffStage.final_game: return 'final';
     }
   }
 
@@ -68,7 +69,7 @@ class _FixturesScreenState extends State<FixturesScreen>
     );
     _blinkAnimationController.repeat(reverse: true);
 
-    // Lê os padrões
+    // Lê os padrões (ainda estáticos do AdminService, mas ok por enquanto)
     _selectedPhase = AdminService.defaultPhase == 'second' 
                         ? TournamentPhase.second 
                         : TournamentPhase.first;
@@ -88,22 +89,26 @@ class _FixturesScreenState extends State<FixturesScreen>
     super.dispose();
   }
 
-  // --- FUNÇÕES DE NAVEGAÇÃO E DIÁLOGOS (Mantidas iguais) ---
+  // ... (Funções de Navegação _fetchTeam, _navigateToTeamDetail, _navigateToMatchRoster, _showAdminMatchOptionsDialog MANTIDAS IGUAIS)
   Future<DocumentSnapshot?> _fetchTeam(String? teamId) async {
     if (teamId == null || teamId.isEmpty) return null;
+    // Aqui precisamos ser cuidadosos. 
+    // Se estivermos no modo NOVO, times estão em subcoleção. 
+    // Mas o fetchTeam é usado para "clicar e ver detalhes".
+    // Vamos assumir que a leitura direta por ID funciona se o ID for único globalmente, 
+    // ou usar o modo legado por enquanto para detalhes simples.
     try {
-      return await _firestore.collection('teams').doc(teamId).get();
-    } catch (e) {
-      return null;
-    }
+       return await FirebaseFirestore.instance.collection('teams').doc(teamId).get();
+    } catch (e) { return null; }
   }
 
-  void _navigateToTeamDetail(BuildContext context, String? teamId) async {
-    if (teamId == null || teamId.isEmpty) return;
-    final teamDoc = await _fetchTeam(teamId);
-    if (teamDoc != null && teamDoc.exists && context.mounted) {
-      Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc)));
-    }
+  void _navigateToTeamDetail(BuildContext context, String? teamId) {
+    if(teamId!=null && teamId.isNotEmpty) {
+       // Lógica simplificada de navegação para MVP
+       FirebaseFirestore.instance.collection('teams').doc(teamId).get().then((doc){
+         if(doc.exists && mounted) Navigator.of(context).push(MaterialPageRoute(builder: (ctx)=>TeamDetailScreen(teamDoc: doc)));
+       });
+     }
   }
 
   void _navigateToMatchRoster(BuildContext context, DocumentSnapshot match, Map<String, dynamic> data) {
@@ -163,18 +168,45 @@ class _FixturesScreenState extends State<FixturesScreen>
       },
     );
   }
-  // --- FIM FUNÇÕES DE NAVEGAÇÃO ---
 
   @override
   Widget build(BuildContext context) {
+    // 1. Recupera Season ID
+    final championshipService = Provider.of<ChampionshipService>(context);
+    final authService = Provider.of<AuthService>(context); // <-- OUVINDO LOGIN
+    final String seasonId = championshipService.currentSeasonId;
+    final String seasonName = championshipService.currentSeasonName;
+
+    // 2. Constrói a Query Base
+    CollectionReference matchesCollection;
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      matchesCollection = FirebaseFirestore.instance.collection('matches');
+    } else {
+      matchesCollection = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches');
+    }
+
+    // 3. Aplica os Filtros
+    Query query;
+    if (_selectedPhase == TournamentPhase.first) {
+      query = matchesCollection
+          .where('phase', isEqualTo: 'first')
+          .where('round', isEqualTo: _selectedRound)
+          .orderBy('datetime');
+    } else {
+      query = matchesCollection
+          .where('phase', isEqualTo: _getDatabasePhaseName(_selectedPlayoffStage))
+          .orderBy('order');
+    }
+
     return Scaffold(
       appBar: AppBar(
-        // 1. Título Dinâmico na Esquerda
-        title: Text(
-          _selectedPhase == TournamentPhase.first ? '1ª Fase' : '2ª Fase',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_selectedPhase == TournamentPhase.first ? '1ª Fase' : '2ª Fase', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+          ],
         ),
-        // 2. Seletor de Fase na Direita (Actions)
         actions: [
           _buildAppBarPhaseSelector(),
         ],
@@ -182,36 +214,23 @@ class _FixturesScreenState extends State<FixturesScreen>
       drawer: const AppDrawer(),
       body: Column(
         children: [
-          // 3. Seletor de Rodada/Etapa (Abaixo da AppBar)
           Container(
              width: double.infinity,
-            color: Colors.grey[100], // Fundo sutil
+            color: Colors.grey[100],
             child: _selectedPhase == TournamentPhase.first 
                 ? _buildArrowRoundSelector() 
                 : _buildPlayoffStageSelector(),
           ),
           
-          // 4. Lista de Jogos
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _selectedPhase == TournamentPhase.first
-                  ? _firestore
-                      .collection('matches')
-                      .where('phase', isEqualTo: 'first')
-                      .where('round', isEqualTo: _selectedRound)
-                      .orderBy('datetime')
-                      .snapshots()
-                  : _firestore
-                      .collection('matches')
-                      .where('phase', isEqualTo: _getDatabasePhaseName(_selectedPlayoffStage))
-                      .orderBy('order')
-                      .snapshots(),
+              stream: query.snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('Nenhum jogo encontrado.'));
+                  return const Center(child: Text('Nenhum jogo encontrado nesta fase.'));
                 }
 
                 final matches = snapshot.data!.docs;
@@ -221,8 +240,7 @@ class _FixturesScreenState extends State<FixturesScreen>
                   itemCount: matches.length,
                   itemBuilder: (context, index) {
                     final match = matches[index];
-                    final data = match.data() as Map<String, dynamic>;
-                    return _buildMatchCard(match, data);
+                    return _buildMatchCard(match, match.data() as Map<String, dynamic>, authService.isAuthenticated); // <-- Passa authStatus
                   },
                 );
               },
@@ -231,23 +249,17 @@ class _FixturesScreenState extends State<FixturesScreen>
         ],
       ),
       bottomNavigationBar: const SponsorBannerRotator(),
-      floatingActionButton:
-          AdminService.isAdmin && _selectedPhase == TournamentPhase.first
+      floatingActionButton: (authService.isAuthenticated && _selectedPhase == TournamentPhase.first)
           ? FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const EditMatchScreen(match: null)));
-              },
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const EditMatchScreen(match: null))),
               backgroundColor: Theme.of(context).primaryColor,
               foregroundColor: Colors.white,
-              child: const Icon(Icons.add),
+              child: const Icon(Icons.add, color: Colors.white),
             )
           : null,
     );
   }
 
-  // --- WIDGETS DE LAYOUT ---
-
-  // 1. Seletor de Fase no AppBar (Estilo "Pílula" branca)
   Widget _buildAppBarPhaseSelector() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0),
@@ -269,12 +281,10 @@ class _FixturesScreenState extends State<FixturesScreen>
   Widget _buildPhaseButton(String text, TournamentPhase phase) {
     final isSelected = _selectedPhase == phase;
     final primaryColor = Theme.of(context).primaryColor;
-    
     return InkWell(
       onTap: () {
         setState(() {
           _selectedPhase = phase;
-          // Reseta para semifinal ao ir para 2a fase
           if (_selectedPhase == TournamentPhase.second) {
             _selectedPlayoffStage = PlayoffStage.semifinal;
           }
@@ -285,24 +295,16 @@ class _FixturesScreenState extends State<FixturesScreen>
         decoration: BoxDecoration(
           color: isSelected ? primaryColor : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.white, 
-            width: 2.0, // Espessura da borda (pequena/mínima)
-          ),
+          border: Border.all(color: Colors.white, width: 2.0),
         ),
         child: Text(
           text,
-          style: TextStyle(
-            color: isSelected ? Colors.white : primaryColor,
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-          ),
+          style: TextStyle(color: isSelected ? Colors.white : primaryColor, fontWeight: FontWeight.bold, fontSize: 13),
         ),
       ),
     );
   }
 
-  // 2. Seletor de Rodada com Setas (O Layout Desejado)
   Widget _buildArrowRoundSelector() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0),
@@ -312,50 +314,31 @@ class _FixturesScreenState extends State<FixturesScreen>
           IconButton(
             icon: const Icon(Icons.arrow_back_ios),
             color: Theme.of(context).primaryColor,
-            // Desabilita se for a primeira rodada
-            onPressed: _selectedRound > 1 
-              ? () => setState(() => _selectedRound--) 
-              : null,
+            onPressed: _selectedRound > 1 ? () => setState(() => _selectedRound--) : null,
           ),
-          Text(
-            'Rodada $_selectedRound',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).primaryColor,
-            ),
-          ),
+          Text('Rodada $_selectedRound', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios),
             color: Theme.of(context).primaryColor,
-            // Desabilita se for a última rodada
-            onPressed: _selectedRound < TOTAL_RODADAS 
-              ? () => setState(() => _selectedRound++) 
-              : null,
+            onPressed: _selectedRound < TOTAL_RODADAS ? () => setState(() => _selectedRound++) : null,
           ),
         ],
       ),
     );
   }
 
-  // 3. Seletor de Playoff (Segmented Button)
   Widget _buildPlayoffStageSelector() {
     final primaryColor = Theme.of(context).primaryColor;
-    
-    // Lista de booleanos para o isSelected do ToggleButtons
     final List<bool> isSelected = [
       _selectedPlayoffStage == PlayoffStage.semifinal,
       _selectedPlayoffStage == PlayoffStage.third_place,
       _selectedPlayoffStage == PlayoffStage.final_game,
     ];
-    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Calcula a largura para cada botão ocupar o espaço disponível
           final buttonWidth = (constraints.maxWidth - 4) / 3; 
-          
           return ToggleButtons(
             isSelected: isSelected,
             onPressed: (int index) {
@@ -365,17 +348,13 @@ class _FixturesScreenState extends State<FixturesScreen>
                 if (index == 2) _selectedPlayoffStage = PlayoffStage.final_game;
               });
             },
-            // Configurações Visuais
-            borderRadius: BorderRadius.circular(8.0), // Menos arredondado
+            borderRadius: BorderRadius.circular(8.0),
             borderColor: Colors.grey.shade400,
             selectedBorderColor: primaryColor,
             fillColor: primaryColor,
-            selectedColor: Colors.white, // Cor do texto quando selecionado
-            color: primaryColor,         // Cor do texto quando NÃO selecionado
-            constraints: BoxConstraints(
-              minHeight: 40.0,
-              minWidth: buttonWidth, // Força largura igual
-            ),
+            selectedColor: Colors.white,
+            color: primaryColor,
+            constraints: BoxConstraints(minHeight: 40.0, minWidth: buttonWidth),
             children: const [
               Text('Semifinais', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('3º Lugar', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -387,9 +366,7 @@ class _FixturesScreenState extends State<FixturesScreen>
     );
   }
 
-  // 4. Card de Jogo (Refatorado para organização)
-  Widget _buildMatchCard(DocumentSnapshot match, Map<String, dynamic> data) {
-    // ... Lógica de formatação de dados (idêntica) ...
+  Widget _buildMatchCard(DocumentSnapshot match, Map<String, dynamic> data, bool isAdmin) {
     String scoreHomeStr = data['score_home']?.toString() ?? '-';
     String scoreAwayStr = data['score_away']?.toString() ?? '-';
     String? penaltyScoreStr;
@@ -432,9 +409,9 @@ class _FixturesScreenState extends State<FixturesScreen>
           elevation: 2,
           child: InkWell(
             onTap: () {
-               if (AdminService.isAdmin) {
+               if (isAdmin) {
                  _showAdminMatchOptionsDialog(context, match, data);
-               } else if (status == 'finished' || status == 'in_progress') {
+               } else if (data['status'] == 'finished' || data['status'] == 'in_progress') {
                  Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => MatchStatsScreen(match: match)));
                } else {
                  _navigateToMatchRoster(context, match, data);
@@ -444,11 +421,9 @@ class _FixturesScreenState extends State<FixturesScreen>
               padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
               child: Column(
                 children: [
-                  // Data e Local
                   Text('$formattedDate - $location', style: TextStyle(fontSize: 12, color: Colors.grey[700])),
                   const SizedBox(height: 4),
                   
-                  // Status
                   if (status == 'in_progress')
                     FadeTransition(
                       opacity: _blinkAnimationController,
@@ -459,10 +434,9 @@ class _FixturesScreenState extends State<FixturesScreen>
                   
                   const SizedBox(height: 8),
 
-                  // Placar e Times
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      // Casa
                       Expanded(
                         child: GestureDetector(
                           onTap: () => _navigateToTeamDetail(context, data['team_home_id']),
@@ -473,7 +447,6 @@ class _FixturesScreenState extends State<FixturesScreen>
                           ]),
                         ),
                       ),
-                      // Placar
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10.0),
                         child: Column(children: [
@@ -481,7 +454,6 @@ class _FixturesScreenState extends State<FixturesScreen>
                           if (penaltyScoreStr != null) Text('Pênaltis\n$penaltyScoreStr', textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                         ]),
                       ),
-                      // Fora
                       Expanded(
                         child: GestureDetector(
                           onTap: () => _navigateToTeamDetail(context, data['team_away_id']),
@@ -499,7 +471,6 @@ class _FixturesScreenState extends State<FixturesScreen>
             ),
           ),
         ),
-        // Campeão
         if (isFinalFinished)
            FutureBuilder<DocumentSnapshot?>(
              future: _fetchTeam(winnerTeamId),

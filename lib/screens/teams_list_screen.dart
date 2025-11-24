@@ -1,25 +1,26 @@
-// lib/screens/teams_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // <-- Importante
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'team_detail_screen.dart';
 import 'edit_team_screen.dart';
-import '../services/admin_service.dart';
 import '../services/firestore_service.dart';
+import '../services/championship_service.dart';
+import '../services/auth_service.dart'; // <-- Importante
 import 'package:cached_network_image/cached_network_image.dart';
 
 class TeamsListScreen extends StatelessWidget {
   const TeamsListScreen({super.key});
 
-  // --- FUNÇÃO PARA DIÁLOGO DE EXCLUSÃO ---
-  Future<void> _showDeleteTeamDialog(BuildContext context, DocumentSnapshot teamDoc) async {
+  // --- DIÁLOGO DE EXCLUSÃO ---
+  Future<void> _showDeleteTeamDialog(BuildContext context, DocumentSnapshot teamDoc, String seasonId) async {
      final teamName = (teamDoc.data() as Map<String, dynamic>?)?['name'] ?? 'Equipe';
      final confirm = await showDialog<bool>(
        context: context,
        builder: (ctx) => AlertDialog(
          title: Text('EXCLUIR $teamName?'),
-         content: const Text('ATENÇÃO! Esta ação é permanente.\n\nExcluir esta equipe irá remover também:\n- Todos os jogadores desta equipe.\n- Todas as partidas (passadas e futuras) desta equipe.\n- A classificação dos oponentes será recalculada.\n\nDeseja continuar?'),
+         content: const Text('ATENÇÃO! Esta ação é permanente.\n\nExcluir esta equipe irá remover também:\n- Todos os jogadores desta equipe.\n- Todas as partidas desta equipe nesta temporada.\n\nDeseja continuar?'),
          actions: [
            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
            TextButton(
@@ -30,42 +31,45 @@ class TeamsListScreen extends StatelessWidget {
        ),
      );
 
-     if (confirm == true) {
-       // Mostra um loading antes de chamar a função pesada
-       ScaffoldMessenger.of(context).showSnackBar(
-         const SnackBar(content: Text('Excluindo equipe e dados... Isso pode levar um momento.')),
-       );
-       final result = await FirestoreService().deleteTeam(teamDoc); // Chama o serviço
-       ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(content: Text(result)),
-       );
+     if (confirm == true && context.mounted) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excluindo...')));
+       final result = await FirestoreService().deleteTeam(teamDoc, seasonId);
+       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
      }
   }
-  // --- FIM ---
 
   @override
   Widget build(BuildContext context) {
+    final championshipService = Provider.of<ChampionshipService>(context);
+    final authService = Provider.of<AuthService>(context); // <-- OUVINDO O LOGIN
+    
+    final String seasonId = championshipService.currentSeasonId;
+    final String seasonName = championshipService.currentSeasonName;
+
+    Query teamsQuery;
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      teamsQuery = FirebaseFirestore.instance.collection('teams').orderBy('name');
+    } else {
+      teamsQuery = FirebaseFirestore.instance
+          .collection('championships').doc(seasonId).collection('teams_participation').orderBy('name');
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Equipes do Campeonato'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Equipes', style: TextStyle(fontSize: 18)),
+            Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+          ],
+        ),
       ),
       drawer: const AppDrawer(),
       body: StreamBuilder<QuerySnapshot>(
-        // Busca todos os times, ordenados por nome
-        stream: FirebaseFirestore.instance
-            .collection('teams')
-            .orderBy('name')
-            .snapshots(),
+        stream: teamsQuery.snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Erro: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('Nenhuma equipe encontrada.'));
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('Nenhuma equipe encontrada.'));
 
           final teams = snapshot.data!.docs;
 
@@ -78,89 +82,61 @@ class TeamsListScreen extends StatelessWidget {
                   itemCount: teams.length,
                   itemBuilder: (context, index) {
                     final teamDoc = teams[index];
-                    try {
-                      final data = teamDoc.data() as Map<String, dynamic>;
-                      final shieldUrl = data['shield_url'] ?? '';
+                    final data = teamDoc.data() as Map<String, dynamic>;
+                    final shieldUrl = data['shield_url'] ?? '';
 
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                        child: ListTile(
-                          leading: SizedBox( // Garante tamanho fixo
-                            width: 40,
-                            height: 40,
-                            child: CachedNetworkImage(
-                              imageUrl: shieldUrl, // shieldUrl já é pego acima
-                              placeholder: (context, url) => const Center(child: Icon(Icons.shield, size: 30, color: Colors.grey)),
-                              errorWidget: (context, url, error) => const Icon(Icons.shield, size: 40, color: Colors.grey),
-                              fit: BoxFit.contain,
-                            ),
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      child: ListTile(
+                        leading: SizedBox(
+                          width: 40, height: 40,
+                          child: CachedNetworkImage(
+                            imageUrl: shieldUrl,
+                            placeholder: (c, u) => const Center(child: Icon(Icons.shield, size: 30, color: Colors.grey)),
+                            errorWidget: (c, u, e) => const Icon(Icons.shield, size: 40, color: Colors.grey),
+                            fit: BoxFit.contain,
                           ),
-                          title: Text(data['name'] ?? 'Nome Indisponível', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          // --- TRAILING DINÂMICO (ADMIN vs USER) ---
-                          trailing: AdminService.isAdmin
-                            ? Row( // Mostra botões para Admin
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit, color: Theme.of(context).primaryColor),
-                                    tooltip: 'Editar Equipe',
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (ctx) => EditTeamScreen(team: teamDoc), // Modo Edição
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: Icon(Icons.delete_forever, color: Colors.red[700]),
-                                    tooltip: 'Excluir Equipe',
-                                    onPressed: () {
-                                      _showDeleteTeamDialog(context, teamDoc); // Chama diálogo de exclusão
-                                    },
-                                  ),
-                                ],
-                              )
-                            : const Icon(Icons.arrow_forward_ios, size: 16), // Mostra seta para Usuário
-                          // --- FIM TRAILING ---
-                          onTap: () {
-                            // Navega para a tela de detalhes passando o documento do time
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc),
-                              ),
-                            );
-                          },
                         ),
-                      );
-                    } catch (e) {
-                      return ListTile(title: Text('Erro ao carregar time ${teamDoc.id}'));
-                    }
+                        title: Text(data['name'] ?? 'Nome Indisponível', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        
+                        // --- AQUI ESTÁ A CORREÇÃO ---
+                        trailing: authService.isAuthenticated // Usa authService em vez de AdminService
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit, color: Theme.of(context).primaryColor),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => EditTeamScreen(team: teamDoc))),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete_forever, color: Colors.red[700]),
+                                  onPressed: () => _showDeleteTeamDialog(context, teamDoc, seasonId),
+                                ),
+                              ],
+                            )
+                          : const Icon(Icons.arrow_forward_ios, size: 16),
+                        // ----------------------------
+                        
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => TeamDetailScreen(teamDoc: teamDoc))),
+                      ),
+                    );
                   },
-                ), // Fim ListView
+                ),
               ],
             ),
           );
         },
       ),
       bottomNavigationBar: const SponsorBannerRotator(),
-      // --- FAB PARA CRIAR EQUIPE (SÓ ADMIN) ---
-      floatingActionButton: AdminService.isAdmin
+      
+      // --- CORREÇÃO DO FAB ---
+      floatingActionButton: authService.isAuthenticated
           ? FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (ctx) => const EditTeamScreen(team: null), // Modo Criação
-                  ),
-                );
-              },
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const EditTeamScreen(team: null))),
               backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white,
-              tooltip: 'Adicionar Nova Equipe',
-              child: const Icon(Icons.add),
+              child: const Icon(Icons.add, color: Colors.white),
             )
           : null,
-      // --- FIM FAB ---
     );
   }
 }

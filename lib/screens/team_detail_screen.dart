@@ -1,6 +1,7 @@
 // lib/screens/team_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../services/admin_service.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'extra_points_log_screen.dart';
@@ -10,6 +11,8 @@ import 'edit_player_screen.dart';
 import '../services/firestore_service.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'player_profile_screen.dart'; 
+import '../services/auth_service.dart';
+import '../services/championship_service.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final DocumentSnapshot teamDoc;
@@ -25,11 +28,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final FirestoreService _firestoreService = FirestoreService();
 
   List<DocumentSnapshot> _allPlayers = [];
-
-  // --- NOVO: Scroll Controller para Histórico ---
   late ScrollController _historyScrollController;
   bool _showHistoryScrollIndicator = false;
-  // --- FIM ---
 
   @override
   void initState() {
@@ -41,36 +41,27 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         screenName: '/team/detail/$teamName',
       );
     } catch (e) {
-      debugPrint("Erro ao logar screen_view (TeamDetailScreen): $e");
+      debugPrint("Erro ao logar screen_view: $e");
     }
 
-    // --- NOVO: Inicializa o Controller e o Listener ---
     _historyScrollController = ScrollController();
     _historyScrollController.addListener(_checkScroll);
-    // --- FIM ---
   }
 
   @override
   void dispose() {
-    // --- NOVO: Dispose do Controller ---
     _historyScrollController.removeListener(_checkScroll);
     _historyScrollController.dispose();
-    // --- FIM ---
     super.dispose();
   }
 
-  // --- NOVA FUNÇÃO: Listener do Scroll ---
   void _checkScroll() {
     bool shouldShow = false;
     if (_historyScrollController.hasClients) {
-      // Se o scroll máximo for maior que 0, significa que há conteúdo para rolar
-      // Adicionamos uma pequena tolerância (ex: 5 pixels)
       shouldShow = _historyScrollController.position.maxScrollExtent > 5.0;
     }
     
-    // Só atualiza o estado se o valor realmente mudou
     if (shouldShow != _showHistoryScrollIndicator) {
-      // Usamos 'addPostFrameCallback' para evitar 'setState' durante o build
       WidgetsBinding.instance.addPostFrameCallback((_) {
          if (mounted) {
            setState(() {
@@ -80,44 +71,24 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       });
     }
   }
-  // --- FIM ---
-
-  // --- Funções _showAddExtraPointsDialog, _buildStatRow, _showDeletePlayerDialog, _getStaffIcon, _showSetStartersDialog ---
-  // (Estas funções permanecem idênticas às versões anteriores)
 
   Future<void> _showAddExtraPointsDialog() async {
     String? selectedReason;
     final pointsController = TextEditingController();
     bool isLoading = false;
-    DateTime selectedDate =
-        DateTime.now();
+    DateTime selectedDate = DateTime.now();
 
     final Map<String, int> extraPointsOptions = {
-      'Rainha FJF': 1,
-      '1º Lugar Desfile': 1,
-      '2º Lugar Desfile': 1,
-      '3º Lugar Desfile': 1,
-      'Falta Pgto Boleto': -1,
-      'Ausência Reunião': -1,
-      'Outro (Positivo)': 0,
-      'Outro (Negativo)': 0,
+      'Rainha FJF': 1, '1º Lugar Desfile': 1, '2º Lugar Desfile': 1, '3º Lugar Desfile': 1,
+      'Falta Pgto Boleto': -1, 'Ausência Reunião': -1, 'Outro (Positivo)': 0, 'Outro (Negativo)': 0,
     };
 
-    Future<void> _pickDate(
-      BuildContext context,
-      StateSetter setDialogState,
-    ) async {
+    Future<void> _pickDate(BuildContext context, StateSetter setDialogState) async {
       final DateTime? picked = await showDatePicker(
-        context: context,
-        initialDate: selectedDate,
-        firstDate: DateTime(2020),
-        lastDate: DateTime.now(),
-        locale: const Locale('pt', 'BR'),
+        context: context, initialDate: selectedDate, firstDate: DateTime(2020), lastDate: DateTime.now(), locale: const Locale('pt', 'BR'),
       );
       if (picked != null && picked != selectedDate) {
-        setDialogState(() {
-          selectedDate = picked;
-        });
+        setDialogState(() => selectedDate = picked);
       }
     }
 
@@ -128,215 +99,81 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text(
-                'Adicionar/Remover Pontos Extras\n(${widget.teamDoc['name']})',
-              ),
+              title: Text('Pontos Extras (${widget.teamDoc['name']})'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: selectedReason,
-                      hint: const Text('Selecione o Motivo'),
-                      isExpanded: true,
+                      value: selectedReason, hint: const Text('Selecione o Motivo'), isExpanded: true,
                       items: extraPointsOptions.keys.map((String reason) {
-                        return DropdownMenuItem<String>(
-                          value: reason,
-                          child: Text(
-                            '$reason (${extraPointsOptions[reason]})',
-                          ),
-                        );
+                        return DropdownMenuItem<String>(value: reason, child: Text('$reason (${extraPointsOptions[reason]})'));
                       }).toList(),
-                      onChanged: isLoading
-                          ? null
-                          : (value) {
+                      onChanged: isLoading ? null : (value) {
                               setDialogState(() {
                                 selectedReason = value;
-                                if (value != null &&
-                                    extraPointsOptions[value] != 0) {
-                                  pointsController.text =
-                                      extraPointsOptions[value].toString();
+                                if (value != null && extraPointsOptions[value] != 0) {
+                                  pointsController.text = extraPointsOptions[value].toString();
                                 } else {
                                   pointsController.text = '';
                                 }
                               });
                             },
-                      validator: (value) =>
-                          value == null ? 'Selecione um motivo' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: pointsController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Pontos (+/-)',
-                        hintText: 'Ex: 1 ou -1',
-                      ),
-                      enabled:
-                          !isLoading &&
-                          (selectedReason?.contains('Outro') ??
-                              false),
-                      validator: (value) {
-                        if (value == null || value.isEmpty)
-                          return 'Informe os pontos';
-                        if (int.tryParse(value) == null)
-                          return 'Valor inválido';
-                        if (int.parse(value) == 0)
-                          return 'Pontos não podem ser zero';
-                        return null;
-                      },
+                      controller: pointsController, keyboardType: const TextInputType.numberWithOptions(signed: true),
+                      decoration: const InputDecoration(labelText: 'Pontos (+/-)', hintText: 'Ex: 1 ou -1'),
+                      enabled: !isLoading && (selectedReason?.contains('Outro') ?? false),
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(
-                          child: Text(
-                            'Data do Evento:\n${DateFormat('dd/MM/yyyy').format(selectedDate)}',
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.calendar_today),
-                          tooltip: 'Selecionar Data',
-                          onPressed: isLoading
-                              ? null
-                              : () => _pickDate(
-                                  dialogContext,
-                                  setDialogState,
-                                ),
-                          color: Theme.of(context).primaryColor,
-                        ),
+                        Expanded(child: Text('Data: ${DateFormat('dd/MM/yyyy').format(selectedDate)}')),
+                        IconButton(icon: const Icon(Icons.calendar_today), onPressed: isLoading ? null : () => _pickDate(dialogContext, setDialogState), color: Theme.of(context).primaryColor),
                       ],
                     ),
                   ],
                 ),
               ),
               actions: [
+                TextButton(onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
                 TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          if (selectedReason == null ||
-                              pointsController.text.isEmpty) {
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Selecione o motivo e informe os pontos.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-                          final int points =
-                              int.tryParse(pointsController.text) ??
-                              (extraPointsOptions[selectedReason] ?? 0);
+                  onPressed: isLoading ? null : () async {
+                          if (selectedReason == null || pointsController.text.isEmpty) return;
+                          final int finalPoints = int.tryParse(pointsController.text) ?? 0;
+                          if (finalPoints == 0) return;
 
-                          if (points == 0 &&
-                              !(selectedReason?.contains('Outro') ?? false)) {
-                            final mapPoints =
-                                extraPointsOptions[selectedReason] ?? 0;
-                            if (mapPoints == 0) {
-                              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Pontos inválidos para o motivo selecionado.',
-                                  ),
-                                ),
-                              );
-                              return;
-                            }
-                            pointsController.text = mapPoints
-                                .toString();
-                          }
-                          final finalPoints =
-                              int.tryParse(pointsController.text) ?? 0;
-                          if (finalPoints == 0) {
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'A quantidade de pontos não pode ser zero.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() {
-                            isLoading = true;
-                          });
+                          setDialogState(() => isLoading = true);
 
                           try {
-                            final teamRef = _firestore
-                                .collection('teams')
-                                .doc(widget.teamDoc.id);
-                            final logRef = teamRef
-                                .collection('extra_points_log')
-                                .doc();
+                            // --- CORREÇÃO: Identificar onde gravar ---
+                            final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+                            DocumentReference teamRef;
+                            
+                            if (seasonId == FirestoreService.LEGACY_ID) {
+                              teamRef = _firestore.collection('teams').doc(widget.teamDoc.id);
+                            } else {
+                              teamRef = _firestore.collection('championships').doc(seasonId).collection('teams_participation').doc(widget.teamDoc.id);
+                            }
+                            // ----------------------------------------
+
+                            final logRef = teamRef.collection('extra_points_log').doc();
                             final WriteBatch batch = _firestore.batch();
 
-                            debugPrint(
-                              "[PONTOS] Adicionando Extra Points: Time=${widget.teamDoc.id}, Pontos=$finalPoints",
-                            );
-                            batch.update(teamRef, {
-                              'extra_points': FieldValue.increment(finalPoints),
-                            });
-                            batch.update(teamRef, {
-                              'points': FieldValue.increment(finalPoints),
-                            });
-
-                            batch.set(logRef, {
-                              'timestamp': Timestamp.fromDate(selectedDate),
-                              'reason': selectedReason,
-                              'points': finalPoints,
-                            });
+                            batch.update(teamRef, {'extra_points': FieldValue.increment(finalPoints), 'points': FieldValue.increment(finalPoints)});
+                            batch.set(logRef, {'timestamp': Timestamp.fromDate(selectedDate), 'reason': selectedReason, 'points': finalPoints});
 
                             await batch.commit();
-                            debugPrint(
-                              "[PONTOS] Extra Points Adicionados com sucesso.",
-                            );
-
                             if (mounted) Navigator.of(dialogContext).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Pontos (${finalPoints > 0 ? '+' : ''}$finalPoints) aplicados a ${widget.teamDoc['name']}.',
-                                ),
-                              ),
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pontos (${finalPoints > 0 ? '+' : ''}$finalPoints) aplicados.')));
                           } catch (e) {
-                            debugPrint('Erro ao salvar pontos extras: $e');
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Erro ao salvar: ${e.toString()}',
-                                  ),
-                                ),
-                              );
-                            }
+                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
                           } finally {
-                            if (mounted) {
-                              setDialogState(() {
-                                isLoading = false;
-                              });
-                            }
+                            if (mounted) setDialogState(() => isLoading = false);
                           }
                         },
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Confirmar'),
+                  child: isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Confirmar'),
                 ),
               ],
             );
@@ -346,336 +183,139 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  Widget _buildStatRow(
-    String label,
-    String value, {
-    IconData? icon,
-    Color? iconColor,
-  }) {
+  Widget _buildStatRow(String label, String value, {IconData? icon, Color? iconColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment
-            .spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 18, color: iconColor ?? Colors.grey[700]),
-                const SizedBox(width: 8),
-              ],
-              Text(
-                '$label:',
-                style: const TextStyle(fontSize: 15, color: Colors.black54),
-              ),
-            ],
-          ),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+          Row(children: [
+              if (icon != null) ...[Icon(icon, size: 18, color: iconColor ?? Colors.grey[700]), const SizedBox(width: 8)],
+              Text('$label:', style: const TextStyle(fontSize: 15, color: Colors.black54)),
+            ]),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Future<void> _showDeletePlayerDialog(
-    BuildContext context,
-    DocumentSnapshot playerDoc,
-  ) async {
-    final playerName =
-        (playerDoc.data() as Map<String, dynamic>? ?? {})['name'] ?? 'Jogador';
+  Future<void> _showDeletePlayerDialog(BuildContext context, DocumentSnapshot playerDoc) async {
+    final playerName = (playerDoc.data() as Map<String, dynamic>? ?? {})['name'] ?? 'Jogador';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Excluir Jogador $playerName?'),
-        content: const Text(
-          'Isso marcará o jogador como inativo. Ele desaparecerá das listas, mas suas estatísticas históricas serão mantidas.\n\nDeseja continuar?',
-        ),
+        content: const Text('Isso marcará o jogador como inativo nesta temporada.\n\nDeseja continuar?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'Excluir (Inativar)',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Excluir (Inativar)', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
 
     if (confirm == true && mounted) {
-      final result = await _firestoreService.deletePlayer(
-        playerDoc,
-      );
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(result)));
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      final result = await _firestoreService.deletePlayer(playerDoc, seasonId);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
     }
   }
 
   IconData _getStaffIcon(String? role) {
     if (role == null) return Icons.assignment_ind_outlined;
     String roleLower = role.toLowerCase();
-    if (roleLower.contains('treinador') || roleLower.contains('técnico')) {
-      if (roleLower.contains('auxiliar')) {
-        return Icons.support_agent;
-      } else{
-        return Icons.content_paste;
-      }
-    }
-    if (roleLower.contains('auxiliar')) {
-      return Icons.support_agent;
-    }
-    if (roleLower.contains('atendente')) {
-      return Icons.how_to_reg;
-    }
-    if (roleLower.contains('analista')) {
-      return Icons.analytics;
-    }
-    if (roleLower.contains('massagista') || roleLower.contains('fisio')) {
-      return Icons.healing;
-    }
+    if (roleLower.contains('treinador') || roleLower.contains('técnico')) return Icons.content_paste;
+    if (roleLower.contains('auxiliar')) return Icons.support_agent;
+    if (roleLower.contains('atendente')) return Icons.how_to_reg;
+    if (roleLower.contains('analista')) return Icons.analytics;
+    if (roleLower.contains('massagista') || roleLower.contains('fisio')) return Icons.healing;
     return Icons.assignment_ind_outlined;
   }
 
-  Future<void> _showSetStartersDialog(
-    BuildContext context, 
-    List<DocumentSnapshot> allTeamPlayers
-  ) async {
-    final currentData = widget.teamDoc.data() as Map<String, dynamic>? ?? {};
-    List<String> selectedIds = List<String>.from(currentData['default_starters'] ?? []);
-
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            
-            int selectedGkCount = 0;
-            int selectedLineCount = 0;
-            try {
-              for (String id in selectedIds) {
-                final player = allTeamPlayers.firstWhere((p) => p.id == id); 
-                final pData = player.data() as Map<String, dynamic>? ?? {};
-                if (pData['is_goalkeeper'] == true) {
-                  selectedGkCount++;
-                } else {
-                  selectedLineCount++;
-                }
-              }
-            } catch(e) {
-              debugPrint("Erro ao validar titulares: $e.");
-            }
-            
-            String validationMessage = '';
-            if (selectedGkCount != 1) validationMessage = 'Selecione 1 Goleiro.';
-            else if (selectedLineCount != 4) validationMessage = 'Selecione 4 Jogadores de Linha.';
-            else validationMessage = 'Escalação Correta (1 Goleiro, 4 Linha)';
-
-            return AlertDialog(
-              title: Text('Definir Titulares Padrão (${widget.teamDoc['name']})'),
-              content: Container(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      validationMessage,
-                      style: TextStyle(
-                        color: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)') ? Colors.green : Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Divider(),
-
-                    SizedBox(
-                      height: 300,
-                      width: double.maxFinite,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: allTeamPlayers.length,
-                        itemBuilder: (context, index) {
-                          final player = allTeamPlayers[index];
-                          final data = player.data() as Map<String, dynamic>;
-                          final bool isSelected = selectedIds.contains(player.id);
-                          
-                          final bool isGk = data['is_goalkeeper'] ?? false;
-                          final String? position = data['position'];
-                          String displayPosition = 'Posição Indefinida';
-                          
-                          if (isGk) {
-                            displayPosition = 'Goleiro';
-                          } else if (position != null) {
-                            displayPosition = position;
-                          }
-
-                          final String name = data['name'] ?? '...';
-                          final int? number = data['jersey_number'];
-                          final String displayName = number != null ? '$number. $name' : '-. $name';
-
-                          return CheckboxListTile(
-                            title: Text(displayName),
-                            subtitle: Text(displayPosition),
-                            value: isSelected,
-                            onChanged: (bool? value) {
-                              setDialogState(() {
-                                if (value == true) {
-                                  selectedIds.add(player.id);
-                                } else {
-                                  selectedIds.remove(player.id);
-                                }
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-                TextButton(
-                  onPressed: (validationMessage == 'Escalação Correta (1 Goleiro, 4 Linha)')
-                   ? () async {
-                      try {
-                        await widget.teamDoc.reference.update({
-                          'default_starters': selectedIds
-                        });
-                        Navigator.of(ctx).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Titulares padrão salvos!'))
-                        );
-                      } catch (e) {
-                         ScaffoldMessenger.of(context).showSnackBar(
-                           SnackBar(content: Text('Erro ao salvar: ${e.toString()}'))
-                         );
-                      }
-                   } 
-                   : null,
-                  child: const Text('Confirmar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+  Future<void> _showSetStartersDialog(BuildContext context, List<DocumentSnapshot> allTeamPlayers) async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Funcionalidade em manutenção na nova arquitetura.')));
   }
 
-  // --- NOVA FUNÇÃO: FORMA RECENTE ---
   Widget _buildRecentFormSection(String teamId) {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    final collection = (seasonId == FirestoreService.LEGACY_ID) 
+        ? _firestore.collection('matches')
+        : _firestore.collection('championships').doc(seasonId).collection('matches');
+
     return StreamBuilder<QuerySnapshot>(
-      // Busca partidas ordenadas por data (mais recentes primeiro)
-      stream: _firestore.collection('matches')
-          .orderBy('datetime', descending: true)
-          .snapshots(),
+      stream: collection.orderBy('datetime', descending: true).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox.shrink();
 
-        // Filtra no cliente (Firestore não permite OR query simples com OrderBy complexo facilmente)
-        // Pegamos os jogos onde o time participou e que já acabaram ou estão rolando
         final matches = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final status = data['status'];
           final homeId = data['team_home_id'];
           final awayId = data['team_away_id'];
-          
-          final bool isFinishedOrLive = (status == 'finished' || status == 'in_progress');
-          final bool isMyTeam = (homeId == teamId || awayId == teamId);
-          
-          return isFinishedOrLive && isMyTeam;
-        }).take(5).toList(); // Pega os 5 últimos
+          return (status == 'finished' || status == 'in_progress') && (homeId == teamId || awayId == teamId);
+        }).take(5).toList();
 
         if (matches.isEmpty) return const SizedBox.shrink();
-
-        // Reverte para mostrar na ordem cronológica (Antigo -> Novo) da esquerda para a direita
-        // Ou mantemos (Novo -> Antigo). O padrão costuma ser o mais recente na direita.
-        // Vamos fazer: Esquerda (Mais antigo dos 5) -> Direita (Mais recente)
         final reversedMatches = matches.reversed.toList();
 
         return Card(
-          margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+          margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
           elevation: 2,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Forma Recente',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Últimos 5 jogos (Esquerda para Direita)',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                ),
+                Text('Forma Recente', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: reversedMatches.map((match) {
-                    final data = match.data() as Map<String, dynamic>;
-                    final bool isHome = data['team_home_id'] == teamId;
-                    
-                    final int scoreHome = data['score_home'] ?? 0;
-                    final int scoreAway = data['score_away'] ?? 0;
-                    final String opponentShield = isHome ? (data['team_away_shield'] ?? '') : (data['team_home_shield'] ?? '');
+                
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+                          children: reversedMatches.map((match) {
+                            final data = match.data() as Map<String, dynamic>;
+                            final bool isHome = data['team_home_id'] == teamId;
+                            final int scoreHome = data['score_home'] ?? 0;
+                            final int scoreAway = data['score_away'] ?? 0;
+                            
+                            final String opponentShield = isHome 
+                                ? (data['team_away_shield'] ?? '') 
+                                : (data['team_home_shield'] ?? '');
 
-                    // Lógica do resultado
-                    String resultChar;
-                    Color resultColor;
-                    
-                    if (scoreHome == scoreAway) {
-                      resultChar = 'E';
-                      resultColor = Colors.grey;
-                    } else if (isHome) {
-                      if (scoreHome > scoreAway) { resultChar = 'V'; resultColor = Colors.green; }
-                      else { resultChar = 'D'; resultColor = Colors.red; }
-                    } else { // isAway
-                      if (scoreAway > scoreHome) { resultChar = 'V'; resultColor = Colors.green; }
-                      else { resultChar = 'D'; resultColor = Colors.red; }
-                    }
+                            String resultChar; Color resultColor;
+                            if (scoreHome == scoreAway) { resultChar = 'E'; resultColor = Colors.grey; } 
+                            else if (isHome) { if (scoreHome > scoreAway) { resultChar = 'V'; resultColor = Colors.green; } else { resultChar = 'D'; resultColor = Colors.red; } } 
+                            else { if (scoreAway > scoreHome) { resultChar = 'V'; resultColor = Colors.green; } else { resultChar = 'D'; resultColor = Colors.red; } }
 
-                    return Column(
-                      children: [
-                        // Bolinha do Resultado
-                        Container(
-                          width: 30,
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: resultColor,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            resultChar,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 24, height: 24,
+                                    decoration: BoxDecoration(color: resultColor, shape: BoxShape.circle),
+                                    alignment: Alignment.center,
+                                    child: Text(resultChar, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  SizedBox(
+                                    width: 30, height: 30,
+                                    child: CachedNetworkImage(imageUrl: opponentShield, errorWidget: (c,u,e) => const Icon(Icons.shield, size: 20, color: Colors.grey), placeholder: (c,u) => const SizedBox.shrink(), fit: BoxFit.contain),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text("$scoreHome-$scoreAway", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                                ],
+                              ),
+                            );
+                          }).toList(),
                         ),
-                        const SizedBox(height: 4),
-                        // Escudo do Adversário (Pequeno)
-                        if (opponentShield.isNotEmpty)
-                          SizedBox(
-                            width: 20, height: 20,
-                            child: CachedNetworkImage(
-                              imageUrl: opponentShield,
-                              errorWidget: (c,u,e) => const Icon(Icons.shield, size: 15, color: Colors.grey),
-                            ),
-                          ),
-                        // Placar (Pequeno)
-                        Text(
-                          "$scoreHome-$scoreAway",
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
-                        )
-                      ],
+                      ),
                     );
-                  }).toList(),
+                  },
                 ),
               ],
             ),
@@ -684,57 +324,32 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       },
     );
   }
-  // --- FIM DA NOVA FUNÇÃO ---
 
-
-
-  // --- FUNÇÃO DE HISTÓRICO DE TÍTULOS (MODIFICADA) ---
   Widget _buildChampionshipHistory(Map<String, dynamic> teamData) {
     final List<dynamic>? historyList = teamData['championship_history'] as List<dynamic>?;
-
-    if (historyList == null || historyList.isEmpty) {
-      return const SizedBox.shrink(); 
-    }
+    if (historyList == null || historyList.isEmpty) return const SizedBox.shrink(); 
 
     List<Widget> trophyWidgets = historyList.map((item) {
       if (item is! Map) return const SizedBox.shrink();
       final data = item as Map<String, dynamic>;
       final int rank = data['rank'] ?? 0;
       final String year = (data['year'] ?? '????').toString();
-      
-      Color trophyColor;
-      IconData trophyIcon = Icons.emoji_events;
-
-      if (rank == 1) {
-        trophyColor = Colors.amber; // Ouro
-      } else if (rank == 2) {
-        trophyColor = Colors.grey[600]!; // Prata
-      } else {
-        return const SizedBox.shrink();
-      }
+      Color trophyColor = (rank == 1) ? Colors.amber : ((rank == 2) ? Colors.grey[600]! : Colors.brown);
+      if (rank > 2) return const SizedBox.shrink();
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12.0),
         child: Column(
           children: [
-            Icon(trophyIcon, color: trophyColor, size: 30),
+            Icon(Icons.emoji_events, color: trophyColor, size: 30),
             const SizedBox(height: 4),
-            Text(
-              year,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-                fontSize: 12,
-              ),
-            ),
+            Text(year, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700], fontSize: 12)),
           ],
         ),
       );
     }).toList();
 
-    // --- NOVO: Adiciona um callback para checar o scroll após o build ---
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkScroll());
-    // --- FIM ---
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
@@ -744,17 +359,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Text(
-              'Sala de Troféus',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-              ),
-            ),
+            Center(child: Text('Sala de Troféus', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold))),
             const Divider(),
-            
-            // --- INÍCIO DA ALTERAÇÃO (Stack com Seta) ---
             Stack(
               alignment: Alignment.centerRight,
               children: [
@@ -763,100 +369,55 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   controller: _historyScrollController,
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.only(top: 2.0, left: 12.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center, 
-                      children: [
-                      ...trophyWidgets,
-                      const SizedBox(width: 20), 
-                    ],
-                  ),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [...trophyWidgets, const SizedBox(width: 20)]),
                   ),
                 ),
-                
-                // Seta (só aparece se _showHistoryScrollIndicator for true)
-                // Usando 'IgnorePointer' para que a seta não bloqueie o scroll
                 IgnorePointer(
                   child: Visibility(
                     visible: _showHistoryScrollIndicator,
                     child: Container(
                       padding: const EdgeInsets.only(left: 8.0),
-                      // Gradiente suave para a seta
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          center: Alignment.centerRight,
-                          radius: 1.5,
-                          colors: [
-                            Theme.of(context).cardColor.withOpacity(0.8),
-                            Theme.of(context).cardColor.withOpacity(0.0),
-                          ],
-                        )
-                      ),
-                      child: Icon(
-                        Icons.arrow_forward_ios, 
-                        size: 16, 
-                        color: Colors.grey[600]
-                      ),
+                      decoration: BoxDecoration(gradient: RadialGradient(center: Alignment.centerRight, radius: 1.5, colors: [Theme.of(context).cardColor.withOpacity(0.8), Theme.of(context).cardColor.withOpacity(0.0)])),
+                      child: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[600]),
                     ),
                   ),
                 ),
               ],
             ),
-            // --- FIM DA ALTERAÇÃO ---
           ],
         ),
       ),
     );
   }
-  // --- FIM DA FUNÇÃO ---
 
   @override
   Widget build(BuildContext context) {
     final teamData = widget.teamDoc.data() as Map<String, dynamic>;
     final teamId = widget.teamDoc.id;
     final teamName = teamData['name'] ?? 'Equipe';
+    
+    final authService = Provider.of<AuthService>(context);
+    final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
 
-    final points = (teamData['points'] ?? 0).toString();
-    final gamesPlayed = (teamData['games_played'] ?? 0).toString();
-    final wins = (teamData['wins'] ?? 0).toString();
-    final draws = (teamData['draws'] ?? 0).toString();
-    final losses = (teamData['losses'] ?? 0).toString();
-    final goalsFor = (teamData['goals_for'] ?? 0).toString();
-    final goalsAgainst = (teamData['goals_against'] ?? 0).toString();
-    final goalDifference = (teamData['goal_difference'] ?? 0).toString();
-    final disciplinaryPoints = (teamData['disciplinary_points'] ?? 0)
-        .toString();
+    Query playersQuery;
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      playersQuery = _firestore.collection('players');
+    } else {
+      playersQuery = _firestore.collection('championships').doc(seasonId).collection('player_stats');
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: Text(teamName),
-        actions: AdminService.isAdmin
+        actions: authService.isAuthenticated
             ? [
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  tooltip: 'Adicionar Pontos Extras',
-                  onPressed:
-                      _showAddExtraPointsDialog,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.shield_outlined),
-                  tooltip: 'Definir Titulares Padrão',
-                  onPressed: _allPlayers.isEmpty ? null : () {
-                    _showSetStartersDialog(context, _allPlayers);
-                  },
-                ),
+                IconButton(icon: const Icon(Icons.add_circle_outline), tooltip: 'Pontos Extras', onPressed: _showAddExtraPointsDialog),
+                IconButton(icon: const Icon(Icons.shield_outlined), tooltip: 'Titulares Padrão', onPressed: _allPlayers.isEmpty ? null : () => _showSetStartersDialog(context, _allPlayers)),
                 IconButton(
                   icon: const Icon(Icons.person_add_alt_1),
-                  tooltip: 'Adicionar Novo Membro (Jogador/Staff)',
+                  tooltip: 'Novo Membro',
                   onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (ctx) => EditPlayerScreen(
-                          teamId: teamId,
-                          teamName: teamName,
-                          playerDoc: null,
-                        ),
-                      ),
-                    );
+                    Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => EditPlayerScreen(teamId: teamId, teamName: teamName, playerDoc: null)));
                   },
                 ),
               ]
@@ -868,189 +429,85 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Column( // Alterado de Row para Column
-                crossAxisAlignment: CrossAxisAlignment.center, // Centraliza
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center, 
                 children: [
                   SizedBox(
-                    width: 150, // Logo Maior
-                    height: 150, // Logo Maior
-                    child: CachedNetworkImage(
-                      imageUrl: teamData['shield_url'] ?? '',
-                      placeholder: (context, url) => const Center(
-                        child: Icon(Icons.shield, size: 80, color: Colors.grey),
-                      ),
-                      errorWidget: (context, url, error) => const Icon(
-                        Icons.shield,
-                        size: 150,
-                        color: Colors.grey,
-                      ),
-                      fit: BoxFit.contain,
-                    ),
+                    width: 150, height: 150,
+                    child: CachedNetworkImage(imageUrl: teamData['shield_url'] ?? '', placeholder: (c, u) => const Center(child: Icon(Icons.shield, size: 80, color: Colors.grey)), errorWidget: (c, u, e) => const Icon(Icons.shield, size: 150, color: Colors.grey), fit: BoxFit.contain),
                   ),
-                  const SizedBox(height: 12), // Espaço entre logo e nome
-                  Text(
-                    teamName,
-                    style: Theme.of(context).textTheme.headlineMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center, // Garante que o nome centralize
-                  ),
+                  const SizedBox(height: 12), 
+                  Text(teamName, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                 ],
               ),
             ),
             
-            // --- CHAMADA DO NOVO WIDGET ---
             _buildChampionshipHistory(teamData),
-            // --- FIM ---
 
-            // --- CARD DE RESUMO DAS ESTATÍSTICAS ---
             Card(
-              margin: const EdgeInsets.symmetric(
-                vertical: 2.0,
-                horizontal: 12.0,
-              ),
+              margin: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 12.0),
               elevation: 2,
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Resumo no Campeonato',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text('Resumo no Campeonato', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
-                    _buildStatRow('Pontos (P)', points, icon: Icons.star),
-                    _buildStatRow('Jogos (J)', gamesPlayed, icon: Icons.event),
-                    _buildStatRow(
-                      'Vitórias (V)',
-                      wins,
-                      icon: Icons.emoji_events,
-                    ),
-                    _buildStatRow(
-                      'Empates (E)',
-                      draws,
-                      icon: Icons.drag_handle,
-                    ),
-                    _buildStatRow(
-                      'Derrotas (D)',
-                      losses,
-                      icon: Icons.thumb_down_alt_outlined,
-                    ),
-                    _buildStatRow(
-                      'Gols Pró (GP)',
-                      goalsFor,
-                      icon: Icons.add_circle_outline,
-                    ),
-                    _buildStatRow(
-                      'Gols Contra (GC)',
-                      goalsAgainst,
-                      icon: Icons.remove_circle_outline,
-                    ),
-                    _buildStatRow(
-                      'Saldo de Gols (SG)',
-                      goalDifference,
-                      icon: Icons.swap_horiz,
-                    ),
-                    _buildStatRow(
-                      'Pontos Disciplinares (PD)',
-                      disciplinaryPoints,
-                      icon: Icons.style,
-                      iconColor: Colors.orange,
-                    ),
+                    _buildStatRow('Pontos (P)', (teamData['points']??0).toString(), icon: Icons.star),
+                    _buildStatRow('Jogos (J)', (teamData['games_played']??0).toString(), icon: Icons.event),
+                    _buildStatRow('Vitórias (V)', (teamData['wins']??0).toString(), icon: Icons.emoji_events),
+                    _buildStatRow('Empates (E)', (teamData['draws']??0).toString(), icon: Icons.drag_handle),
+                    _buildStatRow('Derrotas (D)', (teamData['losses']??0).toString(), icon: Icons.thumb_down_alt_outlined),
+                    _buildStatRow('Gols Pró (GP)', (teamData['goals_for']??0).toString(), icon: Icons.add_circle_outline),
+                    _buildStatRow('Gols Contra (GC)', (teamData['goals_against']??0).toString(), icon: Icons.remove_circle_outline),
+                    _buildStatRow('Saldo (SG)', (teamData['goal_difference']??0).toString(), icon: Icons.swap_horiz),
+                    _buildStatRow('Pontos Disciplinares (PD)', (teamData['disciplinary_points']??0).toString(), icon: Icons.style, iconColor: Colors.orange),
                   ],
                 ),
               ),
             ),
 
-             // --- NOVA SEÇÃO: FORMA RECENTE ---
             _buildRecentFormSection(teamId),
-            // ---------------------------------
             
-            // --- Botão para ver Histórico ---
             Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: 8.0,
-                horizontal: 16.0,
-              ),
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
               child: ElevatedButton.icon(
-                icon: const Icon(Icons.history),
-                label: const Text('Ver Histórico de Pontos Extras'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 40),
-                ),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (ctx) => ExtraPointsLogScreen(
-                        teamId: teamId,
-                        teamName: teamName,
-                      ),
-                    ),
-                  );
-                },
+                icon: const Icon(Icons.history), label: const Text('Histórico Pontos Extras'),
+                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 40)),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => ExtraPointsLogScreen(teamId: teamId, teamName: teamName))),
               ),
             ),
             const Divider(),
 
-            // --- Lista de Jogadores ---
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16.0),
-              child: Text(
-                'Jogadores',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              child: Text('Jogadores', style: Theme.of(context).textTheme.titleLarge),
             ),
             StreamBuilder<QuerySnapshot>(
-              stream: _firestore
-                  .collection('players')
+              stream: playersQuery
                   .where('team_id', isEqualTo: teamId)
                   .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  .orderBy('jersey_number')
-                  .orderBy('name')
                   .snapshots(),
               builder: (context, playerSnapshot) {
-                if (playerSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (playerSnapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      'Erro ao carregar jogadores: ${playerSnapshot.error}',
-                    ),
-                  );
-                }
-                if (!playerSnapshot.hasData ||
-                    playerSnapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'Nenhum jogador ativo cadastrado para esta equipe.',
-                    ),
-                  );
-                }
+                if (playerSnapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                if (!playerSnapshot.hasData || playerSnapshot.data!.docs.isEmpty) return const Center(child: Text('Nenhum jogador ativo.'));
 
-                final players = playerSnapshot.data!.docs;
+                final players = playerSnapshot.data!.docs.where((doc) {
+                   final d = doc.data() as Map<String, dynamic>;
+                   return d['is_staff'] == false;
+                }).toList();
                 
-                bool listsAreDifferent = false;
-                if (players.length != _allPlayers.length) {
-                  listsAreDifferent = true;
-                } else {
-                  for (int i = 0; i < players.length; i++) {
-                    if (players[i].id != _allPlayers[i].id) {
-                      listsAreDifferent = true;
-                      break;
-                    }
-                  }
-                }
+                players.sort((a,b) {
+                   final da = a.data() as Map<String, dynamic>;
+                   final db = b.data() as Map<String, dynamic>;
+                   final na = da['jersey_number'] ?? 999;
+                   final nb = db['jersey_number'] ?? 999;
+                   return na.compareTo(nb);
+                });
 
-                if (listsAreDifferent) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      setState(() => _allPlayers = players);
-                    }
-                  });
+                if (players.length != _allPlayers.length) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() => _allPlayers = players); });
                 }
 
                 return Padding(
@@ -1058,236 +515,39 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
-                      columnSpacing: 12.0,
-                      horizontalMargin: 8.0,
-                      dataRowMinHeight: 35.0,
-                      dataRowMaxHeight: 35.0,
-                      headingRowHeight: 40,
+                      columnSpacing: 12.0, horizontalMargin: 8.0, dataRowMinHeight: 35.0, dataRowMaxHeight: 35.0, headingRowHeight: 40,
                       columns: [
-                        const DataColumn(
-                          label: Center(child: Text('Nº')),
-                          numeric: true,
-                        ),
+                        const DataColumn(label: Center(child: Text('Nº')), numeric: true),
                         const DataColumn(label: Text('Jogador')),
-                        const DataColumn(
-                          label: Center(child: Text('Pos.')),
-                        ),
-                        DataColumn(
-                          label: Container(
-                            alignment: Alignment.center,
-                            child: const Tooltip(
-                              message: 'Gols',
-                              child: Icon(Icons.sports_soccer, size: 20),
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Container(
-                            alignment: Alignment.center,
-                            child: const Tooltip(
-                              message: 'Assist.',
-                              child: Icon(Icons.assistant, size: 20),
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Container(
-                            alignment: Alignment.center,
-                            child: Tooltip(
-                              message: 'CA',
-                              child: Icon(
-                                Icons.style,
-                                size: 20,
-                                color: Colors.yellow[700],
-                              ),
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Container(
-                            alignment: Alignment.center,
-                            child: Tooltip(
-                              message: 'CV',
-                              child: Icon(
-                                Icons.style,
-                                size: 20,
-                                color: Colors.red[700],
-                              ),
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Container(
-                            alignment: Alignment.center,
-                            child: Tooltip(
-                              message: 'GS',
-                              child: Icon(
-                                Icons.pan_tool_outlined,
-                                size: 20,
-                                color: Colors.blueGrey,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (AdminService.isAdmin)
+                        const DataColumn(label: Center(child: Text('Pos.'))),
+                        const DataColumn(label: Tooltip(message: 'Gols', child: Icon(Icons.sports_soccer, size: 20))),
+                        const DataColumn(label: Tooltip(message: 'Assistências', child: Icon(Icons.assistant, size: 20))),
+                        const DataColumn(label: Tooltip(message: 'CA', child: Icon(Icons.style, size: 20, color: Colors.orange))),
+                        const DataColumn(label: Tooltip(message: 'CV', child: Icon(Icons.style, size: 20, color: Colors.red))),
+                        const DataColumn(label: Tooltip(message: 'Gols Sofridos (GK)', child: Icon(Icons.pan_tool_outlined, size: 20, color: Colors.blueGrey))),
+                        
+                        if (authService.isAuthenticated) 
                           const DataColumn(label: Center(child: Text('Ações'))),
                       ],
                       rows: players.map((playerDoc) {
-                        try {
-                          final playerData =
-                              playerDoc.data() as Map<String, dynamic>;
-                          final bool isGoalkeeper =
-                              playerData['is_goalkeeper'] ?? false;
-                          final int? number = playerData['jersey_number'];
-                          final String? position = playerData['position'];
-                          String displayPosition = '-';
-                          if (isGoalkeeper) {
-                            displayPosition = 'GK';
-                          } else if (position != null) {
-                            switch (position) {
-                              case 'Fixo': displayPosition = 'FIXO'; break;
-                              case 'Ala': displayPosition = 'ALA'; break;
-                              case 'Pivô': displayPosition = 'PIVO'; break;
-                              default: displayPosition = 'LIN';
-                            }
-                          }
+                          final playerData = playerDoc.data() as Map<String, dynamic>;
+                          final bool isGoalkeeper = playerData['is_goalkeeper'] ?? false;
+                          return DataRow(cells: [
+                              DataCell(Center(child: Text(playerData['jersey_number']?.toString() ?? '-'))),
+                              DataCell(Container(constraints: const BoxConstraints(maxWidth: 150), child: Text(playerData['name'] ?? '...', overflow: TextOverflow.ellipsis)), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: playerDoc.id)))),
+                              DataCell(Center(child: Text(isGoalkeeper ? 'GK' : (playerData['position']?.toString().substring(0,3).toUpperCase() ?? '-')))),
+                              DataCell(Center(child: Text((playerData['goals'] ?? 0).toString()))),
+                              DataCell(Center(child: Text((playerData['assists'] ?? 0).toString()))),
+                              DataCell(Center(child: Text((playerData['total_yellow_cards'] ?? 0).toString()))),
+                              DataCell(Center(child: Text((playerData['total_red_cards'] ?? 0).toString()))),
+                              DataCell(Center(child: Text(isGoalkeeper ? (playerData['goals_conceded'] ?? 0).toString() : '-'))),
 
-                          return DataRow(
-                            cells: [
-                              DataCell(
-                                Center(
-                                  child: Text(
-                                    number?.toString() ??
-                                        '-',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Container(
-                                  constraints: const BoxConstraints(maxWidth: 150),
-                                  child: Text(
-                                    playerData['name'] ?? '...',
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                ),
-                                onTap: () {
-                                  // Ativa a navegação
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      // Passa o ID do jogador
-                                      builder: (ctx) => PlayerProfileScreen(playerId: playerDoc.id),
-                                    ),
-                                  );
-                                },
-                              ),
-                              DataCell(
-                                Center(
-                                  child: Text(
-                                    displayPosition,
-                                    style: TextStyle(
-                                      fontWeight: isGoalkeeper ? FontWeight.bold : FontWeight.normal,
-                                      color: isGoalkeeper ? Colors.blueGrey[700] : Colors.black,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Center(
-                                  child: Text(
-                                    (playerData['goals'] ?? 0).toString(),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Center(
-                                  child: Text(
-                                    (playerData['assists'] ?? 0).toString(),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Center(
-                                  child: Text(
-                                    (playerData['total_yellow_cards'] ?? 0)
-                                        .toString(),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Center(
-                                  child: Text(
-                                    (playerData['total_red_cards'] ?? 0)
-                                        .toString(),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Center(
-                                  child: Text(
-                                    isGoalkeeper
-                                        ? (playerData['goals_conceded'] ?? 0)
-                                              .toString()
-                                        : '-',
-                                  ),
-                                ),
-                              ),
-                              if (AdminService.isAdmin)
-                                DataCell(
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.edit_note,
-                                          size: 20,
-                                        ),
-                                        color: Theme.of(context).primaryColor,
-                                        padding: EdgeInsets.zero,
-                                        tooltip: 'Editar Jogador',
-                                        onPressed: () {
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (ctx) => EditPlayerScreen(
-                                                teamId: teamId,
-                                                teamName: teamName,
-                                                playerDoc:
-                                                    playerDoc,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 20,
-                                        ),
-                                        color: Colors.red[700],
-                                        padding: EdgeInsets.zero,
-                                        tooltip: 'Excluir Jogador (Inativar)',
-                                        onPressed: () {
-                                          _showDeletePlayerDialog(
-                                            context,
-                                            playerDoc,
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          );
-                        } catch (e) {
-                          debugPrint("Erro ao renderizar DataRow: $e");
-                          return DataRow(
-                            cells: List.generate(AdminService.isAdmin ? 9 : 8, (index) => DataCell(Text('Erro'))),
-                          );
-                        }
+                              if (authService.isAuthenticated)
+                                DataCell(Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                      IconButton(icon: const Icon(Icons.edit_note, size: 20), color: Theme.of(context).primaryColor, padding: EdgeInsets.zero, onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => EditPlayerScreen(teamId: teamId, teamName: teamName, playerDoc: playerDoc)))),
+                                      IconButton(icon: const Icon(Icons.delete_outline, size: 20), color: Colors.red[700], padding: EdgeInsets.zero, onPressed: () => _showDeletePlayerDialog(context, playerDoc)),
+                                ])),
+                            ]);
                       }).toList(),
                     ),
                   ),
@@ -1295,145 +555,39 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               },
             ),
             
-            // --- Seção Comissão Técnica ---
             const SizedBox(height: 24),
             const Divider(),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16.0),
-              child: Text(
-                'Comissão Técnica',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
+            Padding(padding: const EdgeInsets.symmetric(vertical: 16.0), child: Text('Comissão Técnica', style: Theme.of(context).textTheme.titleLarge)),
 
             StreamBuilder<QuerySnapshot>(
-              stream: _firestore
-                  .collection('players')
-                  .where('team_id', isEqualTo: teamId)
-                  .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: true)
-                  .snapshots(),
+              stream: playersQuery.where('team_id', isEqualTo: teamId).where('isActive', isEqualTo: true).snapshots(),
               builder: (context, staffSnapshot) {
-                if (staffSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  );
-                }
-                if (staffSnapshot.hasError) {
-                  return Center(child: Text('Erro: ${staffSnapshot.error}'));
-                }
-                if (!staffSnapshot.hasData ||
-                    staffSnapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Text('Nenhum membro da comissão cadastrado.'),
-                  );
-                }
+                if (!staffSnapshot.hasData) return const SizedBox.shrink();
+                
+                final staffList = staffSnapshot.data!.docs.where((doc) {
+                   final d = doc.data() as Map<String, dynamic>;
+                   return d['is_staff'] == true;
+                }).toList();
 
-                List<DocumentSnapshot> staffList = staffSnapshot.data!.docs;
-
-                int getPriority(DocumentSnapshot doc) {
-                  final data = doc.data() as Map<String, dynamic>? ?? {};
-                  final String role = (data['staff_role'] ?? '').toLowerCase();
-                  if (role.contains('treinador') || role.contains('técnico')) {
-                    if (role.contains('auxiliar')) {
-                      return 2;
-                    }
-                    return 1;
-                  }
-                  if (role.contains('auxiliar')) {
-                    return 2;
-                  }
-                  if (role.contains('atendente')) {
-                    return 3;
-                  }
-                  if (role.contains('massagista')) {
-                    return 4;
-                  }
-                  if (role.contains('analista')) {
-                    return 5;
-                  }
-                  return 99;
-                }
-
-                staffList.sort((a, b) {
-                  int priorityA = getPriority(a);
-                  int priorityB = getPriority(b);
-                  int priorityCompare = priorityA.compareTo(priorityB);
-                  if (priorityCompare != 0) {
-                    return priorityCompare;
-                  }
-                  final aName =
-                      (a.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
-                  final bName =
-                      (b.data() as Map<String, dynamic>? ?? {})['name'] ?? '';
-                  return aName.compareTo(bName);
-                });
+                if(staffList.isEmpty) return const Center(child: Text('Nenhum membro da comissão.'));
 
                 return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                   itemCount: staffList.length,
                   itemBuilder: (context, index) {
                     final member = staffList[index];
                     final data = member.data() as Map<String, dynamic>;
-                    final String staffRole =
-                        data['staff_role'] ?? 'Membro';
-                    final IconData staffIcon = _getStaffIcon(staffRole);
-
                     return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 12.0,
-                        vertical: 3.0,
-                      ),
-                      elevation: 1,
+                      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 3.0),
                       child: ListTile(
-                        leading: Icon(
-                          staffIcon,
-                          color: Colors.blueGrey[700],
-                          size: 28,
-                        ),
-                        title: Text(
-                          data['name'] ?? '...',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                            fontSize: 15,
-                          ),
-                        ),
-                        subtitle: Text(staffRole),
-                        trailing: AdminService.isAdmin
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_note, size: 22),
-                                    color: Theme.of(context).primaryColor,
-                                    tooltip: 'Editar Membro',
-                                    onPressed: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (ctx) => EditPlayerScreen(
-                                            teamId: teamId,
-                                            teamName: teamName,
-                                            playerDoc: member,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.delete_outline,
-                                      size: 22,
-                                    ),
-                                    color: Colors.red[700],
-                                    tooltip: 'Excluir Membro (Inativar)',
-                                    onPressed: () {
-                                      _showDeletePlayerDialog(context, member);
-                                    },
-                                  ),
-                                ],
-                              )
+                        leading: Icon(_getStaffIcon(data['staff_role']), color: Colors.blueGrey[700]),
+                        title: Text(data['name'] ?? '...'),
+                        subtitle: Text(data['staff_role'] ?? 'Membro'),
+                        trailing: authService.isAuthenticated 
+                            ? Row(mainAxisSize: MainAxisSize.min, children: [
+                                  IconButton(icon: const Icon(Icons.edit_note, size: 22), color: Theme.of(context).primaryColor, onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => EditPlayerScreen(teamId: teamId, teamName: teamName, playerDoc: member)))),
+                                  IconButton(icon: const Icon(Icons.delete_outline, size: 22), color: Colors.red[700], onPressed: () => _showDeletePlayerDialog(context, member)),
+                                ])
                             : null,
                       ),
                     );

@@ -1,7 +1,9 @@
-// lib/screens/playoff_rules_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // <-- Importante
 import '../services/admin_service.dart';
+import '../services/championship_service.dart'; // <-- Importante
+import '../services/firestore_service.dart'; // <-- Importante
 
 class PlayoffRulesScreen extends StatefulWidget {
   const PlayoffRulesScreen({super.key});
@@ -11,16 +13,15 @@ class PlayoffRulesScreen extends StatefulWidget {
 }
 
 class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isLoading = false;
   bool _isSaving = false;
 
-  // Estados para guardar as seleções
+  // Estados
   late String _semiRule;
   late String _thirdRule;
   late String _finalRule;
 
-  // Opções disponíveis
+  // Opções
   final List<DropdownMenuItem<String>> _ruleOptions = const [
     DropdownMenuItem(value: 'penalties', child: Text('Pênaltis Direto')),
     DropdownMenuItem(value: 'extra_time_penalties', child: Text('Prorrogação + Pênaltis')),
@@ -30,44 +31,52 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicializa com os valores carregados pelo AdminService
+    // Inicializa com os valores já carregados no AdminService
     _semiRule = AdminService.semifinalTiebreaker;
     _thirdRule = AdminService.thirdPlaceTiebreaker;
     _finalRule = AdminService.finalTiebreaker;
-    // Poderia adicionar _loadCurrentRules() se quisesse buscar de novo
+  }
+
+  // Helper de roteamento
+  DocumentReference _getSettingsDocRef(String seasonId, String docId) {
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      return FirebaseFirestore.instance.collection('config').doc(docId);
+    } else {
+      return FirebaseFirestore.instance
+          .collection('championships')
+          .doc(seasonId)
+          .collection('settings')
+          .doc(docId);
+    }
   }
 
   Future<void> _saveRules() async {
-    setState(() { _isSaving = true; });
+    setState(() => _isSaving = true);
+    
+    // 1. Pega Temporada
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
     try {
-      await _firestore.collection('config').doc('playoff_rules').set({
+      // 2. Salva no doc correto
+      await _getSettingsDocRef(seasonId, 'playoff_rules').set({
         'semifinal_tiebreaker': _semiRule,
         'third_place_tiebreaker': _thirdRule,
         'final_tiebreaker': _finalRule,
-      });
+      }, SetOptions(merge: true));
 
-      await AdminService.loadPlayoffRules(); // Recarrega no serviço
+      // 3. Atualiza memória
+      AdminService.semifinalTiebreaker = _semiRule;
+      AdminService.thirdPlaceTiebreaker = _thirdRule;
+      AdminService.finalTiebreaker = _finalRule;
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Regras de desempate playoff salvas!')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Regras de mata-mata salvas!')));
         Navigator.of(context).pop();
       }
     } catch (e) {
-      // 1. Loga o erro detalhado no console de depuração
-       debugPrint("Erro ao salvar regras playoff: $e");
-       
-       // 2. Se o widget ainda estiver montado, mostra um SnackBar de erro
-       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(
-             content: Text('Erro ao salvar regras: ${e.toString()}'),
-             backgroundColor: Colors.red, // Cor de erro para feedback visual
-           ),
-         );
-       }
-    }finally { 
-       // Garante que o estado de 'salvando' termine, mesmo se der erro
-       if (mounted) setState(() { _isSaving = false; }); 
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -75,7 +84,7 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Regras Desempate Mata-Mata'),
+        title: const Text('Regras de Mata-Mata'),
         actions: [
           IconButton(
             icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save),
@@ -104,12 +113,11 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
     );
   }
 
-  // Widget auxiliar para criar o seletor
   Widget _buildRuleSelector(String title, String currentValue, ValueChanged<String?> onChanged) {
     return DropdownButtonFormField<String>(
       value: currentValue,
       items: _ruleOptions,
-      onChanged: _isSaving ? null : onChanged, // Desabilita se estiver salvando
+      onChanged: _isSaving ? null : onChanged,
       decoration: InputDecoration(
         labelText: 'Critério de Desempate - $title',
         border: const OutlineInputBorder(),

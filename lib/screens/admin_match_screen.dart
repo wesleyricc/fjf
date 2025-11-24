@@ -1,14 +1,14 @@
-// lib/screens/admin_match_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import '../services/firestore_service.dart';
 import '../services/admin_service.dart';
+import '../services/championship_service.dart';
 import 'edit_match_screen.dart';
-import 'dart:typed_data'; // Para Bytes (PWA)
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-// import 'package:youtube_player_iframe/youtube_player_iframe.dart'; // Removido
 
 class AdminMatchScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -22,43 +22,43 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirestoreService _firestoreService = FirestoreService();
 
-  // --- LÓGICA DA SÚMULA (MUDOU PARA BYTES) ---
+  // --- LÓGICA DA SÚMULA (PDF) ---
   String? _existingSumulaUrl;
-  Uint8List? _pickedFileBytes; // Para PDF
+  Uint8List? _pickedFileBytes;
   String _pickedFileName = '';
   bool _isUploadingSumula = false;
-  // --- FIM SÚMULA ---
 
-  // --- LÓGICA DE MÍDIAS (BASEADA EM BYTES) ---
+  // --- LÓGICA DE MÍDIAS (VÍDEO) ---
   List<Map<String, dynamic>> _mediaLinks = [];
   final _mediaTitleController = TextEditingController();
-  Uint8List? _pickedMediaBytes; // Para Vídeo
+  Uint8List? _pickedMediaBytes;
   String _pickedMediaFileName = '';
   bool _isUploadingMedia = false;
 
-  // --- OUTROS ESTADOS ---
+  // --- CONTROLE DE PLACAR E JOGO ---
   late TextEditingController _homeScoreController;
   late TextEditingController _awayScoreController;
   late TextEditingController _penaltyHomeScoreController;
   late TextEditingController _penaltyAwayScoreController;
+  
   List<DocumentSnapshot> _homePlayers = [];
   List<DocumentSnapshot> _awayPlayers = [];
   bool _isLoadingPlayers = true;
   bool _isSaving = false;
-  
-  // --- ESTADOS DE TITULARES REMOVIDOS ---
-  // List<String> _startersHomeIds = []; // REMOVIDO
-  // List<String> _startersAwayIds = []; // REMOVIDO
 
+  // --- ESTATÍSTICAS ---
   Map<String, int> _goals = {};
   Map<String, int> _assists = {};
   Map<String, int> _yellowCards = {};
   Map<String, int> _redCards = {};
   Map<String, int> _goalsConceded = {};
+  
   String? _selectedManOfTheMatchId;
   String _selectedStatus = 'pending';
   String? _selectedPlayerId;
   String? _selectedWinnerId;
+  
+  // --- REGRAS DE DESEMPATE ---
   String _tiebreakerRule = '';
   bool _showTiebreakerSection = false;
 
@@ -83,6 +83,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     _selectedStatus = data['status'] ?? 'pending';
     _selectedWinnerId = data['winner_team_id'];
 
+    // Carrega estatísticas já salvas, se houver
     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
       final stats = data['stats_applied']['player_stats'];
       _goals = Map<String, int>.from(stats['goals'] ?? {});
@@ -98,18 +99,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
            linksFromDb.map((item) => Map<String, dynamic>.from(item))
          );
       }
-
-      // --- LEITURA DOS TITULARES (NÃO É MAIS NECESSÁRIA AQUI) ---
-      // if (data['stats_applied']['starters_home'] != null) {
-      //   _startersHomeIds = List<String>.from(data['stats_applied']['starters_home']);
-      // }
-      // if (data['stats_applied']['starters_away'] != null) {
-      //   _startersAwayIds = List<String>.from(data['stats_applied']['starters_away']);
-      // }
-      // --- FIM ---
     }
 
-    // Determina a regra de desempate
+    // Define a regra de desempate baseada na fase
     final String phase = data['phase'] ?? '';
     if (phase == 'semifinal') _tiebreakerRule = AdminService.semifinalTiebreaker;
     else if (phase == 'third_place') _tiebreakerRule = AdminService.thirdPlaceTiebreaker;
@@ -131,8 +123,92 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     super.dispose();
   }
 
+  // --- VERIFICA SE PRECISA MOSTRAR PÊNALTIS ---
+  void _checkShowTiebreakerSection() {
+    bool needsTiebreaker = false;
+    final isPlayoff = ['semifinal', 'third_place', 'final'].contains(widget.match['phase']);
+    
+    // Só mostra se for playoff E estiver marcado como finalizado E o placar for empate
+    if (isPlayoff && _selectedStatus == 'finished') {
+      final int scoreHome = int.tryParse(_homeScoreController.text) ?? -1;
+      final int scoreAway = int.tryParse(_awayScoreController.text) ?? -1;
+      if (scoreHome != -1 && scoreAway != -1 && scoreHome == scoreAway) {
+        needsTiebreaker = true;
+      }
+    }
+    if (needsTiebreaker != _showTiebreakerSection) {
+      setState(() { _showTiebreakerSection = needsTiebreaker; });
+    }
+  }
+
+  // --- BUSCA JOGADORES (GLOBAL) ---
+  Future<void> _fetchPlayers() async {
+    if (!mounted) return;
+    setState(() => _isLoadingPlayers = true);
+
+    try {
+      final String homeTeamId = widget.match['team_home_id'];
+      final String awayTeamId = widget.match['team_away_id'];
+
+      // Pega a temporada atual
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      
+      Query playersQuery;
+      if (seasonId == FirestoreService.LEGACY_ID) {
+        playersQuery = _firestore.collection('players');
+      } else {
+        playersQuery = _firestore.collection('championships').doc(seasonId).collection('player_stats');
+      }
+      
+      // 1. Busca APENAS pelo ID do time (evita erro de índice composto)
+      final homeSnapshot = await playersQuery.where('team_id', isEqualTo: homeTeamId).get();
+      final awaySnapshot = await playersQuery.where('team_id', isEqualTo: awayTeamId).get();
+
+      // 2. Filtra e Ordena em MEMÓRIA (Dart)
+      List<DocumentSnapshot> filterAndSort(List<DocumentSnapshot> docs) {
+        // A. Filtra inativos
+        var activeDocs = docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['isActive'] == true;
+        }).toList();
+
+        // B. Ordena (Staff -> Fim, Número -> Crescente, Nome -> Alfabetico)
+        activeDocs.sort((a, b) {
+          final aData = a.data() as Map<String, dynamic>;
+          final bData = b.data() as Map<String, dynamic>;
+          
+          // Staff no final
+          int staffCompare = (aData['is_staff'] == true ? 1 : 0).compareTo(bData['is_staff'] == true ? 1 : 0);
+          if (staffCompare != 0) return staffCompare;
+
+          // Número (trata null como maior que todos para ir pro fim)
+          final int aNum = aData['jersey_number'] ?? 999;
+          final int bNum = bData['jersey_number'] ?? 999;
+          int numCompare = aNum.compareTo(bNum);
+          if (numCompare != 0) return numCompare;
+
+          // Nome
+          return (aData['name'] ?? '').toString().compareTo((bData['name'] ?? '').toString());
+        });
+        return activeDocs;
+      }
+
+       _homePlayers = filterAndSort(homeSnapshot.docs);
+      _awayPlayers = filterAndSort(awaySnapshot.docs);
+
+    } catch (e) {
+      debugPrint('Erro ao buscar jogadores: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao carregar jogadores: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingPlayers = false);
+    }
+  }
+
+  // --- SALVAR ESTATÍSTICAS (AÇÃO PRINCIPAL) ---
   Future<void> _saveStats() async {
-    // 1. Validação de Placar
+    // 1. Validações
     if (_selectedStatus == 'finished' &&
         (_homeScoreController.text.isEmpty ||
             _awayScoreController.text.isEmpty ||
@@ -145,7 +221,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     final int scoreHome = int.tryParse(_homeScoreController.text) ?? 0;
     final int scoreAway = int.tryParse(_awayScoreController.text) ?? 0;
 
-    // 2. Validação de Desempate
     int? penaltyScoreHome;
     int? penaltyScoreAway;
     String? winnerId = _selectedWinnerId; 
@@ -166,7 +241,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             ? widget.match['team_home_id']
             : widget.match['team_away_id'];
       } else if (_tiebreakerRule == 'extra_time_standing') {
-        winnerId = null; 
+        winnerId = null;
         penaltyScoreHome = null;
         penaltyScoreAway = null;
       }
@@ -176,52 +251,35 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       winnerId = null;
     }
 
-    setState(() {
-      _isSaving = true;
-    });
+    setState(() { _isSaving = true; });
 
-    // 3. Upload da Súmula (se houver)
+    // 2. Upload da Súmula (PDF)
     String? finalSumulaUrl = _existingSumulaUrl;
     if (_pickedFileBytes != null) {
-      debugPrint("Iniciando upload da súmula...");
-      setState(() {
-        _isUploadingSumula = true;
-      });
       try {
         final String matchId = widget.match.id;
-        final String fileName =
-            _pickedFileName.isNotEmpty ? _pickedFileName : '$matchId.pdf';
+        final String fileName = _pickedFileName.isNotEmpty ? _pickedFileName : '$matchId.pdf';
         final String storagePath = 'sumulas/$fileName';
         final ref = FirebaseStorage.instance.ref().child(storagePath);
 
-        UploadTask uploadTask;
         final metadata = SettableMetadata(contentType: 'application/pdf');
-        uploadTask = ref.putData(_pickedFileBytes!, metadata);
+        await ref.putData(_pickedFileBytes!, metadata);
 
-        TaskSnapshot snapshot = await uploadTask;
-        finalSumulaUrl = await snapshot.ref.getDownloadURL();
+        finalSumulaUrl = await ref.getDownloadURL();
       } catch (e) {
-        debugPrint("Erro no upload da súmula: $e");
         if (mounted) {
-          setState(() {
-            _isSaving = false;
-            _isUploadingSumula = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Erro ao enviar súmula: $e')));
+          setState(() { _isSaving = false; });
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar súmula: $e')));
         }
         return;
-      } finally {
-        if (mounted)
-          setState(() {
-            _isUploadingSumula = false;
-          });
       }
     }
 
-    // 4. Chamada ao FirestoreService
-    // --- ALTERAÇÃO: REMOVIDO 'newStartersHome' e 'newStartersAway' ---
+    // 3. Chamada ao FirestoreService (COM SEASON ID)
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
     String result = await _firestoreService.updateMatchStats(
+      seasonId: seasonId,
       matchSnapshot: widget.match,
       newStatus: _selectedStatus,
       newScoreHome: scoreHome,
@@ -239,80 +297,19 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       newMediaLinks: _mediaLinks,
     );
 
-    if (mounted)
-      setState(() {
-        _isSaving = false;
-      });
+    if (mounted) setState(() { _isSaving = false; });
 
     if (result.startsWith('Sucesso')) {
       _pickedFileBytes = null;
-      _pickedFileName = '';
       if (mounted) Navigator.of(context).pop();
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Estatísticas salvas com sucesso!')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estatísticas salvas com sucesso!')));
     } else {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(result)));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
     }
   }
 
-  // --- Funções _checkShowTiebreakerSection e _fetchPlayers (Sem alterações) ---
-  void _checkShowTiebreakerSection() {
-    bool needsTiebreaker = false;
-    final isPlayoff = ['semifinal', 'third_place', 'final'].contains(widget.match['phase']);
-    if (isPlayoff && _selectedStatus == 'finished') {
-      final int scoreHome = int.tryParse(_homeScoreController.text) ?? -1;
-      final int scoreAway = int.tryParse(_awayScoreController.text) ?? -1;
-      if (scoreHome != -1 && scoreAway != -1 && scoreHome == scoreAway) {
-        needsTiebreaker = true;
-      }
-    }
-    if (needsTiebreaker != _showTiebreakerSection) {
-      setState(() { _showTiebreakerSection = needsTiebreaker; });
-    }
-  }
+  // --- FUNÇÕES DE ARQUIVO E MÍDIA ---
 
-  Future<void> _fetchPlayers() async {
-    try {
-      final String homeTeamId = widget.match['team_home_id'];
-      final String awayTeamId = widget.match['team_away_id'];
-      final homeQuery = await _firestore.collection('players')
-          .where('team_id', isEqualTo: homeTeamId)
-          .where('isActive', isEqualTo: true)
-          //.where('is_staff', isEqualTo: false)
-          .get();
-      _homePlayers = homeQuery.docs;
-
-      final awayQuery = await _firestore.collection('players')
-          .where('team_id', isEqualTo: awayTeamId)
-          .where('isActive', isEqualTo: true)
-          //.where('is_staff', isEqualTo: false)
-          .get();
-      _awayPlayers = awayQuery.docs;
-
-      // 2. Ordena a lista para que jogadores venham ANTES da comissão
-      _homePlayers.sort((a, b) {
-        final aData = a.data() as Map<String, dynamic>;
-        final bData = b.data() as Map<String, dynamic>;
-        // Se 'is_staff' for false (jogador), vem antes (retorna -1)
-        return (aData['is_staff'] == true ? 1 : 0).compareTo(bData['is_staff'] == true ? 1 : 0);
-      });
-       _awayPlayers.sort((a, b) {
-        final aData = a.data() as Map<String, dynamic>;
-        final bData = b.data() as Map<String, dynamic>;
-        return (aData['is_staff'] == true ? 1 : 0).compareTo(bData['is_staff'] == true ? 1 : 0);
-      });
-    } catch (e) {
-      debugPrint('Erro ao buscar jogadores: $e');
-    } finally {
-      if (mounted) setState(() => _isLoadingPlayers = false);
-    }
-  }
-  // --- Fim ---
-
-  // --- Funções de Súmula e Mídia (Sem alterações) ---
   Future<void> _pickSumulaFile() async {
     if (_isSaving || _isUploadingSumula) return;
     try {
@@ -328,78 +325,10 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
           _existingSumulaUrl = null;
         });
       }
-    } catch (e) {
-       debugPrint("Erro ao selecionar súmula: $e");
-       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao selecionar súmula: $e')));
-    }
+    } catch (e) { debugPrint("Erro picker: $e"); }
   }
-  
-  Widget _buildFileStatus() {
-    if (_isUploadingSumula) {
-      return const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-          SizedBox(width: 8),
-          Text('Enviando súmula...'),
-        ],
-      );
-    }
-    if (_pickedFileBytes != null) {
-      return Flexible(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.picture_as_pdf, color: Colors.green),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                _pickedFileName,
-                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    if (_existingSumulaUrl != null && _existingSumulaUrl!.isNotEmpty) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.check_circle, color: Colors.blue),
-          const SizedBox(width: 8),
-          const Text('Súmula salva'),
-          IconButton(
-            icon: const Icon(Icons.clear, size: 20, color: Colors.red),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            tooltip: 'Remover súmula',
-            onPressed: () async {
-              try {
-                if(_existingSumulaUrl != null && _existingSumulaUrl!.isNotEmpty) {
-                  final ref = FirebaseStorage.instance.refFromURL(_existingSumulaUrl!); 
-                  await ref.delete();
-                  debugPrint("Arquivo antigo da súmula deletado do Storage.");
-                }
-              } catch (e) {
-                debugPrint("Erro ao deletar súmula antiga do Storage: $e");
-              }
-              setState(() {
-                _existingSumulaUrl = null;
-                _pickedFileBytes = null;
-                _pickedFileName = '';
-              });
-            },
-          )
-        ],
-      );
-    }
-    return const Text('Nenhuma súmula anexada.', style: TextStyle(color: Colors.grey));
-  }
- 
+
   Future<void> _pickVideoFile(StateSetter setDialogState) async {
-    if (_isSaving || _isUploadingMedia) return;
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.video,
@@ -411,54 +340,39 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
           _pickedMediaFileName = result.files.single.name;
         });
       }
-    } catch (e) {
-       debugPrint("Erro ao selecionar vídeo: $e");
-       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao selecionar vídeo: $e')));
-    }
+    } catch (e) { debugPrint("Erro video picker: $e"); }
   }
 
   Future<void> _uploadMediaFile(BuildContext dialogContext, StateSetter setDialogState) async {
     final title = _mediaTitleController.text.trim();
     if (title.isEmpty || _pickedMediaBytes == null) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(
-        const SnackBar(content: Text('Preencha o título e selecione um vídeo.')),
-      );
+      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Preencha título e selecione vídeo.')));
       return;
     }
     setDialogState(() { _isUploadingMedia = true; });
 
     try {
       final String matchId = widget.match.id;
-      final String fileName = _pickedMediaFileName;
+      final String fileName = '${DateTime.now().millisecondsSinceEpoch}_$_pickedMediaFileName';
       final String storagePath = 'match_media/$matchId/$fileName';
       final ref = FirebaseStorage.instance.ref().child(storagePath);
       
-      UploadTask uploadTask;
       final metadata = SettableMetadata(contentType: 'video/${fileName.split('.').last}');
-      uploadTask = ref.putData(_pickedMediaBytes!, metadata);
-
-      TaskSnapshot snapshot = await uploadTask;
-      final downloadURL = await snapshot.ref.getDownloadURL();
+      await ref.putData(_pickedMediaBytes!, metadata);
+      final downloadURL = await ref.getDownloadURL();
 
       setState(() {
-        _mediaLinks.add({
-          'title': title,
-          'videoUrl': downloadURL,
-        });
+        _mediaLinks.add({'title': title, 'videoUrl': downloadURL});
       });
       
       _pickedMediaBytes = null;
-      _pickedMediaFileName = '';
       _mediaTitleController.clear();
+      if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
 
-      if (Navigator.of(dialogContext).canPop()) {
-        Navigator.of(dialogContext).pop();
-      }
     } catch (e) {
-      debugPrint("Erro no upload da mídia: $e");
-      if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro ao enviar vídeo: $e')));
+      if(mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro upload vídeo: $e')));
     } finally {
-      if (mounted) setDialogState(() { _isUploadingMedia = false; });
+      if(mounted) setDialogState(() { _isUploadingMedia = false; });
     }
   }
 
@@ -474,315 +388,35 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Adicionar Mídia (Vídeo)'),
+              title: const Text('Adicionar Vídeo'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextFormField(
                     controller: _mediaTitleController,
-                    decoration: const InputDecoration(
-                      labelText: 'Título do Vídeo',
-                      hintText: 'Ex: Gols da Partida',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Título'),
                     enabled: !_isUploadingMedia,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
                   ElevatedButton.icon(
-                    icon: const Icon(Icons.video_collection_outlined, size: 18),
-                    label: const Text('Selecionar Vídeo'),
-                    onPressed: _isUploadingMedia ? null : () async {
-                      await _pickVideoFile(setDialogState);
-                    },
+                    icon: const Icon(Icons.video_file),
+                    label: const Text('Selecionar Arquivo'),
+                    onPressed: _isUploadingMedia ? null : () => _pickVideoFile(setDialogState),
                   ),
                   if (_pickedMediaFileName.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        _pickedMediaFileName,
-                        style: const TextStyle(color: Colors.green, fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    Text(_pickedMediaFileName, style: const TextStyle(fontSize: 12, color: Colors.green)),
                   if (_isUploadingMedia)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                          SizedBox(width: 8),
-                          Text('Enviando vídeo...'),
-                        ],
-                      ),
-                    )
+                    const Padding(padding: EdgeInsets.only(top:10), child: CircularProgressIndicator()),
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: _isUploadingMedia ? null : () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancelar'),
-                ),
-                TextButton(
-                  onPressed: _isUploadingMedia ? null : () {
-                    _uploadMediaFile(dialogContext, setDialogState);
-                  },
-                  child: const Text('Adicionar'),
-                ),
+                TextButton(onPressed: _isUploadingMedia ? null : () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
+                TextButton(onPressed: _isUploadingMedia ? null : () => _uploadMediaFile(dialogContext, setDialogState), child: const Text('Salvar')),
               ],
             );
           },
         );
       },
-    );
-  }
-  // --- Fim das funções de Mídia ---
-
-  // --- FUNÇÃO _showSetStartersDialog (REMOVIDA) ---
-  // (A lógica foi movida para team_detail_screen.dart)
-  // --- FIM ---
-  
-  // --- Lista de Seleção de Jogador (MODIFICADA) ---
-  Widget _buildPlayerSelectList(List<DocumentSnapshot> players, bool isHomeTeam) {
-    if (players.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.0),
-        child: Text(
-          'Nenhum jogador ou staff encontrado para este time.',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        // --- BOTÃO "DEFINIR TITULARES" REMOVIDO DAQUI ---
-        
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: players.length,
-          itemBuilder: (context, index) {
-            final player = players[index];
-            final playerId = player.id;
-            final data = player.data() as Map<String, dynamic>;
-            final bool isSelected = _selectedPlayerId == playerId;
-            final bool isStaff = data['is_staff'] ?? false;
-            final int? number = data['jersey_number'];
-            final String playerName = data['name'] ?? 'Nome Indisponível';
-
-            // Define o nome de exibição
-            final String displayName = isStaff 
-                ? playerName 
-                : (number != null ? '$number. $playerName' : '-. $playerName');
-            
-            // Define o resumo de stats
-            final String statsSummary = isStaff
-                ? 'Comissão Técnica | CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0}'
-                : 'G:${_goals[playerId]??0} A:${_assists[playerId]??0} CA:${_yellowCards[playerId]??0} CV:${_redCards[playerId]??0} ${(data['is_goalkeeper']??false)?' GS:${_goalsConceded[playerId]??0}':''}';
-            
-            // Define o ícone
-            final IconData leadingIcon = isStaff 
-                ? Icons.assignment_ind_outlined // Ícone de Staff
-                : (data['is_goalkeeper']==true ? Icons.pan_tool_outlined : Icons.person_outline); // Ícones de Jogador
-            // --- FIM DA ALTERAÇÃO ---
-
-            return Column(
-              children: [
-                Card(
-                  margin: const EdgeInsets.symmetric(vertical: 2.0),
-                  color: isSelected ? Colors.lightBlue[50] : (isStaff ? Colors.grey[100] : null), // Cor diferente para staff
-                  elevation: isSelected ? 3 : 1,
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(leadingIcon),
-                    title: Text(
-                      displayName, // <-- Nome atualizado
-                      style: TextStyle(
-                        fontWeight: FontWeight.w500,
-                        fontStyle: isStaff ? FontStyle.italic : FontStyle.normal, // Estilo diferente
-                      )
-                    ),
-                    subtitle: Text(statsSummary, style: TextStyle(fontSize: 11, color: Colors.grey[700])), // <-- Resumo atualizado
-                    onTap: () {
-                      setState(() {
-                        if (isSelected) _selectedPlayerId = null;
-                        else _selectedPlayerId = playerId;
-                      });
-                    },
-                  ),
-                ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  child: isSelected ? _buildStatEditor(player) : const SizedBox.shrink(),
-                ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  // --- WIDGET EDITOR DE STATS (sem mudança) ---
-  Widget _buildStatEditor(DocumentSnapshot playerDoc) {
-    final playerId = playerDoc.id;
-    final data = playerDoc.data() as Map<String, dynamic>;
-
-    final bool isStaff = data['is_staff'] ?? false;
-    final bool isGoalkeeper = data['is_goalkeeper'] ?? false;
-
-    int currentGoals = _goals[playerId] ?? 0;
-    int currentAssists = _assists[playerId] ?? 0;
-    int currentYellows = _yellowCards[playerId] ?? 0;
-    int currentReds = _redCards[playerId] ?? 0;
-    int currentGoalsConceded = _goalsConceded[playerId] ?? 0;
-
-    return Card(
-      margin: const EdgeInsets.only(top: 0, left: 8.0, right: 8.0, bottom: 8.0),
-      elevation: 2,
-      color: Colors.blueGrey[50]?.withOpacity(0.8),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (!isStaff) ...[
-              _buildStatCounter(
-                icon: Icons.sports_soccer, label: "Gols",
-                count: currentGoals,
-                onAdd: () => setState(() => _goals[playerId] = currentGoals + 1),
-                onRemove: () => setState(() => _goals[playerId] = (currentGoals > 0) ? currentGoals - 1 : 0),
-              ),
-              _buildStatCounter(
-                icon: Icons.assistant, label: "Assist.",
-                count: currentAssists,
-                onAdd: () => setState(() => _assists[playerId] = currentAssists + 1),
-                onRemove: () => setState(() => _assists[playerId] = (currentAssists > 0) ? currentAssists - 1 : 0),
-              ),
-              if (isGoalkeeper)
-                _buildStatCounter(
-                  icon: Icons.pan_tool_outlined,
-                  label: "GS",
-                  color: Colors.blueGrey,
-                  count: currentGoalsConceded,
-                  onAdd: () => setState(() => _goalsConceded[playerId] = currentGoalsConceded + 1),
-                  onRemove: () => setState(() => _goalsConceded[playerId] = (currentGoalsConceded > 0) ? currentGoalsConceded - 1 : 0),
-                ),
-            ],
-            // --- FIM DA ALTERAÇÃO ---
-            
-             _buildStatCounter(
-              icon: Icons.style, label: "CA", color: Colors.yellow[700],
-              count: currentYellows,
-              onAdd: () => setState(() => _yellowCards[playerId] = 1), // <-- MUDANÇA AQUI
-              onRemove: () => setState(() => _yellowCards[playerId] = 0), // <-- MUDANÇA AQUI
-            ),
-             _buildStatCounter(
-              icon: Icons.style, label: "CV", color: Colors.red[700],
-              count: currentReds,
-              onAdd: () => setState(() => _redCards[playerId] = 1),
-              onRemove: () => setState(() => _redCards[playerId] = 0),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- Função _buildStatCounter (sem mudança) ---
-  Widget _buildStatCounter({
-    required IconData icon, required String label, required int count,
-    required VoidCallback onAdd, required VoidCallback onRemove, Color? color,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 22, color: color),
-              const SizedBox(width: 10),
-              Text('$label:', style: const TextStyle(fontSize: 15)),
-            ],
-          ),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.remove_circle, size: 26, color: Colors.red),
-                onPressed: onRemove, padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-              ),
-              SizedBox(
-                width: 30,
-                child: Text(count.toString(), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-              ),
-              IconButton(
-                icon: const Icon(Icons.add_circle, size: 26, color: Colors.green),
-                onPressed: onAdd, padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- Funções de Mídia, Exclusão e Regras (sem mudança) ---
-  Widget _buildMediaListEditor() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  "Mídias da Partida (Vídeos)",
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                IconButton(
-                  icon: Icon(Icons.add_circle, color: Theme.of(context).primaryColor),
-                  tooltip: 'Adicionar Mídia',
-                  onPressed: _showAddMediaDialog,
-                ),
-              ],
-            ),
-            const Divider(),
-            if (_mediaLinks.isEmpty)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('Nenhuma mídia adicionada.', style: TextStyle(color: Colors.grey)),
-                ),
-              ),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _mediaLinks.length,
-              itemBuilder: (context, index) {
-                final media = _mediaLinks[index];
-                return ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.video_library_outlined, color: Colors.red),
-                  title: Text(media['title'] ?? 'Sem Título'),
-                  subtitle: Text(media['videoUrl'] ?? 'Sem URL', overflow: TextOverflow.ellipsis),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.remove_circle, color: Colors.red),
-                    tooltip: 'Remover Mídia',
-                    onPressed: () {
-                      setState(() {
-                        _mediaLinks.removeAt(index);
-                      });
-                    },
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -791,46 +425,29 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Excluir Partida?'),
-        content: const Text(
-          'Tem certeza que deseja excluir esta partida permanentemente? Se ela já foi finalizada, a classificação da 1ª Fase será recalculada.',
-        ),
+        content: const Text('Esta ação é irreversível. Se a partida já foi finalizada, a tabela será recalculada.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
 
     if (confirm == true && mounted) {
       setState(() { _isSaving = true; });
-      final result = await _firestoreService.deleteMatch(widget.match);
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      final result = await _firestoreService.deleteMatch(widget.match, seasonId);
       setState(() { _isSaving = false; });
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-        if (result.startsWith('Sucesso')) {
-          Navigator.of(context).pop();
-        }
+        if (result.startsWith('Sucesso')) Navigator.of(context).pop();
       }
     }
   }
 
-  String _getTiebreakerRuleName(String ruleKey) {
-    switch (ruleKey) {
-      case 'penalties': return 'Pênaltis Direto';
-      case 'extra_time_penalties': return 'Prorrogação + Pênaltis';
-      case 'extra_time_standing': return 'Prorrogação + Melhor Classif.';
-      default: return 'Desconhecida';
-    }
-  }
-  // --- Fim ---
+  // --- WIDGETS DE UI ---
 
-  // --- Card do Placar (sem mudança) ---
   Widget _buildScoreCard() {
     return Card(
       child: Padding(
@@ -838,153 +455,188 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            Expanded(
-              child: Text(
-                widget.match['team_home_name'] ?? 'Casa',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            SizedBox(
-              width: 60,
-              child: TextField(
-                controller: _homeScoreController,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-                onTapOutside: (_) => _checkShowTiebreakerSection(),
-                onEditingComplete: _checkShowTiebreakerSection,
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text('x'),
-            ),
-            SizedBox(
-              width: 60,
-              child: TextField(
-                controller: _awayScoreController,
-                keyboardType: TextInputType.number,
-                textAlign: TextAlign.center,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-                onTapOutside: (_) => _checkShowTiebreakerSection(),
-                onEditingComplete: _checkShowTiebreakerSection,
-              ),
-            ),
-            Expanded(
-              child: Text(
-                widget.match['team_away_name'] ?? 'Visitante',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ),
+            Expanded(child: Text(widget.match['team_home_name'] ?? 'Casa', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))),
+            SizedBox(width: 60, child: TextField(controller: _homeScoreController, keyboardType: TextInputType.number, textAlign: TextAlign.center, inputFormatters: [FilteringTextInputFormatter.digitsOnly], decoration: const InputDecoration(border: OutlineInputBorder()))),
+            const Text(' x '),
+            SizedBox(width: 60, child: TextField(controller: _awayScoreController, keyboardType: TextInputType.number, textAlign: TextAlign.center, inputFormatters: [FilteringTextInputFormatter.digitsOnly], decoration: const InputDecoration(border: OutlineInputBorder()))),
+            Expanded(child: Text(widget.match['team_away_name'] ?? 'Fora', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))),
           ],
         ),
       ),
     );
   }
 
-  // --- Seção Desempate (sem mudança) ---
   Widget _buildTiebreakerSection() {
-    final homeTeamName = widget.match['team_home_name'] ?? 'Casa';
-    final awayTeamName = widget.match['team_away_name'] ?? 'Visitante';
+    String ruleName = _tiebreakerRule;
+    if (ruleName == 'penalties') ruleName = 'Pênaltis Direto';
+    if (ruleName == 'extra_time_penalties') ruleName = 'Prorrogação + Pênaltis';
+    if (ruleName == 'extra_time_standing') ruleName = 'Melhor Classif. na 1ª Fase';
 
     return Card(
-      margin: const EdgeInsets.only(top: 16.0),
+      margin: const EdgeInsets.only(top: 16),
       color: Colors.amber[50],
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Desempate Necessário!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red[700])),
-            const SizedBox(height: 4),
-            Text('Regra: ${_getTiebreakerRuleName(_tiebreakerRule)}', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 12),
+            Text('Desempate Necessário ($ruleName)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red[700])),
             if (_tiebreakerRule.contains('penalties')) ...[
-              Text('Placar Pênaltis:', style: TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Flexible(child: Text(homeTeamName, overflow: TextOverflow.ellipsis, maxLines: 1)),
-                  SizedBox(
-                    width: 50,
-                    child: TextField(
-                      controller: _penaltyHomeScoreController,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: InputDecoration(hintText: 'P'),
-                    ),
-                  ),
-                  const Text('x'),
-                  SizedBox(
-                    width: 50,
-                    child: TextField(
-                      controller: _penaltyAwayScoreController,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: InputDecoration(hintText: 'P'),
-                    ),
-                  ),
-                  Flexible(child: Text(awayTeamName, overflow: TextOverflow.ellipsis, maxLines: 1)),
+                  const Text('Pênaltis:  '),
+                  SizedBox(width: 50, child: TextField(controller: _penaltyHomeScoreController, textAlign: TextAlign.center, keyboardType: TextInputType.number)),
+                  const Text(' x '),
+                  SizedBox(width: 50, child: TextField(controller: _penaltyAwayScoreController, textAlign: TextAlign.center, keyboardType: TextInputType.number)),
                 ],
               ),
             ],
             if (_tiebreakerRule == 'extra_time_standing')
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(
-                  'O vencedor será determinado automaticamente pela classificação da 1ª Fase ao gerar a Final/3º Lugar.',
-                  style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey[700]),
-                ),
-              ),
+              const Padding(padding: EdgeInsets.only(top: 8), child: Text('Vencedor definido automaticamente pelo ranking.', style: TextStyle(fontSize: 12))),
           ],
         ),
       ),
     );
   }
 
-  // --- Função Principal build() (sem mudança) ---
+  Widget _buildPlayerSelectList(List<DocumentSnapshot> players, bool isHome) {
+    if (players.isEmpty) return const Padding(padding: EdgeInsets.all(8), child: Text('Sem jogadores cadastrados.'));
+    
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: players.length,
+      itemBuilder: (context, index) {
+        final player = players[index];
+        final pid = player.id;
+        final data = player.data() as Map<String, dynamic>;
+        final isSelected = _selectedPlayerId == pid;
+        final bool isStaff = data['is_staff'] ?? false;
+        final bool isGoalkeeper = data['is_goalkeeper'] ?? false;
+        final name = data['name'] ?? '?';
+        final num = data['jersey_number'];
+        
+        // Resumo rápido
+        String summary = isStaff 
+            ? "Comissão | CA:${_yellowCards[pid]??0} CV:${_redCards[pid]??0}"
+            : "G:${_goals[pid]??0} A:${_assists[pid]??0} CA:${_yellowCards[pid]??0}";
+
+        return Column(
+          children: [
+            Card(
+              color: isSelected ? Colors.blue[50] : (isStaff ? Colors.grey[100] : null),
+              child: ListTile(
+                dense: true,
+                // --- CORREÇÃO: Ícone de Goleiro ---
+                leading: Icon(
+                  isStaff ? Icons.assignment_ind : (isGoalkeeper ? Icons.pan_tool_outlined : Icons.person)
+                ),
+                title: Text(isStaff ? name : "${num != null ? '$num. ' : ''}$name"),
+                subtitle: Text(summary, style: const TextStyle(fontSize: 11)),
+                onTap: () => setState(() => _selectedPlayerId = isSelected ? null : pid),
+              ),
+            ),
+            if (isSelected) _buildStatEditor(player),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatEditor(DocumentSnapshot player) {
+    final pid = player.id;
+    final data = player.data() as Map<String, dynamic>;
+    final isStaff = data['is_staff'] ?? false;
+    final isGK = data['is_goalkeeper'] ?? false;
+
+    return Container(
+      color: Colors.blueGrey[50],
+      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          if (!isStaff) ...[
+            _buildStatCounter(Icons.sports_soccer, "Gols", _goals[pid]??0, () => setState(() => _goals[pid] = (_goals[pid]??0)+1), () => setState(() => _goals[pid] = ((_goals[pid]??0)>0 ? (_goals[pid]??0)-1 : 0))),
+            _buildStatCounter(Icons.assistant, "Assist.", _assists[pid]??0, () => setState(() => _assists[pid] = (_assists[pid]??0)+1), () => setState(() => _assists[pid] = ((_assists[pid]??0)>0 ? (_assists[pid]??0)-1 : 0))),
+            if (isGK)
+               _buildStatCounter(Icons.pan_tool, "Gols Sofridos", _goalsConceded[pid]??0, () => setState(() => _goalsConceded[pid] = (_goalsConceded[pid]??0)+1), () => setState(() => _goalsConceded[pid] = ((_goalsConceded[pid]??0)>0 ? (_goalsConceded[pid]??0)-1 : 0))),
+          ],
+          _buildStatCounter(Icons.style, "Amarelo", _yellowCards[pid]??0, 
+              () => setState(() => _yellowCards[pid] = 1),
+              () => setState(() => _yellowCards[pid] = 0), color: Colors.yellow[700]),
+          _buildStatCounter(Icons.style, "Vermelho", _redCards[pid]??0, 
+              () => setState(() => _redCards[pid] = 1), 
+              () => setState(() => _redCards[pid] = 0), color: Colors.red[700]),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCounter(IconData icon, String label, int count, VoidCallback onAdd, VoidCallback onRemove, {Color? color}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(children: [Icon(icon, size: 18, color: color), const SizedBox(width: 8), Text(label)]),
+        Row(children: [
+          IconButton(icon: const Icon(Icons.remove_circle, color: Colors.red), onPressed: onRemove, constraints: const BoxConstraints(), padding: const EdgeInsets.all(8)),
+          Text('$count', style: const TextStyle(fontWeight: FontWeight.bold)),
+          IconButton(icon: const Icon(Icons.add_circle, color: Colors.green), onPressed: onAdd, constraints: const BoxConstraints(), padding: const EdgeInsets.all(8)),
+        ]),
+      ],
+    );
+  }
+
+  Widget _buildFileStatus() {
+    if (_isUploadingSumula) return const Text('Enviando...');
+    if (_pickedFileBytes != null) return const Text('Súmula Selecionada', style: TextStyle(color: Colors.green));
+    if (_existingSumulaUrl != null) return const Text('Súmula Salvo', style: TextStyle(color: Colors.blue));
+    return const Text('Nenhum PDF');
+  }
+
+  Widget _buildMediaListEditor() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              const Text("Mídias (Vídeos)", style: TextStyle(fontWeight: FontWeight.bold)),
+              IconButton(icon: const Icon(Icons.add_circle), onPressed: _showAddMediaDialog),
+            ]),
+            const Divider(),
+            ..._mediaLinks.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final media = entry.value;
+              return ListTile(
+                title: Text(media['title']),
+                trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => _mediaLinks.removeAt(idx))),
+              );
+            }).toList(),
+            if (_mediaLinks.isEmpty) const Text("Sem vídeos.", style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<DocumentSnapshot> allPlayers = [..._homePlayers, ..._awayPlayers];
-    final data = widget.match.data() as Map<String, dynamic>;
-    final homeTeamName = data['team_home_name'] ?? 'Casa';
-    final awayTeamName = data['team_away_name'] ?? 'Visitante';
-
-    void sortPlayersByNumber(List<DocumentSnapshot> players) {
-      players.sort((a, b) {
-        final aData = a.data() as Map<String, dynamic>? ?? {};
-        final bData = b.data() as Map<String, dynamic>? ?? {};
-        final int? aNum = aData['jersey_number'];
-        final int? bNum = bData['jersey_number'];
-        if (aNum != null && bNum != null) { return aNum.compareTo(bNum); }
-        else if (aNum != null && bNum == null) { return -1; }
-        else if (aNum == null && bNum != null) { return 1; }
-        else { return (aData['name'] ?? '').compareTo(bData['name'] ?? ''); }
-      });
-    }
-    sortPlayersByNumber(allPlayers);
-    sortPlayersByNumber(_homePlayers);
-    sortPlayersByNumber(_awayPlayers);
-
-    String? validSelectedMotmId = _selectedManOfTheMatchId;
-    if (validSelectedMotmId != null && validSelectedMotmId.isNotEmpty && !_isLoadingPlayers) {
-      final bool playerExistsInList = allPlayers.any((player) => player.id == validSelectedMotmId);
-      if (!playerExistsInList) {
-        debugPrint("Aviso: Craque do Jogo salvo ('$validSelectedMotmId') não encontrado. Resetando.");
-        validSelectedMotmId = null;
-      }
-    }
+    // Lista combinada para o dropdown, filtrando Staff
+    final allPlayers = [..._homePlayers, ..._awayPlayers];
+    final motmCandidates = allPlayers.where((p) {
+       final d = p.data() as Map<String, dynamic>;
+       return d['is_staff'] != true;
+    }).toList();
+    
+    final homeTeamName = widget.match['team_home_name'] ?? 'Casa';
+    final awayTeamName = widget.match['team_away_name'] ?? 'Visitante';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('$homeTeamName x $awayTeamName', overflow: TextOverflow.ellipsis),
+        title: const Text('Editar Súmula'),
         actions: [
+          // --- CORREÇÃO: Botão de Edição de Detalhes Adicionado ---
           IconButton(
             icon: const Icon(Icons.edit_calendar_outlined),
             tooltip: 'Editar Detalhes (Data, Local, Times)',
@@ -996,127 +648,85 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               );
             },
           ),
+          // --------------------------------------------------------
           IconButton(
-            icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-            tooltip: 'Excluir Partida',
+            icon: const Icon(Icons.delete_forever),
+            tooltip: 'Deletar Partida',
             onPressed: _isSaving ? null : _showDeleteMatchDialog,
           ),
-          if (_isSaving || _isUploadingSumula || _isUploadingMedia)
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.save),
-              tooltip: 'Salvar Estatísticas',
-              onPressed: _saveStats,
-            ),
+          IconButton(
+            icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save),
+            onPressed: _isSaving ? null : _saveStats,
+          ),
         ],
       ),
       body: _isLoadingPlayers
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildScoreCard(),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedStatus,
-                        items: const [
-                          DropdownMenuItem(value: 'pending', child: Text('Pendente')),
-                          DropdownMenuItem(value: 'in_progress', child: Text('Em Andamento')),
-                          DropdownMenuItem(value: 'finished', child: Text('Finalizado')),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _selectedStatus = value);
-                            _checkShowTiebreakerSection();
-                          }
-                        },
-                        decoration: const InputDecoration(labelText: 'Status da Partida', border: InputBorder.none),
-                      ),
-                    ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    value: _selectedStatus,
+                    items: const [
+                      DropdownMenuItem(value: 'pending', child: Text('Pendente')),
+                      DropdownMenuItem(value: 'in_progress', child: Text('Em Andamento')),
+                      DropdownMenuItem(value: 'finished', child: Text('Finalizado')),
+                    ],
+                    onChanged: (v) {
+                      if(v!=null) {
+                        setState(() => _selectedStatus = v);
+                        _checkShowTiebreakerSection();
+                      }
+                    },
+                    decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
                   ),
                   
                   if (_showTiebreakerSection) _buildTiebreakerSection(),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   Text(homeTeamName, style: Theme.of(context).textTheme.titleLarge),
                   _buildPlayerSelectList(_homePlayers, true),
+                  
                   const SizedBox(height: 20),
                   Text(awayTeamName, style: Theme.of(context).textTheme.titleLarge),
                   _buildPlayerSelectList(_awayPlayers, false),
-                  
-                  const SizedBox(height: 24),
-                  Text('Craque do Jogo', style: Theme.of(context).textTheme.headlineSmall),
-                  
-                  if (allPlayers.isNotEmpty)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                        child: DropdownButtonFormField<String>(
-                          value: validSelectedMotmId,
-                          hint: const Text('Selecione o jogador'),
-                          isExpanded: true,
-                          items: allPlayers.map((player) {
-                            final data = player.data() as Map<String, dynamic>;
-                            final int? number = data['jersey_number'];
-                            final String playerName = data['name'] ?? '...';
-                            final String teamName = data['team_name'] ?? '?';
-                            final String displayString = number != null
-                                ? '$number. $playerName ($teamName)'
-                                : '-. $playerName ($teamName)';
-                            return DropdownMenuItem<String>(
-                              value: player.id,
-                              child: Text(displayString, overflow: TextOverflow.ellipsis),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() { _selectedManOfTheMatchId = value; });
-                          },
-                          decoration: const InputDecoration(border: InputBorder.none),
-                        ),
-                      ),
-                    )
-                  else
-                    const Text('Carregando jogadores...'),
 
-                  const SizedBox(height: 24),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Súmula da Partida (PDF)", style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.attach_file, size: 18),
-                                label: const Text('Selecionar PDF'),
-                                onPressed: (_isSaving || _isUploadingSumula) ? null : _pickSumulaFile,
-                              ),
-                              const SizedBox(width: 8), 
-                              Flexible(
-                                child: _buildFileStatus(),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 20),
+                  const Text('Craque do Jogo', style: TextStyle(fontWeight: FontWeight.bold)),
                   
-                  const SizedBox(height: 24),
+                  DropdownButtonFormField<String>(
+                   value: motmCandidates.any((p) => p.id == _selectedManOfTheMatchId) ? _selectedManOfTheMatchId : null,
+                    items: motmCandidates.map((p) {
+                      final d = p.data() as Map<String, dynamic>;
+                      final int? num = d['jersey_number'];
+                      final String name = d['name'] ?? '?';
+                      // Opcional: mostrar o time no dropdown para diferenciar se tiver nomes iguais
+                      // final String team = d['team_name'] ?? '';
+                      
+                      return DropdownMenuItem(
+                        value: p.id,
+                        // Exemplo: "10. João" ou "João" se não tiver número
+                        child: Text(num != null ? "$num. $name" : name, overflow: TextOverflow.ellipsis),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setState(() => _selectedManOfTheMatchId = v),
+                    decoration: const InputDecoration(border: OutlineInputBorder()),
+                  ),
+
+                  const SizedBox(height: 20),
+                  ListTile(
+                    title: const Text("Súmula PDF"),
+                    subtitle: _buildFileStatus(),
+                    trailing: const Icon(Icons.upload_file),
+                    onTap: _pickSumulaFile,
+                    shape: RoundedRectangleBorder(side: const BorderSide(color: Colors.grey), borderRadius: BorderRadius.circular(4)),
+                  ),
+
+                  const SizedBox(height: 20),
                   _buildMediaListEditor(),
                 ],
               ),

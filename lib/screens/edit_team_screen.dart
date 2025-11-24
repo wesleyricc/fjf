@@ -1,9 +1,10 @@
-// lib/screens/edit_team_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // <-- Importante
 import '../services/firestore_service.dart';
+import '../services/championship_service.dart'; // <-- Importante
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/services.dart'; // Para o Year input
+import 'package:flutter/services.dart'; 
 
 class EditTeamScreen extends StatefulWidget {
   final DocumentSnapshot? team;
@@ -18,17 +19,13 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
   final _formKey = GlobalKey<FormState>();
   final FirestoreService _firestoreService = FirestoreService();
 
-  // Controladores do Formulário
   late TextEditingController _nameController;
   late TextEditingController _shortNameController;
   late TextEditingController _shieldUrlController;
 
   bool _isSaving = false;
   String _currentShieldUrl = '';
-
-  // --- NOVO: Estado para o Histórico de Títulos ---
   List<Map<String, dynamic>> _championshipHistory = [];
-  // --- FIM ---
 
   @override
   void initState() {
@@ -41,18 +38,14 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
     _shieldUrlController = TextEditingController(text: data['shield_url'] ?? '');
     _currentShieldUrl = data['shield_url'] ?? '';
 
-    // --- NOVO: Carrega o histórico existente ---
     if (data['championship_history'] != null) {
-      // Converte a List<dynamic> do Firestore para a lista local
       _championshipHistory = List<Map<String, dynamic>>.from(
         (data['championship_history'] as List<dynamic>).map(
           (item) => Map<String, dynamic>.from(item as Map),
         ),
       );
-      // Ordena por ano (mais recente primeiro) para exibição
       _championshipHistory.sort((a, b) => (b['year'] as int).compareTo(a['year'] as int));
     }
-    // --- FIM ---
 
     _shieldUrlController.addListener(() {
       if (mounted) {
@@ -72,11 +65,13 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
   }
 
   Future<void> _saveForm() async {
-    if (!_formKey.currentState!.validate()) {
-       return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() { _isSaving = true; });
+
+    // 1. Obtém o ID da Temporada Atual
+    // Usamos listen: false porque não precisamos reconstruir a tela se o ano mudar durante o save
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
     String result;
     try {
@@ -84,25 +79,28 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
       final shortName = _shortNameController.text.toUpperCase();
       final shieldUrl = _shieldUrlController.text;
 
-      // Ordena a lista por ano antes de salvar (garante consistência)
       _championshipHistory.sort((a, b) => (b['year'] as int).compareTo(a['year'] as int));
 
       if (widget.team == null) {
         // --- MODO CRIAÇÃO ---
+        // Passamos o seasonId para saber onde criar
         result = await _firestoreService.createTeam(
+          seasonId: seasonId, // <-- NOVO
           name: name,
           shortName: shortName,
           shieldUrl: shieldUrl,
-          championshipHistory: _championshipHistory, // <-- Passa a lista
+          championshipHistory: _championshipHistory,
         );
       } else {
         // --- MODO ATUALIZAÇÃO ---
+        // A atualização é feita direto na referência do documento, então seasonId é menos crítico aqui,
+        // mas a estrutura do serviço já lida com isso.
         result = await _firestoreService.updateTeam(
           teamDoc: widget.team!,
           name: name,
           shortName: shortName,
           shieldUrl: shieldUrl,
-          championshipHistory: _championshipHistory, // <-- Passa a lista
+          championshipHistory: _championshipHistory,
         );
       }
 
@@ -119,15 +117,13 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
     }
   }
 
-  // --- NOVO: Diálogo para adicionar título ---
   Future<void> _showAddTitleDialog() async {
     final yearController = TextEditingController();
-    int selectedRank = 1; // 1 = Ouro, 2 = Prata
+    int selectedRank = 1; 
 
     await showDialog<void>(
       context: context,
       builder: (ctx) {
-        // Usa StatefulBuilder para o Dropdown
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -150,32 +146,25 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
                     ],
                     onChanged: (value) {
                       if (value != null) {
-                        setDialogState(() {
-                          selectedRank = value;
-                        });
+                        setDialogState(() => selectedRank = value);
                       }
                     },
                   ),
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                  child: const Text('Cancelar'),
-                ),
+                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
                 TextButton(
                   onPressed: () {
                     final int? year = int.tryParse(yearController.text);
                     if (year == null || yearController.text.length != 4) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('Por favor, insira um ano válido com 4 dígitos.')),
+                        const SnackBar(content: Text('Ano inválido.')),
                       );
                       return;
                     }
-                    // Adiciona na lista local
                     setState(() {
                       _championshipHistory.add({'year': year, 'rank': selectedRank});
-                      // Reordena
                       _championshipHistory.sort((a, b) => (b['year'] as int).compareTo(a['year'] as int));
                     });
                     Navigator.of(ctx).pop(true);
@@ -189,15 +178,22 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
       },
     );
   }
-  // --- FIM DO DIÁLOGO ---
 
   @override
   Widget build(BuildContext context) {
     bool isEditing = widget.team != null;
+    final currentSeasonName = Provider.of<ChampionshipService>(context, listen: false).currentSeasonName;
     
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Editar Equipe' : 'Criar Nova Equipe'),
+        // Contexto visual para o admin saber onde está criando
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(isEditing ? 'Editar Equipe' : 'Criar Nova Equipe'),
+            Text('Em: $currentSeasonName', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+          ],
+        ),
         actions: [
           IconButton(
             icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save),
@@ -210,7 +206,6 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // Preview do Escudo
             if (_currentShieldUrl.isNotEmpty)
               Center(
                 child: CachedNetworkImage(
@@ -221,8 +216,6 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
                 ),
               ),
             const SizedBox(height: 16),
-
-            // Nome
             TextFormField(
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Nome Completo da Equipe', border: OutlineInputBorder()),
@@ -230,7 +223,6 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
               enabled: !_isSaving,
             ),
             const SizedBox(height: 16),
-            // Sigla
             TextFormField(
               controller: _shortNameController,
               decoration: const InputDecoration(labelText: 'Sigla (Ex: FLA)', border: OutlineInputBorder()),
@@ -240,7 +232,6 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
               enabled: !_isSaving,
             ),
             const SizedBox(height: 16),
-            // URL do Escudo
             TextFormField(
               controller: _shieldUrlController,
               decoration: const InputDecoration(labelText: 'URL do Escudo (https://...)', border: OutlineInputBorder()),
@@ -252,8 +243,6 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
               },
               enabled: !_isSaving,
             ),
-            
-            // --- NOVO: Seção de Histórico de Títulos ---
             const Divider(height: 32),
             Card(
               elevation: 1,
@@ -276,7 +265,6 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
                     if (_championshipHistory.isEmpty)
                       const Center(child: Text('Nenhum título registrado.', style: TextStyle(color: Colors.grey)))
                     else
-                      // Wrap para os chips
                       Wrap(
                         spacing: 8.0,
                         runSpacing: 4.0,
@@ -303,7 +291,6 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
                 ),
               ),
             ),
-            // --- FIM DA NOVA SEÇÃO ---
           ],
         ),
       ),

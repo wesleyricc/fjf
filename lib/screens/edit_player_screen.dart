@@ -1,4 +1,3 @@
-// lib/screens/edit_player_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -6,11 +5,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import 'dart:typed_data';
-import '../services/admin_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:intl/intl.dart'; // Importante para datas
-import 'package:flutter/services.dart'; // Para FilteringTextInputFormatter
+import 'package:intl/intl.dart'; 
+import 'package:flutter/services.dart'; 
+import 'package:provider/provider.dart'; // <-- Importante
+import '../services/auth_service.dart'; // <-- Importante
+import '../services/championship_service.dart';
+import '../services/firestore_service.dart';
 
 class EditPlayerScreen extends StatefulWidget {
   final String teamId;
@@ -29,13 +31,11 @@ class EditPlayerScreen extends StatefulWidget {
 }
 
 class _EditPlayerScreenState extends State<EditPlayerScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _nameController;
   late TextEditingController _jerseyNumberController;
-  // Removemos _positionController e _preferredFootController (agora são variáveis)
   late TextEditingController _dateOfBirthController;
   late TextEditingController _heightController;
   late TextEditingController _weightController;
@@ -45,12 +45,10 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   bool _isStaff = false;
   bool _isGoalkeeper = false;
   
-  // --- NOVAS VARIÁVEIS DE SELEÇÃO ---
-  String? _selectedPosition; // Para Fixo, Ala, Pivô
-  String? _selectedFoot;     // Para Destro, Canhoto, Ambidestro
+  String? _selectedPosition; 
+  String? _selectedFoot;     
   final List<String> _positionOptions = ['Fixo', 'Ala', 'Pivô'];
   final List<String> _footOptions = ['Destro', 'Canhoto', 'Ambidestro'];
-  // ----------------------------------
 
   String? _photoUrl;
   File? _imageFile;
@@ -72,7 +70,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       _nameController.text = data['name'] ?? '';
       _jerseyNumberController.text = (data['jersey_number'] ?? '').toString();
       
-      // Formata a data para dd/MM/yyyy
       if (data['date_of_birth'] != null) {
         final date = (data['date_of_birth'] as Timestamp).toDate();
         _dateOfBirthController.text = DateFormat('dd/MM/yyyy').format(date);
@@ -86,16 +83,11 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       _isGoalkeeper = data['is_goalkeeper'] ?? false;
       _photoUrl = data['photo_url'];
 
-      // Inicializa os Dropdowns
       String? pos = data['position'];
-      if (_positionOptions.contains(pos)) {
-        _selectedPosition = pos;
-      }
+      if (_positionOptions.contains(pos)) _selectedPosition = pos;
       
       String? foot = data['preferred_foot'];
-      if (_footOptions.contains(foot)) {
-        _selectedFoot = foot;
-      }
+      if (_footOptions.contains(foot)) _selectedFoot = foot;
     }
   }
 
@@ -111,31 +103,18 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DE DATA ---
   Future<void> _selectDate() async {
     DateTime initialDate = DateTime.now();
-    // Tenta usar a data que já está escrita, se for válida
     if (_dateOfBirthController.text.isNotEmpty) {
-      try {
-        initialDate = DateFormat('dd/MM/yyyy').parse(_dateOfBirthController.text);
-      } catch (_) {}
+      try { initialDate = DateFormat('dd/MM/yyyy').parse(_dateOfBirthController.text); } catch (_) {}
     }
 
     final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(1950),
-      lastDate: DateTime.now(),
-      locale: const Locale('pt', 'BR'),
+      context: context, initialDate: initialDate, firstDate: DateTime(1950), lastDate: DateTime.now(), locale: const Locale('pt', 'BR'),
     );
 
-    if (picked != null) {
-      setState(() {
-        _dateOfBirthController.text = DateFormat('dd/MM/yyyy').format(picked);
-      });
-    }
+    if (picked != null) setState(() => _dateOfBirthController.text = DateFormat('dd/MM/yyyy').format(picked));
   }
-  // ---------------------
 
   Future<void> _pickImage() async {
     if (kIsWeb) {
@@ -159,20 +138,14 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   }
 
   void _removePhoto() {
-    setState(() {
-      _photoUrl = null;
-      _imageFile = null;
-      _webImageBytes = null;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Foto removida. Salve para aplicar a mudança.')),
-    );
+    setState(() { _photoUrl = null; _imageFile = null; _webImageBytes = null; });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto removida. Salve para aplicar a mudança.')));
   }
 
   Future<String?> _uploadImage() async {
     if (_imageFile == null && _webImageBytes == null) return _photoUrl;
     
-    String fileName = 'players/${widget.playerDoc?.id ?? _firestore.collection('players').doc().id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    String fileName = 'players/${widget.playerDoc?.id ?? DateTime.now().millisecondsSinceEpoch}.jpg';
     UploadTask uploadTask;
 
     if (kIsWeb && _webImageBytes != null) {
@@ -190,7 +163,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   Future<void> _savePlayer() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {}); // Loading state se necessário
+    setState(() {}); // Loading
 
     try {
       String? uploadedPhotoUrl = await _uploadImage();
@@ -199,29 +172,25 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       final int? heightCm = int.tryParse(_heightController.text);
       final int? weightKg = int.tryParse(_weightController.text);
 
-      // Parse da Data (dd/MM/yyyy -> Timestamp)
       Timestamp? dobTimestamp;
       if (_dateOfBirthController.text.isNotEmpty) {
         try {
           final date = DateFormat('dd/MM/yyyy').parse(_dateOfBirthController.text);
           dobTimestamp = Timestamp.fromDate(date);
         } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Data inválida. Use dd/mm/aaaa')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data inválida. Use dd/mm/aaaa')));
           return;
         }
       }
 
-      final playerData = {
+      final Map<String, dynamic> playerData = {
         'name': _nameController.text.trim(),
         'jersey_number': jerseyNumber,
-        // Se for goleiro, salva 'Goleiro'. Se não, pega do dropdown.
-        'position': _isGoalkeeper ? 'Goleiro' : _selectedPosition, 
+        'position': _isGoalkeeper ? 'Goleiro' : _selectedPosition,
         'date_of_birth': dobTimestamp,
         'height_cm': heightCm,
         'weight_kg': weightKg,
-        'preferred_foot': _selectedFoot, // Pega do dropdown
+        'preferred_foot': _selectedFoot,
         'instagram': _instagramController.text.trim(),
         'phone': _phoneController.text.trim(),
         'is_staff': _isStaff,
@@ -229,27 +198,27 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
         'photo_url': uploadedPhotoUrl,
         'team_id': widget.teamId,
         'team_name': widget.teamName,
-        // Mantém stats antigos se existirem
-        'goals': widget.playerDoc != null ? (widget.playerDoc!.data() as Map<String, dynamic>)['goals'] ?? 0 : 0,
-        'assists': widget.playerDoc != null ? (widget.playerDoc!.data() as Map<String, dynamic>)['assists'] ?? 0 : 0,
-        'total_yellow_cards': widget.playerDoc != null ? (widget.playerDoc!.data() as Map<String, dynamic>)['total_yellow_cards'] ?? 0 : 0,
-        'total_red_cards': widget.playerDoc != null ? (widget.playerDoc!.data() as Map<String, dynamic>)['total_red_cards'] ?? 0 : 0,
-        'man_of_the_match_awards': widget.playerDoc != null ? (widget.playerDoc!.data() as Map<String, dynamic>)['man_of_the_match_awards'] ?? 0 : 0,
-        'goals_conceded': widget.playerDoc != null ? (widget.playerDoc!.data() as Map<String, dynamic>)['goals_conceded'] ?? 0 : 0,
       };
 
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      final FirestoreService service = FirestoreService();
+
+      String result;
       if (widget.playerDoc == null) {
-        await _firestore.collection('players').add(playerData);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Jogador adicionado!')));
+        result = await service.createPlayer(seasonId: seasonId, data: playerData);
       } else {
-        await _firestore.collection('players').doc(widget.playerDoc!.id).update(playerData);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Jogador atualizado!')));
+        result = await service.updatePlayer(seasonId: seasonId, playerId: widget.playerDoc!.id, data: playerData);
       }
 
       if (!mounted) return;
-      Navigator.of(context).pop();
+      
+      if (result.startsWith("Sucesso")) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+        Navigator.of(context).pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), backgroundColor: Colors.red));
+      }
+
     } catch (e) {
       debugPrint('Erro: $e');
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
@@ -258,18 +227,20 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // --- CORREÇÃO: Usar Provider para verificar autenticação ---
+    final isAuthenticated = Provider.of<AuthService>(context).isAuthenticated;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.playerDoc == null ? 'Novo Jogador' : 'Editar ${_nameController.text}'),
       ),
-      body: AdminService.isAdmin
+      body: isAuthenticated // <-- Verificação correta
           ? Form(
               key: _formKey,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    // --- FOTO ---
                     GestureDetector(
                       onTap: _pickImage,
                       child: CircleAvatar(
@@ -294,7 +265,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                       ),
                     const SizedBox(height: 16),
 
-                    // --- CAMPOS ---
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder()),
@@ -313,8 +283,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                           ),
                         ),
                         const SizedBox(width: 16),
-                        
-                        // --- CAMPO DE DATA (TEXTO + CALENDÁRIO) ---
                         Expanded(
                           child: TextFormField(
                             controller: _dateOfBirthController,
@@ -322,20 +290,12 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                               labelText: 'Nascimento',
                               hintText: 'dd/mm/aaaa',
                               border: const OutlineInputBorder(),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.calendar_month),
-                                onPressed: _selectDate,
-                              ),
+                              suffixIcon: IconButton(icon: const Icon(Icons.calendar_month), onPressed: _selectDate),
                             ),
                             keyboardType: TextInputType.datetime,
-                            // Validação simples de formato
                             validator: (value) {
                               if (value != null && value.isNotEmpty) {
-                                try {
-                                  DateFormat('dd/MM/yyyy').parseStrict(value);
-                                } catch (e) {
-                                  return 'Data inválida';
-                                }
+                                try { DateFormat('dd/MM/yyyy').parseStrict(value); } catch (e) { return 'Data inválida'; }
                               }
                               return null;
                             },
@@ -345,7 +305,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // --- SWITCHES ---
                     Row(
                       children: [
                         Expanded(
@@ -355,10 +314,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                             onChanged: (bool value) {
                               setState(() {
                                 _isStaff = value;
-                                if (_isStaff) {
-                                  _isGoalkeeper = false;
-                                  _selectedPosition = null;
-                                }
+                                if (_isStaff) { _isGoalkeeper = false; _selectedPosition = null; }
                               });
                             },
                             contentPadding: EdgeInsets.zero,
@@ -372,9 +328,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                               onChanged: (bool value) {
                                 setState(() {
                                   _isGoalkeeper = value;
-                                  if (_isGoalkeeper) {
-                                    _selectedPosition = null; // Limpa posição de linha
-                                  }
+                                  if (_isGoalkeeper) _selectedPosition = null;
                                 });
                               },
                               contentPadding: EdgeInsets.zero,
@@ -383,22 +337,13 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                       ],
                     ),
 
-                    // --- DROPDOWN POSIÇÃO (Aparece se não for Staff E não for Goleiro) ---
                     if (!_isStaff && !_isGoalkeeper)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: DropdownButtonFormField<String>(
                           value: _selectedPosition,
-                          decoration: const InputDecoration(
-                            labelText: 'Posição',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: _positionOptions.map((String pos) {
-                            return DropdownMenuItem<String>(
-                              value: pos,
-                              child: Text(pos),
-                            );
-                          }).toList(),
+                          decoration: const InputDecoration(labelText: 'Posição', border: OutlineInputBorder()),
+                          items: _positionOptions.map((String pos) => DropdownMenuItem<String>(value: pos, child: Text(pos))).toList(),
                           onChanged: (newValue) => setState(() => _selectedPosition = newValue),
                           validator: (val) => val == null ? 'Selecione a posição' : null,
                         ),
@@ -428,19 +373,10 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // --- DROPDOWN PÉ PREFERIDO ---
                     DropdownButtonFormField<String>(
                       value: _selectedFoot,
-                      decoration: const InputDecoration(
-                        labelText: 'Pé Preferido',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _footOptions.map((String foot) {
-                        return DropdownMenuItem<String>(
-                          value: foot,
-                          child: Text(foot),
-                        );
-                      }).toList(),
+                      decoration: const InputDecoration(labelText: 'Pé Preferido', border: OutlineInputBorder()),
+                      items: _footOptions.map((String foot) => DropdownMenuItem<String>(value: foot, child: Text(foot))).toList(),
                       onChanged: (newValue) => setState(() => _selectedFoot = newValue),
                     ),
                     
@@ -471,7 +407,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                 ),
               ),
             )
-          : const Center(child: Text('Acesso restrito.')),
+          : const Center(child: Text('Acesso restrito. Faça login como Admin.')),
     );
   }
 }

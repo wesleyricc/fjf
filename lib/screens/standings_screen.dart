@@ -1,14 +1,18 @@
-// lib/screens/standings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart'; 
+
+// Imports do Projeto
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'team_detail_screen.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../services/admin_service.dart';
 import '../utils/standings_sorter.dart';
-import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+import '../services/championship_service.dart'; 
+import '../services/firestore_service.dart'; 
 
 class StandingsScreen extends StatefulWidget {
   const StandingsScreen({super.key});
@@ -21,17 +25,15 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   late TabController _tabController;
 
-  // --- Streams para a Classificação Real ---
-  late Stream<QuerySnapshot> _teamsStream;
-  late Stream<QuerySnapshot> _matchesStream;
-  
   // --- Estados para o Simulador ---
-  bool _isLoadingSimulator = true;
+  bool _isLoadingSimulator = false;
   List<TeamStanding> _originalTeamsData = [];
   List<TeamStanding> _simulatedStandings = [];
   List<DocumentSnapshot> _realFinishedMatches = [];
   List<DocumentSnapshot> _pendingMatches = [];
   final Map<String, Map<String, int>> _simulatedScores = {};
+
+  String? _lastLoadedSeasonId;
 
   final Map<String, String> _tiebreakerNames = {
     'head_to_head': 'Confronto Direto (CD)',
@@ -47,15 +49,16 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     
-    // Inicializa os Streams para a Aba 1
-    _teamsStream = _firestore.collection('teams').snapshots();
-    _matchesStream = _firestore
-        .collection('matches')
-        .where('phase', isEqualTo: 'first') 
-        .orderBy('datetime')
-        .snapshots();
-        
-    _loadSimulatorData();
+    _tabController.addListener(() {
+      if (_tabController.index == 1 && !_tabController.indexIsChanging) {
+        if (mounted) {
+          final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+          if (_lastLoadedSeasonId != seasonId || _originalTeamsData.isEmpty) {
+            _loadSimulatorData(seasonId);
+          }
+        }
+      }
+    });
   }
 
   @override
@@ -64,27 +67,45 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     super.dispose();
   }
 
-  // --- Funções da Aba 2: Simulador (Sem alterações) ---
-  Future<void> _loadSimulatorData() async {
+  // --- Lógica do Simulador ---
+  Future<void> _loadSimulatorData(String seasonId) async {
     if (mounted) setState(() => _isLoadingSimulator = true);
     
     try {
-      final teamsSnapshot = await _firestore.collection('teams').get();
-      final matchesSnapshot = await _firestore.collection('matches')
+      _lastLoadedSeasonId = seasonId;
+
+      Query teamsQuery;
+      Query matchesQuery;
+
+      if (seasonId == FirestoreService.LEGACY_ID) {
+        teamsQuery = _firestore.collection('teams');
+        matchesQuery = _firestore.collection('matches');
+      } else {
+        teamsQuery = _firestore.collection('championships').doc(seasonId).collection('teams_participation');
+        matchesQuery = _firestore.collection('championships').doc(seasonId).collection('matches');
+      }
+
+      final teamsSnapshot = await teamsQuery.get();
+      final matchesSnapshot = await matchesQuery
           .where('phase', isEqualTo: 'first')
           .orderBy('datetime')
           .get();
 
       _originalTeamsData = teamsSnapshot.docs.map((doc) => TeamStanding(doc)).toList();
-      _realFinishedMatches = matchesSnapshot.docs.where((doc) => doc['status'] == 'finished').toList();
+      
+      _realFinishedMatches = matchesSnapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return data['status'] == 'finished';
+      }).toList();
+      
       _pendingMatches = matchesSnapshot.docs.where((doc) {
-        final status = doc['status'];
+        final data = doc.data() as Map<String, dynamic>;
+        final status = data['status'];
         return status == 'pending' || status == 'in_progress';
       }).toList();
 
       _simulatedScores.clear();
       for (var match in _pendingMatches) {
-        // --- ALTERAÇÃO 2: Se já estiver rolando, pré-carrega o placar atual ---
         final data = match.data() as Map<String, dynamic>;
         if (data['status'] == 'in_progress' && data['score_home'] != null && data['score_away'] != null) {
            _simulatedScores[match.id] = {
@@ -129,12 +150,12 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
       final scoreAway = simulatedScore?['away'] ?? -1;
 
       if (scoreHome >= 0 && scoreAway >= 0) {
-        var matchData = pendingMatch.data() as Map<String, dynamic>; 
-        // Sobrescreve com o valor simulado
-        matchData['score_home'] = scoreHome;
-        matchData['score_away'] = scoreAway;
-        matchData['status'] = 'finished'; // Força status para o cálculo
-        tempFinishedMatches.add(matchData);
+        var matchData = pendingMatch.data() as Map<String, dynamic>;
+        Map<String, dynamic> simulMatch = Map.from(matchData);
+        simulMatch['score_home'] = scoreHome;
+        simulMatch['score_away'] = scoreAway;
+        simulMatch['status'] = 'finished'; 
+        tempFinishedMatches.add(simulMatch);
       }
     }
 
@@ -193,20 +214,32 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
       _simulatedStandings = sortedList;
     });
   }
-  // --- FIM DAS FUNÇÕES DO SIMULADOR ---
-
 
   @override
   Widget build(BuildContext context) {
+    final championshipService = Provider.of<ChampionshipService>(context);
+    final seasonId = championshipService.currentSeasonId;
+    final seasonName = championshipService.currentSeasonName;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Classificação'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Classificação'),
+            Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Recarregar Simulador',
+            tooltip: 'Recarregar',
             onPressed: () {
-              _loadSimulatorData();
+              if (_tabController.index == 1) {
+                _loadSimulatorData(seasonId);
+              } else {
+                setState(() {});
+              }
             },
           ),
         ],
@@ -225,23 +258,42 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildRealStandingsTab(),
-          _buildSimulatorTab(),
+          _buildRealStandingsTab(seasonId),
+          _buildSimulatorTab(seasonId),
         ],
       ),
       bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 
-  // --- Aba 1: Classificação Real (LÓGICA CORRIGIDA) ---
-  Widget _buildRealStandingsTab() {
+  Widget _buildRealStandingsTab(String seasonId) {
+    Stream<QuerySnapshot> teamsStream;
+    Stream<QuerySnapshot> matchesStream;
+
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      teamsStream = _firestore.collection('teams').snapshots();
+      matchesStream = _firestore.collection('matches')
+          .where('phase', isEqualTo: 'first')
+          .orderBy('datetime')
+          .snapshots();
+    } else {
+      teamsStream = _firestore
+          .collection('championships').doc(seasonId).collection('teams_participation')
+          .snapshots();
+      matchesStream = _firestore
+          .collection('championships').doc(seasonId).collection('matches')
+          .where('phase', isEqualTo: 'first')
+          .orderBy('datetime')
+          .snapshots();
+    }
+
     return StreamBuilder<QuerySnapshot>(
-      stream: _teamsStream,
+      stream: teamsStream,
       builder: (context, teamSnapshot) {
         if (!teamSnapshot.hasData) return const Center(child: CircularProgressIndicator());
         
         return StreamBuilder<QuerySnapshot>(
-          stream: _matchesStream,
+          stream: matchesStream,
           builder: (context, matchSnapshot) {
             if (!matchSnapshot.hasData) return const Center(child: CircularProgressIndicator());
 
@@ -254,50 +306,40 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
             for (var match in allMatches) {
                 final data = match.data() as Map<String, dynamic>;
                 final status = data['status'] ?? 'pending';
-                final phase = data['phase'] ?? 'first';
 
-                if (phase == 'first') {
-                    if (status == 'finished') {
-                        finishedMatchesForSorter.add(data);
-                    } 
-                    else if (status == 'in_progress' && data['score_home'] != null && data['score_away'] != null) {
-                        final homeId = data['team_home_id'];
-                        final awayId = data['team_away_id'];
+                if (status == 'finished') {
+                    finishedMatchesForSorter.add(data);
+                } 
+                else if (status == 'in_progress' && data['score_home'] != null && data['score_away'] != null) {
+                    final homeId = data['team_home_id'];
+                    final awayId = data['team_away_id'];
 
-                        final int scoreHomeInt = (data['score_home'] ?? 0) as int;
-                        final int scoreAwayInt = (data['score_away'] ?? 0) as int;
-                        
-                        final String homeScoreString = '[$scoreHomeInt-$scoreAwayInt]';
-                        final String awayScoreString = '[$scoreAwayInt-$scoreHomeInt]';
+                    final int scoreHomeInt = (data['score_home'] ?? 0) as int;
+                    final int scoreAwayInt = (data['score_away'] ?? 0) as int;
+                    
+                    final String homeScoreString = '[$scoreHomeInt-$scoreAwayInt]';
+                    final String awayScoreString = '[$scoreAwayInt-$scoreHomeInt]';
 
-                        Color homeColor, awayColor;
-                        if (scoreHomeInt > scoreAwayInt) {
-                            homeColor = Colors.green;
-                            awayColor = Colors.red;
-                        } else if (scoreAwayInt > scoreHomeInt) {
-                            homeColor = Colors.red;
-                            awayColor = Colors.green;
-                        } else {
-                            homeColor = Colors.grey;
-                            awayColor = Colors.grey;
-                        }
-                        
-                        // Armazena o placar CORRETO e a cor
-                        liveScores[homeId] = {'score': homeScoreString, 'color': homeColor};
-                        liveScores[awayId] = {'score': awayScoreString, 'color': awayColor};
-                        // --- FIM DA ALTERAÇÃO ---
+                    Color homeColor, awayColor;
+                    if (scoreHomeInt > scoreAwayInt) {
+                        homeColor = Colors.green;
+                        awayColor = Colors.red;
+                    } else if (scoreAwayInt > scoreHomeInt) {
+                        homeColor = Colors.red;
+                        awayColor = Colors.green;
+                    } else {
+                        homeColor = Colors.grey;
+                        awayColor = Colors.grey;
                     }
+                    
+                    liveScores[homeId] = {'score': homeScoreString, 'color': homeColor};
+                    liveScores[awayId] = {'score': awayScoreString, 'color': awayColor};
                 }
             }
             
-            // 2. Processa os times (lendo os pontos já atualizados pelo servidor)
             List<TeamStanding> standings = allTeams.map((doc) => TeamStanding(doc)).toList();
-
-            // 3. Ordena a classificação
             final sorter = StandingsSorter(finishedMatches: finishedMatchesForSorter);
             List<TeamStanding> sortedStandings = sorter.sort(standings);
-            
-            // --- FIM DA LÓGICA CORRIGIDA ---
 
             return SingleChildScrollView(
               child: Column(
@@ -316,10 +358,15 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
       },
     );
   }
-  // --- FIM DA MODIFICAÇÃO ---
 
-  // --- Aba 2: Simulador (Sem alteração) ---
-  Widget _buildSimulatorTab() {
+  Widget _buildSimulatorTab(String seasonId) {
+    if (_originalTeamsData.isEmpty && !_isLoadingSimulator) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+           _loadSimulatorData(seasonId);
+        });
+        return const Center(child: CircularProgressIndicator());
+    }
+
     if (_isLoadingSimulator) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -328,7 +375,6 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     for (final match in _pendingMatches) {
       final data = match.data() as Map<String, dynamic>;
       final int round = data['round'] ?? 0;
-      
       groupedMatches.putIfAbsent(round, () => []).add(match);
     }
     
@@ -367,7 +413,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
           Padding(
             padding: const EdgeInsets.only(top: 8.0),
             child: Text(
-              'Simular Jogos Pendentes/Em Andamento', // Título atualizado
+              'Simular Jogos Pendentes',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
@@ -387,7 +433,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     );
   }
 
-  // --- Tabela (MODIFICADA para aceitar Map de placar ao vivo) ---
+  // --- TABELA COM DESTAQUE G4 (CORRIGIDA) ---
   Widget _buildStandingsDataTable(
     List<TeamStanding> teams, 
     List<DocumentSnapshot> allMatches,
@@ -419,19 +465,20 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
           if (showLast5)
             const DataColumn(label: Center(child: Text('Últ. Jogos'))),
         ],
-        rows: teams.map((teamStanding) {
+        // --- CORREÇÃO AQUI: USANDO asMap() PARA ÍNDICE ---
+        rows: teams.asMap().entries.map((entry) {
+          final index = entry.key + 1; // Índice 1 a N
+          final teamStanding = entry.value;
           final data = teamStanding.data;
-          final index = teams.indexOf(teamStanding) + 1;
 
-          // --- ALTERAÇÃO: Destaque para os 4 primeiros ---
+          // Destaque para os 4 primeiros (G4) - Verde Claro
           Color? rowColor;
           if (index <= 4) {
-             rowColor = Colors.green.withOpacity(0.15); // Fundo verde suave para o G4
+             rowColor = Colors.green.withOpacity(0.15);
           }
-          // -----------------------------------------------
 
           return DataRow(
-            color: rowColor != null ? MaterialStateProperty.all(rowColor) : null, // Aplica a cor
+            color: rowColor != null ? MaterialStateProperty.all(rowColor) : null,
             cells: [
             DataCell(Text(index.toString())),
             DataCell(
@@ -458,7 +505,6 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                     const SizedBox(width: 6),
                     Flexible(child: Text(data['name'] ?? '', overflow: TextOverflow.ellipsis)),
                     
-                    // --- INÍCIO DA ALTERAÇÃO (Placar ao Vivo com Cor) ---
                     if (liveScores.containsKey(teamStanding.id))
                       Padding(
                         padding: const EdgeInsets.only(left: 6.0),
@@ -471,7 +517,6 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                           ),
                         ),
                       )
-                    // --- FIM DA ALTERAÇÃO ---
                   ],
                 ),
               ),
@@ -509,47 +554,34 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     );
   }
   
-  // --- _buildLast5Games (sem alteração) ---
   Widget _buildLast5Games(TeamStanding team, List<DocumentSnapshot> allMatches) {
     final teamId = team.id;
 
-    // --- INÍCIO DA CORREÇÃO ---
-    // Filtra os jogos para incluir APENAS 'finished' ou 'in_progress'
     var teamMatches = allMatches.where((match) {
       final data = match.data() as Map<String, dynamic>;
       final status = data['status'] ?? 'pending';
-      
-      // Condição 1: O jogo não pode ser 'pending'
       bool isRelevantStatus = (status == 'finished' || status == 'in_progress');
-      // Condição 2: O time deve estar na partida
       bool isTeamInMatch = (data['team_home_id'] == teamId || data['team_away_id'] == teamId);
-
       return isRelevantStatus && isTeamInMatch;
     }).toList();
-    // --- FIM DA CORREÇÃO ---
 
-    // 2. Ordena por data (mais nova primeiro)
     teamMatches.sort((a, b) {
       final aTime = (a.data() as Map<String, dynamic>)['datetime'] as Timestamp? ?? Timestamp(0,0);
       final bTime = (b.data() as Map<String, dynamic>)['datetime'] as Timestamp? ?? Timestamp(0,0);
       return bTime.compareTo(aTime);
     });
 
-    // 3. Pega os 5 últimos e 4. Reverte (para o mais novo ficar por último/à direita)
     final last5 = teamMatches.take(5).toList().reversed;
 
     if (last5.isEmpty) {
       return const Center(child: Text('-'));
     }
 
-    // 5. Mapeia para ícones
     final icons = last5.map<Widget>((match) {
       final data = match.data() as Map<String, dynamic>;
       final scoreHome = data['score_home'];
       final scoreAway = data['score_away'];
 
-      // Se os placares ainda não tiverem sido definidos (ex: jogo 'in_progress'
-      // mas o admin ainda não salvou o 0-0 inicial), mostra a bola azul.
       if (scoreHome == null || scoreAway == null) {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2.0),
@@ -577,9 +609,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     return Row(mainAxisAlignment: MainAxisAlignment.center, children: icons);
   }
 
-  // --- _buildSimulationMatchCard (sem alteração) ---
   Widget _buildSimulationMatchCard(String matchId, Map<String, dynamic> data) {
-    
     String formattedDate = 'Data a definir';
     final String location = data['location'] ?? 'Local a definir';
     
@@ -591,11 +621,9 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     final String homeShield = data['team_home_shield'] ?? '';
     final String awayShield = data['team_away_shield'] ?? '';
     final String status = data['status'] ?? 'pending';
-
-    // Adiciona um indicador visual se for ao vivo
     final bool isLive = (status == 'in_progress');
 
-    void _checkAndRunSimulation(String matchId) {
+    void checkAndRunSimulation(String matchId) {
       final homeScore = _simulatedScores[matchId]?['home'] ?? -1;
       final awayScore = _simulatedScores[matchId]?['away'] ?? -1;
 
@@ -604,27 +632,25 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
       }
     }
 
-    // Estilo do Input de Placar
     InputDecoration scoreInputDecoration = InputDecoration(
       border: OutlineInputBorder(
-        borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2.0), // Borda Padrão
+        borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2.0),
       ),
       enabledBorder: OutlineInputBorder(
          borderSide: BorderSide(color: Theme.of(context).primaryColor.withOpacity(0.5), width: 1.5),
       ),
       focusedBorder: OutlineInputBorder(
-         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2.5), // Borda Focada (Destacada)
+         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2.5),
       ),
       filled: true,
-      fillColor: Colors.white, // Fundo Branco
+      fillColor: Colors.white,
       isDense: true,
-      contentPadding: const EdgeInsets.all(12), // Espaço interno maior
+      contentPadding: const EdgeInsets.all(12),
       hintText: '-',
     );
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      // Cor de fundo sutilmente diferente se for Ao Vivo
       color: isLive ? Colors.orange[50] : null,
       shape: isLive ? RoundedRectangleBorder(side: BorderSide(color: Colors.orange.withOpacity(0.5)), borderRadius: BorderRadius.circular(12)) : null,
 
@@ -640,21 +666,10 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                    const SizedBox(width: 4),
                    const Text('AO VIVO - ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red)),
                 ],
-                Text(
-                  formattedDate,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-                ),
-                Text(
-                  ' - ',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-                ),
+                Text(formattedDate, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
+                Text(' - ', style: TextStyle(fontSize: 11, color: Colors.grey[700])),
                 Flexible(
-                  child: Text(
-                    location,
-                    style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: Text(location, style: TextStyle(fontSize: 11, color: Colors.grey[700]), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
                 ),
               ],
             ),
@@ -663,15 +678,12 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
             Row(
               crossAxisAlignment: CrossAxisAlignment.center, 
               children: [
-                
                 Expanded(
                   flex: 3,
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SizedBox(
-                        width: 40,
-                        height: 40,
+                        width: 40, height: 40,
                         child: CachedNetworkImage(
                           imageUrl: homeShield,
                           placeholder: (context, url) => const Icon(Icons.shield, size: 30, color: Colors.grey),
@@ -680,12 +692,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        data['team_home_name'] ?? 'Casa',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Text(data['team_home_name'] ?? 'Casa', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
@@ -696,13 +703,13 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                   child: TextFormField(
                     initialValue: _simulatedScores[matchId]?['home'] == -1 ? '' : _simulatedScores[matchId]?['home'].toString(),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18), // Texto maior
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: scoreInputDecoration, // Estilo destacado
+                    decoration: scoreInputDecoration,
                     onChanged: (value) {
                       _simulatedScores[matchId]?['home'] = int.tryParse(value) ?? -1;
-                      _checkAndRunSimulation(matchId);
+                      checkAndRunSimulation(matchId);
                     },
                   ),
                 ),
@@ -720,10 +727,10 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: scoreInputDecoration, // Estilo destacado
+                    decoration: scoreInputDecoration,
                     onChanged: (value) {
                       _simulatedScores[matchId]?['away'] = int.tryParse(value) ?? -1;
-                      _checkAndRunSimulation(matchId);
+                      checkAndRunSimulation(matchId);
                     },
                   ),
                 ),
@@ -732,11 +739,9 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                 Expanded(
                   flex: 3,
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SizedBox(
-                        width: 40,
-                        height: 40,
+                        width: 40, height: 40,
                         child: CachedNetworkImage(
                           imageUrl: awayShield,
                           placeholder: (context, url) => const Icon(Icons.shield, size: 30, color: Colors.grey),
@@ -745,12 +750,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        data['team_away_name'] ?? 'Visitante',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Text(data['team_away_name'] ?? 'Visitante', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
@@ -762,7 +762,6 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     );
   }
 
-  // --- _buildLegendCard (sem alteração) ---
   Widget _buildLegendCard() {
     return Column(
       children: [
@@ -775,10 +774,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Legenda',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('Legenda', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 _buildLegendRow('P', 'Pontos (Partida + Extras)'),
                 _buildLegendRow('J', 'Jogos'),
@@ -805,17 +801,11 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Critérios de Desempate (Ordem)',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('Critérios de Desempate (Ordem)', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 _buildLegendRow('1º', 'Pontos (P)'),
                 for (int i = 0; i < AdminService.tiebreakerOrder.length; i++)
-                  _buildLegendRow(
-                    '${i + 2}º',
-                    _tiebreakerNames[AdminService.tiebreakerOrder[i]] ?? AdminService.tiebreakerOrder[i],
-                  ),
+                  _buildLegendRow('${i + 2}º', _tiebreakerNames[AdminService.tiebreakerOrder[i]] ?? AdminService.tiebreakerOrder[i]),
               ],
             ),
           ),
@@ -824,23 +814,14 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     );
   }
 
-  // --- _buildLegendRow (sem alteração) ---
   Widget _buildLegendRow(String abbreviation, String description) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1.5),
       child: Row(
         children: [
-          Text(
-            '$abbreviation:',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-          ),
+          Text('$abbreviation:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
           const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              description,
-              style: const TextStyle(fontSize: 11),
-            ),
-          ),
+          Expanded(child: Text(description, style: const TextStyle(fontSize: 11))),
         ],
       ),
     );

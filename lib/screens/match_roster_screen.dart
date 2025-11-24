@@ -1,15 +1,15 @@
-// lib/screens/match_roster_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart'; 
 import '../widgets/player_display_card.dart';
 import '../services/admin_service.dart';
 import '../widgets/sponsor_banner_rotator.dart'; 
 import 'package:intl/intl.dart';
 import 'player_profile_screen.dart';
-
-// --- CLASSE 'FakeDocumentSnapshot' REMOVIDA ---
-// (Não é mais necessária, corrigindo o alerta 'sealed')
+import '../services/auth_service.dart';
+import '../services/championship_service.dart'; // <-- Importante
+import '../services/firestore_service.dart'; // <-- Importante
 
 class MatchRosterScreen extends StatefulWidget {
   static const routeName = '/match-roster';
@@ -72,24 +72,25 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
   }
 
   Color? _parseColor(String? hexColor) {
-    if (hexColor == null || hexColor.isEmpty) {
+    if (hexColor == null || hexColor.trim().isEmpty) {
       return null;
     }
     try {
-      final String formattedHex = 'ff${hexColor.replaceAll('#', '')}';
-      return Color(int.parse(formattedHex, radix: 16));
+      String cleanHex = hexColor.replaceAll('#', '').trim();
+      if (cleanHex.length == 6) {
+        cleanHex = 'FF$cleanHex'; // Adiciona Alpha se faltar
+      }
+      return Color(int.parse(cleanHex, radix: 16));
     } catch (e) {
-      debugPrint("Erro ao converter cor: $hexColor. $e");
+      debugPrint("Erro ao converter cor: '$hexColor'. $e");
       return null;
     }
   }
 
-  // --- NOVA FUNÇÃO PARA SALVAR NO FIRESTORE ---
   Future<void> _saveLineupToFirestore(bool isTeam1) async {
     try {
       List<String> newStartersIds = [];
 
-      // Coleta os jogadores titulares atuais baseados no estado da tela
       if (isTeam1) {
         if (_team1TitularGoalkeeper != null) newStartersIds.add(_team1TitularGoalkeeper!['id']);
         if (_team1Fixo != null) newStartersIds.add(_team1Fixo!['id']);
@@ -105,13 +106,21 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       }
 
       final String teamId = isTeam1 ? widget.team1Id : widget.team2Id;
+      
+      // --- CORREÇÃO: Salvar na coleção correta ---
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      CollectionReference teamsRef;
+      
+      if (seasonId == FirestoreService.LEGACY_ID) {
+        teamsRef = _firestore.collection('teams');
+      } else {
+        teamsRef = _firestore.collection('championships').doc(seasonId).collection('teams_participation');
+      }
 
-      // Atualiza o campo 'default_starters' no documento do time
-      await _firestore.collection('teams').doc(teamId).update({
+      await teamsRef.doc(teamId).update({
         'default_starters': newStartersIds,
       });
-
-      debugPrint("Escalação salva para o time $teamId: $newStartersIds");
+      // -------------------------------------------
 
     } catch (e) {
       debugPrint("Erro ao salvar escalação: $e");
@@ -135,25 +144,34 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       _team1Players = results[0];
       _team2Players = results[1];
       
-      final teamDocs = await Future.wait([
-        _firestore.collection('teams').doc(widget.team1Id).get(const GetOptions(source: Source.server)),
-        _firestore.collection('teams').doc(widget.team2Id).get(const GetOptions(source: Source.server)),
-      ]);
+      // --- CORREÇÃO DA LEITURA DO TIME (COR E TITULARES) ---
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      CollectionReference teamsRef;
+      
+      if (seasonId == FirestoreService.LEGACY_ID) {
+        teamsRef = _firestore.collection('teams');
+      } else {
+        teamsRef = _firestore.collection('championships').doc(seasonId).collection('teams_participation');
+      }
 
-      // --- CORREÇÃO: Cast desnecessário removido ---
-      final team1Data = teamDocs[0].data() ?? {};
-      final team2Data = teamDocs[1].data() ?? {};
-      // --- FIM DA CORREÇÃO ---
+      final teamDocs = await Future.wait([
+        teamsRef.doc(widget.team1Id).get(),
+        teamsRef.doc(widget.team2Id).get(),
+      ]);
+      // -----------------------------------------------------
+
+      final team1Data = teamDocs[0].data() as Map<String, dynamic>? ?? {};
+      final team2Data = teamDocs[1].data() as Map<String, dynamic>? ?? {};
 
       List<String> startersHomeIds = List<String>.from(team1Data['default_starters'] ?? []);
       List<String> startersAwayIds = List<String>.from(team2Data['default_starters'] ?? []);
       
+      debugPrint("Cor Time 1 (Season $seasonId): ${team1Data['team_color']}");
+      debugPrint("Cor Time 2 (Season $seasonId): ${team2Data['team_color']}");
+
       _team1Color = _parseColor(team1Data['team_color'] as String?);
       _team2Color = _parseColor(team2Data['team_color'] as String?);
       
-      debugPrint("Titulares Padrão Time 1 (${startersHomeIds.length}): $startersHomeIds");
-      debugPrint("Titulares Padrão Time 2 (${startersAwayIds.length}): $startersAwayIds");
-
       _calculateLineups(startersHomeIds, startersAwayIds);
       
     } catch (e) {
@@ -212,12 +230,10 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       }
     }
 
-    // --- TIME 1 ---
+    // TIME 1
     if (startersHomeIds.length != 5) {
-      debugPrint("TIME 1: Usando Fallback (encontrados ${startersHomeIds.length}/5 titulares)");
       applyFallbackLogic(true);
     } else {
-      debugPrint("TIME 1: Usando lógica de Posição");
       final starters1 = _team1Players.where((p) => startersHomeIds.contains(p['id'])).toList();
       _team1Reserves = _team1Players.where((p) => !startersHomeIds.contains(p['id'])).toList();
       
@@ -237,12 +253,10 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       if (_team1Pivo == null) _team1Pivo = _findAndRemovePlayer(lineStarters1, null);
     }
 
-    // --- TIME 2 ---
+    // TIME 2
     if (startersAwayIds.length != 5) {
-      debugPrint("TIME 2: Usando Fallback (encontrados ${startersAwayIds.length}/5 titulares)");
       applyFallbackLogic(false);
     } else {
-      debugPrint("TIME 2: Usando lógica de Posição");
       final starters2 = _team2Players.where((p) => startersAwayIds.contains(p['id'])).toList();
       _team2Reserves = _team2Players.where((p) => !startersAwayIds.contains(p['id'])).toList();
       
@@ -266,7 +280,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     _team2Reserves.sort((a,b) => (a['jersey_number'] ?? 99).compareTo(b['jersey_number'] ?? 99));
   }
 
-  // --- CORREÇÃO: _showClearSuspensionDialog agora aceita Map e ID ---
   Future<void> _showClearSuspensionDialog(
       BuildContext context, Map<String, dynamic> playerData, String playerId) async {
         
@@ -312,12 +325,8 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
 
                   if (currentYellows >= AdminService.suspensionYellowCards) {
                     updateData['yellow_cards'] = 0;
-                    debugPrint("Limpando suspensão: Zerando yellow_cards (era $currentYellows).");
-                  } else {
-                    debugPrint("Limpando suspensão: Mantendo yellow_cards (era $currentYellows).");
                   }
 
-                  // Atualiza o jogador usando o 'playerId'
                   await _firestore
                       .collection('players')
                       .doc(playerId)
@@ -330,7 +339,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
                      );
                   }
                 } catch (e) {
-                  debugPrint("Erro ao liberar jogador: $e");
                    if (Navigator.of(dialogContext).canPop()) {
                      ScaffoldMessenger.of(dialogContext).showSnackBar(
                        SnackBar(content: Text('Erro ao liberar jogador: $e')),
@@ -344,21 +352,27 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       },
     );
   }
-  // --- FIM DA CORREÇÃO ---
 
-  // --- CORREÇÃO: _fetchPlayersForTeam (Cast desnecessário removido) ---
   Future<List<Map<String, dynamic>>> _fetchPlayersForTeam(String teamId) async {
-    final playersSnapshot = await _firestore
-        .collection('players')
+    // --- CORREÇÃO: BUSCA HÍBRIDA (SEASON AWARE) ---
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    Query playersQuery;
+    
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      playersQuery = _firestore.collection('players');
+    } else {
+      playersQuery = _firestore.collection('championships').doc(seasonId).collection('player_stats');
+    }
+    
+    final playersSnapshot = await playersQuery
         .where('team_id', isEqualTo: teamId)
         .where('isActive', isEqualTo: true)
-        .where('is_staff', isEqualTo: false)
-        .orderBy('jersey_number')
-        .orderBy('name')
+        // .where('is_staff', isEqualTo: false) // Removi para trazer todos e filtrar/ordenar em memória
         .get();
+    // -----------------------------------------------
 
-    return playersSnapshot.docs.map((doc) {
-      final data = doc.data(); 
+    List<Map<String, dynamic>> players = playersSnapshot.docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>; 
       return {
         'id': doc.id,
         ...data,
@@ -366,11 +380,22 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
         'red_cards': data['red_cards'] ?? 0,
         'is_suspended': data['is_suspended'] ?? false,
         'is_goalkeeper': data['is_goalkeeper'] ?? false,
+        'is_staff': data['is_staff'] ?? false, // Garantir que existe
         'position': data['position'], 
       };
     }).toList();
+
+    // Filtra apenas jogadores (sem staff) para a quadra
+    players = players.where((p) => p['is_staff'] == false).toList();
+
+    players.sort((a, b) {
+      final int numA = a['jersey_number'] ?? 999;
+      final int numB = b['jersey_number'] ?? 999;
+      return numA.compareTo(numB);
+    });
+
+    return players;
   }
-  // --- FIM DA CORREÇÃO ---
 
   Future<void> _showPlayerSelectionDialog({
     required bool isTeam1, 
@@ -379,7 +404,8 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     required String positionKey,
   }) async {
     
-    if (!AdminService.isAdmin) return;
+    final isAuthenticated = Provider.of<AuthService>(context, listen: false).isAuthenticated;
+    if (!isAuthenticated) return;
 
     final availableReserves = isTeam1 ? _team1Reserves : _team2Reserves;
     
@@ -394,11 +420,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
                 itemCount: availableReserves.length,
                 itemBuilder: (context, index) {
                    final reserve = availableReserves[index];
-                   
-                   // --- FILTRO REMOVIDO ---
-                   // Agora todos os reservas aparecem, independente se a vaga é para GK ou Linha
-                   
-                   // Define o subtítulo para ajudar a identificar a posição real do jogador
                    final bool reserveIsGk = reserve['is_goalkeeper'] ?? false;
                    final String posDescription = reserveIsGk 
                        ? 'Goleiro' 
@@ -406,7 +427,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
 
                    return ListTile(
                       leading: Icon(
-                        reserveIsGk ? Icons.pan_tool : Icons.person,
+                        reserveIsGk ? Icons.pan_tool_outlined : Icons.person,
                         color: Colors.grey[600],
                       ),
                       title: Text(reserve['name'] ?? '...'),
@@ -487,8 +508,9 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       top: adjustedTop.clamp(0.0, quadraHeight - playerCardHeight),
       child: GestureDetector(
         onTap: () {
-          // Se for Admin, a ação é SUBSTITUIR
-          if (AdminService.isAdmin) {
+          final isAuthenticated = Provider.of<AuthService>(context, listen: false).isAuthenticated;
+          
+          if (isAuthenticated) {
             _showPlayerSelectionDialog(
               isTeam1: isTeam1,
               isGoalkeeper: positionKey == 'GK',
@@ -496,7 +518,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
               positionKey: positionKey,
             );
           } else {
-            // Se for Utilizador, a ação é VER PERFIL
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (ctx) => PlayerProfileScreen(playerId: player['id']),
@@ -504,7 +525,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
             );
           }
         },
-        // --- FIM DA ALTERAÇÃO ---
         child: playerCard,
       ),
     );
@@ -794,14 +814,8 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
           const Divider(),
 
           _buildReservesSection(
-            team1Name,
-            team1ShieldUrl,
-            team1Reserves,
-            team1Color,
-            team2Name,
-            team2ShieldUrl,
-            team2Reserves,
-            team2Color,
+            team1Name, team1ShieldUrl, team1Reserves, team1Color,
+            team2Name, team2ShieldUrl, team2Reserves, team2Color,
           ),
         ],
       ),
@@ -817,10 +831,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Banco de Reservas',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
+          Text('Banco de Reservas', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 10),
           _buildTeamReservesList(team1Name, team1ShieldUrl, team1Reserves, team1Color),
           const SizedBox(height: 10),
@@ -831,10 +842,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
   }
 
   Widget _buildTeamReservesList(
-    String teamName,
-    String teamShieldUrl,
-    List<Map<String, dynamic>> reserves,
-    Color? teamColor,
+    String teamName, String teamShieldUrl, List<Map<String, dynamic>> reserves, Color? teamColor,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -842,17 +850,9 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
         Row(
           children: [
             if (teamShieldUrl.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: teamShieldUrl,
-                width: 30, height: 30, fit: BoxFit.contain,
-                placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
-                errorWidget: (context, url, error) => const Icon(Icons.shield),
-              ),
+              CachedNetworkImage(imageUrl: teamShieldUrl, width: 30, height: 30, fit: BoxFit.contain, placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2), errorWidget: (context, url, error) => const Icon(Icons.shield)),
             const SizedBox(width: 8),
-            Text(
-              '$teamName (Reservas)',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('$teamName (Reservas)', style: Theme.of(context).textTheme.titleMedium),
           ],
         ),
         const SizedBox(height: 8),
@@ -863,14 +863,10 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
             spacing: 8.0, 
             runSpacing: 8.0,
             children: reserves.map((player) {
-              // --- INÍCIO DA ALTERAÇÃO ---
-              return InkWell( // <-- Envolvido em InkWell
+              return InkWell(
                 onTap: () {
-                  // Ação de ver perfil (para todos, admin ou não)
                   Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (ctx) => PlayerProfileScreen(playerId: player['id']),
-                    ),
+                    MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: player['id'])),
                   );
                 },
                 child: PlayerDisplayCard(
@@ -883,48 +879,30 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
                   teamColor: teamColor,
                 ),
               );
-              // --- FIM DA ALTERAÇÃO ---
             }).toList(),
           ),
       ],
     );
   }
 
-  // --- FUNÇÃO QUE FALTAVA (E CORRIGIDA) ---
-  Widget _buildDetailsView(
-      BuildContext context,
-      List<Map<String, dynamic>> team1Players,
-      List<Map<String, dynamic>> team2Players) {
+  Widget _buildDetailsView(BuildContext context, List<Map<String, dynamic>> team1Players, List<Map<String, dynamic>> team2Players) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTeamSection(
-            context,
-            widget.team1Name,
-            widget.team1ShieldUrl,
-            team1Players,
-          ),
+          _buildTeamSection(context, widget.team1Name, widget.team1ShieldUrl, team1Players),
           const SizedBox(height: 20),
-          _buildTeamSection(
-            context,
-            widget.team2Name,
-            widget.team2ShieldUrl,
-            team2Players,
-          ),
+          _buildTeamSection(context, widget.team2Name, widget.team2ShieldUrl, team2Players),
         ],
       ),
     );
   }
-  // --- FIM DA FUNÇÃO ---
 
-  // --- _buildTeamSection (CORRIGIDA PARA REMOVER O FAKEDOC) ---
-  Widget _buildTeamSection(
-      BuildContext context,
-      String teamName,
-      String teamShieldUrl,
-      List<Map<String, dynamic>> players) {
+  Widget _buildTeamSection(BuildContext context, String teamName, String teamShieldUrl, List<Map<String, dynamic>> players) {
+    
+    final isAuthenticated = Provider.of<AuthService>(context).isAuthenticated;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -932,17 +910,9 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (teamShieldUrl.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: teamShieldUrl,
-                width: 40, height: 40, fit: BoxFit.contain,
-                placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
-                errorWidget: (context, url, error) => const Icon(Icons.shield),
-              ),
+              CachedNetworkImage(imageUrl: teamShieldUrl, width: 40, height: 40, fit: BoxFit.contain, placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2), errorWidget: (context, url, error) => const Icon(Icons.shield)),
             const SizedBox(width: 10),
-            Text(
-              teamName,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
+            Text(teamName, style: Theme.of(context).textTheme.headlineSmall),
           ],
         ),
         const SizedBox(height: 10),
@@ -951,7 +921,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
           physics: const NeverScrollableScrollPhysics(),
           itemCount: players.length,
           itemBuilder: (context, index) {
-            final player = players[index]; // player é um Map<String, dynamic>
+            final player = players[index];
             final String playerId = player['id'] ?? '';
             final int jerseyNumber = player['jersey_number'] ?? 0;
             final String playerName = player['name'] ?? 'Nome Indisponível';
@@ -968,74 +938,37 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
               child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor: Theme.of(context).primaryColor,
-                  child: Text(
-                    '$jerseyNumber',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
+                  child: Text('$jerseyNumber', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
                 title: Text(
                   playerName,
-                  style: TextStyle(
-                    decoration: isSuspended ? TextDecoration.lineThrough : TextDecoration.none,
-                    color: isSuspended ? Colors.grey[600] : null,
-                  ),
+                  style: TextStyle(decoration: isSuspended ? TextDecoration.lineThrough : TextDecoration.none, color: isSuspended ? Colors.grey[600] : null),
                 ),
-                subtitle: Text('${isGoalkeeper ? 'Goleiro' : position}'),
+                subtitle: Text(isGoalkeeper ? 'Goleiro' : position),
                 
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (isGoalkeeper)
+                       const Padding(padding: EdgeInsets.only(right: 8.0), child: Icon(Icons.pan_tool_outlined, size: 18, color: Colors.grey)),
+
                     if (isSuspended || redCards > 0)
-                      Icon(
-                        Icons.style, 
-                        color: Colors.red[700], 
-                        semanticLabel: 'Suspenso', 
-                        size: 20
-                      )
+                      Icon(Icons.style, color: Colors.red[700], size: 20, semanticLabel: 'Suspenso')
                     else if (yellowCards >= AdminService.pendingYellowCards)
                       Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: List.generate(
-                          yellowCards,
-                          (index) => Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 1.0),
-                            child: Icon(
-                              Icons.style, 
-                              color: Colors.yellow[700], 
-                              semanticLabel: 'Pendurado', 
-                              size: 20
-                            ),
-                          ),
-                        ),
+                        children: List.generate(yellowCards, (index) => Padding(padding: const EdgeInsets.symmetric(horizontal: 1.0), child: Icon(Icons.style, color: Colors.yellow[700], size: 20, semanticLabel: 'Pendurado'))),
                       ),
                     
-                    if (AdminService.isAdmin && isSuspended)
-                      GestureDetector( // Envolve com GestureDetector
-                        onTap: () {
-                          // Passa o Map 'player' e o 'playerId'
-                          _showClearSuspensionDialog(context, player, playerId);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8.0),
-                          child: Icon(
-                            Icons.admin_panel_settings_outlined, 
-                            color: Theme.of(context).primaryColor, 
-                            size: 20,
-                            semanticLabel: 'Gerenciar Suspensão',
-                          ),
-                        ),
+                    if (isAuthenticated && isSuspended)
+                      GestureDetector(
+                        onTap: () { _showClearSuspensionDialog(context, player, playerId); },
+                        child: Padding(padding: const EdgeInsets.only(left: 8.0), child: Icon(Icons.admin_panel_settings_outlined, color: Theme.of(context).primaryColor, size: 20)),
                       ),
                   ],
                 ),
 
-                onTap: () {
-                  // Ação padrão: navegar para o perfil
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (ctx) => PlayerProfileScreen(playerId: player['id']),
-                    ),
-                  );
-                },
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: player['id']))),
               ),
             );
           },
@@ -1043,5 +976,4 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       ],
     );
   }
-  // --- FIM DA CORREÇÃO ---
 }

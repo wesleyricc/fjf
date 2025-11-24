@@ -1,8 +1,10 @@
-// lib/screens/disciplinary_rules_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart'; // Para input formatters
+import 'package:provider/provider.dart'; // <-- Importante
 import '../services/admin_service.dart';
+import '../services/championship_service.dart'; // <-- Importante
+import '../services/firestore_service.dart'; // <-- Importante
 
 class DisciplinaryRulesScreen extends StatefulWidget {
   const DisciplinaryRulesScreen({super.key});
@@ -12,92 +14,27 @@ class DisciplinaryRulesScreen extends StatefulWidget {
 }
 
 class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final _formKey = GlobalKey<FormState>(); // Chave para o formulário
+  final _formKey = GlobalKey<FormState>();
 
-  // Controladores para os campos
+  // Controladores
   late TextEditingController _pendingController;
   late TextEditingController _suspensionController;
   late bool _suspendOnRed;
   late bool _resetYellowsOnSuspension;
   late bool _resetYellowsOnRed;
-  //late bool _resetYellowsOnRedWhilePending;
 
-  bool _isLoading = true;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _pendingController = TextEditingController();
-    _suspensionController = TextEditingController();
-    _suspendOnRed = AdminService.suspensionOnRed; // Usa valor do cache inicial
+    // Inicializa com os valores já carregados no AdminService (pelo ChampionshipService)
+    _pendingController = TextEditingController(text: AdminService.pendingYellowCards.toString());
+    _suspensionController = TextEditingController(text: AdminService.suspensionYellowCards.toString());
+    _suspendOnRed = AdminService.suspensionOnRed;
     _resetYellowsOnSuspension = AdminService.resetYellowsOnSuspension;
     _resetYellowsOnRed = AdminService.resetYellowsOnRed;
-    //_resetYellowsOnRedWhilePending = AdminService.resetYellowsOnRedWhilePending;
-    _loadCurrentRules();
   }
-
-  // Carrega as regras atuais do Firestore para preencher o form
-  Future<void> _loadCurrentRules() async {
-    setState(() { _isLoading = true; });
-    try {
-       // Usa as regras já carregadas no AdminService para preencher inicialmente
-       _pendingController.text = AdminService.pendingYellowCards.toString();
-       _suspensionController.text = AdminService.suspensionYellowCards.toString();
-       _suspendOnRed = AdminService.suspensionOnRed;
-        _resetYellowsOnSuspension = AdminService.resetYellowsOnSuspension;
-        _resetYellowsOnRed = AdminService.resetYellowsOnRed;
-        //_resetYellowsOnRedWhilePending = AdminService.resetYellowsOnRedWhilePending;
-       // Opcional: Busca novamente do Firestore para garantir o valor mais recente
-       // final docSnap = await _firestore.collection('config').doc('disciplinary_rules').get();
-       // if (docSnap.exists && docSnap.data() != null) {
-       //    _pendingController.text = (docSnap.data()!['pending_yellow_cards'] ?? AdminService.pendingYellowCards).toString();
-       //    _suspensionController.text = (docSnap.data()!['suspension_yellow_cards'] ?? AdminService.suspensionYellowCards).toString();
-       //    _suspendOnRed = docSnap.data()!['suspension_on_red'] ?? AdminService.suspensionOnRed;
-       // }
-    } catch (e) {
-       debugPrint("Erro ao carregar regras atuais: $e");
-       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao carregar regras: $e')));
-    } finally {
-       if (mounted) setState(() { _isLoading = false; });
-    }
-  }
-
-  // Salva as novas regras no Firestore
-  Future<void> _saveRules() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      setState(() { _isSaving = true; });
-      try {
-        final int pending = int.parse(_pendingController.text);
-        final int suspension = int.parse(_suspensionController.text);
-
-        await _firestore.collection('config').doc('disciplinary_rules').set({ // Usa .set para criar/sobrescrever
-          'pending_yellow_cards': pending,
-          'suspension_yellow_cards': suspension,
-          'suspension_on_red': _suspendOnRed,
-          'reset_yellows_on_suspension': _resetYellowsOnSuspension,
-          'reset_yellows_on_red': _resetYellowsOnRed,
-          //'reset_yellows_on_red_while_pending': _resetYellowsOnRedWhilePending,
-        });
-
-        // Recarrega as regras no AdminService para o app usar imediatamente
-        await AdminService.loadDisciplinaryRules();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Regras salvas com sucesso!')));
-          Navigator.of(context).pop(); // Volta para o menu admin
-        }
-
-      } catch (e) {
-         debugPrint("Erro ao salvar regras: $e");
-         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar regras: $e')));
-      } finally {
-         if (mounted) setState(() { _isSaving = false; });
-      }
-    }
-  }
-
 
   @override
   void dispose() {
@@ -106,98 +43,151 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
     super.dispose();
   }
 
+  // Helper para salvar no local certo
+  DocumentReference _getSettingsDocRef(String seasonId, String docId) {
+    if (seasonId == FirestoreService.LEGACY_ID) {
+      return FirebaseFirestore.instance.collection('config').doc(docId);
+    } else {
+      return FirebaseFirestore.instance
+          .collection('championships')
+          .doc(seasonId)
+          .collection('settings')
+          .doc(docId);
+    }
+  }
+
+  Future<void> _saveRules() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+    
+    // 1. Pega Temporada
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
+    try {
+      final int pending = int.parse(_pendingController.text);
+      final int suspension = int.parse(_suspensionController.text);
+
+      // 2. Salva no documento correto
+      await _getSettingsDocRef(seasonId, 'disciplinary_rules').set({
+        'pending_yellow_cards': pending,
+        'suspension_yellow_cards': suspension,
+        'suspension_on_red': _suspendOnRed,
+        'reset_yellows_on_suspension': _resetYellowsOnSuspension,
+        'reset_yellows_on_red': _resetYellowsOnRed,
+      }, SetOptions(merge: true));
+
+      // 3. Atualiza memória local
+      AdminService.pendingYellowCards = pending;
+      AdminService.suspensionYellowCards = suspension;
+      AdminService.suspensionOnRed = _suspendOnRed;
+      AdminService.resetYellowsOnSuspension = _resetYellowsOnSuspension;
+      AdminService.resetYellowsOnRed = _resetYellowsOnRed;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Regras disciplinares salvas!')));
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar: $e')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar Regras Disciplinares'),
+        title: const Text('Regras Disciplinares'),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16.0),
-                children: [
-                  TextFormField(
-                    controller: _pendingController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nº Cartões Amarelos para "Pendurado"',
-                      hintText: 'Ex: 2',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator: (value) {
-                      if (value == null || value.isEmpty) return 'Campo obrigatório';
-                      if (int.tryParse(value) == null || int.parse(value) <= 0) return 'Valor inválido (> 0)';
-                      return null;
-                    },
-                    enabled: !_isSaving,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _suspensionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nº Cartões Amarelos para "Suspensão"',
-                      hintText: 'Ex: 3',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                     validator: (value) {
-                      if (value == null || value.isEmpty) return 'Campo obrigatório';
-                      final suspValue = int.tryParse(value);
-                      final pendValue = int.tryParse(_pendingController.text);
-                      if (suspValue == null || suspValue <= 0) return 'Valor inválido (> 0)';
-                      if (pendValue != null && suspValue <= pendValue) return 'Deve ser maior que o nº para pendurar';
-                      return null;
-                    },
-                    enabled: !_isSaving,
-                  ),
-                   const SizedBox(height: 16),
-                   SwitchListTile(
-                     title: const Text('Cartão Vermelho causa Suspensão?'),
-                     value: _suspendOnRed,
-                     onChanged: _isSaving ? null : (bool value) {
-                       setState(() {
-                         _suspendOnRed = value;
-                       });
-                     },
-                     secondary: Icon(_suspendOnRed ? Icons.check_circle : Icons.cancel_outlined),
-                     activeColor: Theme.of(context).primaryColor,
-                   ),
-                    const Divider(),
-
-                    SwitchListTile(
-                     title: const Text('Zerar amarelos ao suspender por CA?'),
-                     value: _resetYellowsOnSuspension,
-                     onChanged: _isSaving ? null : (bool value) => setState(() => _resetYellowsOnSuspension = value),
-                     secondary: Icon(_resetYellowsOnSuspension ? Icons.clear_all : Icons.layers_clear),
-                    ),
-                    SwitchListTile(
-                      title: const Text('Zerar amarelos ao suspender por CV?'),
-                      value: _resetYellowsOnRed,
-                      onChanged: _isSaving ? null : (bool value) => setState(() => _resetYellowsOnRed = value),
-                      secondary: Icon(_resetYellowsOnRed ? Icons.clear_all : Icons.layers_clear),
-                    ),
-                    
-
-                   const SizedBox(height: 32),
-                   ElevatedButton.icon(
-                     icon: _isSaving ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save),
-                     label: Text(_isSaving ? 'Salvando...' : 'Salvar Regras'),
-                     style: ElevatedButton.styleFrom(
-                       backgroundColor: Theme.of(context).primaryColor,
-                       foregroundColor: Colors.white,
-                       padding: const EdgeInsets.symmetric(vertical: 12.0),
-                       textStyle: const TextStyle(fontSize: 16),
-                     ),
-                     onPressed: _isSaving ? null : _saveRules,
-                   ),
-                ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Defina os limites de cartões para as regras automáticas.',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
-            ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _pendingController,
+                decoration: const InputDecoration(
+                  labelText: 'Cartões para "Pendurado"',
+                  helperText: 'Ex: 2 amarelos (apenas visual)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) => (value == null || value.isEmpty) ? 'Obrigatório' : null,
+                enabled: !_isSaving,
+              ),
+              const SizedBox(height: 20),
+
+              TextFormField(
+                controller: _suspensionController,
+                decoration: const InputDecoration(
+                  labelText: 'Cartões para Suspensão Automática',
+                  helperText: 'Ex: 3 amarelos (gera suspensão)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) => (value == null || value.isEmpty) ? 'Obrigatório' : null,
+                enabled: !_isSaving,
+              ),
+              const SizedBox(height: 20),
+
+              SwitchListTile(
+                title: const Text('Suspender ao receber Cartão Vermelho?'),
+                subtitle: const Text('Gera suspensão automática de 1 jogo.'),
+                value: _suspendOnRed,
+                onChanged: _isSaving ? null : (bool value) => setState(() => _suspendOnRed = value),
+                secondary: Icon(_suspendOnRed ? Icons.block : Icons.check_circle_outline, color: _suspendOnRed ? Colors.red : Colors.grey),
+              ),
+              
+              const Divider(),
+              
+              SwitchListTile(
+                title: const Text('Zerar amarelos ao suspender por CA?'),
+                subtitle: const Text('Após tomar o 3º amarelo e suspender, a contagem volta a zero?'),
+                value: _resetYellowsOnSuspension,
+                onChanged: _isSaving ? null : (bool value) => setState(() => _resetYellowsOnSuspension = value),
+                secondary: Icon(_resetYellowsOnSuspension ? Icons.restart_alt : Icons.history),
+              ),
+
+              SwitchListTile(
+                title: const Text('Zerar amarelos ao suspender por CV?'),
+                subtitle: const Text('Se tomar vermelho direto, zera os amarelos acumulados?'),
+                value: _resetYellowsOnRed,
+                onChanged: _isSaving ? null : (bool value) => setState(() => _resetYellowsOnRed = value),
+                secondary: Icon(_resetYellowsOnRed ? Icons.layers_clear : Icons.layers),
+              ),
+
+              const SizedBox(height: 32),
+              
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: _isSaving ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save),
+                  label: Text(_isSaving ? 'Salvando...' : 'Salvar Regras'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    textStyle: const TextStyle(fontSize: 16),
+                  ),
+                  onPressed: _isSaving ? null : _saveRules,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

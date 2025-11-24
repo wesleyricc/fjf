@@ -1,265 +1,196 @@
-// lib/widgets/app_drawer.dart
 import 'package:flutter/material.dart';
-// Precisamos importar as telas para onde vamos navegar
-import '../screens/splash_screen.dart';
-import '../services/admin_service.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
+import '../services/championship_service.dart';
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final AdminService adminService = AdminService();
+  State<AppDrawer> createState() => _AppDrawerState();
+}
 
-    return Drawer(
-      // A cor de fundo já é definida pelo tema no main.dart (drawerTheme)
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: <Widget>[
-          // --- HEADER DO DRAWER (Com a Logo e Título) ---
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).primaryColor, // Cor definida no main.dart
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset(
-                  'assets/logo2_fjf.png', // Caminho da sua logo
-                  height: 80,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'FJF 2025',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+class _AppDrawerState extends State<AppDrawer> {
+  
+  Future<void> _showLoginDialog(BuildContext originalContext) async {
+    final authService = Provider.of<AuthService>(originalContext, listen: false);
+    final userController = TextEditingController();
+    final passController = TextEditingController();
+    
+    // Não usamos StatefulBuilder aqui para simplificar o contexto, 
+    // pois o loading será controlado por um ValueNotifier local ou setState do pai se necessário.
+    // Mas para manter o padrão visual, vamos ajustar a lógica de fechamento.
+    
+    await showDialog(
+      context: originalContext,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        bool isLocalLoading = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Acesso Administrativo'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: userController,
+                    decoration: const InputDecoration(labelText: 'Usuário'),
+                    enabled: !isLocalLoading,
                   ),
-                ),
-                const Text(
-                  'Taça Mary Neusa Espíndola Bif',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                  TextField(
+                    controller: passController,
+                    decoration: const InputDecoration(labelText: 'Senha'),
+                    obscureText: true,
+                    enabled: !isLocalLoading,
                   ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isLocalLoading ? null : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: isLocalLoading
+                      ? null
+                      : () async {
+                          setDialogState(() => isLocalLoading = true);
+                          
+                          // 1. Tenta Logar
+                          final error = await authService.login(
+                            userController.text.trim(),
+                            passController.text,
+                          );
+
+                          setDialogState(() => isLocalLoading = false);
+
+                          if (error == null) {
+                            // SUCESSO
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop(); // Fecha o Diálogo
+                            }
+                            
+                            // Pequeno delay para garantir que o diálogo fechou visualmente
+                            await Future.delayed(const Duration(milliseconds: 200));
+
+                            if (originalContext.mounted) {
+                              Navigator.of(originalContext).pop(); // Fecha o Drawer
+                              Navigator.of(originalContext).pushNamed('/admin-menu'); // Vai pro Menu
+                            }
+                          } else {
+                            // ERRO
+                            if (dialogContext.mounted) {
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(content: Text(error), backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        },
+                  child: isLocalLoading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Entrar'),
                 ),
               ],
-            ),
-          ),
-          // --- FIM DO HEADER ---
-
-          // --- ITENS DO MENU (Com a lógica de navegação corrigida) ---
-          _buildDrawerItem(
-            context,
-            Icons.home,
-            'Início',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacementNamed('/');
-            },
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.calendar_today,
-            'Tabela de Jogos',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacementNamed('/fixtures');
-            },
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(context, Icons.leaderboard, 'Classificação', () {
-            Navigator.of(context).pop();
-            Navigator.of(context).pushReplacementNamed('/standings');
-          }),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.group,
-            'Equipes',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacementNamed('/teams');
-            },
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.query_stats,
-            'Estatísticas das Equipes',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacementNamed('/team-stats');
-            },
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.person_search,
-            'Estatísticas dos Jogadores',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacementNamed('/player-stats');
-            },
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.history_toggle_off,
-            'Histórico de Suspensões',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushNamed('/suspension-history');
-            },
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.compare_arrows,
-            'Comparador de Atletas',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushReplacementNamed('/player-comparison');
-            },
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-          _buildDrawerItem(
-            context,
-            Icons.bug_report_outlined,
-            'Reportar Erro',
-            () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pushNamed('/report-bug');
-            },
-            denseOverride: true,
-            contentPaddingOverride: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-          ),
-
-          const Divider(color: Colors.white24, indent: 16, endIndent: 16),
-
-         // --- INÍCIO DA ALTERAÇÃO ---
- _buildDrawerItem(
- context,
- AdminService.isAdmin
- ? Icons.admin_panel_settings
- : Icons.lock_outline,
- AdminService.isAdmin
- ? 'Menu Administrador'
- : 'Modo Administrador',
- // Torna o onTap assíncrono
- () async { 
- if (AdminService.isAdmin) {
- // 1. Se já é admin, apenas navega
-Navigator.of(context).pop();
- Navigator.of(context).pushNamed('/admin-menu');
- } else {
- // 2. Se não é admin, chama o login e AGUARDA (await) o resultado
- final bool loginSuccess = await adminService.promptAdminPassword(context);
-
- // 3. Se o login foi bem-sucedido, navega
-if (loginSuccess && (context as Element).mounted) {
- Navigator.of(context).pop(); // Fecha o drawer
- Navigator.of(context).pushNamed('/admin-menu');
- }
- // Se loginSuccess for false (cancelado), não faz nada (o drawer continua aberto)
- }
-},
-denseOverride: true,
- contentPaddingOverride: const EdgeInsets.symmetric(
- horizontal: 16.0,
- vertical: 4.0,
-),
-),
-          // --- FIM DA ALTERAÇÃO ---
-
-          // --- ITEM DE LOGOUT (SÓ SE LOGADO) ---
-          if (AdminService.isAdmin)
-            _buildDrawerItem(
-              context,
-              Icons.logout,
-              'Sair do Modo Administrador',
-              () {
-                AdminService.logoutAdmin();
-                Navigator.of(context).pop(); // Fecha o drawer
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Modo Administrador desativado.'),
-                  ),
-                );
-                // Opcional: Navegar para a tela inicial para "resetar" visualmente
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (ctx) => const SplashScreen()),
-                  (route) => false, // Remove todas as rotas anteriores
-                );
-              },
-              denseOverride: true,
-              contentPaddingOverride: const EdgeInsets.symmetric(
-                horizontal: 16.0,
-                vertical: 4.0,
-              ),
-            ),
-
-          // --- ADICIONAR TEXTO DE COPYRIGHT AQUI ---
-          const SizedBox(height: 30), // Espaço antes do texto
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(
-              'Desenvolvido por Wesley Ricardo.\nTodos os direitos reservados © FJF 2025.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.5), // Cor branca sutil
-                fontSize: 11, // Fonte pequena
-                height: 1.4, // Espaçamento entre linhas
-              ),
-            ),
-          ),
-          const SizedBox(height: 24), // Espaço no final do menu
-          // --- FIM DA ADIÇÃO ---
-          // --- FIM DO ITEM DE LOGOUT ---
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
-  // Função auxiliar para construir os itens do Drawer
-  Widget _buildDrawerItem(
-    BuildContext context,
-    IconData icon,
-    String title,
-    VoidCallback onTap, {
-    bool? denseOverride,
-    EdgeInsets? contentPaddingOverride,
-  }) {
+  @override
+  Widget build(BuildContext context) {
+    final championshipService = Provider.of<ChampionshipService>(context);
+    final int year = championshipService.currentSeasonYear;
+    final String honoree = championshipService.currentSeasonHonoree;
+
+    return Consumer<AuthService>(
+      builder: (context, authService, child) {
+        return Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: <Widget>[
+              DrawerHeader(
+                decoration: BoxDecoration(color: Theme.of(context).primaryColor),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset('assets/logo2_fjf.png', height: 80, errorBuilder: (c, o, s) => const Icon(Icons.sports_soccer, size: 80, color: Colors.white)),
+                    const SizedBox(height: 8),
+                    Text('FJF $year', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Text(honoree.isNotEmpty ? honoree : 'Taça 2025', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
+                ),
+              ),
+
+              _buildDrawerItem(context, Icons.home, 'Início', '/'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.calendar_today, 'Tabela de Jogos', '/fixtures'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.leaderboard, 'Classificação', '/standings'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.group, 'Equipes', '/teams'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.query_stats, 'Estatísticas das Equipes', '/team-stats'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.person_search, 'Estatísticas dos Jogadores', '/player-stats'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.history_toggle_off, 'Histórico de Suspensões', '/suspension-history'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.compare_arrows, 'Comparador de Jogadores', '/player-comparison'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+              _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
+              const Divider(color: Colors.black12, indent: 16, endIndent: 16),
+
+              ListTile(
+                leading: Icon(authService.isAuthenticated ? Icons.admin_panel_settings : Icons.lock_outline, color: authService.isAuthenticated ? Colors.green : Colors.grey),
+                title: Text(authService.isAuthenticated ? 'Menu Administrador' : 'Acesso Admin', style: TextStyle(color: authService.isAuthenticated ? Colors.green[700] : Colors.grey[700], fontWeight: FontWeight.bold)),
+                subtitle: authService.isAuthenticated ? Text('Logado como: ${authService.adminUsername}') : null,
+                onTap: () {
+                  if (authService.isAuthenticated) {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pushNamed('/admin-menu');
+                  } else {
+                    _showLoginDialog(context);
+                  }
+                },
+              ),
+
+              if (authService.isAuthenticated)
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.red),
+                  title: const Text('Sair', style: TextStyle(color: Colors.red)),
+                  onTap: () async {
+                    await authService.logout();
+                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Logout realizado com sucesso.')));
+                  },
+                ),
+
+              const SizedBox(height: 20),
+              Center(child: Text('Versão 2.0.1 (PWA)\n© FJF 2025', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[400], fontSize: 10))),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDrawerItem(BuildContext context, IconData icon, String title, String route) {
     return ListTile(
-      dense: denseOverride ?? true,
-      contentPadding:
-          contentPaddingOverride ??
-          const EdgeInsets.symmetric(
-            horizontal: 16.0,
-            vertical: 4.0,
-          ), // Usa override ou o padrão
-      leading: Icon(icon, color: Colors.white70, size: 24),
-      title: Text(
-        title,
-        style: const TextStyle(color: Colors.white, fontSize: 16),
-      ),
-      onTap: onTap,
+      leading: Icon(icon, color: Colors.grey[700]),
+      title: Text(title),
+      dense: true,
+      onTap: () {
+        Navigator.of(context).pop();
+        Navigator.of(context).pushReplacementNamed(route);
+      },
     );
   }
 }
