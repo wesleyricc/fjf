@@ -35,7 +35,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
   late TextEditingController _nameController;
   late TextEditingController _jerseyNumberController;
-  // Removemos _positionController e _preferredFootController (agora são variáveis)
   late TextEditingController _dateOfBirthController;
   late TextEditingController _heightController;
   late TextEditingController _weightController;
@@ -45,11 +44,21 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   bool _isStaff = false;
   bool _isGoalkeeper = false;
   
-  // --- NOVAS VARIÁVEIS DE SELEÇÃO ---
+  // --- VARIÁVEIS DE SELEÇÃO (JOGADORES) ---
   String? _selectedPosition; // Para Fixo, Ala, Pivô
   String? _selectedFoot;     // Para Destro, Canhoto, Ambidestro
   final List<String> _positionOptions = ['Fixo', 'Ala', 'Pivô'];
   final List<String> _footOptions = ['Destro', 'Canhoto', 'Ambidestro'];
+  
+  // --- NOVAS VARIÁVEIS (COMISSÃO TÉCNICA) ---
+  String? _selectedStaffRole;
+  final List<String> _staffRoleOptions = [
+    'Técnico',
+    'Auxiliar Técnico',
+    'Atendente',
+    'Analista',
+    'Massagista',
+  ];
   // ----------------------------------
 
   String? _photoUrl;
@@ -86,7 +95,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       _isGoalkeeper = data['is_goalkeeper'] ?? false;
       _photoUrl = data['photo_url'];
 
-      // Inicializa os Dropdowns
+      // Inicializa os Dropdowns de Jogador
       String? pos = data['position'];
       if (_positionOptions.contains(pos)) {
         _selectedPosition = pos;
@@ -95,6 +104,12 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       String? foot = data['preferred_foot'];
       if (_footOptions.contains(foot)) {
         _selectedFoot = foot;
+      }
+
+      // Inicializa Dropdown de Staff
+      String? role = data['staff_role'];
+      if (_staffRoleOptions.contains(role)) {
+        _selectedStaffRole = role;
       }
     }
   }
@@ -114,7 +129,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   // --- LÓGICA DE DATA ---
   Future<void> _selectDate() async {
     DateTime initialDate = DateTime.now();
-    // Tenta usar a data que já está escrita, se for válida
     if (_dateOfBirthController.text.isNotEmpty) {
       try {
         initialDate = DateFormat('dd/MM/yyyy').parse(_dateOfBirthController.text);
@@ -215,17 +229,22 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
       final playerData = {
         'name': _nameController.text.trim(),
-        'jersey_number': jerseyNumber,
-        // Se for goleiro, salva 'Goleiro'. Se não, pega do dropdown.
-        'position': _isGoalkeeper ? 'Goleiro' : _selectedPosition, 
+        'jersey_number': jerseyNumber, // Agora pode ser null
+        
+        // Se for Staff, posição é null. Se for Goleiro, 'Goleiro'. Senão, dropdown.
+        'position': _isStaff ? null : (_isGoalkeeper ? 'Goleiro' : _selectedPosition),
+        
+        // NOVO CAMPO: Se for Staff, salva o cargo. Senão, null.
+        'staff_role': _isStaff ? _selectedStaffRole : null,
+
         'date_of_birth': dobTimestamp,
         'height_cm': heightCm,
         'weight_kg': weightKg,
-        'preferred_foot': _selectedFoot, // Pega do dropdown
+        'preferred_foot': _isStaff ? null : _selectedFoot, // Pé é null para staff
         'instagram': _instagramController.text.trim(),
         'phone': _phoneController.text.trim(),
         'is_staff': _isStaff,
-        'is_goalkeeper': _isGoalkeeper,
+        'is_goalkeeper': _isStaff ? false : _isGoalkeeper, // Staff nunca é goleiro
         'photo_url': uploadedPhotoUrl,
         'team_id': widget.teamId,
         'team_name': widget.teamName,
@@ -241,11 +260,11 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       if (widget.playerDoc == null) {
         await _firestore.collection('players').add(playerData);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Jogador adicionado!')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membro adicionado!')));
       } else {
         await _firestore.collection('players').doc(widget.playerDoc!.id).update(playerData);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Jogador atualizado!')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membro atualizado!')));
       }
 
       if (!mounted) return;
@@ -260,7 +279,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.playerDoc == null ? 'Novo Jogador' : 'Editar ${_nameController.text}'),
+        title: Text(widget.playerDoc == null ? 'Novo Membro' : 'Editar ${_nameController.text}'),
       ),
       body: AdminService.isAdmin
           ? Form(
@@ -302,17 +321,103 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                     ),
                     const SizedBox(height: 16),
 
+                    // --- SWITCHES ---
                     Row(
                       children: [
                         Expanded(
-                          child: TextFormField(
-                            controller: _jerseyNumberController,
-                            decoration: const InputDecoration(labelText: 'Nº Camisa', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          child: SwitchListTile(
+                            title: const Text('Comissão?'),
+                            value: _isStaff,
+                            onChanged: (bool value) {
+                              setState(() {
+                                _isStaff = value;
+                                if (_isStaff) {
+                                  _isGoalkeeper = false;
+                                  _selectedPosition = null;
+                                  // Se for staff, não exige número
+                                  // _jerseyNumberController.clear(); 
+                                } else {
+                                  _selectedStaffRole = null;
+                                }
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        if (!_isStaff)
+                          Expanded(
+                            child: SwitchListTile(
+                              title: const Text('Goleiro?'),
+                              value: _isGoalkeeper,
+                              onChanged: (bool value) {
+                                setState(() {
+                                  _isGoalkeeper = value;
+                                  if (_isGoalkeeper) {
+                                    _selectedPosition = null; // Limpa posição de linha
+                                  }
+                                });
+                              },
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                      ],
+                    ),
+
+                    // --- DROPDOWN FUNÇÃO DA COMISSÃO (Aparece se for Staff) ---
+                    if (_isStaff)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedStaffRole,
+                          decoration: const InputDecoration(
+                            labelText: 'Função na Comissão',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _staffRoleOptions.map((String role) {
+                            return DropdownMenuItem<String>(
+                              value: role,
+                              child: Text(role),
+                            );
+                          }).toList(),
+                          onChanged: (newValue) => setState(() => _selectedStaffRole = newValue),
+                          validator: (val) => val == null ? 'Selecione a função' : null,
+                        ),
+                      ),
+
+                    // --- DROPDOWN POSIÇÃO JOGADOR (Aparece se não for Staff E não for Goleiro) ---
+                    if (!_isStaff && !_isGoalkeeper)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedPosition,
+                          decoration: const InputDecoration(
+                            labelText: 'Posição',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _positionOptions.map((String pos) {
+                            return DropdownMenuItem<String>(
+                              value: pos,
+                              child: Text(pos),
+                            );
+                          }).toList(),
+                          onChanged: (newValue) => setState(() => _selectedPosition = newValue),
+                          validator: (val) => val == null ? 'Selecione a posição' : null,
+                        ),
+                      ),
+                    
+                    // --- NÚMERO E DATA (Para todos, mas número opcional para staff) ---
+                    Row(
+                      children: [
+                        if (!_isStaff) // Número só obrigatório para jogador, opcional/oculto para staff?
+                          Expanded(
+                            child: TextFormField(
+                              controller: _jerseyNumberController,
+                              decoration: const InputDecoration(labelText: 'Nº Camisa', border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            ),
+                          ),
+                        if (!_isStaff) const SizedBox(width: 16),
                         
                         // --- CAMPO DE DATA (TEXTO + CALENDÁRIO) ---
                         Expanded(
@@ -345,106 +450,50 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // --- SWITCHES ---
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SwitchListTile(
-                            title: const Text('Comissão?'),
-                            value: _isStaff,
-                            onChanged: (bool value) {
-                              setState(() {
-                                _isStaff = value;
-                                if (_isStaff) {
-                                  _isGoalkeeper = false;
-                                  _selectedPosition = null;
-                                }
-                              });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        if (!_isStaff)
+                    // --- DADOS FÍSICOS (Apenas Jogadores) ---
+                    if (!_isStaff) ...[
+                      Row(
+                        children: [
                           Expanded(
-                            child: SwitchListTile(
-                              title: const Text('Goleiro?'),
-                              value: _isGoalkeeper,
-                              onChanged: (bool value) {
-                                setState(() {
-                                  _isGoalkeeper = value;
-                                  if (_isGoalkeeper) {
-                                    _selectedPosition = null; // Limpa posição de linha
-                                  }
-                                });
-                              },
-                              contentPadding: EdgeInsets.zero,
+                            child: TextFormField(
+                              controller: _heightController,
+                              decoration: const InputDecoration(labelText: 'Altura (cm)', border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                             ),
                           ),
-                      ],
-                    ),
-
-                    // --- DROPDOWN POSIÇÃO (Aparece se não for Staff E não for Goleiro) ---
-                    if (!_isStaff && !_isGoalkeeper)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedPosition,
-                          decoration: const InputDecoration(
-                            labelText: 'Posição',
-                            border: OutlineInputBorder(),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _weightController,
+                              decoration: const InputDecoration(labelText: 'Peso (kg)', border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            ),
                           ),
-                          items: _positionOptions.map((String pos) {
-                            return DropdownMenuItem<String>(
-                              value: pos,
-                              child: Text(pos),
-                            );
-                          }).toList(),
-                          onChanged: (newValue) => setState(() => _selectedPosition = newValue),
-                          validator: (val) => val == null ? 'Selecione a posição' : null,
-                        ),
+                        ],
                       ),
-                    
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _heightController,
-                            decoration: const InputDecoration(labelText: 'Altura (cm)', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _weightController,
-                            decoration: const InputDecoration(labelText: 'Peso (kg)', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // --- DROPDOWN PÉ PREFERIDO ---
-                    DropdownButtonFormField<String>(
-                      value: _selectedFoot,
-                      decoration: const InputDecoration(
-                        labelText: 'Pé Preferido',
-                        border: OutlineInputBorder(),
+                      // --- DROPDOWN PÉ PREFERIDO ---
+                      DropdownButtonFormField<String>(
+                        value: _selectedFoot,
+                        decoration: const InputDecoration(
+                          labelText: 'Pé Preferido',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _footOptions.map((String foot) {
+                          return DropdownMenuItem<String>(
+                            value: foot,
+                            child: Text(foot),
+                          );
+                        }).toList(),
+                        onChanged: (newValue) => setState(() => _selectedFoot = newValue),
                       ),
-                      items: _footOptions.map((String foot) {
-                        return DropdownMenuItem<String>(
-                          value: foot,
-                          child: Text(foot),
-                        );
-                      }).toList(),
-                      onChanged: (newValue) => setState(() => _selectedFoot = newValue),
-                    ),
+                      const SizedBox(height: 16),
+                    ],
                     
-                    const SizedBox(height: 16),
+                    // --- CONTATOS (Para todos) ---
                     TextFormField(
                       controller: _instagramController,
                       decoration: const InputDecoration(labelText: 'Instagram (opcional)', border: OutlineInputBorder()),
@@ -465,7 +514,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      child: const Text('Salvar Jogador', style: TextStyle(fontSize: 18)),
+                      child: Text(widget.playerDoc == null ? 'Criar Membro' : 'Salvar Alterações', style: const TextStyle(fontSize: 18)),
                     ),
                   ],
                 ),

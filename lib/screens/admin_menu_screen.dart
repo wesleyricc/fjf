@@ -8,7 +8,7 @@ import 'dart:convert';
 import '../services/admin_service.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
-//import '../services/firestore_service.dart';
+import '../services/firestore_service.dart';
 import 'playoff_rules_screen.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'admin_media_screen.dart';
@@ -22,7 +22,7 @@ class AdminMenuScreen extends StatefulWidget {
 
 class _AdminMenuScreenState extends State<AdminMenuScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  //final FirestoreService _firestoreService = FirestoreService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   bool _isSaving = false;
 
@@ -545,6 +545,40 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
   // --- FIM DA ALTERAÇÃO ---
 
+  /*
+  // --- NOVA FUNÇÃO: Resetar Cartões Amarelos ---
+  Future<void> _showResetYellowsConfirmDialog() async {
+     final confirm = await showDialog<bool>(
+       context: context,
+       builder: (ctx) => AlertDialog(
+         title: const Text('Zerar Cartões Amarelos?'),
+         content: const Text(
+             'ATENÇÃO!\n\nEsta ação zerará a contagem de cartões amarelos (suspenção) de TODOS os jogadores. Isso é recomendado apenas na mudança de fases (ex: 1ª Fase -> Semifinal).\n\nO histórico total de cartões para estatísticas SERÁ MANTIDO.\n\nDeseja continuar?'),
+          actions: [
+           TextButton(
+             onPressed: () => Navigator.of(ctx).pop(false),
+             child: const Text('Cancelar'),
+           ),
+           TextButton(
+             onPressed: () => Navigator.of(ctx).pop(true),
+             child: const Text(
+                 'Confirmar Zeramento',
+                 style: TextStyle(color: Colors.red)
+             ),
+           ),
+         ],
+       ),
+     );
+     
+     if (confirm == true && mounted) {
+       setState(() { _isSaving = true; });
+       final result = await _firestoreService.resetCurrentYellowCardsForPhaseChange();
+       setState(() { _isSaving = false; });
+       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 5)));
+     }
+  }
+  // --- FIM ---
+*/
 /*
   Future<void> _showSyncLogosConfirmDialog() async {
      final confirm = await showDialog<bool>(
@@ -640,6 +674,16 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             },
           ),
           const Divider(),
+          // --- NOVO BOTÃO DE ZERAR CARTÕES ---
+          /*ListTile(
+            leading: const Icon(Icons.cleaning_services, color: Colors.orange),
+            title: const Text('Zerar Cartões Amarelos'),
+            subtitle: const Text('Reseta contagem de CA para suspensão (mantém estatísticas). Útil na virada de fase.'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: _isSaving ? null : _showResetYellowsConfirmDialog,
+          ),
+          const Divider(),*/
+          // --- FIM DO BOTÃO ---
           ListTile(
             leading: const Icon(Icons.sort_by_alpha),
             title: const Text('Ordem Critérios Desempate'),

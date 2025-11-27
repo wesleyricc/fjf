@@ -1426,4 +1426,49 @@ class FirestoreService {
     }
   }
 
+  // --- NOVA FUNÇÃO: Resetar Cartões Amarelos ---
+  Future<String> resetCurrentYellowCardsForPhaseChange() async {
+    debugPrint("[RESET AMARELOS] Iniciando reset de cartões amarelos...");
+    
+    int totalUpdated = 0;
+    int documentsInBatch = 0;
+    WriteBatch batch = _firestore.batch();
+
+    try {
+      final playersSnapshot = await _firestore.collection('players').get();
+      
+      for (final doc in playersSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        final int currentYellows = data['yellow_cards'] ?? 0;
+
+        // Só atualiza se tiver cartões amarelos acumulados
+        if (currentYellows > 0) {
+          batch.update(doc.reference, {'yellow_cards': 0});
+          documentsInBatch++;
+          totalUpdated++;
+        }
+
+        // Se o batch encher (500 ops), commita e cria novo
+        if (documentsInBatch == 499) {
+          await batch.commit();
+          batch = _firestore.batch();
+          documentsInBatch = 0;
+        }
+      }
+
+      // Commita o restante
+      if (documentsInBatch > 0) {
+        await batch.commit();
+      }
+
+      debugPrint("[RESET AMARELOS] Concluído. $totalUpdated jogadores zerados.");
+      return "Sucesso: A contagem de amarelos foi zerada para $totalUpdated jogadores. O histórico total foi mantido.";
+
+    } catch (e) {
+      debugPrint("[RESET AMARELOS] ERRO: $e");
+      return "Erro ao zerar cartões: ${e.toString()}";
+    }
+  }
+  // --- FIM ---
+
 } // Fim Classe FirestoreService

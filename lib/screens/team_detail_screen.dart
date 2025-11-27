@@ -1401,6 +1401,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           ),
                         ),
                         subtitle: Text(staffRole),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (ctx) => PlayerProfileScreen(playerId: member.id),
+                            ),
+                          );
+                        },
                         trailing: AdminService.isAdmin
                             ? Row(
                                 mainAxisSize: MainAxisSize.min,

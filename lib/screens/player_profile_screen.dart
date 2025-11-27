@@ -44,21 +44,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
   }
 
   Future<List<QueryDocumentSnapshot>> _fetchHistoricalStats() async {
-    /* // TODO: Descomentar quando a estrutura multi-temporada estiver ativa
-    try {
-      final historySnapshot = await _firestore
-          .collectionGroup('player_stats')
-          .where('global_player_ref', isEqualTo: _firestore.doc('players/${widget.playerId}'))
-          .orderBy('season', descending: true)
-          .limit(3)
-          .get();
-          
-      return historySnapshot.docs;
-    } catch (e) {
-      debugPrint("Erro ao buscar histórico do jogador: $e");
-      return [];
-    }
-    */
     return Future.value([]); 
   }
 
@@ -81,7 +66,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
           );
         }
 
-        // Dados carregados, constrói a UI
         final DocumentSnapshot playerDoc = snapshot.data!;
         final _playerData = playerDoc.data() as Map<String, dynamic>;
         
@@ -90,7 +74,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
         final bool isStaff = _playerData['is_staff'] ?? false;
         final String position = _playerData['is_goalkeeper'] == true ? 'Goleiro' : (_playerData['position'] ?? '-');
         
-        // ID do time para buscar o escudo
         final String? teamId = _playerData['team_id']; 
         final String teamName = _playerData['team_name'] ?? '';
 
@@ -111,42 +94,36 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
         return Scaffold(
           appBar: AppBar(
             title: Text(name),
-            // --- BOTÃO DE EDIÇÃO (SÓ PARA ADMIN) ---
             actions: [
               if (AdminService.isAdmin)
                 IconButton(
                   icon: const Icon(Icons.edit),
                   tooltip: 'Editar Jogador',
                   onPressed: () async {
-                    // Navega para a tela de edição
                     await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (ctx) => EditPlayerScreen(
-                          teamId: teamId ?? '', // Garante string vazia se nulo
+                          teamId: teamId ?? '', 
                           teamName: teamName,
-                          playerDoc: playerDoc, // Passa o documento atual
+                          playerDoc: playerDoc, 
                         ),
                       ),
                     );
-                    // Ao voltar, recarrega os dados para mostrar as alterações
                     setState(() {
                       _loadData();
                     });
                   },
                 ),
             ],
-            // --- FIM DA ALTERAÇÃO ---
           ),
           body: SingleChildScrollView(
             child: Column(
               children: [
-                // Seção Header com StreamBuilder para o Time
                 StreamBuilder<DocumentSnapshot>(
                   stream: teamId != null 
                       ? _firestore.collection('teams').doc(teamId).snapshots()
                       : null,
                   builder: (context, teamSnapshot) {
-                    // Pega a URL do escudo (se houver)
                     Map<String, dynamic>? teamData = teamSnapshot.hasData ? teamSnapshot.data!.data() as Map<String, dynamic>? : null;
                     String teamShieldUrl = teamData?['shield_url'] ?? '';
 
@@ -159,10 +136,8 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                       ),
                       child: Column(
                         children: [
-                          // --- STACK: FOTO + ESCUDO ---
                           Stack(
                             children: [
-                              // Foto Principal do Jogador
                               CircleAvatar(
                                 radius: 120,
                                 backgroundColor: Colors.grey[300],
@@ -178,7 +153,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                                     : null,
                               ),
                               
-                              // Escudo do Time (Sobreposto no canto inferior direito)
                               if (teamShieldUrl.isNotEmpty)
                                 Positioned(
                                   bottom: 0,
@@ -189,7 +163,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       color: Colors.transparent,
-                                      //border: Border.all(color: Theme.of(context).primaryColor, width: 2),
                                       image: DecorationImage(
                                         image: CachedNetworkImageProvider(teamShieldUrl),
                                         fit: BoxFit.contain,
@@ -199,7 +172,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                                 ),
                             ],
                           ),
-                          // --- FIM STACK ---
                           
                           const SizedBox(height: 16),
                           Text(
@@ -208,7 +180,8 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                             textAlign: TextAlign.center,
                           ),
                           Text(
-                            position,
+                            // Exibe o cargo se for staff, senão a posição
+                            isStaff ? (_playerData['staff_role'] ?? 'Comissão') : position,
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey[700]),
                           ),
                         ],
@@ -217,7 +190,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                   }
                 ),
                 
-                // Seção Informações Pessoais
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -226,14 +198,18 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                       Text('Informações Pessoais', style: Theme.of(context).textTheme.titleMedium),
                       const Divider(),
                       _buildInfoRow('Idade', displayAge),
-                      _buildInfoRow('Altura', height != '-' ? '$height cm' : '-'),
-                      _buildInfoRow('Peso', weight != '-' ? '$weight kg' : '-'),
-                      _buildInfoRow('Pé Preferido', preferredFoot),
+                      
+                      // --- ALTERAÇÃO: Esconde dados físicos para Staff ---
+                      if (!isStaff) ...[
+                        _buildInfoRow('Altura', height != '-' ? '$height cm' : '-'),
+                        _buildInfoRow('Peso', weight != '-' ? '$weight kg' : '-'),
+                        _buildInfoRow('Pé Preferido', preferredFoot),
+                      ]
+                      // --------------------------------------------------
                     ],
                   ),
                 ),
 
-                // Seção Estatísticas (Temporada Atual)
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -241,19 +217,28 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                     children: [
                       Text('Estatísticas (Temporada Atual)', style: Theme.of(context).textTheme.titleMedium),
                       const Divider(),
-                      if (position == 'Goleiro')
-                        _buildInfoRow('Gols Sofridos', goalsConceded.toString())
-                      else
-                        _buildInfoRow('Gols', goals.toString()),
-                      _buildInfoRow('Assistências', assists.toString()),
+                      
+                      // --- ALTERAÇÃO: Lógica de exibição baseada em Staff ---
+                      if (!isStaff) ...[
+                        if (position == 'Goleiro')
+                          _buildInfoRow('Gols Sofridos', goalsConceded.toString())
+                        else
+                          _buildInfoRow('Gols', goals.toString()),
+                        _buildInfoRow('Assistências', assists.toString()),
+                      ],
+                      
+                      // Cartões sempre aparecem
                       _buildInfoRow('Cartões Amarelos', yellowCards.toString()),
                       _buildInfoRow('Cartões Vermelhos', redCards.toString()),
-                      _buildInfoRow('Craque do Jogo', motmAwards.toString()),
+                      
+                      // Craque do jogo só para atletas
+                      if (!isStaff)
+                        _buildInfoRow('Craque do Jogo', motmAwards.toString()),
+                      // ------------------------------------------------------
                     ],
                   ),
                 ),
                 
-                // Seção Histórico (PARA O FUTURO)
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -279,7 +264,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                             );
                           }
                           
-                          // Lógica de exibição (quando os dados existirem)
                           return const Center(child: Text('Histórico aparecerá aqui.'));
                         },
                       ),
