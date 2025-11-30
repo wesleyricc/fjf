@@ -19,7 +19,7 @@ class PlayerStatsScreen extends StatefulWidget {
 class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // --- HELPER: Navegação ---
+  // --- HELPER: Navegação para Time ---
   Future<void> _navigateToTeam(BuildContext context, String? teamId) async {
     if (teamId == null || teamId.isEmpty) return;
     try {
@@ -32,6 +32,13 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     } catch (e) {
       debugPrint("Erro team nav: $e");
     }
+  }
+
+  // --- HELPER: Navegação Padrão para Perfil ---
+  void _navigateToProfile(BuildContext context, String playerId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: playerId)),
+    );
   }
 
   // --- HELPER: Avatar Otimizado ---
@@ -71,10 +78,10 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
 
   // --- HELPER: Diálogo de Ajuda ---
   Future<void> _showPlayerStatsHelp(BuildContext context) async {
-    return showDialog<void>(
+     return showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
-        return AlertDialog(
+    return AlertDialog(
           title: const Text('Ajuda: Estatísticas de Jogadores'),
           content: SingleChildScrollView(
             child: RichText(
@@ -126,6 +133,92 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
               child: const Text('Fechar'),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
+              },
+            ),
+          ],
+        );
+        },
+    );
+  }
+
+  // --- LÓGICA CRÍTICA: Diálogo para limpar suspensão ---
+  Future<void> _showClearSuspensionDialog(BuildContext context, DocumentSnapshot player) async {
+    final playerName = player['name'] ?? 'Jogador desconhecido';
+    final data = player.data() as Map<String, dynamic>? ?? {};
+    final int currentYellows = data['yellow_cards'] ?? 0;
+    final int currentReds = data['red_cards'] ?? 0;
+
+    bool suspendedByRed = (currentReds > 0 && AdminService.suspensionOnRed);
+    bool suspendedByYellow = (currentYellows >= AdminService.suspensionYellowCards);
+    
+    // Se não tem vermelho e está suspenso, assumimos amarelos mesmo zerados
+    if (!suspendedByRed && data['is_suspended'] == true) {
+       suspendedByYellow = true;
+    }
+    
+    String reason = "Motivo desconhecido.";
+    if (suspendedByRed && suspendedByYellow) {
+       reason = "Motivo: Acúmulo de CA e Cartão Vermelho (Suspensão Múltipla).";
+    } else if (suspendedByRed) {
+       reason = "Motivo: Cartão Vermelho.";
+    } else if (suspendedByYellow) {
+       reason = "Motivo: Acúmulo de Cartões Amarelos.";
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Limpar Suspensão'),
+          content: Text(
+            'Tem certeza que deseja liberar $playerName?\n\n$reason\n\n'
+            'Isso definirá "Suspenso=Falso" e zerará os cartões da suspensão atual.'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancelar'),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+            TextButton(
+              child: const Text('Confirmar Liberação'),
+              onPressed: () async {
+                try {
+                  Map<String, dynamic> updateData = {
+                    'is_suspended': false,
+                    'red_cards': 0,
+                    // Zera amarelos também se a suspensão for por CA ou Múltipla
+                    if (suspendedByYellow) 'yellow_cards': 0,
+                  };
+
+                  await _firestore.collection('players').doc(player.id).update(updateData);
+                      
+                  // Tenta atualizar o log de suspensão para 'cleared'
+                  final logQuery = await _firestore
+                      .collection('suspension_log')
+                      .where('playerId', isEqualTo: player.id)
+                      .orderBy('timestamp', descending: true)
+                      .limit(1)
+                      .get();
+                  
+                  if (logQuery.docs.isNotEmpty) {
+                    await logQuery.docs.first.reference.update({
+                      'return_date': FieldValue.serverTimestamp(), // Marca como cumprido hoje
+                    });
+                  }
+
+                  if(dialogContext.mounted) Navigator.of(dialogContext).pop();
+                  if (context.mounted) { 
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       SnackBar(content: Text('$playerName liberado da suspensão.')),
+                     );
+                  }
+                } catch (e) {
+                  debugPrint("Erro ao liberar: $e");
+                   if (context.mounted) {
+                     ScaffoldMessenger.of(context).showSnackBar(
+                       SnackBar(content: Text('Erro: $e')),
+                     );
+                  }
+                }
               },
             ),
           ],
@@ -229,7 +322,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
               onAvatarBuild: _buildOptimizedAvatar,
               onTeamTap: _navigateToTeam,
             ),
-            // 5. Pendurados (Status)
+            // 5. Pendurados
             ServerSidePaginatedList(
               firestore: _firestore,
               baseQuery: _firestore.collection('players')
@@ -242,7 +335,8 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
               onAvatarBuild: _buildOptimizedAvatar,
               onTeamTap: _navigateToTeam,
             ),
-            // 6. Suspensos (Status)
+            
+            // --- 6. SUSPENSOS (COM CALLBACK DE CLIQUE CUSTOMIZADO) ---
             ServerSidePaginatedList(
               firestore: _firestore,
               baseQuery: _firestore.collection('players')
@@ -254,7 +348,17 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
               emptyMsg: 'Ninguém suspenso.',
               onAvatarBuild: _buildOptimizedAvatar,
               onTeamTap: _navigateToTeam,
+              // Callback específico para esta aba
+              onItemTap: (doc) {
+                if (AdminService.isAdmin) {
+                  _showClearSuspensionDialog(context, doc);
+                } else {
+                  _navigateToProfile(context, doc.id);
+                }
+              },
             ),
+            // ---------------------------------------------------------
+
             // 7. Total Amarelos
             ServerSidePaginatedList(
               firestore: _firestore,
@@ -283,7 +387,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
               onAvatarBuild: _buildOptimizedAvatar,
               onTeamTap: _navigateToTeam,
             ),
-            // 9. Total Cartões (Complexo - Paginação no Cliente)
+            // 9. Total Cartões
             ClientSidePaginatedList(
               firestore: _firestore,
               emptyMsg: 'Sem cartões.',
@@ -299,16 +403,17 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
 }
 
 // =============================================================================
-// WIDGET 1: PAGINAÇÃO SERVER-SIDE (Para queries simples do Firestore)
+// WIDGET 1: PAGINAÇÃO SERVER-SIDE
 // =============================================================================
 class ServerSidePaginatedList extends StatefulWidget {
   final FirebaseFirestore firestore;
   final Query baseQuery;
   final String statKey;
-  final String statLabel; // Se for 'STATUS_...', usa lógica especial
+  final String statLabel;
   final String emptyMsg;
   final Widget Function(String?, bool) onAvatarBuild;
   final Function(BuildContext, String?) onTeamTap;
+  final Function(DocumentSnapshot)? onItemTap; // Callback Opcional
 
   const ServerSidePaginatedList({
     super.key,
@@ -319,6 +424,7 @@ class ServerSidePaginatedList extends StatefulWidget {
     required this.emptyMsg,
     required this.onAvatarBuild,
     required this.onTeamTap,
+    this.onItemTap,
   });
 
   @override
@@ -326,7 +432,7 @@ class ServerSidePaginatedList extends StatefulWidget {
 }
 
 class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with AutomaticKeepAliveClientMixin {
-  final int _pageSize = 10; // PAGINAÇÃO 10 EM 10
+  final int _pageSize = 10; 
   List<DocumentSnapshot> _docs = [];
   bool _isLoading = false;
   bool _hasMore = true;
@@ -370,22 +476,16 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
   }
 
   Widget _buildTrailing(Map<String, dynamic> data) {
-    // --- CASO 1: Lista de Suspensos (Lógica de Ícones Corrigida) ---
     if (widget.statLabel == 'STATUS_SUSPENSO') {
       int reds = data['red_cards'] ?? 0;
       int yellows = data['yellow_cards'] ?? 0;
       
       List<Widget> icons = [];
-
-      // 1. Determina se tem vermelho
       bool hasRed = (reds > 0);
-
-      // 2. Determina se a suspensão é por amarelos.
-      // Lógica: Se tem >= 3 amarelos OU se não tem vermelho (o que implica que só pode ser amarelo, mesmo que o contador tenha sido zerado).
+      // Se tiver 3 amarelos OU se não tiver vermelho (então deve ser amarelo, mesmo que contador tenha zerado)
       bool isYellowSuspension = (yellows >= AdminService.suspensionYellowCards) || (reds == 0);
 
       if (isYellowSuspension) {
-        // Adiciona 3 ícones amarelos
         icons.addAll(List.generate(3, (index) => Padding(
           padding: const EdgeInsets.only(right: 2.0),
           child: Icon(Icons.style, color: Colors.yellow[700], size: 18),
@@ -393,22 +493,15 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
       }
 
       if (hasRed) {
-        // Se já desenhou amarelos antes, dá um espaço
-        if (isYellowSuspension) {
-          icons.add(const SizedBox(width: 6)); 
-        }
-        // Adiciona 1 ícone vermelho
+        if (isYellowSuspension) icons.add(const SizedBox(width: 6)); 
         icons.add(Icon(Icons.style, color: Colors.red[700], size: 18));
       }
 
       return Row(mainAxisSize: MainAxisSize.min, children: icons);
     } 
     
-    // CASO 2: Lista de Pendurados
     if (widget.statLabel == 'STATUS_PENDURADO') {
        int currentYellows = data['yellow_cards'] ?? 0;
-       
-       // Gera um ícone para cada cartão amarelo
        return Row(
          mainAxisSize: MainAxisSize.min,
          children: List.generate(currentYellows, (index) => Padding(
@@ -418,7 +511,6 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
        );
     }
 
-    // CASO 3: Rankings Numéricos
     final int value = data[widget.statKey] ?? 0;
     
     if (widget.statLabel == 'CA') {
@@ -470,10 +562,7 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
                       padding: const EdgeInsets.symmetric(vertical: 12.0),
                       elevation: 3,
                     ),
-                    child: const Text(
-                      'Carregar Mais...',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
+                    child: const Text('Carregar Mais...', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
             );
           } else {
@@ -516,9 +605,13 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
           ),
           trailing: _buildTrailing(data),
           onTap: () {
-             Navigator.of(context).push(
-                MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: doc.id)),
-             );
+             if (widget.onItemTap != null) {
+               widget.onItemTap!(doc); // Usa o callback customizado se existir (Suspensos)
+             } else {
+               Navigator.of(context).push(
+                  MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: doc.id)),
+               );
+             }
           },
         );
       },
@@ -527,7 +620,7 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
 }
 
 // =============================================================================
-// WIDGET 2: PAGINAÇÃO CLIENT-SIDE (Para Total de Cartões)
+// WIDGET 2: PAGINAÇÃO CLIENT-SIDE
 // =============================================================================
 class ClientSidePaginatedList extends StatefulWidget {
   final FirebaseFirestore firestore;
@@ -548,7 +641,7 @@ class ClientSidePaginatedList extends StatefulWidget {
 }
 
 class _ClientSidePaginatedListState extends State<ClientSidePaginatedList> with AutomaticKeepAliveClientMixin {
-  final int _pageSize = 10; // PAGINAÇÃO 10 EM 10
+  final int _pageSize = 10;
   List<Map<String, dynamic>> _allPlayersSorted = [];
   List<Map<String, dynamic>> _displayedPlayers = [];
   bool _isInitialLoading = true;
@@ -635,16 +728,11 @@ class _ClientSidePaginatedListState extends State<ClientSidePaginatedList> with 
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).primaryColor,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30.0),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
                   padding: const EdgeInsets.symmetric(vertical: 12.0),
                   elevation: 3,
                 ),
-                child: const Text(
-                  'Carregar Mais...',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
+                child: const Text('Carregar Mais...', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             );
           } else {
