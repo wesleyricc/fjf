@@ -60,6 +60,7 @@ dependencies:
   path_provider: ^2.1.5 # Para salvar a imagem temporária
   screenshot: ^3.0.0 # Facilita muito a captura de widgets invisíveis/visíveis
   flutter_cache_manager: ^3.4.1
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

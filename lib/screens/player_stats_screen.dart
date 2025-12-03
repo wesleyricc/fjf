@@ -7,7 +7,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'team_detail_screen.dart';
 import '../services/admin_service.dart';
 import 'player_profile_screen.dart';
-import '../utils/custom_cache_manager.dart'; 
 
 class PlayerStatsScreen extends StatefulWidget {
   const PlayerStatsScreen({super.key});
@@ -19,7 +18,7 @@ class PlayerStatsScreen extends StatefulWidget {
 class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // --- HELPER: Navegação para Time ---
+  // --- HELPER: Navegação ---
   Future<void> _navigateToTeam(BuildContext context, String? teamId) async {
     if (teamId == null || teamId.isEmpty) return;
     try {
@@ -34,7 +33,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     }
   }
 
-  // --- HELPER: Navegação Padrão para Perfil ---
+  // --- HELPER: Navegação para Perfil ---
   void _navigateToProfile(BuildContext context, String playerId) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: playerId)),
@@ -46,7 +45,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     final double radius = 20.0;
     final double diameter = radius * 2;
 
-    if (photoUrl == null || photoUrl.isEmpty) {
+    if (photoUrl == null || photoUrl.isEmpty || !photoUrl.startsWith('http')) {
       return CircleAvatar(
         radius: radius,
         backgroundColor: Colors.grey[300],
@@ -61,17 +60,27 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     return ClipOval(
       child: CachedNetworkImage(
         imageUrl: photoUrl,
-        cacheManager: PlayerCacheManager.instance,
+        memCacheWidth: 150, // Otimização de RAM
         width: diameter,
         height: diameter,
         fit: BoxFit.cover,
-        memCacheWidth: 150, 
         placeholder: (context, url) => Container(
           width: diameter,
           height: diameter,
-          color: Colors.grey[300],
+          color: Colors.grey[200],
+          child: const Center(
+             child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2))
+          ),
         ),
-        errorWidget: (context, url, error) => const Icon(Icons.error),
+        errorWidget: (context, url, error) {
+          // debugPrint("Erro Avatar: $error na URL: $url");
+          return Container(
+            width: diameter,
+            height: diameter,
+            color: Colors.grey[300],
+            child: Icon(Icons.person, size: 24, color: Colors.grey[600]),
+          );
+        },
       ),
     );
   }
@@ -141,7 +150,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     );
   }
 
-  // --- LÓGICA CRÍTICA: Diálogo para limpar suspensão ---
+  // --- LÓGICA: Diálogo para limpar suspensão ---
   Future<void> _showClearSuspensionDialog(BuildContext context, DocumentSnapshot player) async {
     final playerName = player['name'] ?? 'Jogador desconhecido';
     final data = player.data() as Map<String, dynamic>? ?? {};
@@ -151,7 +160,6 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     bool suspendedByRed = (currentReds > 0 && AdminService.suspensionOnRed);
     bool suspendedByYellow = (currentYellows >= AdminService.suspensionYellowCards);
     
-    // Se não tem vermelho e está suspenso, assumimos amarelos mesmo zerados
     if (!suspendedByRed && data['is_suspended'] == true) {
        suspendedByYellow = true;
     }
@@ -185,13 +193,11 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                   Map<String, dynamic> updateData = {
                     'is_suspended': false,
                     'red_cards': 0,
-                    // Zera amarelos também se a suspensão for por CA ou Múltipla
                     if (suspendedByYellow) 'yellow_cards': 0,
                   };
 
                   await _firestore.collection('players').doc(player.id).update(updateData);
                       
-                  // Tenta atualizar o log de suspensão para 'cleared'
                   final logQuery = await _firestore
                       .collection('suspension_log')
                       .where('playerId', isEqualTo: player.id)
@@ -201,7 +207,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                   
                   if (logQuery.docs.isNotEmpty) {
                     await logQuery.docs.first.reference.update({
-                      'return_date': FieldValue.serverTimestamp(), // Marca como cumprido hoje
+                      'return_date': FieldValue.serverTimestamp(),
                     });
                   }
 
@@ -226,7 +232,6 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
       },
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -265,134 +270,67 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
             // 1. Artilheiros
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  .where('goals', isGreaterThan: 0)
-                  .orderBy('goals', descending: true)
-                  .orderBy('name'),
-              statKey: 'goals',
-              statLabel: 'Gols',
-              emptyMsg: 'Nenhum artilheiro.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('goals', isGreaterThan: 0).orderBy('goals', descending: true).orderBy('name'),
+              statKey: 'goals', statLabel: 'Gols', emptyMsg: 'Nenhum artilheiro.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
             // 2. Assistências
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  .where('assists', isGreaterThan: 0)
-                  .orderBy('assists', descending: true)
-                  .orderBy('name'),
-              statKey: 'assists',
-              statLabel: 'Ass',
-              emptyMsg: 'Nenhuma assistência.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('assists', isGreaterThan: 0).orderBy('assists', descending: true).orderBy('name'),
+              statKey: 'assists', statLabel: 'Ass', emptyMsg: 'Nenhuma assistência.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
             // 3. Goleiro MV
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  .where('is_goalkeeper', isEqualTo: true)
-                  .orderBy('goals_conceded', descending: false)
-                  .orderBy('name'),
-              statKey: 'goals_conceded',
-              statLabel: 'GS',
-              emptyMsg: 'Nenhum goleiro.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('is_goalkeeper', isEqualTo: true).orderBy('goals_conceded', descending: false).orderBy('name'),
+              statKey: 'goals_conceded', statLabel: 'GS', emptyMsg: 'Nenhum goleiro.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
             // 4. Craque do Jogo
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('is_staff', isEqualTo: false)
-                  .where('man_of_the_match_awards', isGreaterThan: 0)
-                  .orderBy('man_of_the_match_awards', descending: true)
-                  .orderBy('name'),
-              statKey: 'man_of_the_match_awards',
-              statLabel: 'x',
-              emptyMsg: 'Nenhum prêmio.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('man_of_the_match_awards', isGreaterThan: 0).orderBy('man_of_the_match_awards', descending: true).orderBy('name'),
+              statKey: 'man_of_the_match_awards', statLabel: 'x', emptyMsg: 'Nenhum prêmio.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
-            // 5. Pendurados
+            // 5. Pendurados (Status)
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('yellow_cards', isEqualTo: AdminService.pendingYellowCards)
-                  .orderBy('name'),
-              statKey: 'yellow_cards', 
-              statLabel: 'STATUS_PENDURADO', 
-              emptyMsg: 'Ninguém pendurado.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('yellow_cards', isEqualTo: AdminService.pendingYellowCards).orderBy('name'),
+              statKey: 'yellow_cards', statLabel: 'STATUS_PENDURADO', emptyMsg: 'Ninguém pendurado.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
-            
-            // --- 6. SUSPENSOS (COM CALLBACK DE CLIQUE CUSTOMIZADO) ---
+            // 6. Suspensos (Status)
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('is_suspended', isEqualTo: true)
-                  .orderBy('name'),
-              statKey: 'is_suspended',
-              statLabel: 'STATUS_SUSPENSO', 
-              emptyMsg: 'Ninguém suspenso.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
-              // Callback específico para esta aba
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('is_suspended', isEqualTo: true).orderBy('name'),
+              statKey: 'is_suspended', statLabel: 'STATUS_SUSPENSO', emptyMsg: 'Ninguém suspenso.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
               onItemTap: (doc) {
-                if (AdminService.isAdmin) {
-                  _showClearSuspensionDialog(context, doc);
-                } else {
-                  _navigateToProfile(context, doc.id);
-                }
+                if (AdminService.isAdmin) _showClearSuspensionDialog(context, doc);
+                else _navigateToProfile(context, doc.id);
               },
             ),
-            // ---------------------------------------------------------
-
             // 7. Total Amarelos
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('total_yellow_cards', isGreaterThan: 0)
-                  .orderBy('total_yellow_cards', descending: true)
-                  .orderBy('name'),
-              statKey: 'total_yellow_cards',
-              statLabel: 'CA',
-              emptyMsg: 'Sem cartões amarelos.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
+              statKey: 'total_yellow_cards', statLabel: 'CA', emptyMsg: 'Sem cartões amarelos.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
             // 8. Total Vermelhos
             ServerSidePaginatedList(
               firestore: _firestore,
-              baseQuery: _firestore.collection('players')
-                  .where('isActive', isEqualTo: true)
-                  .where('total_red_cards', isGreaterThan: 0)
-                  .orderBy('total_red_cards', descending: true)
-                  .orderBy('name'),
-              statKey: 'total_red_cards',
-              statLabel: 'CV',
-              emptyMsg: 'Sem cartões vermelhos.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              baseQuery: _firestore.collection('players').where('isActive', isEqualTo: true).where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
+              statKey: 'total_red_cards', statLabel: 'CV', emptyMsg: 'Sem cartões vermelhos.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
-            // 9. Total Cartões
+            // 9. Total Cartões (CLIENT SIDE)
             ClientSidePaginatedList(
-              firestore: _firestore,
-              emptyMsg: 'Sem cartões.',
-              onAvatarBuild: _buildOptimizedAvatar,
-              onTeamTap: _navigateToTeam,
+              firestore: _firestore, emptyMsg: 'Sem cartões.',
+              onAvatarBuild: _buildOptimizedAvatar, onTeamTap: _navigateToTeam,
             ),
           ],
         ),
@@ -403,7 +341,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
 }
 
 // =============================================================================
-// WIDGET 1: PAGINAÇÃO SERVER-SIDE
+// WIDGET 1: PAGINAÇÃO SERVER-SIDE (10 em 10)
 // =============================================================================
 class ServerSidePaginatedList extends StatefulWidget {
   final FirebaseFirestore firestore;
@@ -413,7 +351,7 @@ class ServerSidePaginatedList extends StatefulWidget {
   final String emptyMsg;
   final Widget Function(String?, bool) onAvatarBuild;
   final Function(BuildContext, String?) onTeamTap;
-  final Function(DocumentSnapshot)? onItemTap; // Callback Opcional
+  final Function(DocumentSnapshot)? onItemTap; 
 
   const ServerSidePaginatedList({
     super.key,
@@ -479,10 +417,8 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
     if (widget.statLabel == 'STATUS_SUSPENSO') {
       int reds = data['red_cards'] ?? 0;
       int yellows = data['yellow_cards'] ?? 0;
-      
       List<Widget> icons = [];
       bool hasRed = (reds > 0);
-      // Se tiver 3 amarelos OU se não tiver vermelho (então deve ser amarelo, mesmo que contador tenha zerado)
       bool isYellowSuspension = (yellows >= AdminService.suspensionYellowCards) || (reds == 0);
 
       if (isYellowSuspension) {
@@ -576,37 +512,48 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
         final doc = _docs[index];
         final data = doc.data() as Map<String, dynamic>;
         
-        final String? photoUrl = data['photo_url'];
+        final String? photoUrl = (data.containsKey('photo_url') && data['photo_url'] != null) ? data['photo_url'].toString() : null;
         final bool isStaff = data['is_staff'] ?? false;
-        final String teamName = data['team_name'] ?? 'Time';
-        final String teamId = data['team_id'] ?? '';
-        final String shieldUrl = data['team_shield_url'] ?? '';
-        final int? num = data['jersey_number'];
         final String name = data['name'] ?? 'Nome';
-        final String displayName = isStaff 
-            ? '$name (Staff)' 
-            : (num != null ? '$num. $name' : name);
+        final int? num = data['jersey_number'];
+        final String displayName = isStaff ? '$name (Staff)' : (num != null ? '$num. $name' : name);
+
+        // --- CORREÇÃO: Extração segura do escudo do time ---
+        final String? shieldUrl = (data.containsKey('team_shield_url') && data['team_shield_url'] != null)
+            ? data['team_shield_url'].toString()
+            : null;
+        // ---------------------------------------------------
 
         return ListTile(
           leading: widget.onAvatarBuild(photoUrl, isStaff),
           title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
           subtitle: InkWell(
-            onTap: () => widget.onTeamTap(context, teamId),
+            onTap: () => widget.onTeamTap(context, data['team_id']),
             child: Row(
               children: [
-                if (shieldUrl.isNotEmpty)
+                // --- CORREÇÃO: Exibição do escudo do time ---
+                if (shieldUrl != null && shieldUrl.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(right: 6.0),
-                    child: SizedBox(width: 18, height: 18, child: CachedNetworkImage(imageUrl: shieldUrl, fit: BoxFit.contain)),
+                    child: SizedBox(
+                      width: 18, height: 18, 
+                      child: CachedNetworkImage(
+                        imageUrl: shieldUrl, 
+                        fit: BoxFit.contain,
+                        placeholder: (c,u) => const SizedBox(),
+                        errorWidget: (c,u,e) => const Icon(Icons.shield, size: 15),
+                      )
+                    ),
                   ),
-                Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis)),
+                // ---------------------------------------------
+                Flexible(child: Text(data['team_name'] ?? 'Time', overflow: TextOverflow.ellipsis)),
               ],
             ),
           ),
           trailing: _buildTrailing(data),
           onTap: () {
              if (widget.onItemTap != null) {
-               widget.onItemTap!(doc); // Usa o callback customizado se existir (Suspensos)
+               widget.onItemTap!(doc); 
              } else {
                Navigator.of(context).push(
                   MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: doc.id)),
@@ -620,7 +567,7 @@ class _ServerSidePaginatedListState extends State<ServerSidePaginatedList> with 
 }
 
 // =============================================================================
-// WIDGET 2: PAGINAÇÃO CLIENT-SIDE
+// WIDGET 2: PAGINAÇÃO CLIENT-SIDE (Para Total de Cartões)
 // =============================================================================
 class ClientSidePaginatedList extends StatefulWidget {
   final FirebaseFirestore firestore;
@@ -641,7 +588,7 @@ class ClientSidePaginatedList extends StatefulWidget {
 }
 
 class _ClientSidePaginatedListState extends State<ClientSidePaginatedList> with AutomaticKeepAliveClientMixin {
-  final int _pageSize = 10;
+  final int _pageSize = 10; 
   List<Map<String, dynamic>> _allPlayersSorted = [];
   List<Map<String, dynamic>> _displayedPlayers = [];
   bool _isInitialLoading = true;
@@ -728,11 +675,16 @@ class _ClientSidePaginatedListState extends State<ClientSidePaginatedList> with 
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).primaryColor,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30.0),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 12.0),
                   elevation: 3,
                 ),
-                child: const Text('Carregar Mais...', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                child: const Text(
+                  'Carregar Mais...',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
               ),
             );
           } else {
@@ -746,18 +698,43 @@ class _ClientSidePaginatedListState extends State<ClientSidePaginatedList> with 
         final item = _displayedPlayers[index];
         final data = item['data'] as Map<String, dynamic>;
         
-        final String? photoUrl = data['photo_url'];
+        final String? photoUrl = (data.containsKey('photo_url') && data['photo_url'] != null) ? data['photo_url'].toString() : null;
         final bool isStaff = data['is_staff'] ?? false;
         final String name = data['name'] ?? 'Nome';
         final int? num = data['jersey_number'];
         final String displayName = isStaff ? '$name (Staff)' : (num != null ? '$num. $name' : name);
         
+        // --- CORREÇÃO: Extração do escudo na ClientSide ---
+        final String? shieldUrl = (data.containsKey('team_shield_url') && data['team_shield_url'] != null)
+            ? data['team_shield_url'].toString()
+            : null;
+        // -------------------------------------------------
+
         return ListTile(
           leading: widget.onAvatarBuild(photoUrl, isStaff),
           title: Text(displayName),
           subtitle: InkWell(
             onTap: () => widget.onTeamTap(context, data['team_id']),
-            child: Text(data['team_name'] ?? '', style: const TextStyle(fontSize: 12)),
+            child: Row(
+              children: [
+                // --- CORREÇÃO: Exibição do escudo do time ---
+                if (shieldUrl != null && shieldUrl.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6.0),
+                    child: SizedBox(
+                      width: 18, height: 18, 
+                      child: CachedNetworkImage(
+                        imageUrl: shieldUrl, 
+                        fit: BoxFit.contain,
+                        placeholder: (c,u) => const SizedBox(),
+                        errorWidget: (c,u,e) => const Icon(Icons.shield, size: 15),
+                      )
+                    ),
+                  ),
+                // ---------------------------------------------
+                Flexible(child: Text(data['team_name'] ?? '', style: const TextStyle(fontSize: 12))),
+              ],
+            ),
           ),
           trailing: Column(
             mainAxisAlignment: MainAxisAlignment.center,
