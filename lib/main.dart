@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/date_symbol_data_local.dart'; // Para inicializar datas em pt_BR
+
+// Configurações do Firebase (Geradas pelo FlutterFire)
 import 'firebase_options.dart'; 
 import 'firebase_options_test.dart'; 
 
@@ -10,7 +13,8 @@ import 'firebase_options_test.dart';
 import 'services/auth_service.dart';
 import 'services/notification_service.dart';
 import 'services/admin_service.dart';
-import 'services/championship_service.dart'; // Import do novo serviço
+import 'services/championship_service.dart';
+import 'services/firestore_service.dart'; // Para acessar constantes se necessário
 
 // Screens
 import 'screens/splash_screen.dart';
@@ -23,7 +27,7 @@ import 'screens/suspension_history_screen.dart';
 import 'screens/player_comparison_screen.dart';
 import 'screens/report_bug_screen.dart';
 import 'screens/admin_menu_screen.dart';
-import 'screens/manage_seasons_screen.dart'; // Se já tiver criado
+// import 'screens/manage_seasons_screen.dart'; // Acessada via AdminMenu
 
 // --- FUNÇÃO AUXILIAR PARA DETECTAR ERRO DE ÍNDICE ---
 void _logFirestoreIndexError(Object error) {
@@ -32,7 +36,16 @@ void _logFirestoreIndexError(Object error) {
     debugPrint('\n🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥');
     debugPrint('🔥 FALTA DE ÍNDICE DETECTADA NO FIRESTORE! 🔥');
     debugPrint('👉 CLIQUE NESTE LINK PARA CRIAR AUTOMATICAMENTE:');
-    debugPrint(e); // O link estará aqui dentro
+    
+    // Tenta extrair o link da mensagem de erro
+    final linkRegex = RegExp(r'https://console\.firebase\.google\.com[^\s]+');
+    final match = linkRegex.firstMatch(e);
+    if (match != null) {
+       debugPrint(match.group(0));
+    } else {
+       debugPrint(e); // Se não achar o link limpo, imprime tudo
+    }
+    
     debugPrint('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n');
   }
 }
@@ -42,6 +55,7 @@ void main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
+    // 1. Configuração de Ambiente
     const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
     FirebaseOptions firebaseOptions;
 
@@ -53,24 +67,33 @@ void main() async {
       firebaseOptions = DefaultFirebaseOptions.currentPlatform;
     }
 
+    // 2. Inicializa Firebase
     await Firebase.initializeApp(options: firebaseOptions);
 
-    // Inicializações
+    // 3. Inicializa Serviços Auxiliares
     await NotificationService().init();
-    await AdminService.loadAllRules('legacy_2025'); 
+    
+    // Inicializa formatação de data para Português
+    await initializeDateFormatting('pt_BR', null);
 
-    // Intercepta erros síncronos do Flutter
+    // Carrega regras iniciais (opcional, pois o ChampionshipService faz isso, mas mal não faz)
+    // await AdminService.loadAllRules(FirestoreService.LEGACY_ID); 
+
+    // 4. Intercepta erros síncronos do Flutter
     FlutterError.onError = (FlutterErrorDetails details) {
-      _logFirestoreIndexError(details.exception);
-      FlutterError.presentError(details); // Continua mostrando o erro na tela vermelha (em debug)
+      if (details.exception.toString().contains('failed-precondition')) {
+         _logFirestoreIndexError(details.exception);
+      }
+      // Chama o handler padrão para mostrar o erro na tela (em debug) ou logar
+      FlutterError.presentError(details); 
     };
 
     runApp(const FjfApp());
   
   }, (error, stack) {
-    // Intercepta erros assíncronos (Streams, Futures soltos)
+    // 5. Intercepta erros assíncronos (Streams, Futures soltos)
     _logFirestoreIndexError(error);
-    debugPrint("Erro assíncrono capturado: $error");
+    debugPrint("Erro assíncrono capturado no Zone: $error");
   });
 }
 
@@ -79,6 +102,7 @@ class FjfApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Verifica ambiente novamente para exibir o Banner
     const bool isTestEnv = String.fromEnvironment('ENV') == 'test';
 
     return MultiProvider(
@@ -89,17 +113,22 @@ class FjfApp extends StatelessWidget {
       child: MaterialApp(
         title: 'FJF 2025',
         debugShowCheckedModeBanner: false,
+        
+        // Configura Banner de Teste se necessário
         builder: (context, child) {
           if (isTestEnv) {
             return Banner(
               message: "TESTE",
               location: BannerLocation.topStart,
               color: Colors.red,
+              textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1),
               child: child!,
             );
           }
           return child!;
         },
+
+        // Internacionalização
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -107,33 +136,33 @@ class FjfApp extends StatelessWidget {
         ],
         supportedLocales: const [Locale('pt', 'BR')],
         
+        // Tema
         theme: ThemeData(
           primaryColor: const Color(0xFFC25F22),
           colorScheme: ColorScheme.fromSwatch().copyWith(
             primary: const Color(0xFFC25F22),
             secondary: Colors.black,
           ),
-          scaffoldBackgroundColor: Colors.grey[50],
+          scaffoldBackgroundColor: Colors.grey[50], // Fundo levemente cinza é mais moderno
           fontFamily: 'Roboto', 
-          useMaterial3: false,
+          useMaterial3: false, // Mantém estilo clássico por enquanto para não quebrar layout
           appBarTheme: const AppBarTheme(
             backgroundColor: Color(0xFFC25F22),
             foregroundColor: Colors.white,
-            centerTitle: false,
-            elevation: 2,
+            centerTitle: true,
+            elevation: 0,
           ),
         ),
 
-        // 6. Rotas
-        initialRoute: SplashScreen.routeName,
+        // Rotas
+        initialRoute: '/', // Rota inicial padrão
         routes: {
-          '/': (ctx) => const SplashScreen(), // Rota raiz para evitar erro
-          SplashScreen.routeName: (ctx) => const SplashScreen(),
+          '/': (ctx) => const SplashScreen(),
           '/fixtures': (ctx) => const FixturesScreen(),
           '/standings': (ctx) => const StandingsScreen(),
           '/teams': (ctx) => const TeamsListScreen(),
           '/team-stats': (ctx) => const TeamStatsScreen(),
-          '/player-stats': (ctx) => PlayerStatsScreen(),
+          '/player-stats': (ctx) => const PlayerStatsScreen(),
           '/suspension-history': (ctx) => SuspensionHistoryScreen(),
           '/player-comparison': (ctx) => const PlayerComparisonScreen(),
           '/report-bug': (ctx) => const ReportBugScreen(),

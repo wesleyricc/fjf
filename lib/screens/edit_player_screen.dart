@@ -9,8 +9,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart'; 
 import 'package:flutter/services.dart'; 
-import 'package:provider/provider.dart'; // <-- Importante
-import '../services/auth_service.dart'; // <-- Importante
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/firestore_service.dart';
 
@@ -46,9 +46,24 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   bool _isGoalkeeper = false;
   
   String? _selectedPosition; 
-  String? _selectedFoot;     
+  String? _selectedFoot;
+  
+  // --- NOVO: Variável para Função da Comissão ---
+  String? _selectedStaffRole;
+  // --------------------------------------------
+
   final List<String> _positionOptions = ['Fixo', 'Ala', 'Pivô'];
   final List<String> _footOptions = ['Destro', 'Canhoto', 'Ambidestro'];
+  
+  // --- NOVO: Lista de Funções ---
+  final List<String> _staffRoleOptions = [
+    'Técnico',
+    'Auxiliar Técnico',
+    'Atendente',
+    'Analista',
+    'Massagista',
+  ];
+  // -----------------------------
 
   String? _photoUrl;
   File? _imageFile;
@@ -88,6 +103,11 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       
       String? foot = data['preferred_foot'];
       if (_footOptions.contains(foot)) _selectedFoot = foot;
+
+      // --- Carrega Função da Comissão ---
+      String? role = data['staff_role'];
+      if (_staffRoleOptions.contains(role)) _selectedStaffRole = role;
+      // ----------------------------------
     }
   }
 
@@ -162,6 +182,12 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
   Future<void> _savePlayer() async {
     if (!_formKey.currentState!.validate()) return;
+    
+    // Validação extra para comissão técnica
+    if (_isStaff && _selectedStaffRole == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione a função na comissão técnica.')));
+      return;
+    }
 
     setState(() {}); // Loading
 
@@ -186,7 +212,8 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       final Map<String, dynamic> playerData = {
         'name': _nameController.text.trim(),
         'jersey_number': jerseyNumber,
-        'position': _isGoalkeeper ? 'Goleiro' : _selectedPosition,
+        // Se for staff, a posição é nula ou irrelevante, mas mantemos a lógica de goleiro
+        'position': _isStaff ? null : (_isGoalkeeper ? 'Goleiro' : _selectedPosition),
         'date_of_birth': dobTimestamp,
         'height_cm': heightCm,
         'weight_kg': weightKg,
@@ -194,6 +221,9 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
         'instagram': _instagramController.text.trim(),
         'phone': _phoneController.text.trim(),
         'is_staff': _isStaff,
+        // --- SALVA O CARGO ---
+        'staff_role': _isStaff ? _selectedStaffRole : null,
+        // ---------------------
         'is_goalkeeper': _isGoalkeeper,
         'photo_url': uploadedPhotoUrl,
         'team_id': widget.teamId,
@@ -227,14 +257,13 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // --- CORREÇÃO: Usar Provider para verificar autenticação ---
     final isAuthenticated = Provider.of<AuthService>(context).isAuthenticated;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.playerDoc == null ? 'Novo Jogador' : 'Editar ${_nameController.text}'),
       ),
-      body: isAuthenticated // <-- Verificação correta
+      body: isAuthenticated
           ? Form(
               key: _formKey,
               child: SingleChildScrollView(
@@ -305,25 +334,33 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SwitchListTile(
-                            title: const Text('Comissão?'),
+                    // --- CONTROLES DE TIPO (COMISSÃO vs JOGADOR) ---
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          SwitchListTile(
+                            title: const Text('Membro da Comissão Técnica?'),
+                            subtitle: const Text('Técnico, Auxiliar, etc.'),
                             value: _isStaff,
                             onChanged: (bool value) {
                               setState(() {
                                 _isStaff = value;
-                                if (_isStaff) { _isGoalkeeper = false; _selectedPosition = null; }
+                                if (_isStaff) { 
+                                  _isGoalkeeper = false; 
+                                  _selectedPosition = null; 
+                                } else {
+                                  _selectedStaffRole = null;
+                                }
                               });
                             },
-                            contentPadding: EdgeInsets.zero,
                           ),
-                        ),
-                        if (!_isStaff)
-                          Expanded(
-                            child: SwitchListTile(
-                              title: const Text('Goleiro?'),
+                          if (!_isStaff)
+                            SwitchListTile(
+                              title: const Text('É Goleiro?'),
                               value: _isGoalkeeper,
                               onChanged: (bool value) {
                                 setState(() {
@@ -331,12 +368,26 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                                   if (_isGoalkeeper) _selectedPosition = null;
                                 });
                               },
-                              contentPadding: EdgeInsets.zero,
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(height: 16),
 
+                    // --- SELEÇÃO DE FUNÇÃO (SE FOR STAFF) ---
+                    if (_isStaff)
+                       Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedStaffRole,
+                          decoration: const InputDecoration(labelText: 'Função na Comissão', border: OutlineInputBorder()),
+                          items: _staffRoleOptions.map((String role) => DropdownMenuItem<String>(value: role, child: Text(role))).toList(),
+                          onChanged: (newValue) => setState(() => _selectedStaffRole = newValue),
+                          validator: (val) => val == null ? 'Selecione a função' : null,
+                        ),
+                      ),
+
+                    // --- SELEÇÃO DE POSIÇÃO (SE FOR JOGADOR DE LINHA) ---
                     if (!_isStaff && !_isGoalkeeper)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
@@ -350,6 +401,8 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                       ),
                     
                     const SizedBox(height: 8),
+                    
+                    // --- DADOS FÍSICOS (Opcionais para Staff) ---
                     Row(
                       children: [
                         Expanded(
@@ -401,7 +454,7 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
-                      child: const Text('Salvar Jogador', style: TextStyle(fontSize: 18)),
+                      child: const Text('Salvar', style: TextStyle(fontSize: 18)),
                     ),
                   ],
                 ),

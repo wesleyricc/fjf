@@ -34,29 +34,41 @@ class TeamStanding {
   String get id => teamDoc.id;
   Map<String, dynamic> get data => teamDoc.data() as Map<String, dynamic>;
 }
-// --- FIM TeamStanding ---
-
 
 // --- Classe/Funções de Ordenação (MODIFICADA) ---
 class StandingsSorter {
-  // --- ALTERAÇÃO: Aceita List<Map> em vez de List<DocumentSnapshot> ---
   final List<Map<String, dynamic>> finishedMatches;
 
   StandingsSorter({required this.finishedMatches});
-  // --- FIM DA ALTERAÇÃO ---
 
   List<TeamStanding> sort(List<TeamStanding> standings) {
+    // 1. Pré-calcular contagem de times por pontuação (Frequência)
+    // Isso nos diz quantos times estão empatados com a mesma pontuação.
+    Map<int, int> pointsFrequency = {};
+    for (var team in standings) {
+      pointsFrequency[team.points] = (pointsFrequency[team.points] ?? 0) + 1;
+    }
+
     List<TeamStanding> sortedList = List.from(standings);
-    sortedList.sort(_customSort);
+    
+    // 2. Ordenar usando o mapa de frequência via Closure
+    sortedList.sort((a, b) => _customSort(a, b, pointsFrequency));
+    
     return sortedList;
   }
 
-  int _customSort(TeamStanding a, TeamStanding b) {
+  int _customSort(TeamStanding a, TeamStanding b, Map<int, int> pointsFrequency) {
+    // 1. Pontos (Decrescente) - Critério Mestre
     int comparison = b.points.compareTo(a.points);
     if (comparison != 0) return comparison;
 
+    // Se chegou aqui, a.points == b.points.
+    // Descobrimos quantos times no total têm essa mesma pontuação.
+    int tiedCount = pointsFrequency[a.points] ?? 0;
+
     for (String criterionKey in AdminService.tiebreakerOrder) {
-       comparison = _compareByCriterion(criterionKey, a, b);
+       // Passamos o 'tiedCount' para decidir se aplicamos a regra
+       comparison = _compareByCriterion(criterionKey, a, b, tiedCount);
        if (comparison != 0) return comparison;
     }
 
@@ -66,10 +78,17 @@ class StandingsSorter {
      return 0;
   }
 
-  int _compareByCriterion(String key, TeamStanding a, TeamStanding b) {
+  int _compareByCriterion(String key, TeamStanding a, TeamStanding b, int tiedCount) {
     switch (key) {
       case 'head_to_head':
+        // --- NOVA REGRA ---
+        // Se houver mais de 2 times empatados (tiedCount > 2),
+        // o Confronto Direto é anulado/ignorado.
+        if (tiedCount > 2) {
+          return 0; // Considera empatado neste critério, pula para o próximo
+        }
         return _getHeadToHeadResult(a, b);
+        
       case 'disciplinary_points':
         return a.disciplinaryPoints.compareTo(b.disciplinaryPoints);
       case 'wins':
@@ -90,23 +109,18 @@ class StandingsSorter {
     int pointsA = 0;
     int pointsB = 0;
     
-    // --- ALTERAÇÃO: Itera sobre List<Map> ---
     List<Map<String, dynamic>> h2hMatches = finishedMatches.where((match) {
       final homeId = match['team_home_id'];
       final awayId = match['team_away_id'];
       return (homeId == a.id && awayId == b.id) || (homeId == b.id && awayId == a.id);
     }).toList();
-    // --- FIM DA ALTERAÇÃO ---
 
     if (h2hMatches.isEmpty) return 0;
 
     for (var match in h2hMatches) {
-      // --- ALTERAÇÃO: Acesso direto ao Map ---
-      final data = match;
-      final scoreHome = (data['score_home'] ?? 0) as int;
-      final scoreAway = (data['score_away'] ?? 0) as int;
-      final homeId = data['team_home_id'];
-      // --- FIM DA ALTERAÇÃO ---
+      final scoreHome = (match['score_home'] ?? 0) as int;
+      final scoreAway = (match['score_away'] ?? 0) as int;
+      final homeId = match['team_home_id'];
 
       if (scoreHome == scoreAway) {
         pointsA += 1; pointsB += 1;
@@ -116,6 +130,7 @@ class StandingsSorter {
          if (scoreAway < scoreHome) pointsB += 3; else pointsA += 3;
       }
     }
+    // Quem tem mais pontos no confronto direto fica na frente
     return pointsB.compareTo(pointsA);
   }
 }

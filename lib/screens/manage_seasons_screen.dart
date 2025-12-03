@@ -14,162 +14,64 @@ class ManageSeasonsScreen extends StatefulWidget {
 class _ManageSeasonsScreenState extends State<ManageSeasonsScreen> {
   bool _isProcessing = false;
 
-  // --- DIÁLOGO DE CRIAÇÃO ---
-  Future<void> _showCreateSeasonDialog() async {
-    final yearController = TextEditingController();
-    final nameController = TextEditingController();
-    final honoreeController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
+  // --- LÓGICA DE CRIAÇÃO ---
+  Future<void> _handleCreateSeason(
+    int year, String name, String honoree, bool copyTeams, bool copyPlayers
+  ) async {
+    setState(() => _isProcessing = true);
+    
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final result = await service.createSeason(
+      year, name, honoree,
+      copyTeams: copyTeams,
+      copyPlayers: copyPlayers,
+    );
 
-    // Estados dos Switches
-    bool copyTeams = true;   // Padrão: Sim
-    bool copyPlayers = true; // Padrão: Sim
+    if (mounted) {
+      setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result == "Sucesso" ? 'Temporada criada com sucesso!' : result),
+        backgroundColor: result == "Sucesso" ? Colors.green : Colors.red,
+      ));
+    }
+  }
 
+  Future<void> _showCreateDialog() async {
     await showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder( 
-        builder: (context, setStateDialog) {
-          return AlertDialog(
-            title: const Text('Nova Temporada'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: yearController,
-                      decoration: const InputDecoration(labelText: 'Ano (ex: 2026)'),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      maxLength: 4,
-                      validator: (v) => (v == null || v.length != 4) ? 'Ano inválido' : null,
-                    ),
-                    TextFormField(
-                      controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Nome (ex: Copa FJF 2026)'),
-                      validator: (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
-                    ),
-                    TextFormField(
-                      controller: honoreeController,
-                      decoration: const InputDecoration(labelText: 'Homenageado'),
-                      validator: (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Opções de Importação:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      title: const Text('Importar Equipes'),
-                      subtitle: const Text('Copia os times da temporada atual zerando os pontos.'),
-                      value: copyTeams,
-                      onChanged: (val) => setStateDialog(() => copyTeams = val),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    SwitchListTile(
-                      title: const Text('Manter Elencos'),
-                      subtitle: const Text('Mantém os titulares/reservas definidos.'),
-                      value: copyPlayers,
-                      onChanged: copyTeams ? (val) => setStateDialog(() => copyPlayers = val) : null, 
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-              ElevatedButton(
-                onPressed: () async {
-                  if (!formKey.currentState!.validate()) return;
-                  
-                  final int year = int.parse(yearController.text);
-                  final String name = nameController.text;
-                  final String honoree = honoreeController.text;
-
-                  Navigator.of(ctx).pop();
-                  setState(() => _isProcessing = true);
-
-                  final service = Provider.of<ChampionshipService>(context, listen: false);
-                  
-                  // --- CORREÇÃO AQUI ---
-                  // Passa os argumentos obrigatórios posicionalmente
-                  final result = await service.createSeason(
-                    year,      // Posicional 1
-                    name,      // Posicional 2
-                    honoree,   // Posicional 3
-                    copyTeams: copyTeams,      // Nomeado
-                    copyPlayers: copyPlayers,  // Nomeado
-                  );
-                  // ---------------------
-
-                  setState(() => _isProcessing = false);
-
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(result == "Sucesso" ? 'Temporada criada com sucesso!' : result),
-                        backgroundColor: result == "Sucesso" ? Colors.green : Colors.red,
-                      ),
-                    );
-                  }
-                },
-                child: const Text('Criar'),
-              ),
-            ],
-          );
-        }
-      ),
+      builder: (ctx) => _CreateSeasonDialog(onConfirm: _handleCreateSeason),
     );
   }
 
-  // --- DIÁLOGO EDITAR ---
-  Future<void> _showEditSeasonDialog(Map<String, dynamic> seasonData) async {
-    final nameController = TextEditingController(text: seasonData['name']);
-    final honoreeController = TextEditingController(text: seasonData['honoree']);
-    final formKey = GlobalKey<FormState>();
-    final String seasonId = seasonData['id'];
-    final int year = seasonData['year'];
-
+  // --- LÓGICA DE EDIÇÃO ---
+  Future<void> _showEditDialog(Map<String, dynamic> seasonData) async {
+    final TextEditingController nameCtrl = TextEditingController(text: seasonData['name']);
+    final TextEditingController honoreeCtrl = TextEditingController(text: seasonData['honoree']);
+    
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Editar Temporada $year'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(title: const Text("Ano (ID)"), subtitle: Text(year.toString()), contentPadding: EdgeInsets.zero, dense: true),
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Nome do Campeonato'),
-                validator: (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: honoreeController,
-                decoration: const InputDecoration(labelText: 'Homenageado'),
-                validator: (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
-              ),
-            ],
-          ),
+        title: Text('Editar ${seasonData['year']}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nome')),
+            TextFormField(controller: honoreeCtrl, decoration: const InputDecoration(labelText: 'Homenageado')),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
           ElevatedButton(
             onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              final String name = nameController.text;
-              final String honoree = honoreeController.text;
-              Navigator.of(ctx).pop();
+              Navigator.pop(ctx);
               setState(() => _isProcessing = true);
               
               final service = Provider.of<ChampionshipService>(context, listen: false);
-              final result = await service.updateSeason(seasonId, name, honoree);
+              final res = await service.updateSeason(seasonData['id'], nameCtrl.text, honoreeCtrl.text);
               
-              setState(() => _isProcessing = false);
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result == "Sucesso" ? 'Atualizado!' : result), backgroundColor: result == "Sucesso" ? Colors.green : Colors.red));
+                setState(() => _isProcessing = false);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
               }
             },
             child: const Text('Salvar'),
@@ -187,7 +89,7 @@ class _ManageSeasonsScreenState extends State<ManageSeasonsScreen> {
     final List<Map<String, dynamic>> allSeasons = [
       {
         'id': FirestoreService.LEGACY_ID,
-        'name': 'FJF 2025 (Dados Originais)',
+        'name': 'FJF 2025 (Original)',
         'year': 2025,
         'honoree': 'Taça Mary Neusa Espíndola Bif',
         'isActive': false
@@ -204,61 +106,196 @@ class _ManageSeasonsScreenState extends State<ManageSeasonsScreen> {
             itemCount: allSeasons.length,
             itemBuilder: (context, index) {
               final season = allSeasons[index];
-              final String id = season['id'];
-              final String name = season['name'];
-              final String honoree = season['honoree'] ?? '';
-              final bool isSelected = (id == currentId);
-              final bool isLegacy = (id == FirestoreService.LEGACY_ID);
-              // Lê a flag do objeto da lista (que vem do banco), não do service diretamente
-              final bool isGlobalActive = season['isActive'] == true; 
-
-              return Card(
-                elevation: isSelected ? 4 : 1,
-                color: isSelected ? Colors.green[50] : null,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: isSelected ? BorderSide(color: Colors.green[700]!, width: 2) : BorderSide.none),
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: CircleAvatar(backgroundColor: isGlobalActive ? Colors.amber : Colors.grey[300], child: Icon(Icons.emoji_events, color: isGlobalActive ? Colors.black : Colors.grey[700])),
-                      title: Text(name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Homenageado: $honoree'), Text('ID: $id', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                         if (isGlobalActive) const Text('★ TEMPORADA ATIVA (PADRÃO) ★', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 10)),
-                      ]),
-                      trailing: isLegacy ? null : IconButton(icon: Icon(Icons.edit, color: Theme.of(context).primaryColor), onPressed: () => _showEditSeasonDialog(season)),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (!isGlobalActive && !isLegacy)
-                            TextButton.icon(icon: const Icon(Icons.star_border, color: Colors.amber), label: const Text('Tornar Padrão', style: TextStyle(color: Colors.amber)), onPressed: () async {
-                                setState(() => _isProcessing = true);
-                                final res = await championshipService.setGlobalActiveSeason(id);
-                                setState(() => _isProcessing = false);
-                                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
-                              }),
-                          const SizedBox(width: 8),
-                          if (isSelected) const Chip(label: Text('Visualizando'), backgroundColor: Colors.green, labelStyle: TextStyle(color: Colors.white))
-                          else ElevatedButton(onPressed: () async {
-                                await championshipService.setSeason(id);
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Visualizando: $name')));
-                              }, style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[200], foregroundColor: Colors.black87, elevation: 0), child: const Text('Visualizar')),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              final bool isSelected = (season['id'] == currentId);
+              final bool isGlobalActive = season['isActive'] == true;
+              
+              return _SeasonCard(
+                season: season,
+                isSelected: isSelected,
+                isGlobalActive: isGlobalActive,
+                onEdit: () => _showEditDialog(season),
+                onActivate: () async {
+                   setState(() => _isProcessing = true);
+                   final res = await championshipService.setGlobalActiveSeason(season['id']);
+                   if (mounted) {
+                     setState(() => _isProcessing = false);
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
+                   }
+                },
+                onView: () async {
+                   await championshipService.setSeason(season['id']);
+                   if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visualizando temporada.')));
+                },
               );
             },
           ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateSeasonDialog,
+        onPressed: _showCreateDialog,
         label: const Text('Nova Temporada'),
         icon: const Icon(Icons.add),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
       ),
+    );
+  }
+}
+
+// --- COMPONENTES INTERNOS PARA LIMPEZA ---
+
+class _SeasonCard extends StatelessWidget {
+  final Map<String, dynamic> season;
+  final bool isSelected;
+  final bool isGlobalActive;
+  final VoidCallback onEdit;
+  final VoidCallback onActivate;
+  final VoidCallback onView;
+
+  const _SeasonCard({
+    required this.season,
+    required this.isSelected,
+    required this.isGlobalActive,
+    required this.onEdit,
+    required this.onActivate,
+    required this.onView,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isLegacy = season['id'] == FirestoreService.LEGACY_ID;
+
+    return Card(
+      elevation: isSelected ? 4 : 1,
+      color: isSelected ? Colors.green[50] : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: isSelected ? BorderSide(color: Colors.green[700]!, width: 2) : BorderSide.none
+      ),
+      child: Column(
+        children: [
+          ListTile(
+            leading: CircleAvatar(
+              backgroundColor: isGlobalActive ? Colors.amber : Colors.grey[300],
+              child: Icon(Icons.emoji_events, color: isGlobalActive ? Colors.black : Colors.grey[700]),
+            ),
+            title: Text(season['name'], style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(season['honoree'] ?? ''),
+                if (isGlobalActive) 
+                  const Text('★ PADRÃO (Ativa) ★', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 10)),
+              ],
+            ),
+            trailing: isLegacy ? null : IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (!isGlobalActive && !isLegacy)
+                  TextButton(
+                    onPressed: onActivate,
+                    child: const Text('Tornar Padrão', style: TextStyle(color: Colors.amber)),
+                  ),
+                const SizedBox(width: 8),
+                if (isSelected)
+                  const Chip(label: Text('Visualizando', style: TextStyle(color: Colors.white)), backgroundColor: Colors.green)
+                else
+                  ElevatedButton(
+                    onPressed: onView,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[200], foregroundColor: Colors.black87, elevation: 0),
+                    child: const Text('Visualizar'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CreateSeasonDialog extends StatefulWidget {
+  final Function(int, String, String, bool, bool) onConfirm;
+  const _CreateSeasonDialog({required this.onConfirm});
+
+  @override
+  State<_CreateSeasonDialog> createState() => _CreateSeasonDialogState();
+}
+
+class _CreateSeasonDialogState extends State<_CreateSeasonDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _yearCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _honoreeCtrl = TextEditingController();
+  bool _copyTeams = true;
+  bool _copyPlayers = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nova Temporada'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _yearCtrl,
+                decoration: const InputDecoration(labelText: 'Ano (ex: 2026)'),
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                validator: (v) => (v == null || v.length != 4) ? 'Ano inválido' : null,
+              ),
+              TextFormField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(labelText: 'Nome (ex: Copa 2026)'),
+                validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+              ),
+              TextFormField(
+                controller: _honoreeCtrl,
+                decoration: const InputDecoration(labelText: 'Homenageado'),
+                validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+              ),
+              const Divider(),
+              SwitchListTile(
+                title: const Text('Importar Times'),
+                subtitle: const Text('Copia os times atuais zerando pontos.'),
+                value: _copyTeams,
+                onChanged: (v) => setState(() => _copyTeams = v),
+                contentPadding: EdgeInsets.zero,
+              ),
+              SwitchListTile(
+                title: const Text('Manter Elencos'),
+                subtitle: const Text('Copia jogadores e vincula aos times.'),
+                value: _copyPlayers,
+                onChanged: _copyTeams ? (v) => setState(() => _copyPlayers = v) : null,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              Navigator.pop(context);
+              widget.onConfirm(
+                int.parse(_yearCtrl.text),
+                _nameCtrl.text,
+                _honoreeCtrl.text,
+                _copyTeams,
+                _copyPlayers,
+              );
+            }
+          },
+          child: const Text('Criar'),
+        ),
+      ],
     );
   }
 }
