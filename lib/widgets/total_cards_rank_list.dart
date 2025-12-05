@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../screens/player_profile_screen.dart';
 import '../utils/custom_cache_manager.dart';
+import '../widgets/rank_highlight_card.dart'; 
 
 class TotalCardsRankList extends StatefulWidget {
   final Query baseQuery;
@@ -35,10 +36,6 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
 
   Future<void> _fetchAndProcess() async {
     try {
-      // Busca todos os jogadores que tenham algum cartão (Otimização: filtrar no banco)
-      // Como a query é complexa (OR no firestore é limitado), buscamos quem tem total_yellow > 0 ou total_red > 0
-      // Mas para simplificar, a baseQuery já vem com isActive=true. Vamos filtrar em memória.
-      
       final snapshot = await widget.baseQuery.get();
       List<Map<String, dynamic>> temp = [];
 
@@ -59,7 +56,6 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
         }
       }
 
-      // Ordena decrescente
       temp.sort((a, b) {
         int comp = b['total'].compareTo(a['total']);
         if (comp != 0) return comp;
@@ -90,10 +86,9 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_sortedPlayers.isEmpty) return Center(child: Text(widget.emptyMessage));
 
-    return ListView.separated(
+    return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _displayedList.length + (_displayedList.length < _sortedPlayers.length ? 1 : 0),
-      separatorBuilder: (_, __) => const Divider(height: 1, indent: 70),
       itemBuilder: (context, index) {
         if (index == _displayedList.length) {
           return Padding(
@@ -108,48 +103,95 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
         final item = _displayedList[index];
         final data = item['data'];
         final doc = item['doc'] as DocumentSnapshot;
+        final rank = index + 1;
         
+        final int y = item['y'];
+        final int r = item['r'];
+
+        // --- TOP 3 ---
+        if (index < 3) {
+          // Define cores para o texto baseado no fundo do card
+          Color detailColor = (rank == 3) ? Colors.white70 : Colors.black54;
+
+          return RankHighlightCard(
+            rank: rank,
+            title: data['name'] ?? 'Nome',
+            subtitle: data['team_name'] ?? '',
+            imageUrl: data['photo_url'] ?? '',
+            statValue: '${item['total']}',
+            statLabel: 'Cartões',
+            statIcon: Icons.layers,
+            isPlayer: true,
+            // Injeta o detalhe dos cartões
+            extraInfoWidget: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('$y', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: detailColor)),
+                const SizedBox(width: 2),
+                Icon(Icons.style, size: 12, color: Colors.amber[700]), // Amarelo
+                const SizedBox(width: 6),
+                Text('$r', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: detailColor)),
+                const SizedBox(width: 2),
+                const Icon(Icons.style, size: 12, color: Colors.red), // Vermelho
+              ],
+            ),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id))),
+          );
+        }
+
+        // --- RESTO DA LISTA ---
         final name = data['name'] ?? 'Nome';
         final isStaff = data['is_staff'] ?? false;
         final photoUrl = data['photo_url'] ?? '';
         final shieldUrl = data['team_shield_url'] ?? '';
         final teamName = data['team_name'] ?? '';
 
-        return ListTile(
-          leading: CircleAvatar(
-            radius: 22,
-            backgroundColor: Colors.grey[200],
-            backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl, cacheManager: PlayerCacheManager.instance) : null,
-            child: photoUrl.isEmpty ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) : null,
-          ),
-          title: Text(name, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
-          subtitle: Row(
-            children: [
-              if (shieldUrl.isNotEmpty) ...[
-                CachedNetworkImage(imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain, errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)),
-                const SizedBox(width: 4)
-              ],
-              Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis)),
-            ],
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('${item['total']} Cartões', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+        return Column(
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                radius: 22,
+                backgroundColor: Colors.grey[200],
+                backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl, cacheManager: PlayerCacheManager.instance) : null,
+                child: photoUrl.isEmpty ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) : null,
+              ),
+              title: Text(name, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
+              subtitle: Row(
                 children: [
-                  Text('${item['y']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  Icon(Icons.style, color: Colors.yellow[700], size: 12),
-                  const SizedBox(width: 4),
-                  Text('${item['r']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  const Icon(Icons.style, color: Colors.red, size: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)),
+                    child: Text("$rankº", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 6),
+                  if (shieldUrl.isNotEmpty) ...[
+                    CachedNetworkImage(imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain, errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)),
+                    const SizedBox(width: 4)
+                  ],
+                  Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis)),
                 ],
-              )
-            ],
-          ),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id))),
+              ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('${item['total']} Cartões', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('$y', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      Icon(Icons.style, color: Colors.yellow[700], size: 12),
+                      const SizedBox(width: 4),
+                      Text('$r', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      const Icon(Icons.style, color: Colors.red, size: 12),
+                    ],
+                  )
+                ],
+              ),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id))),
+            ),
+            const Divider(height: 1, indent: 70),
+          ],
         );
       },
     );

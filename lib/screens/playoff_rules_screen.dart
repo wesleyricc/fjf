@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart'; // <-- Importante
+import 'package:provider/provider.dart'; 
 import '../services/admin_service.dart';
-import '../services/championship_service.dart'; // <-- Importante
-import '../services/firestore_service.dart'; // <-- Importante
+import '../services/championship_service.dart'; 
 
 class PlayoffRulesScreen extends StatefulWidget {
   const PlayoffRulesScreen({super.key});
@@ -37,17 +36,14 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
     _finalRule = AdminService.finalTiebreaker;
   }
 
-  // Helper de roteamento
+  // Helper de roteamento (PADRONIZADO)
   DocumentReference _getSettingsDocRef(String seasonId, String docId) {
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      return FirebaseFirestore.instance.collection('config').doc(docId);
-    } else {
-      return FirebaseFirestore.instance
-          .collection('championships')
-          .doc(seasonId)
-          .collection('settings')
-          .doc(docId);
-    }
+    // Aponta sempre para a subcoleção da temporada atual
+    return FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('settings')
+        .doc(docId);
   }
 
   Future<void> _saveRules() async {
@@ -64,7 +60,7 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
         'final_tiebreaker': _finalRule,
       }, SetOptions(merge: true));
 
-      // 3. Atualiza memória
+      // 3. Atualiza memória (Cache local para uso imediato)
       AdminService.semifinalTiebreaker = _semiRule;
       AdminService.thirdPlaceTiebreaker = _thirdRule;
       AdminService.finalTiebreaker = _finalRule;

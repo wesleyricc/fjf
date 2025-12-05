@@ -117,7 +117,7 @@ class AppDrawer extends StatelessWidget {
               const SizedBox(height: 20),
               Center(
                 child: Text(
-                  'Versão 2.1.0\n© FJF 2025',
+                  'Versão 2.0.0\n© FJF 2026',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey[400], fontSize: 10),
                 ),

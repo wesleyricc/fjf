@@ -23,12 +23,12 @@ class HomeNewsFeed extends StatelessWidget {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
-    Query mediaQuery;
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      mediaQuery = firestore.collection('media_feed');
-    } else {
-      mediaQuery = firestore.collection('championships').doc(seasonId).collection('news');
-    }
+    // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
+    // Removemos a verificação de LEGACY_ID
+    final Query mediaQuery = firestore
+        .collection('championships')
+        .doc(seasonId)
+        .collection('news');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

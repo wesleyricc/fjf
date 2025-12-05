@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart'; // <-- Importante
+import 'package:provider/provider.dart'; 
 import '../services/auth_service.dart';
-import '../services/championship_service.dart'; // <-- Importante
-import '../services/firestore_service.dart'; // <-- Importante
+import '../services/championship_service.dart'; 
 
 class ExtraPointsLogScreen extends StatelessWidget {
   final String teamId;
@@ -16,17 +15,14 @@ class ExtraPointsLogScreen extends StatelessWidget {
     required this.teamName,
   });
 
-  // --- HELPER PARA PEGAR A REFERÊNCIA DO TIME ---
+  // --- HELPER PARA PEGAR A REFERÊNCIA DO TIME (PADRONIZADO) ---
   DocumentReference _getTeamRef(String seasonId) {
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      return FirebaseFirestore.instance.collection('teams').doc(teamId);
-    } else {
-      return FirebaseFirestore.instance
-          .collection('championships')
-          .doc(seasonId)
-          .collection('teams_participation')
-          .doc(teamId);
-    }
+    // Aponta sempre para a subcoleção da temporada
+    return FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('teams_participation')
+        .doc(teamId);
   }
 
   Future<void> _showDeleteConfirmationDialog(BuildContext context, DocumentSnapshot logDoc, String seasonId) async {
@@ -60,21 +56,24 @@ class ExtraPointsLogScreen extends StatelessWidget {
   Future<void> _deleteExtraPointEntry(BuildContext context, DocumentSnapshot logDoc, String seasonId) async {
      final data = logDoc.data() as Map<String, dynamic>;
      final pointsToReverse = (data['points'] ?? 0) as int;
-     if (pointsToReverse == 0) return;
-
+     
      // 1. Obtém a referência correta do time baseada na temporada
      final teamRef = _getTeamRef(seasonId);
      final logRef = teamRef.collection('extra_points_log').doc(logDoc.id);
      
      final WriteBatch batch = FirebaseFirestore.instance.batch();
 
+     // Deleta o log
      batch.delete(logRef);
      
-     // Reverte os pontos no documento do time correto
-     batch.update(teamRef, {
-       'extra_points': FieldValue.increment(-pointsToReverse), 
-       'points': FieldValue.increment(-pointsToReverse)
-     });
+     // Reverte os pontos no documento do time
+     // (Se pontos eram +3, reverte com -3. Se eram -3, reverte com +3)
+     if (pointsToReverse != 0) {
+       batch.update(teamRef, {
+         'extra_points': FieldValue.increment(-pointsToReverse), 
+         'points': FieldValue.increment(-pointsToReverse)
+       });
+     }
 
      try {
        await batch.commit();

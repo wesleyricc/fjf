@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart'; // <-- Importante
+import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../services/firestore_service.dart';
-import '../services/championship_service.dart'; // <-- Importante
 import 'package:cached_network_image/cached_network_image.dart';
 
+// Services & Models
+import '../services/firestore_service.dart';
+import '../services/championship_service.dart';
+import '../models/match_model.dart'; 
+import '../models/team_model.dart';  
+
 class EditMatchScreen extends StatefulWidget {
-  final DocumentSnapshot? match;
+  final MatchModel? match; // Recebe Model para edição (ou null para criação)
 
   const EditMatchScreen({super.key, this.match});
 
@@ -22,10 +26,12 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
-  List<DocumentSnapshot> _teams = [];
+  List<Team> _teams = []; 
 
-  DocumentSnapshot? _selectedHomeTeam;
-  DocumentSnapshot? _selectedAwayTeam;
+  // Seleções
+  String? _selectedHomeTeamId;
+  String? _selectedAwayTeamId;
+  
   final _locationController = TextEditingController();
   final _roundController = TextEditingController();
   DateTime _selectedDateTime = DateTime.now();
@@ -37,51 +43,43 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
     _loadInitialData();
   }
 
+  @override
+  void dispose() {
+    _locationController.dispose();
+    _roundController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadInitialData() async {
-    setState(() { _isLoading = true; });
-    
-    // 1. Obtém a temporada atual para saber onde buscar os times
-    // Se estivermos no modo Legado, busca em /teams.
-    // Se estivermos no modo Novo, busca em /championships/{id}/teams_participation
+    setState(() => _isLoading = true);
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
     
     try {
-      Query teamsQuery;
-      if (seasonId == FirestoreService.LEGACY_ID) {
-        teamsQuery = FirebaseFirestore.instance.collection('teams').orderBy('name');
-      } else {
-        teamsQuery = FirebaseFirestore.instance
-            .collection('championships')
-            .doc(seasonId)
-            .collection('teams_participation')
-            .orderBy('name');
-      }
+      // 1. Carrega Times (usando o Stream do serviço refatorado)
+      // O streamTeams já aponta para a coleção correta da temporada
+      final teamsList = await _firestoreService.streamTeams(seasonId).first;
+      
+      _teams = teamsList;
 
-      final teamsSnapshot = await teamsQuery.get();
-      _teams = teamsSnapshot.docs;
-
+      // 2. Preenche dados se for Edição
       if (widget.match != null) {
-        final data = widget.match!.data() as Map<String, dynamic>;
-        try {
-          _selectedHomeTeam = _teams.firstWhere((t) => t.id == data['team_home_id']);
-        } catch (e) { _selectedHomeTeam = null; }
-        try {
-          _selectedAwayTeam = _teams.firstWhere((t) => t.id == data['team_away_id']);
-        } catch (e) { _selectedAwayTeam = null; }
-
-        _locationController.text = data['location'] ?? '';
-        _roundController.text = (data['round'] ?? '').toString();
-        _selectedPhase = data['phase'] ?? 'first';
-        _selectedDateTime = (data['datetime'] as Timestamp? ?? Timestamp.now()).toDate();
+        final m = widget.match!;
+        _selectedHomeTeamId = m.homeTeamId;
+        _selectedAwayTeamId = m.awayTeamId;
+        _locationController.text = m.location;
+        _roundController.text = m.round.toString();
+        _selectedPhase = m.phase;
+        _selectedDateTime = m.datetime ?? DateTime.now();
       } else {
+         // Valores Padrão para Criação
          _selectedPhase = 'first';
          _selectedDateTime = DateTime.now();
+         _locationController.text = 'Ginásio Principal'; 
       }
     } catch (e) {
-      debugPrint("Erro ao carregar dados: $e");
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+      debugPrint("Erro loading match data: $e");
     } finally {
-      if(mounted) setState(() { _isLoading = false; });
+      if(mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -89,11 +87,13 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
     final DateTime? date = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
-      firstDate: DateTime(2020),
+      firstDate: DateTime(2024),
       lastDate: DateTime(2030),
       locale: const Locale('pt', 'BR'),
     );
     if (date == null) return;
+
+    if (!mounted) return;
 
     final TimeOfDay? time = await showTimePicker(
       context: context,
@@ -108,46 +108,65 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
 
   Future<void> _saveForm() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedHomeTeam == null || _selectedAwayTeam == null) {
+    
+    if (_selectedHomeTeamId == null || _selectedAwayTeamId == null) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione ambos os times.')));
        return;
     }
-    if (_selectedHomeTeam!.id == _selectedAwayTeam!.id) {
+    if (_selectedHomeTeamId == _selectedAwayTeamId) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Times devem ser diferentes.')));
        return;
     }
 
-    setState(() { _isSaving = true; });
-
-    // 2. Obtém ID da temporada para salvar na coleção correta
+    setState(() => _isSaving = true);
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
-    String result;
     try {
       final location = _locationController.text;
       final round = int.tryParse(_roundController.text) ?? 0;
+      
+      // O serviço createMatch espera DocumentSnapshot para extrair dados duplicados (nome, escudo).
+      // Buscamos o snapshot atualizado dos times selecionados.
+      final homeSnap = await _firestoreService.getTeamSnapshot(_selectedHomeTeamId!, seasonId);
+      final awaySnap = await _firestoreService.getTeamSnapshot(_selectedAwayTeamId!, seasonId);
 
+      if (homeSnap == null || awaySnap == null) throw Exception("Times não encontrados no banco.");
+
+      String result;
       if (widget.match == null) {
-        // --- MODO CRIAÇÃO ---
+        // --- CRIAÇÃO ---
         result = await _firestoreService.createMatch(
-          seasonId: seasonId, // <-- NOVO
-          homeTeam: _selectedHomeTeam!,
-          awayTeam: _selectedAwayTeam!,
+          seasonId: seasonId,
+          homeTeam: homeSnap,
+          awayTeam: awaySnap,
           location: location,
           round: round,
           dateTime: _selectedDateTime,
         );
       } else {
-        // --- MODO ATUALIZAÇÃO ---
-        result = await _firestoreService.updateMatchDetails(
-          match: widget.match!,
-          homeTeam: _selectedHomeTeam!,
-          awayTeam: _selectedAwayTeam!,
-          location: location,
-          round: round,
-          dateTime: _selectedDateTime,
-          phase: _selectedPhase,
-        );
+        // --- EDIÇÃO ---
+        // Busca a referência da partida usando o caminho padronizado (sem legacy)
+        final matchRef = FirebaseFirestore.instance
+            .collection('championships')
+            .doc(seasonId)
+            .collection('matches')
+            .doc(widget.match!.id);
+        
+        final matchSnap = await matchRef.get();
+
+        if (matchSnap.exists) {
+          result = await _firestoreService.updateMatchDetails(
+            match: matchSnap,
+            homeTeam: homeSnap,
+            awayTeam: awaySnap,
+            location: location,
+            round: round,
+            dateTime: _selectedDateTime,
+            phase: _selectedPhase,
+          );
+        } else {
+          result = "Erro: Partida original não encontrada.";
+        }
       }
 
        if (mounted) {
@@ -159,34 +178,48 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
     } catch (e) {
        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
     } finally {
-       if (mounted) setState(() { _isSaving = false; });
+       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  @override
-  void dispose() {
-    _locationController.dispose();
-    _roundController.dispose();
-    super.dispose();
+  // Widget Helper para Dropdown
+  Widget _buildTeamDropdown({
+    required String label,
+    required String? value,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      decoration: InputDecoration(labelText: label),
+      items: _teams.map((team) {
+        return DropdownMenuItem<String>(
+          value: team.id,
+          child: Row(
+            children: [
+              if (team.shieldUrl.isNotEmpty)
+                CachedNetworkImage(imageUrl: team.shieldUrl, width: 24, height: 24, fit: BoxFit.contain)
+              else 
+                const Icon(Icons.shield, size: 24, color: Colors.grey),
+              const SizedBox(width: 10),
+              Expanded(child: Text(team.name, overflow: TextOverflow.ellipsis)),
+            ],
+          ),
+        );
+      }).toList(),
+      onChanged: _isSaving ? null : onChanged,
+      validator: (v) => v == null ? 'Obrigatório' : null,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentSeasonName = Provider.of<ChampionshipService>(context, listen: false).currentSeasonName;
-
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.match == null ? 'Criar Partida' : 'Editar Detalhes'),
-            Text('Em: $currentSeasonName', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
-          ],
-        ),
+        title: Text(widget.match == null ? 'Criar Partida' : 'Editar Detalhes'),
         actions: [
           if (!_isLoading)
             IconButton(
-              icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save),
+              icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save),
               onPressed: _isSaving ? null : _saveForm,
             ),
         ],
@@ -198,99 +231,46 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
-                  DropdownButtonFormField<DocumentSnapshot>(
-                    value: _selectedHomeTeam,
-                    hint: const Text('Selecione o Time da Casa'),
-                    isExpanded: true,
-                    items: _teams.map((team) {
-                      final data = team.data() as Map<String, dynamic>? ?? {};
-                      final shieldUrl = data['shield_url'] ?? '';
-                      final teamName = data['name'] ?? 'Time s/ nome';
-                      return DropdownMenuItem<DocumentSnapshot>(
-                        value: team,
-                        child: Row(
-                          children: [
-                            if (shieldUrl.isNotEmpty)
-                              SizedBox(
-                                width: 25, height: 25,
-                                child: CachedNetworkImage(
-                                  imageUrl: shieldUrl,
-                                  placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
-                                  errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-                            if (shieldUrl.isNotEmpty) const SizedBox(width: 8),
-                            Expanded(child: Text(teamName, overflow: TextOverflow.ellipsis)),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: _isSaving ? null : (value) => setState(() => _selectedHomeTeam = value),
-                    validator: (value) => value == null ? 'Obrigatório' : null,
+                  const Text('Equipes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 10),
+                  _buildTeamDropdown(
+                    label: 'Time da Casa',
+                    value: _selectedHomeTeamId,
+                    onChanged: (val) => setState(() => _selectedHomeTeamId = val),
                   ),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<DocumentSnapshot>(
-                    value: _selectedAwayTeam,
-                    hint: const Text('Selecione o Time Visitante'),
-                    isExpanded: true,
-                    items: _teams.map((team) {
-                      final data = team.data() as Map<String, dynamic>? ?? {};
-                      final shieldUrl = data['shield_url'] ?? '';
-                      final teamName = data['name'] ?? 'Time s/ nome';
-                      return DropdownMenuItem<DocumentSnapshot>(
-                        value: team,
-                        child: Row(
-                          children: [
-                            if (shieldUrl.isNotEmpty)
-                              SizedBox(
-                                width: 25, height: 25,
-                                child: CachedNetworkImage(
-                                  imageUrl: shieldUrl,
-                                  placeholder: (c, u) => const Icon(Icons.shield, size: 20, color: Colors.grey),
-                                  errorWidget: (c, u, e) => const Icon(Icons.shield, size: 25, color: Colors.grey),
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-                            if (shieldUrl.isNotEmpty) const SizedBox(width: 8),
-                            Expanded(child: Text(teamName, overflow: TextOverflow.ellipsis)),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: _isSaving ? null : (value) => setState(() => _selectedAwayTeam = value),
-                    validator: (value) => value == null ? 'Obrigatório' : null,
+                  _buildTeamDropdown(
+                    label: 'Time Visitante',
+                    value: _selectedAwayTeamId,
+                    onChanged: (val) => setState(() => _selectedAwayTeamId = val),
                   ),
-                  const SizedBox(height: 16),
+                  
+                  const Divider(height: 40),
+                  
                   TextFormField(
                     controller: _locationController,
-                    decoration: const InputDecoration(labelText: 'Local', border: OutlineInputBorder()),
-                    validator: (value) => (value == null || value.isEmpty) ? 'Obrigatório' : null,
+                    decoration: const InputDecoration(labelText: 'Local', prefixIcon: Icon(Icons.place)),
+                    validator: (value) => (value == null || value.isEmpty) ? 'Informe o local' : null,
                   ),
                   const SizedBox(height: 16),
+                  
                   if (_selectedPhase == 'first')
                     TextFormField(
                       controller: _roundController,
-                      decoration: const InputDecoration(labelText: 'Rodada (1ª Fase)', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(labelText: 'Rodada', prefixIcon: Icon(Icons.tag)),
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      validator: (value) {
-                         if (value == null || value.isEmpty) return 'Obrigatório';
-                         if (int.tryParse(value) == null || int.parse(value) <= 0) return 'Valor inválido';
-                         return null;
-                      },
-                      enabled: !_isSaving,
+                      validator: (value) => (value == null || value.isEmpty) ? 'Informe a rodada' : null,
                     ),
+                  
                   const SizedBox(height: 16),
                   ListTile(
-                    title: const Text('Data e Hora'),
-                    subtitle: Text(DateFormat('dd/MM/yyyy HH:mm', 'pt_BR').format(_selectedDateTime)),
-                    trailing: const Icon(Icons.calendar_month_outlined),
+                    tileColor: Colors.grey[100],
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade300)),
+                    title: Text(DateFormat('dd/MM/yyyy - HH:mm', 'pt_BR').format(_selectedDateTime)),
+                    subtitle: const Text('Toque para alterar data e hora'),
+                    leading: const Icon(Icons.calendar_month, color: Colors.blue),
                     onTap: _isSaving ? null : _pickDateTime,
-                    shape: RoundedRectangleBorder(
-                       borderRadius: BorderRadius.circular(4.0),
-                       side: BorderSide(color: Colors.grey.shade400)
-                    ),
                   ),
                 ],
               ),

@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/firestore_service.dart';
-import '../models/player_model.dart'; // <-- Model
+import '../models/player_model.dart'; 
 
 // Widgets
 import '../widgets/player_display_card.dart';
@@ -45,7 +45,7 @@ class MatchRosterScreen extends StatefulWidget {
 
 class _MatchRosterScreenState extends State<MatchRosterScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Para update direto se necessário
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance; 
 
   bool _isLoading = true;
   
@@ -69,6 +69,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
   Player? _team2Pivo;
   List<Player> _team2Reserves = [];
 
+  // Cores (mantido como null por enquanto, conforme estrutura atual)
   Color? _team1Color;
   Color? _team2Color;
 
@@ -83,8 +84,8 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
     try {
-      // 1. Busca Jogadores (Usando Streams convertidas para Future ou Fetch direto)
-      // Como a Stream retorna lista atualizada, vamos pegar o primeiro evento
+      // 1. Busca Jogadores
+      // O streamPlayers do FirestoreService refatorado já aponta para a subcoleção correta
       final t1 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team1Id).first;
       final t2 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team2Id).first;
 
@@ -92,15 +93,11 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       _team1Players = t1.where((p) => !p.isStaff).toList();
       _team2Players = t2.where((p) => !p.isStaff).toList();
 
-      // 2. Busca Cores e Titulares Salvos dos Times
+      // 2. Busca Titulares Salvos dos Times
+      // O getTeam do FirestoreService refatorado já aponta para a subcoleção correta
       final t1Doc = await _firestoreService.getTeam(widget.team1Id, seasonId);
       final t2Doc = await _firestoreService.getTeam(widget.team2Id, seasonId);
 
-      // (Nota: Team model não tem cor ainda, assumindo que está no documento ou precisamos adicionar ao model. 
-      // Por enquanto, faremos um fetch manual rápido para a cor se não estiver no model, ou assumiremos null)
-      // Como o Team Model não tem 'color', vamos pular a cor ou adicionar depois.
-      // Assumindo que a cor é visual apenas:
-      
       final starters1 = t1Doc?.defaultStarters ?? [];
       final starters2 = t2Doc?.defaultStarters ?? [];
 
@@ -159,7 +156,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     pivo = pickNext('Pivô');
 
     // Reconstrói a reserva com quem sobrou
-    // (Pode ser que algum titular salvo não tenha sido usado se a lógica falhou, devolve pra reserva)
     reserves.addAll(starters); 
     
     // Ordena reserva por número
@@ -209,13 +205,15 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     
     final List<String> ids = currentStarters.where((p) => p != null).map((p) => p!.id).toList();
     
-    // Atualiza campo 'default_starters'
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    // Aqui usamos acesso direto para update simples, ou adicionamos método no Service
+    
     try {
-      final ref = (seasonId == FirestoreService.LEGACY_ID)
-          ? _firestore.collection('teams').doc(teamId)
-          : _firestore.collection('championships').doc(seasonId).collection('teams_participation').doc(teamId);
+      // ALTERAÇÃO: Referência padronizada para a subcoleção
+      final ref = _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('teams_participation')
+          .doc(teamId);
       
       await ref.update({'default_starters': ids});
     } catch (e) {
@@ -330,8 +328,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
           ),
           const SizedBox(height: 10),
           
-          // Quadra Visual (Simplificada em Lista para MVP, ou use o widget de quadra anterior)
-          // Aqui vou usar uma lista de Cards para representar as posições, mais limpo e seguro
+          // Quadra Visual
           Wrap(
             spacing: 8, runSpacing: 8,
             alignment: WrapAlignment.center,
@@ -365,7 +362,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
           : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: p.id))),
       child: Column(
         children: [
-          // Reutilizando o PlayerDisplayCard existente (precisa ser atualizado para aceitar Player model no futuro, mas aqui passamos params)
           PlayerDisplayCard(
             playerName: p.name,
             jerseyNumber: p.jerseyNumber ?? 0,

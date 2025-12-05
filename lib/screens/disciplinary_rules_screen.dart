@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart'; // Para input formatters
-import 'package:provider/provider.dart'; // <-- Importante
+import 'package:provider/provider.dart'; 
 import '../services/admin_service.dart';
-import '../services/championship_service.dart'; // <-- Importante
-import '../services/firestore_service.dart'; // <-- Importante
+import '../services/championship_service.dart'; 
 
 class DisciplinaryRulesScreen extends StatefulWidget {
   const DisciplinaryRulesScreen({super.key});
@@ -43,17 +42,14 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
     super.dispose();
   }
 
-  // Helper para salvar no local certo
+  // Helper para salvar no local certo (PADRONIZADO)
   DocumentReference _getSettingsDocRef(String seasonId, String docId) {
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      return FirebaseFirestore.instance.collection('config').doc(docId);
-    } else {
-      return FirebaseFirestore.instance
-          .collection('championships')
-          .doc(seasonId)
-          .collection('settings')
-          .doc(docId);
-    }
+    // Agora aponta sempre para a subcoleção da temporada atual
+    return FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('settings')
+        .doc(docId);
   }
 
   Future<void> _saveRules() async {
@@ -61,14 +57,14 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
 
     setState(() => _isSaving = true);
     
-    // 1. Pega Temporada
+    // 1. Pega Temporada Atual
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
     try {
       final int pending = int.parse(_pendingController.text);
       final int suspension = int.parse(_suspensionController.text);
 
-      // 2. Salva no documento correto
+      // 2. Salva no documento correto da temporada
       await _getSettingsDocRef(seasonId, 'disciplinary_rules').set({
         'pending_yellow_cards': pending,
         'suspension_yellow_cards': suspension,
@@ -77,7 +73,8 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
         'reset_yellows_on_red': _resetYellowsOnRed,
       }, SetOptions(merge: true));
 
-      // 3. Atualiza memória local
+      // 3. Atualiza memória local (AdminService)
+      // Isso garante que o app use as novas regras imediatamente sem reload
       AdminService.pendingYellowCards = pending;
       AdminService.suspensionYellowCards = suspension;
       AdminService.suspensionOnRed = _suspendOnRed;
@@ -109,7 +106,7 @@ class _DisciplinaryRulesScreenState extends State<DisciplinaryRulesScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Defina os limites de cartões para as regras automáticas.',
+                'Defina os limites de cartões para as regras automáticas desta temporada.',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 20),

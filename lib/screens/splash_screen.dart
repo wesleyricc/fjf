@@ -9,7 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 // Services & Models
 import '../services/championship_service.dart';
 import '../services/firestore_service.dart';
-import '../models/team_model.dart'; // <-- Importante: Model Team
+import '../models/team_model.dart'; 
 
 // Widgets
 import '../widgets/app_drawer.dart';
@@ -28,10 +28,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  // Estado para controlar a visibilidade do player
   bool _isDrawerOpen = false; 
-  
-  // PWA
   html.Event? _installPromptEvent;
   bool _showInstallButton = false;
 
@@ -56,10 +53,14 @@ class _SplashScreenState extends State<SplashScreen> {
     final championshipService = Provider.of<ChampionshipService>(context, listen: false);
     final currentId = championshipService.currentSeasonId;
     
-    final List<Map<String, dynamic>> allSeasons = [
-      {'id': FirestoreService.LEGACY_ID, 'name': 'FJF 2025 (Original)', 'isActive': false},
-      ...championshipService.availableSeasons
-    ];
+    // ALTERAÇÃO: Removemos a injeção manual do LEGACY_ID.
+    // Agora usamos apenas a lista vinda do serviço (banco padronizado).
+    final List<Map<String, dynamic>> allSeasons = championshipService.availableSeasons;
+
+    if (allSeasons.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma temporada disponível.')));
+      return;
+    }
 
     await showDialog(
       context: context,
@@ -107,11 +108,7 @@ class _SplashScreenState extends State<SplashScreen> {
         ],
       ),
       drawer: const AppDrawer(),
-      onDrawerChanged: (isOpen) {
-        setState(() {
-          _isDrawerOpen = isOpen;
-        });
-      },
+      onDrawerChanged: (isOpen) => setState(() => _isDrawerOpen = isOpen),
       
       body: Column(
         children: [
@@ -123,7 +120,6 @@ class _SplashScreenState extends State<SplashScreen> {
                 children: [
                   _buildModernHeader(),
                   
-                  // Botão de Instalação (PWA)
                   if (_showInstallButton)
                     Container(
                       margin: const EdgeInsets.all(16),
@@ -139,16 +135,12 @@ class _SplashScreenState extends State<SplashScreen> {
                       ),
                     ),
 
-                  // Passamos o estado do Drawer para o Player
                   HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
-                  
                   const SizedBox(height: 10),
                   const HomeNewsFeed(),
-                  
                   const SizedBox(height: 20),
                   _buildSectionTitle(context, "Equipes Participantes"),
                   _buildTeamsGrid(),
-                  
                   const SizedBox(height: 40),
                   const HomeFooter(), 
                 ],
@@ -164,6 +156,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget _buildModernHeader() {
     final championshipService = Provider.of<ChampionshipService>(context);
     final int year = championshipService.currentSeasonYear;
+    final String honoree = championshipService.currentSeasonHonoree;
     
     return Container(
       width: double.infinity,
@@ -171,11 +164,7 @@ class _SplashScreenState extends State<SplashScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Theme.of(context).primaryColor,
-            Theme.of(context).primaryColor.withOpacity(0.8),
-            Colors.black87,
-          ],
+          colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.8), Colors.black87],
         ),
         borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))],
@@ -188,15 +177,18 @@ class _SplashScreenState extends State<SplashScreen> {
               const SizedBox(height: 10),
               Image.asset('assets/logo3_fjf.png', height: 110, errorBuilder: (_,__,___) => const Icon(Icons.sports_soccer, size: 100, color: Colors.white)),
               const SizedBox(height: 16),
-              Text(
-                'FJF $year',
-                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2.0),
-              ),
+              Text('FJF $year', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2.0)),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                child: const Text('O Maior Campeonato da Região', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
+                child: Text(
+                  honoree.isNotEmpty ? honoree : 'O Maior Campeonato da Região',
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
               ),
             ],
           ),
@@ -222,7 +214,7 @@ class _SplashScreenState extends State<SplashScreen> {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
     final firestoreService = FirestoreService();
 
-    // Consome o Stream de List<Team>
+    // streamTeams já está refatorado para buscar na subcoleção da temporada atual
     return StreamBuilder<List<Team>>(
       stream: firestoreService.streamTeams(seasonId),
       builder: (context, snapshot) {
@@ -236,8 +228,8 @@ class _SplashScreenState extends State<SplashScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, // 2 Colunas para 8 times (4 linhas)
-            childAspectRatio: 1.3,
+            crossAxisCount: 2,
+            childAspectRatio: 1.1,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -258,7 +250,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5, spreadRadius: 1)],
                     ),
                     child: SizedBox(
-                      height: 60, width: 60,
+                      height: 90, width: 90,
                       child: CachedNetworkImage(
                         imageUrl: team.shieldUrl,
                         fit: BoxFit.contain,
@@ -269,7 +261,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    team.name, // Nome completo
+                    team.name,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,

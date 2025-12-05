@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
 
 class ManageSeasonsScreen extends StatefulWidget {
   const ManageSeasonsScreen({super.key});
@@ -86,49 +85,43 @@ class _ManageSeasonsScreenState extends State<ManageSeasonsScreen> {
     final championshipService = Provider.of<ChampionshipService>(context);
     final currentId = championshipService.currentSeasonId;
     
-    final List<Map<String, dynamic>> allSeasons = [
-      {
-        'id': FirestoreService.LEGACY_ID,
-        'name': 'FJF 2025 (Original)',
-        'year': 2025,
-        'honoree': 'Taça Mary Neusa Espíndola Bif',
-        'isActive': false
-      },
-      ...championshipService.availableSeasons
-    ];
+    // Lista apenas as temporadas disponíveis no banco (sem injetar legado manualmente)
+    final List<Map<String, dynamic>> allSeasons = championshipService.availableSeasons;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Gerenciar Temporadas')),
       body: _isProcessing 
         ? const Center(child: CircularProgressIndicator())
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: allSeasons.length,
-            itemBuilder: (context, index) {
-              final season = allSeasons[index];
-              final bool isSelected = (season['id'] == currentId);
-              final bool isGlobalActive = season['isActive'] == true;
-              
-              return _SeasonCard(
-                season: season,
-                isSelected: isSelected,
-                isGlobalActive: isGlobalActive,
-                onEdit: () => _showEditDialog(season),
-                onActivate: () async {
-                   setState(() => _isProcessing = true);
-                   final res = await championshipService.setGlobalActiveSeason(season['id']);
-                   if (mounted) {
-                     setState(() => _isProcessing = false);
-                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
-                   }
+        : allSeasons.isEmpty 
+            ? const Center(child: Text("Nenhuma temporada encontrada.\nCrie a primeira abaixo.", textAlign: TextAlign.center))
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: allSeasons.length,
+                itemBuilder: (context, index) {
+                  final season = allSeasons[index];
+                  final bool isSelected = (season['id'] == currentId);
+                  final bool isGlobalActive = season['isActive'] == true;
+                  
+                  return _SeasonCard(
+                    season: season,
+                    isSelected: isSelected,
+                    isGlobalActive: isGlobalActive,
+                    onEdit: () => _showEditDialog(season),
+                    onActivate: () async {
+                       setState(() => _isProcessing = true);
+                       final res = await championshipService.setGlobalActiveSeason(season['id']);
+                       if (mounted) {
+                         setState(() => _isProcessing = false);
+                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
+                       }
+                    },
+                    onView: () async {
+                       await championshipService.setSeason(season['id']);
+                       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visualizando temporada.')));
+                    },
+                  );
                 },
-                onView: () async {
-                   await championshipService.setSeason(season['id']);
-                   if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Visualizando temporada.')));
-                },
-              );
-            },
-          ),
+              ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showCreateDialog,
         label: const Text('Nova Temporada'),
@@ -140,7 +133,7 @@ class _ManageSeasonsScreenState extends State<ManageSeasonsScreen> {
   }
 }
 
-// --- COMPONENTES INTERNOS PARA LIMPEZA ---
+// --- COMPONENTES INTERNOS ---
 
 class _SeasonCard extends StatelessWidget {
   final Map<String, dynamic> season;
@@ -161,8 +154,6 @@ class _SeasonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isLegacy = season['id'] == FirestoreService.LEGACY_ID;
-
     return Card(
       elevation: isSelected ? 4 : 1,
       color: isSelected ? Colors.green[50] : null,
@@ -186,14 +177,15 @@ class _SeasonCard extends StatelessWidget {
                   const Text('★ PADRÃO (Ativa) ★', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 10)),
               ],
             ),
-            trailing: isLegacy ? null : IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
+            // Agora todas as temporadas são editáveis, pois todas seguem o padrão novo
+            trailing: IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (!isGlobalActive && !isLegacy)
+                if (!isGlobalActive)
                   TextButton(
                     onPressed: onActivate,
                     child: const Text('Tornar Padrão', style: TextStyle(color: Colors.amber)),
@@ -262,7 +254,7 @@ class _CreateSeasonDialogState extends State<_CreateSeasonDialog> {
               const Divider(),
               SwitchListTile(
                 title: const Text('Importar Times'),
-                subtitle: const Text('Copia os times atuais zerando pontos.'),
+                subtitle: const Text('Copia os times da temporada atual zerando pontos.'),
                 value: _copyTeams,
                 onChanged: (v) => setState(() => _copyTeams = v),
                 contentPadding: EdgeInsets.zero,

@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Models & Services
 import '../models/team_model.dart';
+import '../models/player_model.dart'; 
 import '../services/auth_service.dart';
+import '../services/championship_service.dart';
+import '../services/firestore_service.dart';
 
 // Screens
 import 'extra_points_log_screen.dart';
@@ -19,7 +24,7 @@ import '../widgets/recent_form_widget.dart';
 import '../widgets/team_roster_list.dart';
 
 class TeamDetailScreen extends StatefulWidget {
-  final Team team; // <-- Agora recebe o objeto tipado!
+  final Team team;
 
   const TeamDetailScreen({super.key, required this.team});
 
@@ -28,6 +33,9 @@ class TeamDetailScreen extends StatefulWidget {
 }
 
 class _TeamDetailScreenState extends State<TeamDetailScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService = FirestoreService(); // Para buscar jogadores
+
   @override
   void initState() {
     super.initState();
@@ -36,16 +44,263 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     } catch (_) {}
   }
 
+  // --- LÓGICA: DEFINIR TITULARES ---
+  Future<void> _showDefineStartersDialog() async {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    List<Player> teamPlayers = [];
+    List<String> selectedIds = [];
+    bool isLoading = true;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            // Carregamento Inicial
+            if (isLoading) {
+              _firestoreService.streamPlayers(seasonId, teamId: widget.team.id).first.then((players) async {
+                // Busca o time atualizado para garantir que temos os titulares salvos mais recentes
+                final teamDoc = await _firestoreService.getTeam(widget.team.id, seasonId);
+                final currentStarters = teamDoc?.defaultStarters ?? widget.team.defaultStarters;
+
+                // Filtra apenas jogadores ativos e não-staff
+                final validPlayers = players.where((p) => !p.isStaff && p.isActive).toList();
+                
+                // Ordena: Goleiros primeiro
+                validPlayers.sort((a, b) {
+                  if (a.isGoalkeeper && !b.isGoalkeeper) return -1;
+                  if (!a.isGoalkeeper && b.isGoalkeeper) return 1;
+                  return (a.jerseyNumber ?? 99).compareTo(b.jerseyNumber ?? 99);
+                });
+
+                if (ctx.mounted) {
+                  setDialogState(() {
+                    teamPlayers = validPlayers;
+                    selectedIds = List.from(currentStarters);
+                    isLoading = false;
+                  });
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: const Text('Definir Titulares Padrão'),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: 400,
+                child: isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: Text(
+                              'Selecione os 5 jogadores que iniciam jogando.\nSelecionados: ${selectedIds.length}/5',
+                              style: TextStyle(
+                                color: selectedIds.length == 5 ? Colors.green : Colors.orange,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: teamPlayers.length,
+                              itemBuilder: (context, index) {
+                                final p = teamPlayers[index];
+                                final isSelected = selectedIds.contains(p.id);
+                                
+                                return CheckboxListTile(
+                                  value: isSelected,
+                                  title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text(p.isGoalkeeper ? 'Goleiro' : (p.position ?? 'Linha')),
+                                  secondary: CircleAvatar(
+                                    backgroundColor: Colors.grey[200],
+                                    child: Text('${p.jerseyNumber ?? '-'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+                                  ),
+                                  onChanged: (val) {
+                                    setDialogState(() {
+                                      if (val == true) {
+                                        if (selectedIds.length < 5) {
+                                          selectedIds.add(p.id);
+                                        } else {
+                                          // Opcional: Feedback visual de limite atingido
+                                        }
+                                      } else {
+                                        selectedIds.remove(p.id);
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: isLoading ? null : () async {
+                    setDialogState(() => isLoading = true);
+                    
+                    try {
+                      // ALTERAÇÃO: Salva no Firestore (Caminho Padronizado)
+                      // Removemos a verificação de LEGACY_ID
+                      final ref = _firestore
+                          .collection('championships')
+                          .doc(seasonId)
+                          .collection('teams_participation')
+                          .doc(widget.team.id);
+                      
+                      await ref.update({'default_starters': selectedIds});
+                      
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Titulares atualizados!')));
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        setDialogState(() => isLoading = false);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                      }
+                    }
+                  },
+                  child: const Text('Salvar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Lógica de Pontos Extras
+  Future<void> _showAddExtraPointsDialog() async {
+    String? selectedReason;
+    final pointsController = TextEditingController();
+    bool isLoading = false;
+    DateTime selectedDate = DateTime.now();
+
+    final Map<String, int> extraPointsOptions = {
+      'Rainha FJF': 1, '1º Lugar Desfile': 1, '2º Lugar Desfile': 1, '3º Lugar Desfile': 1,
+      'Falta Pgto Boleto': -1, 'Ausência Reunião': -1, 'Outro (Positivo)': 0, 'Outro (Negativo)': 0,
+    };
+
+    Future<void> pickDate(BuildContext context, StateSetter setDialogState) async {
+      final DateTime? picked = await showDatePicker(
+        context: context, initialDate: selectedDate, firstDate: DateTime(2020), lastDate: DateTime.now(), locale: const Locale('pt', 'BR'),
+      );
+      if (picked != null) setDialogState(() => selectedDate = picked);
+    }
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: !isLoading,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Pontos Extras (${widget.team.name})'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: selectedReason, hint: const Text('Selecione o Motivo'), isExpanded: true,
+                      items: extraPointsOptions.keys.map((String reason) {
+                        return DropdownMenuItem<String>(value: reason, child: Text('$reason (${extraPointsOptions[reason]})'));
+                      }).toList(),
+                      onChanged: isLoading ? null : (value) {
+                        setDialogState(() {
+                          selectedReason = value;
+                          if (value != null && extraPointsOptions[value] != 0) {
+                            pointsController.text = extraPointsOptions[value].toString();
+                          } else {
+                            pointsController.text = '';
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: pointsController, keyboardType: const TextInputType.numberWithOptions(signed: true),
+                      decoration: const InputDecoration(labelText: 'Pontos (+/-)', hintText: 'Ex: 1 ou -1'),
+                      enabled: !isLoading && (selectedReason?.contains('Outro') ?? false),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Data: ${DateFormat('dd/MM/yyyy').format(selectedDate)}'),
+                        IconButton(
+                          icon: const Icon(Icons.calendar_today), 
+                          onPressed: isLoading ? null : () => pickDate(dialogContext, setDialogState), 
+                          color: Theme.of(context).primaryColor
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
+                TextButton(
+                  onPressed: isLoading ? null : () async {
+                    if (selectedReason == null || pointsController.text.isEmpty) return;
+                    final int finalPoints = int.tryParse(pointsController.text) ?? 0;
+                    if (finalPoints == 0) return;
+
+                    setDialogState(() => isLoading = true);
+
+                    try {
+                      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+                      
+                      // ALTERAÇÃO: Referência padronizada para a subcoleção
+                      // Removemos a verificação de LEGACY_ID
+                      final DocumentReference teamRef = _firestore
+                          .collection('championships')
+                          .doc(seasonId)
+                          .collection('teams_participation')
+                          .doc(widget.team.id);
+
+                      final logRef = teamRef.collection('extra_points_log').doc();
+                      final WriteBatch batch = _firestore.batch();
+
+                      batch.update(teamRef, {'extra_points': FieldValue.increment(finalPoints), 'points': FieldValue.increment(finalPoints)});
+                      batch.set(logRef, {'timestamp': Timestamp.fromDate(selectedDate), 'reason': selectedReason, 'points': finalPoints});
+
+                      await batch.commit();
+                      if (mounted) Navigator.of(dialogContext).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pontos (${finalPoints > 0 ? '+' : ''}$finalPoints) aplicados.')));
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                    } finally {
+                      if (mounted) setDialogState(() => isLoading = false);
+                    }
+                  },
+                  child: isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Confirmar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
-    // Usamos cores do tema ou calculadas (ex: primária do app)
     final primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // --- 1. CABEÇALHO EXPANSÍVEL (SliverAppBar) ---
           SliverAppBar(
             expandedHeight: 200.0,
             floating: false,
@@ -53,16 +308,28 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             backgroundColor: primaryColor,
             actions: authService.isAuthenticated
                 ? [
-                    // Botões de Admin (Simplificados para não poluir a AppBar)
+                    // --- BOTÃO 1: PONTOS EXTRAS ---
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      tooltip: 'Adicionar Pontos Extras',
+                      onPressed: _showAddExtraPointsDialog,
+                    ),
+                    // --- BOTÃO 2: DEFINIR TITULARES ---
+                    IconButton(
+                      icon: const Icon(Icons.star_border), // Ícone de estrela para titulares
+                      tooltip: 'Definir Titulares',
+                      onPressed: _showDefineStartersDialog,
+                    ),
+                    // --- BOTÃO 3: NOVO JOGADOR ---
                     IconButton(
                       icon: const Icon(Icons.person_add_alt_1),
-                      tooltip: 'Novo Jogador',
+                      tooltip: 'Novo Membro',
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => EditPlayerScreen(
                             teamId: widget.team.id,
                             teamName: widget.team.name,
-                            playerDoc: null, // Novo jogador
+                            player: null, 
                           ),
                         ),
                       ),
@@ -90,9 +357,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ),
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.only(bottom: 40.0), // Espaço para o título não cobrir
+                    padding: const EdgeInsets.only(bottom: 40.0),
                     child: Hero(
-                      tag: 'team_shield_${widget.team.id}', // <-- HERO TAG
+                      tag: 'team_shield_${widget.team.id}',
                       child: SizedBox(
                         height: 100,
                         width: 100,
@@ -110,21 +377,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
             ),
           ),
 
-          // --- 2. CONTEÚDO DA TELA ---
           SliverList(
             delegate: SliverChildListDelegate([
               const SizedBox(height: 10),
-              
-              // Sala de Troféus
               TrophyRoomWidget(historyList: widget.team.championshipHistory),
-
-              // Resumo Estatístico (Agora recebe Team)
               TeamStatsSummary(team: widget.team),
-
-              // Forma Recente
               RecentFormWidget(teamId: widget.team.id),
-
-              // Botão Histórico (Apenas visualização do log)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
                 child: OutlinedButton.icon(
@@ -140,15 +398,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   ),
                 ),
               ),
-
               const Divider(thickness: 1, height: 30),
-
-              // Lista de Elenco (Jogadores e Comissão)
               TeamRosterList(teamId: widget.team.id, teamName: widget.team.name),
-              
               const SizedBox(height: 20),
               const SponsorBannerRotator(),
-              const SizedBox(height: 40), // Espaço final
+              const SizedBox(height: 40),
             ]),
           ),
         ],

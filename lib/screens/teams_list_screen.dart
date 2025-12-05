@@ -7,7 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/firestore_service.dart';
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
-import '../models/team_model.dart'; // <-- Model
+import '../models/team_model.dart'; 
 
 // Screens & Widgets
 import '../widgets/app_drawer.dart';
@@ -34,13 +34,14 @@ class TeamsListScreen extends StatelessWidget {
     if (confirm == true && context.mounted) {
       final firestoreService = FirestoreService();
       
-      // Nota: Como o método deleteTeam do serviço ainda espera um DocumentSnapshot por razões de legado,
-      // buscamos a referência rápida aqui. Em um refactor futuro, o serviço deveria aceitar apenas o ID.
-      // Aqui usamos um "workaround" seguro para obter o snapshot antes de deletar.
       try {
-        final docRef = (seasonId == FirestoreService.LEGACY_ID)
-            ? FirebaseFirestore.instance.collection('teams').doc(team.id)
-            : FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('teams_participation').doc(team.id);
+        // ALTERAÇÃO: Referência padronizada para a subcoleção da temporada
+        // Removemos a verificação de LEGACY_ID
+        final docRef = FirebaseFirestore.instance
+            .collection('championships')
+            .doc(seasonId)
+            .collection('teams_participation')
+            .doc(team.id);
         
         final docSnap = await docRef.get();
         if (docSnap.exists) {
@@ -54,16 +55,24 @@ class TeamsListScreen extends StatelessWidget {
   }
 
   Future<void> _handleEdit(BuildContext context, Team team, String seasonId) async {
-    // Busca o documento para passar para a tela de edição (que ainda usa snapshot)
-    // Isso mantém a compatibilidade sem reescrever a EditTeamScreen inteira agora
     try {
-      final docRef = (seasonId == FirestoreService.LEGACY_ID)
-          ? FirebaseFirestore.instance.collection('teams').doc(team.id)
-          : FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('teams_participation').doc(team.id);
+      // ALTERAÇÃO: Referência padronizada para a subcoleção da temporada
+      // Removemos a verificação de LEGACY_ID
+      final docRef = FirebaseFirestore.instance
+          .collection('championships')
+          .doc(seasonId)
+          .collection('teams_participation')
+          .doc(team.id);
       
       final docSnap = await docRef.get();
+      
       if (docSnap.exists && context.mounted) {
-        Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => EditTeamScreen(team: docSnap)));
+        // Converte o Snapshot para o Model Team antes de passar para a tela de edição
+        final teamModel = Team.fromFirestore(docSnap);
+        
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (ctx) => EditTeamScreen(team: teamModel))
+        );
       }
     } catch (_) {}
   }
@@ -88,6 +97,7 @@ class TeamsListScreen extends StatelessWidget {
       ),
       drawer: const AppDrawer(),
       body: StreamBuilder<List<Team>>(
+        // O streamTeams do serviço já foi refatorado para usar o caminho correto
         stream: firestoreService.streamTeams(seasonId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());

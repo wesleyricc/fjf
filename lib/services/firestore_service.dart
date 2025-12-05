@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'admin_service.dart';
 import '../models/match_event.dart';
 
-// --- NOVOS MODELS ---
+// --- MODELS ---
 import '../models/team_model.dart';
 import '../models/player_model.dart';
 import '../models/match_model.dart';
@@ -13,37 +13,25 @@ class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.firebasestorage.app");
 
-  static const String LEGACY_ID = 'legacy_2025';
-
   // ===========================================================================
-  // 📍 ROTEAMENTO INTERNO (Privado)
+  // 📍 ROTEAMENTO INTERNO PADRONIZADO (Nova Estrutura)
   // ===========================================================================
 
   CollectionReference _getMatchesRef(String seasonId) {
-    if (seasonId == LEGACY_ID) {
-      return _firestore.collection('matches');
-    } else {
-      return _firestore.collection('championships').doc(seasonId).collection('matches');
-    }
+    return _firestore.collection('championships').doc(seasonId).collection('matches');
   }
 
   CollectionReference _getTeamsRef(String seasonId) {
-    if (seasonId == LEGACY_ID) {
-      return _firestore.collection('teams');
-    } else {
-      return _firestore.collection('championships').doc(seasonId).collection('teams_participation');
-    }
+    return _firestore.collection('championships').doc(seasonId).collection('teams_participation');
   }
 
   CollectionReference _getPlayerStatsRef(String seasonId) {
-    if (seasonId == LEGACY_ID) {
-      return _firestore.collection('players');
-    } else {
-      return _firestore.collection('championships').doc(seasonId).collection('player_stats');
-    }
+    return _firestore.collection('championships').doc(seasonId).collection('player_stats');
   }
 
-  CollectionReference get _mediaRef => _firestore.collection('media_feed');
+  CollectionReference _getMediaRef(String seasonId) {
+    return _firestore.collection('championships').doc(seasonId).collection('news');
+  }
 
   // ===========================================================================
   // 🔄 LEITURA DE DADOS TIPADOS (STREAMS & FUTURES)
@@ -63,6 +51,16 @@ class FirestoreService {
     return Team.fromFirestore(doc);
   }
 
+  Future<DocumentSnapshot?> getTeamSnapshot(String teamId, String seasonId) async {
+    try {
+      final ref = _getTeamsRef(seasonId).doc(teamId);
+      final doc = await ref.get();
+      return doc.exists ? doc : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // --- JOGADORES ---
   Stream<List<Player>> streamPlayers(String seasonId, {String? teamId}) {
     Query query = _getPlayerStatsRef(seasonId).where('isActive', isEqualTo: true);
@@ -72,8 +70,8 @@ class FirestoreService {
     }
 
     return query.snapshots().map((snapshot) {
-      // Ordenação secundária em memória é mais flexível que criar índices compostos para tudo
       final players = snapshot.docs.map((doc) => Player.fromFirestore(doc)).toList();
+      // Ordenação alfabética no cliente
       players.sort((a, b) => (a.name).compareTo(b.name));
       return players;
     });
@@ -99,16 +97,8 @@ class FirestoreService {
   }
 
   // ===========================================================================
-  // 📰 MÍDIAS (Mantido compatibilidade)
+  // 📰 MÍDIAS
   // ===========================================================================
-
-  CollectionReference _getMediaRef(String seasonId) {
-    if (seasonId == LEGACY_ID) {
-      return _firestore.collection('media_feed');
-    } else {
-      return _firestore.collection('championships').doc(seasonId).collection('news');
-    }
-  }
 
   Future<int> getNextMediaOrder(String seasonId) async {
     try {
@@ -161,7 +151,7 @@ class FirestoreService {
   }
 
   // ===========================================================================
-  // ⚡ ASSISTENTE DE SÚMULA (Mantido, mas agora pode usar Models internamente)
+  // ⚡ ASSISTENTE DE SÚMULA (EVENTOS)
   // ===========================================================================
 
   Future<String> addMatchEvent({
@@ -182,6 +172,7 @@ class FirestoreService {
         final homeId = matchData['team_home_id'];
         final awayId = matchData['team_away_id'];
         
+        // Verifica existência do jogador na temporada antes de ler
         final playerSnap = await transaction.get(seasonPlayerRef);
         
         String fieldInMatchStats = ''; 
@@ -240,7 +231,8 @@ class FirestoreService {
 
         if (event.type == MatchEventType.goal && event.concededByPlayerId != null) {
            final goalkeeperRef = _getPlayerStatsRef(seasonId).doc(event.concededByPlayerId);
-           transaction.update(goalkeeperRef, {'goals_conceded': FieldValue.increment(1)});
+           // Usa set com merge caso o goleiro não tenha stats ainda por algum motivo raro
+           transaction.set(goalkeeperRef, {'goals_conceded': FieldValue.increment(1)}, SetOptions(merge: true));
         }
 
         if (disciplinaryPoints > 0) {
@@ -409,7 +401,7 @@ class FirestoreService {
   }
 
   // ===========================================================================
-  // 🏆 CRUD TIMES & JOGADORES (Híbrido)
+  // 🏆 CRUD TIMES & JOGADORES
   // ===========================================================================
 
   Future<String> createTeam({
@@ -490,20 +482,19 @@ class FirestoreService {
         'total_yellow_cards': 0, 'total_red_cards': 0,
       });
 
-      // 2. Cria na Temporada Atual
-      if (seasonId != LEGACY_ID) {
-        final seasonPlayerRef = _getPlayerStatsRef(seasonId).doc(globalRef.id);
-        final seasonData = Map<String, dynamic>.from(data);
-        seasonData['isActive'] = true;
-        // Zera stats para a temporada
-        seasonData['goals'] = 0; seasonData['assists'] = 0;
-        seasonData['yellow_cards'] = 0; seasonData['red_cards'] = 0;
-        seasonData['total_yellow_cards'] = 0; seasonData['total_red_cards'] = 0;
-        seasonData['man_of_the_match_awards'] = 0; seasonData['goals_conceded'] = 0;
-        seasonData['is_suspended'] = false;
+      // 2. Cria na Temporada Atual (SEMPRE)
+      final seasonPlayerRef = _getPlayerStatsRef(seasonId).doc(globalRef.id);
+      final seasonData = Map<String, dynamic>.from(data);
+      seasonData['isActive'] = true;
+      // Zera stats para a temporada
+      seasonData['goals'] = 0; seasonData['assists'] = 0;
+      seasonData['yellow_cards'] = 0; seasonData['red_cards'] = 0;
+      seasonData['total_yellow_cards'] = 0; seasonData['total_red_cards'] = 0;
+      seasonData['man_of_the_match_awards'] = 0; seasonData['goals_conceded'] = 0;
+      seasonData['is_suspended'] = false;
 
-        await seasonPlayerRef.set(seasonData);
-      }
+      await seasonPlayerRef.set(seasonData);
+      
       return "Sucesso: Jogador criado.";
     } catch (e) { return "Erro ao criar jogador: $e"; }
   }
@@ -516,23 +507,12 @@ class FirestoreService {
     try {
       await _firestore.collection('players').doc(playerId).update(data); // Atualiza global
 
-      if (seasonId != LEGACY_ID) {
-        final seasonPlayerRef = _getPlayerStatsRef(seasonId).doc(playerId);
-        final docSnap = await seasonPlayerRef.get();
-        if (docSnap.exists) {
-          await seasonPlayerRef.update(data);
-        } else {
-          // Fallback: cria se não existir na temporada
-          await seasonPlayerRef.set({
-            ...data,
-            'goals': 0, 'assists': 0, 'yellow_cards': 0, 'red_cards': 0,
-            'total_yellow_cards': 0, 'total_red_cards': 0,
-            'man_of_the_match_awards': 0, 'goals_conceded': 0,
-            'is_suspended': false,
-            'isActive': true,
-          });
-        }
-      }
+      // Atualiza na Temporada Atual (SEMPRE)
+      final seasonPlayerRef = _getPlayerStatsRef(seasonId).doc(playerId);
+      
+      // Usa set com merge para garantir que atualize ou crie se faltar
+      await seasonPlayerRef.set(data, SetOptions(merge: true));
+
       return "Sucesso: Jogador atualizado.";
     } catch (e) { return "Erro ao atualizar jogador: $e"; }
   }
@@ -540,11 +520,11 @@ class FirestoreService {
   Future<String> deletePlayer(DocumentSnapshot doc, String seasonId) async {
     try {
       await _firestore.collection('players').doc(doc.id).update({'isActive': false});
-      if (seasonId != LEGACY_ID) {
-        try {
-          await _getPlayerStatsRef(seasonId).doc(doc.id).update({'isActive': false});
-        } catch (_) {}
-      }
+      // Inativa na temporada atual
+      try {
+        await _getPlayerStatsRef(seasonId).doc(doc.id).update({'isActive': false});
+      } catch (_) {}
+      
       return "Sucesso: Jogador inativado.";
     } catch (e) { return "Erro: $e"; }
   }
@@ -612,7 +592,7 @@ class FirestoreService {
     } catch (e) { return "Erro: $e"; }
   }
 
-  // --- CÓPIA DE TEMPORADA ---
+  // --- CÓPIA DE TEMPORADA (Refatorado para não depender de Legacy) ---
   Future<void> copySeasonData({
     required String sourceSeasonId,
     required String targetSeasonId,
@@ -623,7 +603,8 @@ class FirestoreService {
     // 1. Configs
     final configDocs = ['app_settings', 'disciplinary_rules', 'playoff_rules', 'tiebreaker_rules'];
     for (String docId in configDocs) {
-        final docSnap = await _firestore.collection('config').doc(docId).get();
+        // Agora busca sempre na estrutura de temporada
+        final docSnap = await _firestore.collection('championships').doc(sourceSeasonId).collection('settings').doc(docId).get();
         if (docSnap.exists) {
            final targetRef = _firestore.collection('championships').doc(targetSeasonId).collection('settings').doc(docId);
            batch.set(targetRef, docSnap.data()!);
@@ -631,18 +612,13 @@ class FirestoreService {
     }
 
     // 2. Times e Jogadores
-    QuerySnapshot sourceTeamsSnapshot;
-    if (sourceSeasonId == LEGACY_ID) {
-      sourceTeamsSnapshot = await _firestore.collection('teams').get();
-    } else {
-      sourceTeamsSnapshot = await _firestore.collection('championships').doc(sourceSeasonId).collection('teams_participation').get();
-    }
+    final sourceTeamsSnapshot = await _firestore.collection('championships').doc(sourceSeasonId).collection('teams_participation').get();
 
     final targetTeamsRef = _firestore.collection('championships').doc(targetSeasonId).collection('teams_participation');
     final targetPlayerStatsRef = _firestore.collection('championships').doc(targetSeasonId).collection('player_stats');
 
     for (var teamDoc in sourceTeamsSnapshot.docs) {
-      final teamData = teamDoc.data() as Map<String, dynamic>;
+      final teamData = teamDoc.data();
       final String teamId = teamDoc.id;
 
       // Cria Time na Nova Temporada
@@ -659,15 +635,11 @@ class FirestoreService {
       batch.set(targetTeamsRef.doc(teamId), newTeamData);
 
       if (includeRoster) {
-        QuerySnapshot playersInTeamSnap;
-        if (sourceSeasonId == LEGACY_ID) {
-           playersInTeamSnap = await _firestore.collection('players').where('team_id', isEqualTo: teamId).where('isActive', isEqualTo: true).get();
-        } else {
-           playersInTeamSnap = await _firestore.collection('championships').doc(sourceSeasonId).collection('player_stats').where('team_id', isEqualTo: teamId).get();
-        }
+        // Busca jogadores sempre na estrutura de temporada
+        final playersInTeamSnap = await _firestore.collection('championships').doc(sourceSeasonId).collection('player_stats').where('team_id', isEqualTo: teamId).get();
 
         for (var playerDoc in playersInTeamSnap.docs) {
-          final pData = playerDoc.data() as Map<String, dynamic>;
+          final pData = playerDoc.data();
           batch.set(targetPlayerStatsRef.doc(playerDoc.id), {
             'name': pData['name'], 'photo_url': pData['photo_url'],
             'position': pData['position'], 'is_goalkeeper': pData['is_goalkeeper'] ?? false,
@@ -683,6 +655,7 @@ class FirestoreService {
     await batch.commit();
   }
 
+  // --- UPDATE COMPLEXO (Stats de Partida) ---
   Future<String> updateMatchStats({
     required String seasonId,
     required DocumentSnapshot matchSnapshot,
@@ -701,158 +674,133 @@ class FirestoreService {
     required String? newSumulaUrl,
     required List<Map<String, dynamic>> newMediaLinks,
   }) async {
-    // ... (Este método permanece o mesmo da versão anterior, pois já estava usando snapshots e mapas.
-    // ... A migração para Models neste método específico de update complexo é muito arriscada neste momento.
-    // ... Ele já está funcional e robusto com a refatoração anterior.)
-    
-    // Vou reinserir o método completo aqui para garantir que o arquivo final esteja funcional
-    return _updateMatchStatsInternal(
-        seasonId, matchSnapshot, newStatus, newScoreHome, newScoreAway, 
-        newGoals, newAssists, newYellows, newReds, newGoalsConceded, 
-        newManOfTheMatchId, penaltyScoreHome, penaltyScoreAway, winnerTeamId, 
-        newSumulaUrl, newMediaLinks
-    );
-  }
+    final String matchId = matchSnapshot.id;
+    final matchDataBefore = matchSnapshot.data() as Map<String, dynamic>;
+    final String? homeTeamId = matchDataBefore['team_home_id'];
+    final String? awayTeamId = matchDataBefore['team_away_id'];
 
-  // (Método auxiliar interno para manter o arquivo limpo, é a mesma lógica enviada no turno anterior)
-  Future<String> _updateMatchStatsInternal(String seasonId, DocumentSnapshot matchSnapshot, String newStatus, int newScoreHome, int newScoreAway, Map<String, int> newGoals, Map<String, int> newAssists, Map<String, int> newYellows, Map<String, int> newReds, Map<String, int> newGoalsConceded, String? newManOfTheMatchId, int? penaltyScoreHome, int? penaltyScoreAway, String? winnerTeamId, String? newSumulaUrl, List<Map<String, dynamic>> newMediaLinks) async {
-      // ... (Lógica de updateMatchStats enviada anteriormente no Turno 27) ...
-      // Para brevidade e evitar duplicidade, assuma que o código do turno anterior está aqui.
-      // Se precisar dele novamente completo, me avise.
-      // Por segurança, vou deixar um TODO aqui, mas o ideal é copiar a lógica que já aprovamos.
-      
-      // -- INÍCIO DA LÓGICA COPIADA DO TURNO ANTERIOR PARA GARANTIR FUNCIONAMENTO --
-      final String matchId = matchSnapshot.id;
-      final matchDataBefore = matchSnapshot.data() as Map<String, dynamic>;
-      final String? homeTeamId = matchDataBefore['team_home_id'];
-      final String? awayTeamId = matchDataBefore['team_away_id'];
+    if (homeTeamId == null || awayTeamId == null) return "Erro: IDs dos times inválidos.";
 
-      if (homeTeamId == null || awayTeamId == null) return "Erro: IDs dos times inválidos.";
+    // Usa os helpers internos padronizados
+    final CollectionReference matchesRef = _getMatchesRef(seasonId);
+    final CollectionReference teamsRef = _getTeamsRef(seasonId);
+    final CollectionReference playersRef = _getPlayerStatsRef(seasonId);
+    // Log disciplinar agora sempre na temporada
+    final CollectionReference suspensionLogRef = _firestore.collection('championships').doc(seasonId).collection('disciplinary_log');
 
-      final CollectionReference matchesRef = _getMatchesRef(seasonId);
-      final CollectionReference teamsRef = _getTeamsRef(seasonId);
-      final CollectionReference playersRef = _getPlayerStatsRef(seasonId);
-      final CollectionReference suspensionLogRef = (seasonId == LEGACY_ID)
-          ? _firestore.collection('suspension_log')
-          : _firestore.collection('championships').doc(seasonId).collection('disciplinary_log');
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final freshMatchDoc = await transaction.get(matchesRef.doc(matchId));
+        if (!freshMatchDoc.exists) throw Exception("Partida não encontrada!");
+        final currentMatchData = freshMatchDoc.data() as Map<String, dynamic>;
+        
+        final oldStats = currentMatchData['stats_applied'] as Map<String, dynamic>? ?? {};
+        final oldPlayerStats = oldStats['player_stats'] as Map<String, dynamic>? ?? {};
+        
+        Map<String, int> oldGoals = Map<String, int>.from(oldPlayerStats['goals'] ?? {});
+        Map<String, int> oldAssists = Map<String, int>.from(oldPlayerStats['assists'] ?? {});
+        Map<String, int> oldYellows = Map<String, int>.from(oldPlayerStats['yellows'] ?? {});
+        Map<String, int> oldReds = Map<String, int>.from(oldPlayerStats['reds'] ?? {});
+        Map<String, int> oldGoalsConceded = Map<String, int>.from(oldPlayerStats['goals_conceded'] ?? {});
+        String? oldManOfTheMatchId = oldStats['man_of_the_match'];
 
-      try {
-        await _firestore.runTransaction((transaction) async {
-          final freshMatchDoc = await transaction.get(matchesRef.doc(matchId));
-          if (!freshMatchDoc.exists) throw Exception("Partida não encontrada!");
-          final currentMatchData = freshMatchDoc.data() as Map<String, dynamic>;
-          
-          final oldStats = currentMatchData['stats_applied'] as Map<String, dynamic>? ?? {};
-          final oldPlayerStats = oldStats['player_stats'] as Map<String, dynamic>? ?? {};
-          
-          Map<String, int> oldGoals = Map<String, int>.from(oldPlayerStats['goals'] ?? {});
-          Map<String, int> oldAssists = Map<String, int>.from(oldPlayerStats['assists'] ?? {});
-          Map<String, int> oldYellows = Map<String, int>.from(oldPlayerStats['yellows'] ?? {});
-          Map<String, int> oldReds = Map<String, int>.from(oldPlayerStats['reds'] ?? {});
-          Map<String, int> oldGoalsConceded = Map<String, int>.from(oldPlayerStats['goals_conceded'] ?? {});
-          String? oldManOfTheMatchId = oldStats['man_of_the_match'];
+        Set<String> playersToReadIds = {
+          ...newGoals.keys, ...oldGoals.keys, ...newAssists.keys, ...oldAssists.keys,
+          ...newYellows.keys, ...oldYellows.keys, ...newReds.keys, ...oldReds.keys,
+          ...newGoalsConceded.keys, ...oldGoalsConceded.keys,
+          if (newManOfTheMatchId != null) newManOfTheMatchId,
+          if (oldManOfTheMatchId != null) oldManOfTheMatchId,
+        };
+        playersToReadIds.removeWhere((id) => id.isEmpty);
 
-          Set<String> playersToReadIds = {
-            ...newGoals.keys, ...oldGoals.keys, ...newAssists.keys, ...oldAssists.keys,
-            ...newYellows.keys, ...oldYellows.keys, ...newReds.keys, ...oldReds.keys,
-            ...newGoalsConceded.keys, ...oldGoalsConceded.keys,
-            if (newManOfTheMatchId != null) newManOfTheMatchId,
-            if (oldManOfTheMatchId != null) oldManOfTheMatchId,
-          };
-          playersToReadIds.removeWhere((id) => id.isEmpty);
+        Map<String, DocumentSnapshot> playerSnaps = {};
+        for (String playerId in playersToReadIds) {
+          final snap = await transaction.get(playersRef.doc(playerId));
+          if (snap.exists) playerSnaps[playerId] = snap;
+        }
 
-          Map<String, DocumentSnapshot> playerSnaps = {};
-          for (String playerId in playersToReadIds) {
-            final snap = await transaction.get(playersRef.doc(playerId));
-            if (snap.exists) playerSnaps[playerId] = snap;
-          }
+        final Map<String, dynamic> newPlayerStatsToSave = {
+          'goals': newGoals, 'assists': newAssists, 'yellows': newYellows, 'reds': newReds, 'goals_conceded': newGoalsConceded,
+        };
 
-          final Map<String, dynamic> newPlayerStatsToSave = {
-            'goals': newGoals, 'assists': newAssists, 'yellows': newYellows, 'reds': newReds, 'goals_conceded': newGoalsConceded,
-          };
-
-          transaction.update(freshMatchDoc.reference, {
-            'score_home': newScoreHome, 'score_away': newScoreAway, 'status': newStatus,
-            'penalty_score_home': penaltyScoreHome, 'penalty_score_away': penaltyScoreAway,
-            'winner_team_id': winnerTeamId, 'sumula_url': newSumulaUrl,
-            'stats_applied': {
-              'player_stats': newPlayerStatsToSave, 'man_of_the_match': newManOfTheMatchId, 'media_links': newMediaLinks,
-              'starters_home': [], 'starters_away': [],
-            },
-          });
-
-          // Deltas
-          Map<String, int> goalDelta = _calculateDelta(oldGoals, newGoals);
-          Map<String, int> assistDelta = _calculateDelta(oldAssists, newAssists);
-          Map<String, int> goalsConcededDelta = _calculateDelta(oldGoalsConceded, newGoalsConceded);
-          Map<String, int> yellowDelta = _calculateDelta(oldYellows, newYellows);
-          Map<String, int> redDelta = _calculateDelta(oldReds, newReds);
-
-          // Atualiza Players
-          goalDelta.forEach((pid, d) { if (d != 0 && playerSnaps.containsKey(pid)) transaction.update(playerSnaps[pid]!.reference, {'goals': FieldValue.increment(d)}); });
-          assistDelta.forEach((pid, d) { if (d != 0 && playerSnaps.containsKey(pid)) transaction.update(playerSnaps[pid]!.reference, {'assists': FieldValue.increment(d)}); });
-          goalsConcededDelta.forEach((pid, d) { if (d != 0 && playerSnaps.containsKey(pid)) transaction.update(playerSnaps[pid]!.reference, {'goals_conceded': FieldValue.increment(d)}); });
-
-          if (oldManOfTheMatchId != newManOfTheMatchId) {
-            if (oldManOfTheMatchId != null && playerSnaps.containsKey(oldManOfTheMatchId)) transaction.update(playerSnaps[oldManOfTheMatchId]!.reference, {'man_of_the_match_awards': FieldValue.increment(-1)});
-            if (newManOfTheMatchId != null && playerSnaps.containsKey(newManOfTheMatchId)) transaction.update(playerSnaps[newManOfTheMatchId]!.reference, {'man_of_the_match_awards': FieldValue.increment(1)});
-          }
-
-          int disciplinaryHomeDelta = 0, disciplinaryAwayDelta = 0;
-          int totalYellowHomeDelta = 0, totalYellowAwayDelta = 0;
-          int totalRedHomeDelta = 0, totalRedAwayDelta = 0;
-
-          // Cartões e Suspensões
-          Set<String> affectedCardPlayerIds = {...yellowDelta.keys, ...redDelta.keys};
-          for (String playerId in affectedCardPlayerIds) {
-            if (!playerSnaps.containsKey(playerId)) continue;
-            final playerSnap = playerSnaps[playerId]!;
-            final playerData = playerSnap.data() as Map<String, dynamic>;
-
-            int yDelta = yellowDelta[playerId] ?? 0;
-            int rDelta = redDelta[playerId] ?? 0;
-            
-            // Lógica simplificada de suspensão (Requer leitura detalhada das regras no AdminService, aqui simplificamos)
-            transaction.update(playerSnap.reference, {
-              'yellow_cards': FieldValue.increment(yDelta), // Deveria ter lógica de reset, mas no update massivo é complexo
-              'red_cards': FieldValue.increment(rDelta),
-              'total_yellow_cards': FieldValue.increment(yDelta),
-              'total_red_cards': FieldValue.increment(rDelta),
-            });
-
-            // Equipes
-            final pTeamId = playerData['team_id'];
-            final int discPoints = (yDelta * 10) + (rDelta * 21);
-            if (pTeamId == homeTeamId) {
-              disciplinaryHomeDelta += discPoints; totalYellowHomeDelta += yDelta; totalRedHomeDelta += rDelta;
-            } else if (pTeamId == awayTeamId) {
-              disciplinaryAwayDelta += discPoints; totalYellowAwayDelta += yDelta; totalRedAwayDelta += rDelta;
-            }
-          }
-
-          if (disciplinaryHomeDelta != 0 || totalYellowHomeDelta != 0) {
-             transaction.update(teamsRef.doc(homeTeamId), {
-               'disciplinary_points': FieldValue.increment(disciplinaryHomeDelta),
-               'total_yellow_cards': FieldValue.increment(totalYellowHomeDelta),
-               'total_red_cards': FieldValue.increment(totalRedHomeDelta),
-             });
-          }
-          if (disciplinaryAwayDelta != 0 || totalYellowAwayDelta != 0) {
-             transaction.update(teamsRef.doc(awayTeamId), {
-               'disciplinary_points': FieldValue.increment(disciplinaryAwayDelta),
-               'total_yellow_cards': FieldValue.increment(totalYellowAwayDelta),
-               'total_red_cards': FieldValue.increment(totalRedAwayDelta),
-             });
-          }
+        transaction.update(freshMatchDoc.reference, {
+          'score_home': newScoreHome, 'score_away': newScoreAway, 'status': newStatus,
+          'penalty_score_home': penaltyScoreHome, 'penalty_score_away': penaltyScoreAway,
+          'winner_team_id': winnerTeamId, 'sumula_url': newSumulaUrl,
+          'stats_applied': {
+            'player_stats': newPlayerStatsToSave, 'man_of_the_match': newManOfTheMatchId, 'media_links': newMediaLinks,
+            'starters_home': [], 'starters_away': [],
+          },
         });
 
-        // Recalcula Tabela
-        if ((newStatus == 'finished' || matchDataBefore['status'] == 'finished') && matchDataBefore['phase'] == 'first') {
-          await _recalculateTeamStats(homeTeamId, seasonId);
-          await _recalculateTeamStats(awayTeamId, seasonId);
+        // Deltas
+        Map<String, int> goalDelta = _calculateDelta(oldGoals, newGoals);
+        Map<String, int> assistDelta = _calculateDelta(oldAssists, newAssists);
+        Map<String, int> goalsConcededDelta = _calculateDelta(oldGoalsConceded, newGoalsConceded);
+        Map<String, int> yellowDelta = _calculateDelta(oldYellows, newYellows);
+        Map<String, int> redDelta = _calculateDelta(oldReds, newReds);
+
+        // Atualiza Players
+        goalDelta.forEach((pid, d) { if (d != 0 && playerSnaps.containsKey(pid)) transaction.update(playerSnaps[pid]!.reference, {'goals': FieldValue.increment(d)}); });
+        assistDelta.forEach((pid, d) { if (d != 0 && playerSnaps.containsKey(pid)) transaction.update(playerSnaps[pid]!.reference, {'assists': FieldValue.increment(d)}); });
+        goalsConcededDelta.forEach((pid, d) { if (d != 0 && playerSnaps.containsKey(pid)) transaction.update(playerSnaps[pid]!.reference, {'goals_conceded': FieldValue.increment(d)}); });
+
+        if (oldManOfTheMatchId != newManOfTheMatchId) {
+          if (oldManOfTheMatchId != null && playerSnaps.containsKey(oldManOfTheMatchId)) transaction.update(playerSnaps[oldManOfTheMatchId]!.reference, {'man_of_the_match_awards': FieldValue.increment(-1)});
+          if (newManOfTheMatchId != null && playerSnaps.containsKey(newManOfTheMatchId)) transaction.update(playerSnaps[newManOfTheMatchId]!.reference, {'man_of_the_match_awards': FieldValue.increment(1)});
         }
-        return "Sucesso";
-      } catch (e) { return "Erro: $e"; }
+
+        int disciplinaryHomeDelta = 0, disciplinaryAwayDelta = 0;
+        int totalYellowHomeDelta = 0, totalYellowAwayDelta = 0;
+        int totalRedHomeDelta = 0, totalRedAwayDelta = 0;
+
+        Set<String> affectedCardPlayerIds = {...yellowDelta.keys, ...redDelta.keys};
+        for (String playerId in affectedCardPlayerIds) {
+          if (!playerSnaps.containsKey(playerId)) continue;
+          final playerSnap = playerSnaps[playerId]!;
+          final playerData = playerSnap.data() as Map<String, dynamic>;
+
+          int yDelta = yellowDelta[playerId] ?? 0;
+          int rDelta = redDelta[playerId] ?? 0;
+          
+          transaction.update(playerSnap.reference, {
+            'yellow_cards': FieldValue.increment(yDelta),
+            'red_cards': FieldValue.increment(rDelta),
+            'total_yellow_cards': FieldValue.increment(yDelta),
+            'total_red_cards': FieldValue.increment(rDelta),
+          });
+
+          final pTeamId = playerData['team_id'];
+          final int discPoints = (yDelta * 10) + (rDelta * 21);
+          if (pTeamId == homeTeamId) {
+            disciplinaryHomeDelta += discPoints; totalYellowHomeDelta += yDelta; totalRedHomeDelta += rDelta;
+          } else if (pTeamId == awayTeamId) {
+            disciplinaryAwayDelta += discPoints; totalYellowAwayDelta += yDelta; totalRedAwayDelta += rDelta;
+          }
+        }
+
+        if (disciplinaryHomeDelta != 0 || totalYellowHomeDelta != 0) {
+           transaction.update(teamsRef.doc(homeTeamId), {
+             'disciplinary_points': FieldValue.increment(disciplinaryHomeDelta),
+             'total_yellow_cards': FieldValue.increment(totalYellowHomeDelta),
+             'total_red_cards': FieldValue.increment(totalRedHomeDelta),
+           });
+        }
+        if (disciplinaryAwayDelta != 0 || totalYellowAwayDelta != 0) {
+           transaction.update(teamsRef.doc(awayTeamId), {
+             'disciplinary_points': FieldValue.increment(disciplinaryAwayDelta),
+             'total_yellow_cards': FieldValue.increment(totalYellowAwayDelta),
+             'total_red_cards': FieldValue.increment(totalRedAwayDelta),
+           });
+        }
+      });
+
+      if ((newStatus == 'finished' || matchDataBefore['status'] == 'finished') && matchDataBefore['phase'] == 'first') {
+        await _recalculateTeamStats(homeTeamId, seasonId);
+        await _recalculateTeamStats(awayTeamId, seasonId);
+      }
+      return "Sucesso";
+    } catch (e) { return "Erro: $e"; }
   }
 
   Map<String, int> _calculateDelta(Map<String, int> oldMap, Map<String, int> newMap) {

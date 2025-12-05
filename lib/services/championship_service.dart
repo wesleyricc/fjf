@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'firestore_service.dart'; // <-- Importante para acessar LEGACY_ID
 import 'admin_service.dart';
+import 'firestore_service.dart'; 
 
 class ChampionshipService with ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Estado
-  String _currentSeasonId = FirestoreService.LEGACY_ID;
+  // Estado Atual
+  String _currentSeasonId = '';
   String _currentSeasonName = 'Carregando...';
-  int _currentSeasonYear = 2025;
+  int _currentSeasonYear = DateTime.now().year;
   String _currentSeasonHonoree = '';
   
   List<Map<String, dynamic>> _availableSeasons = [];
@@ -34,6 +34,7 @@ class ChampionshipService with ChangeNotifier {
     notifyListeners();
 
     try {
+      // Busca todas as temporadas padronizadas ordenadas por ano (decrescente)
       final snapshot = await _firestore
           .collection('championships')
           .orderBy('year', descending: true)
@@ -53,32 +54,37 @@ class ChampionshipService with ChangeNotifier {
       if (_availableSeasons.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
         final savedSeasonId = prefs.getString('selected_season_id');
+        
+        String targetId = '';
 
-        // --- CORREÇÃO AQUI ---
-        // Inicializa com valor seguro para evitar erro de Null Safety
-        String targetId = FirestoreService.LEGACY_ID; 
-
+        // 1. Tenta recuperar a última selecionada pelo usuário
         if (savedSeasonId != null && _availableSeasons.any((s) => s['id'] == savedSeasonId)) {
            targetId = savedSeasonId;
-        } else {
-           // Busca a temporada marcada como ativa no banco
+        } 
+        // 2. Se não, tenta pegar a temporada marcada como "Ativa" (Padrão Global)
+        else {
            final activeSeason = _availableSeasons.firstWhere(
-            (s) => s['isActive'] == true,
-            orElse: () => _availableSeasons.first, 
-          );
-          targetId = activeSeason['id'];
+             (s) => s['isActive'] == true, 
+             orElse: () => _availableSeasons.first
+           );
+           targetId = activeSeason['id'];
         }
         
-        _setSeasonInternal(targetId); // Agora targetId é garantido como String
-        
+        await _setSeasonInternal(targetId);
       } else {
-        // Fallback Legado
-        _setSeasonInternal(FirestoreService.LEGACY_ID);
+        // Caso: Nenhuma temporada padronizada encontrada (App novo ou pré-migração)
+        _currentSeasonName = "Nenhuma Temporada";
+        _currentSeasonId = "";
+        _currentSeasonHonoree = "";
+        
+        // Garante que o AdminService tenha valores padrão seguros
+        AdminService.pendingYellowCards = 2;
+        AdminService.suspensionYellowCards = 3;
       }
 
     } catch (e) {
-      debugPrint("Erro ao carregar temporadas: $e");
-      _setSeasonInternal(FirestoreService.LEGACY_ID);
+      debugPrint("Erro inicialização ChampionshipService: $e");
+      _currentSeasonName = "Erro de Conexão";
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -86,16 +92,17 @@ class ChampionshipService with ChangeNotifier {
   }
 
   Future<void> setSeason(String seasonId) async {
-    await _setSeasonInternal(seasonId); // Agora espera carregar regras
+    await _setSeasonInternal(seasonId);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('selected_season_id', seasonId);
   }
 
-  // Define como Ativa Globalmente
+  // Define a temporada globalmente ativa (padrão para novos usuários)
   Future<String> setGlobalActiveSeason(String seasonId) async {
     try {
       final batch = _firestore.batch();
 
+      // Desativa todas
       final allDocs = await _firestore.collection('championships').get();
       for (var doc in allDocs.docs) {
         if (doc.data()['is_active'] == true) {
@@ -103,13 +110,15 @@ class ChampionshipService with ChangeNotifier {
         }
       }
 
-      if (seasonId != FirestoreService.LEGACY_ID) {
-        final targetRef = _firestore.collection('championships').doc(seasonId);
-        batch.update(targetRef, {'is_active': true});
-      }
+      // Ativa a alvo
+      final targetRef = _firestore.collection('championships').doc(seasonId);
+      batch.update(targetRef, {'is_active': true});
 
       await batch.commit();
+      
+      // Recarrega estado local para refletir a mudança na UI
       await _init();
+      // Força a seleção da nova temporada ativa
       await setSeason(seasonId); 
 
       return "Sucesso";
@@ -119,24 +128,20 @@ class ChampionshipService with ChangeNotifier {
   }
 
   Future<void> _setSeasonInternal(String seasonId) async {
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      _currentSeasonId = seasonId;
-      _currentSeasonName = 'FJF 2025 (Original)';
-      _currentSeasonYear = 2025;
-      _currentSeasonHonoree = 'Taça Mary Neusa Espíndola Bif';
-    } else {
-      final season = _availableSeasons.firstWhere(
-        (s) => s['id'] == seasonId,
-        orElse: () => {'id': seasonId, 'name': 'Desconhecido', 'year': 0, 'honoree': ''},
-      );
-      
+    final season = _availableSeasons.firstWhere(
+      (s) => s['id'] == seasonId,
+      orElse: () => {'id': '', 'name': 'Desconhecido', 'year': 0, 'honoree': ''},
+    );
+    
+    if (season['id'] != '') {
       _currentSeasonId = seasonId;
       _currentSeasonName = season['name'];
       _currentSeasonYear = season['year'];
       _currentSeasonHonoree = season['honoree'] ?? '';
+      
+      // Carrega regras específicas desta temporada (AdminService já foi refatorado para não usar legacy)
+      await AdminService.loadAllRules(seasonId);
     }
-
-    await AdminService.loadAllRules(seasonId);
     notifyListeners();
   }
 
@@ -146,6 +151,7 @@ class ChampionshipService with ChangeNotifier {
       final doc = await _firestore.collection('championships').doc(docId).get();
       if (doc.exists) return "Temporada já existe.";
 
+      // Cria o documento da temporada
       await _firestore.collection('championships').doc(docId).set({
         'year': year,
         'name': name,
@@ -155,7 +161,8 @@ class ChampionshipService with ChangeNotifier {
         'created_at': FieldValue.serverTimestamp(),
       });
       
-      if (copyTeams) {
+      // Copia dados da temporada ATUAL para a NOVA (se solicitado e se houver atual selecionada)
+      if (copyTeams && _currentSeasonId.isNotEmpty) {
         await FirestoreService().copySeasonData(
           sourceSeasonId: _currentSeasonId,
           targetSeasonId: docId,

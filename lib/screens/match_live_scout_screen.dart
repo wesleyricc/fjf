@@ -34,12 +34,11 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
     final homeId = widget.match['team_home_id'];
     final awayId = widget.match['team_away_id'];
     
-    Query playersQuery;
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      playersQuery = FirebaseFirestore.instance.collection('players');
-    } else {
-      playersQuery = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('player_stats');
-    }
+    // CORREÇÃO: Busca sempre na subcoleção da temporada
+    final playersQuery = FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('player_stats');
 
     // Busca jogadores ativos de ambos os times
     try {
@@ -111,10 +110,12 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   Widget build(BuildContext context) {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
     
-    // Referência em tempo real para o cabeçalho (placar)
-    final matchRef = (seasonId == FirestoreService.LEGACY_ID) 
-        ? FirebaseFirestore.instance.collection('matches').doc(widget.match.id)
-        : FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(widget.match.id);
+    // CORREÇÃO: Referência padronizada para a partida
+    final matchRef = FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('matches')
+        .doc(widget.match.id);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Assistente de Súmula (Ao Vivo)')),

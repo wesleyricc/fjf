@@ -14,20 +14,21 @@ class ScoutTimelineWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
     final matchId = match.id;
-    final homeId = match['team_home_id'];
-    final homeName = match['team_home_name'];
-    final awayName = match['team_away_name'];
+    
+    // Dados para exibição
+    final data = match.data() as Map<String, dynamic>;
+    final homeId = data['team_home_id'];
+    final homeName = data['team_home_name'];
+    final awayName = data['team_away_name'];
 
-    // Define a referência da timeline baseada na arquitetura
-    Query timelineQuery;
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      timelineQuery = FirebaseFirestore.instance.collection('matches').doc(matchId).collection('timeline');
-    } else {
-      timelineQuery = FirebaseFirestore.instance
-          .collection('championships').doc(seasonId)
-          .collection('matches').doc(matchId)
-          .collection('timeline');
-    }
+    // ALTERAÇÃO: Define a referência da timeline sempre na subcoleção da temporada atual
+    // Removemos a verificação de LEGACY_ID
+    final Query timelineQuery = FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('matches')
+        .doc(matchId)
+        .collection('timeline');
 
     return Expanded(
       child: StreamBuilder<QuerySnapshot>(
@@ -79,7 +80,7 @@ class ScoutTimelineWidget extends StatelessWidget {
               }
 
               final String displayTitle = "${evt.minute}' ${evt.period} - $typeLabel";
-              final String teamName = (evt.teamId == homeId) ? homeName : awayName;
+              final String teamName = (evt.teamId == homeId) ? (homeName ?? 'Casa') : (awayName ?? 'Visitante');
 
               return ListTile(
                 dense: true,
@@ -116,7 +117,13 @@ class ScoutTimelineWidget extends StatelessWidget {
     );
 
     if (confirm == true && context.mounted) {
-      final result = await FirestoreService().deleteMatchEvent(seasonId: seasonId, matchId: matchId, event: evt);
+      // Chama o serviço refatorado (agora não precisa passar snapshot, pois o serviço busca internamente na transação)
+      final result = await FirestoreService().deleteMatchEvent(
+        seasonId: seasonId, 
+        matchId: matchId, 
+        event: evt
+      );
+      
       if (context.mounted) {
         if (result == "Sucesso") {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Evento desfeito.")));

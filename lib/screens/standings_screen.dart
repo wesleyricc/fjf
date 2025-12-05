@@ -71,16 +71,16 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
     try {
-      Query teamsQuery;
-      Query matchesQuery;
-
-      if (seasonId == FirestoreService.LEGACY_ID) {
-        teamsQuery = _firestore.collection('teams');
-        matchesQuery = _firestore.collection('matches');
-      } else {
-        teamsQuery = _firestore.collection('championships').doc(seasonId).collection('teams_participation');
-        matchesQuery = _firestore.collection('championships').doc(seasonId).collection('matches');
-      }
+      // CAMINHOS PADRONIZADOS (Sem verificação de legado)
+      final teamsQuery = _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('teams_participation');
+      
+      final matchesQuery = _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('matches');
 
       final results = await Future.wait([
         teamsQuery.get(),
@@ -174,16 +174,20 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
   Widget _buildOfficialTab() {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
     
-    Stream<QuerySnapshot> teamsStream;
-    Stream<QuerySnapshot> matchesStream;
-
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      teamsStream = _firestore.collection('teams').snapshots();
-      matchesStream = _firestore.collection('matches').where('phase', isEqualTo: 'first').orderBy('datetime').snapshots();
-    } else {
-      teamsStream = _firestore.collection('championships').doc(seasonId).collection('teams_participation').snapshots();
-      matchesStream = _firestore.collection('championships').doc(seasonId).collection('matches').where('phase', isEqualTo: 'first').orderBy('datetime').snapshots();
-    }
+    // CAMINHOS PADRONIZADOS (Sempre na subcoleção da temporada)
+    final teamsStream = _firestore
+        .collection('championships')
+        .doc(seasonId)
+        .collection('teams_participation')
+        .snapshots();
+    
+    final matchesStream = _firestore
+        .collection('championships')
+        .doc(seasonId)
+        .collection('matches')
+        .where('phase', isEqualTo: 'first')
+        .orderBy('datetime')
+        .snapshots();
 
     return StreamBuilder<QuerySnapshot>(
       stream: teamsStream,
@@ -350,7 +354,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
     _recalculateSimulation();
   }
 
-  // --- LEGENDA COMPLETA RESTAURADA ---
+  // --- LEGENDA COMPLETA ---
   Widget _buildDetailedLegend({bool hideCriteria = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -380,7 +384,7 @@ class _StandingsScreenState extends State<StandingsScreen> with TickerProviderSt
                     _legendItem('GP', 'Gols Pró'),
                     _legendItem('GC', 'Gols Contra'),
                     _legendItem('SG', 'Saldo Gols'),
-                    _legendItem('PD', 'Pts Disciplinares (CA=10/CV=21)'),
+                    _legendItem('PD', 'Pts Disciplinares'),
                     _legendItem('PE', 'Pts Extras'),
                     _legendItem('APR %', 'Aproveitamento'),
                   ],

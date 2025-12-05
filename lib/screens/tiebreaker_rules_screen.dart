@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:provider/provider.dart'; // <-- Importante
+import 'package:provider/provider.dart'; 
 import '../services/admin_service.dart';
-import '../services/championship_service.dart'; // <-- Importante
-import '../services/firestore_service.dart'; // <-- Importante
+import '../services/championship_service.dart'; 
 
 class TiebreakerCriterion {
   final String key;
@@ -53,7 +52,7 @@ class _TiebreakerRulesScreenState extends State<TiebreakerRulesScreen> {
         .cast<TiebreakerCriterion>()
         .toList();
         
-    // Adiciona quaisquer critérios faltantes no final (segurança)
+    // Adiciona quaisquer critérios faltantes no final (segurança para novos critérios futuros)
     for (var key in _availableCriteria.keys) {
       if (!_currentOrder.any((c) => c.key == key)) {
         _currentOrder.add(_availableCriteria[key]!);
@@ -61,17 +60,15 @@ class _TiebreakerRulesScreenState extends State<TiebreakerRulesScreen> {
     }
   }
 
-  // Helper para salvar no local certo
+  // Helper para salvar no local certo (PADRONIZADO)
   DocumentReference _getSettingsDocRef(String seasonId, String docId) {
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      return FirebaseFirestore.instance.collection('config').doc(docId);
-    } else {
-      return FirebaseFirestore.instance
-          .collection('championships')
-          .doc(seasonId)
-          .collection('settings')
-          .doc(docId);
-    }
+    // Aponta sempre para a subcoleção da temporada atual
+    // Removemos a verificação de LEGACY_ID
+    return FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('settings')
+        .doc(docId);
   }
 
   Future<void> _saveOrder() async {
@@ -83,7 +80,7 @@ class _TiebreakerRulesScreenState extends State<TiebreakerRulesScreen> {
     try {
       List<String> newOrderKeys = _currentOrder.map((c) => c.key).toList();
       
-      // 2. Salva no documento correto
+      // 2. Salva no documento correto da temporada
       await _getSettingsDocRef(seasonId, 'tiebreaker_rules').set({
         'order': newOrderKeys,
       }, SetOptions(merge: true));

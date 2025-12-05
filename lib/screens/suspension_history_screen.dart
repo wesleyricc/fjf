@@ -1,33 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart'; // <-- Importante
+import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
+// Services & Models
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../services/admin_service.dart';
-import '../services/championship_service.dart'; // <-- Importante
-import '../services/firestore_service.dart'; // <-- Importante
-import 'package:cached_network_image/cached_network_image.dart';
-import 'player_profile_screen.dart';
-import 'package:provider/provider.dart'; 
+import '../services/championship_service.dart';
 import '../services/auth_service.dart';
+import '../utils/custom_cache_manager.dart'; 
+
+// Screens
+import 'player_profile_screen.dart';
 
 class SuspensionHistoryScreen extends StatelessWidget {
   SuspensionHistoryScreen({super.key});
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Função auxiliar para obter a query correta
+  // Função auxiliar para obter a query correta (PADRONIZADA)
   Query _getSuspensionQuery(String seasonId) {
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      return _firestore.collection('suspension_log').orderBy('timestamp', descending: true);
-    } else {
-      return _firestore
-          .collection('championships')
-          .doc(seasonId)
-          .collection('disciplinary_log')
-          .orderBy('timestamp', descending: true);
-    }
+    // ALTERAÇÃO: Aponta sempre para a subcoleção da temporada atual
+    // Removemos a verificação de LEGACY_ID
+    return _firestore
+        .collection('championships')
+        .doc(seasonId)
+        .collection('disciplinary_log')
+        .orderBy('return_date', descending: true);
   }
 
   Future<void> _showEditReturnDateDialog(BuildContext context, DocumentSnapshot logDoc) async {
@@ -106,9 +106,8 @@ class SuspensionHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Ouve a temporada
     final championshipService = Provider.of<ChampionshipService>(context);
-    final authService = Provider.of<AuthService>(context); // <-- OUVINDO
+    final authService = Provider.of<AuthService>(context);
     final String seasonId = championshipService.currentSeasonId;
     final String seasonName = championshipService.currentSeasonName;
 
@@ -124,7 +123,7 @@ class SuspensionHistoryScreen extends StatelessWidget {
       ),
       drawer: const AppDrawer(),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _getSuspensionQuery(seasonId).snapshots(), // <-- Query Dinâmica
+        stream: _getSuspensionQuery(seasonId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           if (snapshot.hasError) return Center(child: Text('Erro: ${snapshot.error}'));
@@ -142,15 +141,22 @@ class SuspensionHistoryScreen extends StatelessWidget {
               final String playerName = data['playerName'] ?? 'Jogador';
               final bool isStaff = data['is_staff'] ?? false;
               final String playerId = data['playerId'] ?? '';
+              
+              // Dados da Equipe
               final String teamName = data['teamName'] ?? 'Time';
               final String teamLogoUrl = data['teamLogoUrl'] ?? '';
+              
+              // Foto do Jogador
+              final String playerPhotoUrl = data['playerPhotoUrl'] ?? '';
+
               final String reason = data['reason'] ?? 'Indefinido';
               final String matchInfo = data['match_description'] ?? 'Jogo não informado';
               
               String suspensionDateStr = 'Data indefinida';
               if (data['timestamp'] is Timestamp) {
-                suspensionDateStr = DateFormat('dd/MM/yyyy', 'pt_BR').format((data['timestamp'] as Timestamp).toDate());
+                suspensionDateStr = DateFormat('dd/MM', 'pt_BR').format((data['timestamp'] as Timestamp).toDate());
               }
+              
               String returnDateStr = 'A definir';
               Timestamp? returnDateTimestamp = data['return_date'] as Timestamp?;
               
@@ -160,76 +166,129 @@ class SuspensionHistoryScreen extends StatelessWidget {
               if (returnDateTimestamp != null) {
                 DateTime returnDate = returnDateTimestamp.toDate();
                 DateTime today = DateTime.now();
+                // Normaliza para comparar apenas datas (sem hora)
                 DateTime normalizedReturnDate = DateTime(returnDate.year, returnDate.month, returnDate.day);
                 DateTime normalizedToday = DateTime(today.year, today.month, today.day);
+                
                 returnDateStr = DateFormat('dd/MM/yyyy', 'pt_BR').format(returnDate);
 
                 if (normalizedToday.isAfter(normalizedReturnDate) || normalizedToday.isAtSameMomentAs(normalizedReturnDate)) {
-                  statusText = 'CUMPRIDA'; statusColor = Colors.green;
+                  statusText = 'CUMPRIDA'; 
+                  statusColor = Colors.green;
                 } else {
-                  statusText = 'SUSPENSO'; statusColor = Colors.red;
+                  statusText = 'SUSPENSO'; 
+                  statusColor = Colors.red;
                 }
               } else {
-                statusText = 'SUSPENSO'; statusColor = Colors.red;
+                statusText = 'SUSPENSO'; 
+                statusColor = Colors.red;
               }
 
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 elevation: 1,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ListTile(
                       isThreeLine: true,
-                      leading: teamLogoUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: teamLogoUrl, width: 40, height: 40, fit: BoxFit.contain,
-                            placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
-                            errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.grey),
-                          )
-                        : const Icon(Icons.shield, color: Colors.grey, size: 40),
+                      // --- 1. FOTO DO ATLETA NO LEADING ---
+                      leading: CircleAvatar(
+                        radius: 25,
+                        backgroundColor: Colors.grey.shade200,
+                        backgroundImage: playerPhotoUrl.isNotEmpty 
+                            ? CachedNetworkImageProvider(playerPhotoUrl, cacheManager: PlayerCacheManager.instance) 
+                            : null,
+                        child: playerPhotoUrl.isEmpty 
+                            ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) 
+                            : null,
+                      ),
+                      
                       title: Text(
                         isStaff ? '$playerName (Comissão)' : playerName,
                         style: TextStyle(fontWeight: FontWeight.bold, fontStyle: isStaff ? FontStyle.italic : FontStyle.normal),
                       ),
+                      
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(teamName, style: const TextStyle(fontSize: 13, color: Colors.grey)),
                           const SizedBox(height: 4),
+                          // --- 2. LOGO DO TIME + NOME ---
+                          Row(
+                            children: [
+                              if (teamLogoUrl.isNotEmpty) ...[
+                                CachedNetworkImage(
+                                  imageUrl: teamLogoUrl, 
+                                  width: 18, 
+                                  height: 18, 
+                                  fit: BoxFit.contain,
+                                  errorWidget: (_,__,___) => const Icon(Icons.shield, size: 18, color: Colors.grey),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Text(teamName, style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w500)),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          
                           Text.rich(TextSpan(
-                              style: const TextStyle(fontSize: 14, color: Colors.black87),
+                              style: const TextStyle(fontSize: 13, color: Colors.black87),
                               children: [
                                 const TextSpan(text: 'Motivo: ', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ..._buildReasonSpans(reason),
                               ],
                             ),
                           ),
-                          Text('$matchInfo', style: const TextStyle(fontSize: 14)),
-                          const SizedBox(height: 2),
-                          Text('Suspenso em: $suspensionDateStr', style: const TextStyle(fontSize: 14)),
-                          Text('Retorno Previsto: $returnDateStr', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w500, fontSize: 14)),
+                          Text(matchInfo, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Ocorrido: $suspensionDateStr', style: const TextStyle(fontSize: 12)),
+                              Text('Retorno: $returnDateStr', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+                            ],
+                          ),
                         ],
                       ),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: statusColor.withOpacity(0.5))
+                            ),
+                            child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10)),
+                          ),
                         ],
                       ),
                       onTap: () {
                         if (playerId.isNotEmpty) Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => PlayerProfileScreen(playerId: playerId)));
                       }
                     ),
+                    
+                    // Botões de Ação (Admin)
                     if (authService.isAuthenticated)
                       Padding(
                         padding: const EdgeInsets.only(right: 8.0, bottom: 4.0), 
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            IconButton(icon: const Icon(Icons.edit_calendar_outlined, size: 20), color: Theme.of(context).primaryColor, onPressed: () => _showEditReturnDateDialog(context, logDoc)),
-                            const SizedBox(width: 16),
-                            IconButton(icon: const Icon(Icons.delete_outline, size: 20), color: Colors.red[700], onPressed: () => _showDeleteLogDialog(context, logDoc)),
+                            TextButton.icon(
+                              icon: const Icon(Icons.edit_calendar_outlined, size: 16),
+                              label: const Text("Editar Data", style: TextStyle(fontSize: 12)),
+                              onPressed: () => _showEditReturnDateDialog(context, logDoc),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 20), 
+                              color: Colors.red[700], 
+                              tooltip: "Excluir Registro",
+                              onPressed: () => _showDeleteLogDialog(context, logDoc)
+                            ),
                           ],
                         ),
                       ),

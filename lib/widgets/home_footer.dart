@@ -80,12 +80,12 @@ class HomeFooter extends StatelessWidget {
           
           // Copyright
           const Text(
-            '© FJF 2025 - Todos os direitos reservados',
+            '© FJF 2026 - Todos os direitos reservados',
             style: TextStyle(color: Colors.white38, fontSize: 11),
           ),
           const SizedBox(height: 4),
           const Text(
-            'Desenvolvido com Flutter',
+            'Desenvolvido por Wesley Ricardo',
             style: TextStyle(color: Colors.white24, fontSize: 10),
           ),
         ],

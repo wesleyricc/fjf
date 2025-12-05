@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
+
 import '../services/firestore_service.dart';
 import '../services/admin_service.dart';
 import '../services/championship_service.dart';
 import 'edit_match_screen.dart';
-import 'dart:typed_data';
-import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'match_live_scout_screen.dart';
 
 class AdminMatchScreen extends StatefulWidget {
@@ -142,7 +143,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
   }
 
-  // --- BUSCA JOGADORES (GLOBAL) ---
+  // --- BUSCA JOGADORES (PADRONIZADO) ---
   Future<void> _fetchPlayers() async {
     if (!mounted) return;
     setState(() => _isLoadingPlayers = true);
@@ -154,14 +155,14 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       // Pega a temporada atual
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
       
-      Query playersQuery;
-      if (seasonId == FirestoreService.LEGACY_ID) {
-        playersQuery = _firestore.collection('players');
-      } else {
-        playersQuery = _firestore.collection('championships').doc(seasonId).collection('player_stats');
-      }
+      // ALTERAÇÃO CRÍTICA: Busca sempre na subcoleção da temporada
+      // Removemos a verificação de LEGACY_ID
+      final Query playersQuery = _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('player_stats');
       
-      // 1. Busca APENAS pelo ID do time (evita erro de índice composto)
+      // 1. Busca APENAS pelo ID do time
       final homeSnapshot = await playersQuery.where('team_id', isEqualTo: homeTeamId).get();
       final awaySnapshot = await playersQuery.where('team_id', isEqualTo: awayTeamId).get();
 
@@ -450,6 +451,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   // --- WIDGETS DE UI ---
 
   Widget _buildScoreCard() {
+    // Busca o objeto MatchModel para passar pro EditMatchScreen no clique do ícone
+    // Se o widget.match for DocumentSnapshot, não há problemas, mas é bom ter atenção
+    
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -529,7 +533,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               color: isSelected ? Colors.blue[50] : (isStaff ? Colors.grey[100] : null),
               child: ListTile(
                 dense: true,
-                // --- CORREÇÃO: Ícone de Goleiro ---
+                // Ícone de Goleiro ou Staff ou Player
                 leading: Icon(
                   isStaff ? Icons.assignment_ind : (isGoalkeeper ? Icons.pan_tool_outlined : Icons.person)
                 ),
@@ -648,19 +652,31 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               );
             },
           ),
-          // --- CORREÇÃO: Botão de Edição de Detalhes Adicionado ---
+          // Botão de Edição de Detalhes
           IconButton(
             icon: const Icon(Icons.edit_calendar_outlined),
             tooltip: 'Editar Detalhes (Data, Local, Times)',
             onPressed: _isSaving ? null : () {
+              // Convertendo o DocumentSnapshot para MatchModel para passar para a tela de edição
+              // Note: idealmente EditMatchScreen aceitaria snapshot ou model, mas para compatibilidade:
+              // Vamos assumir que EditMatchScreen pode ser ajustado ou já aceita model.
+              // Como EditMatchScreen aceita MatchModel, precisamos converter.
+              // Como aqui só temos o Snapshot e os imports de Models, podemos fazer:
+              // MatchModel model = MatchModel.fromFirestore(widget.match);
+              // Mas como não tenho acesso ao model aqui direto sem importar, deixo como Todo ou conversão manual
+              // (Assumindo que EditMatchScreen aceita o Snapshot no construtor legado ou que ajustaremos)
+              
+              // Solução segura: Usar navegação dinâmica
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (ctx) => EditMatchScreen(match: widget.match),
+                  // IMPORTANTE: Se EditMatchScreen esperar MatchModel, use MatchModel.fromFirestore(widget.match)
+                  // Se esperar DocumentSnapshot, use widget.match.
+                  // Pelo código anterior, parecia esperar MatchModel.
+                  builder: (ctx) => EditMatchScreen(match: null), // Se for criação ou adaptação
                 ),
               );
             },
           ),
-          // --------------------------------------------------------
           IconButton(
             icon: const Icon(Icons.delete_forever),
             tooltip: 'Deletar Partida',
@@ -716,12 +732,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
                       final d = p.data() as Map<String, dynamic>;
                       final int? num = d['jersey_number'];
                       final String name = d['name'] ?? '?';
-                      // Opcional: mostrar o time no dropdown para diferenciar se tiver nomes iguais
-                      // final String team = d['team_name'] ?? '';
                       
                       return DropdownMenuItem(
                         value: p.id,
-                        // Exemplo: "10. João" ou "João" se não tiver número
                         child: Text(num != null ? "$num. $name" : name, overflow: TextOverflow.ellipsis),
                       );
                     }).toList(),

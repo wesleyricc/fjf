@@ -3,11 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/admin_service.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../widgets/generic_player_rank_list.dart'; // <-- Novo
-import '../widgets/total_cards_rank_list.dart';    // <-- Novo
+import '../widgets/generic_player_rank_list.dart'; 
+import '../widgets/total_cards_rank_list.dart';    
 
 class PlayerStatsScreen extends StatelessWidget {
   const PlayerStatsScreen({super.key});
@@ -38,14 +37,12 @@ class PlayerStatsScreen extends StatelessWidget {
     final seasonId = championshipService.currentSeasonId;
     final seasonName = championshipService.currentSeasonName;
     
-    // Define a referência base
-    final FirebaseFirestore firestore = FirebaseFirestore.instance;
-    Query baseQuery;
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      baseQuery = firestore.collection('players');
-    } else {
-      baseQuery = firestore.collection('championships').doc(seasonId).collection('player_stats');
-    }
+    // ALTERAÇÃO: Define a referência base sempre para a temporada atual
+    // Removemos a verificação de LEGACY_ID
+    final Query baseQuery = FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('player_stats');
 
     return DefaultTabController(
       length: 9,

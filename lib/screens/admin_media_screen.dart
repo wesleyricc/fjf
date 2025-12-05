@@ -1,10 +1,9 @@
-// lib/screens/admin_media_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:provider/provider.dart'; // <-- Importante
+import 'package:provider/provider.dart'; 
 import '../services/firestore_service.dart';
-import '../services/championship_service.dart'; // <-- Importante
+import '../services/championship_service.dart'; 
 import 'edit_media_screen.dart';
 
 class AdminMediaScreen extends StatefulWidget {
@@ -33,6 +32,7 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
     );
 
     if (confirm == true && mounted) {
+      // Chama o serviço para deletar (agora passando o seasonId para localizar corretamente)
       final result = await _firestoreService.deleteMediaItem(doc, seasonId);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
     }
@@ -44,12 +44,12 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
     final seasonId = championshipService.currentSeasonId;
     final seasonName = championshipService.currentSeasonName;
 
-    Query mediaQuery;
-    if (seasonId == FirestoreService.LEGACY_ID) {
-      mediaQuery = _firestore.collection('media_feed');
-    } else {
-      mediaQuery = _firestore.collection('championships').doc(seasonId).collection('news');
-    }
+    // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
+    // Removemos a lógica de legado ('media_feed' na raiz)
+    final Query mediaQuery = _firestore
+        .collection('championships')
+        .doc(seasonId)
+        .collection('news');
 
     return Scaffold(
       appBar: AppBar(

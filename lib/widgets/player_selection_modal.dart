@@ -35,12 +35,13 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
     
     try {
-      Query query;
-      if (seasonId == FirestoreService.LEGACY_ID) {
-        query = _firestore.collection('teams').orderBy('name');
-      } else {
-        query = _firestore.collection('championships').doc(seasonId).collection('teams_participation').orderBy('name');
-      }
+      // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
+      // Removemos a verificação de LEGACY_ID
+      final Query query = _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('teams_participation')
+          .orderBy('name');
 
       final snapshot = await query.get();
       if (mounted) {
@@ -64,14 +65,12 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
     try {
-      Query query;
-      // Jogadores são globais no legado, mas já temos estrutura híbrida nos serviços
-      // Aqui vamos simplificar usando a lógica de "onde estão os stats"
-      if (seasonId == FirestoreService.LEGACY_ID) {
-        query = _firestore.collection('players');
-      } else {
-        query = _firestore.collection('championships').doc(seasonId).collection('player_stats');
-      }
+      // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
+      // Removemos a verificação de LEGACY_ID
+      final Query query = _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('player_stats');
 
       final snapshot = await query
           .where('team_id', isEqualTo: teamId)
