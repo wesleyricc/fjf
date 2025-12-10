@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'dart:async'; // Necessário para runZonedGuarded
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fjf_app/firebase_options.dart'; 
@@ -20,7 +21,7 @@ import 'package:fjf_app/screens/admin_menu_screen.dart';
 import 'package:fjf_app/screens/team_stats_screen.dart';
 import 'package:fjf_app/screens/player_comparison_screen.dart';
 
-// --- INÍCIO DA ALTERAÇÃO (Função helper) ---
+// Função helper para ambiente
 FirebaseOptions _getFirebaseOptions(String env) {
   switch (env) {
     case 'test':
@@ -32,57 +33,51 @@ FirebaseOptions _getFirebaseOptions(String env) {
       return DefaultFirebaseOptions.currentPlatform;
   }
 }
-// --- FIM DA ALTERAÇÃO ---
-
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('pt_BR', null);
+  // Envolve a inicialização em um ZoneGuard para capturar erros silenciosos (Tela Preta)
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await initializeDateFormatting('pt_BR', null);
 
-   // --- INÍCIO DA ALTERAÇÃO (Escolher Firebase) ---
-  // 1. Ler a variável de ambiente
-  const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
-  
-  // 2. Obter as opções corretas
-  final FirebaseOptions options = _getFirebaseOptions(environment);
+    // 1. Ler a variável de ambiente
+    const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
+    
+    // 2. Obter as opções corretas
+    final FirebaseOptions options = _getFirebaseOptions(environment);
 
-  // 3. Inicializar o Firebase com as opções CORRETAS
-  await Firebase.initializeApp(
-    options: options,
-  );
-
-   // --- 2. HABILITAR PERSISTÊNCIA OFFLINE ---
-  try {
-    // Tenta habilitar o cache de dados offline do Firestore
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
+    // 3. Inicializar o Firebase
+    await Firebase.initializeApp(
+      options: options,
     );
-    debugPrint("Persistência offline do Firestore habilitada.");
-  } catch (e) {
-    debugPrint("Erro ao habilitar persistência offline: $e");
-    // Isso geralmente falha em modos de navegação privada ou se
-    // várias abas estiverem abertas. O app continuará online.
-  }
-  // --- FIM DA ADIÇÃO ---
 
-  await AdminService.loadDisciplinaryRules();
-  await AdminService.loadTiebreakerOrder();
-  await AdminService.loadPlayoffRules();
-  await AdminService.loadAppSettings();
-  await NotificationService().init();
+    // 4. DESABILITAR PERSISTÊNCIA OFFLINE (Correção Tela Preta)
+    // Força o app a buscar dados novos sempre, evitando conflito de cache local
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: false,
+    );
 
-  runApp(const MyApp());
+    await AdminService.loadDisciplinaryRules();
+    await AdminService.loadTiebreakerOrder();
+    await AdminService.loadPlayoffRules();
+    await AdminService.loadAppSettings();
+    await NotificationService().init();
+
+    runApp(const MyApp());
+    
+  }, (error, stackTrace) {
+    // Se houver erro fatal na inicialização, imprime no console
+    debugPrint("ERRO FATAL NA INICIALIZAÇÃO: $error");
+    debugPrint(stackTrace.toString());
+  });
 }
 
-// --- 2. CLASSE DO OBSERVADOR DO ANALYTICS ---
-// Esta classe escuta a navegação e envia eventos de 'screen_view'
+// Observador do Analytics (Mantido igual)
 class FjfAnalyticsObserver extends NavigatorObserver {
   final FirebaseAnalytics analytics = FirebaseAnalytics.instance;
 
-  // Função auxiliar para logar a tela
   void _logScreenView(Route<dynamic> route) {
     final String? screenName = route.settings.name;
-    // Só loga se o nome não for nulo (evita logar rotas internas do Flutter)
     if (screenName != null && screenName.startsWith('/')) {
       debugPrint('[Analytics] Logando tela: $screenName');
       analytics.logScreenView(screenName: screenName);
@@ -92,28 +87,25 @@ class FjfAnalyticsObserver extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-    _logScreenView(route); // Loga a tela que foi "empurrada" (ex: /report-bug)
+    _logScreenView(route);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
     if (previousRoute != null) {
-      _logScreenView(previousRoute); // Loga a tela para a qual "voltamos"
+      _logScreenView(previousRoute);
     }
   }
 
-  // --- ESTA É A FUNÇÃO QUE FALTAVA ---
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
     if (newRoute != null) {
-      _logScreenView(newRoute); // Loga a tela que "substituiu" (ex: /fixtures)
+      _logScreenView(newRoute);
     }
   }
-  // --- FIM DA ADIÇÃO ---
 }
-// --- FIM DO OBSERVADOR ---
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -123,16 +115,15 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'FJF App',
       theme: ThemeData(
-        // --- CORES DO TEMA ---
-        primaryColor: const Color(0xFFC25F22), // Laranja/Terracota da logo (aproximado)
+        primaryColor: const Color(0xFFC25F22),
         colorScheme: ColorScheme.fromSwatch().copyWith(
-          secondary: const Color(0xFF333333), // Um cinza escuro/preto para acentuação
-          primary: const Color(0xFFC25F22), // Definindo primary color no ColorScheme
+          secondary: const Color(0xFF333333),
+          primary: const Color(0xFFC25F22),
         ),
-        scaffoldBackgroundColor: const Color(0xFFF0F0F0), // Um cinza bem claro para o fundo das telas
+        scaffoldBackgroundColor: const Color(0xFFF0F0F0),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFC25F22), // Mesma cor principal para a AppBar
-          foregroundColor: Colors.white, // Texto da AppBar branco
+          backgroundColor: Color(0xFFC25F22),
+          foregroundColor: Colors.white,
           titleTextStyle: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -140,41 +131,27 @@ class MyApp extends StatelessWidget {
           ),
         ),
         drawerTheme: const DrawerThemeData(
-          backgroundColor: Color(0xFFC25F22), // Cor principal para o Drawer também
+          backgroundColor: Color(0xFFC25F22),
         ),
-        // --- FIM DAS CORES DO TEMA ---
         useMaterial3: true,
       ),
-      //home: const SplashScreen(),
-
-
-// --- 2. ADICIONAR DELEGATES E LOCALES ---
+      
       localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate, // Para widgets Material
-        GlobalWidgetsLocalizations.delegate,  // Para direção do texto, etc.
-        GlobalCupertinoLocalizations.delegate, // Para widgets Cupertino (iOS style)
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('pt', 'BR'), // Português (Brasil)
-        // Locale('en', ''), // Adicione outros idiomas se precisar
+        Locale('pt', 'BR'),
       ],
-      // Define o locale padrão (opcional, mas bom ter)
       locale: const Locale('pt', 'BR'),
       
-      // --- FIM DAS ADIÇÕES ---
+      initialRoute: '/', 
 
-      // --- 3. ATUALIZAÇÃO DO MATERIALAPP ---
-      
-      // Remove 'home' e usa 'initialRoute'
-      // home: const SplashScreen(), 
-      initialRoute: '/', // Define a rota inicial
-
-      // Adiciona o observador do Analytics
       navigatorObservers: [
         FjfAnalyticsObserver(),
       ],
 
-      // Define as rotas nomeadas
       routes: {
         '/': (context) => const SplashScreen(),
         '/fixtures': (context) => const FixturesScreen(),
@@ -187,8 +164,6 @@ class MyApp extends StatelessWidget {
         '/admin-menu': (context) => const AdminMenuScreen(),
         '/player-comparison': (context) => const PlayerComparisonScreen(),
       },
-      // --- FIM DA ATUALIZAÇÃO ---
-
     );
   }
 }

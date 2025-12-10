@@ -1172,14 +1172,14 @@ class FirestoreService {
       batch.set(semiFinalRef1, {
         'phase': 'semifinal', 'order': 1, 'round': null, 'datetime': null,
         'location': 'Ginásio de Esportes Jorge Silva', 'status': 'pending', 'score_home': null, 'score_away': null,
-        'team_home_id': team1.id, 'team_home_name': team1.data['name'] ?? '?', 'team_home_shield': team1.data['shield_url'] ?? '',
-        'team_away_id': team4.id, 'team_away_name': team4.data['name'] ?? '?', 'team_away_shield': team4.data['shield_url'] ?? '',
+        'team_home_id': team2.id, 'team_home_name': team2.data['name'] ?? '?', 'team_home_shield': team2.data['shield_url'] ?? '',
+        'team_away_id': team3.id, 'team_away_name': team3.data['name'] ?? '?', 'team_away_shield': team3.data['shield_url'] ?? '',
       });
       batch.set(semiFinalRef2, {
         'phase': 'semifinal', 'order': 2, 'round': null, 'datetime': null,
         'location': 'Ginásio de Esportes Jorge Silva', 'status': 'pending', 'score_home': null, 'score_away': null,
-        'team_home_id': team2.id, 'team_home_name': team2.data['name'] ?? '?', 'team_home_shield': team2.data['shield_url'] ?? '',
-        'team_away_id': team3.id, 'team_away_name': team3.data['name'] ?? '?', 'team_away_shield': team3.data['shield_url'] ?? '',
+        'team_home_id': team1.id, 'team_home_name': team1.data['name'] ?? '?', 'team_home_shield': team1.data['shield_url'] ?? '',
+        'team_away_id': team4.id, 'team_away_name': team4.data['name'] ?? '?', 'team_away_shield': team4.data['shield_url'] ?? '',
       });
 
 

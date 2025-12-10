@@ -183,29 +183,44 @@ class AdminService {
                     setDialogState(() { isLoading = true; });
 
                     try {
+                       // --- DEBUG: VER O QUE ESTÁ SENDO ENVIADO ---
+                      debugPrint("--- TENTATIVA DE LOGIN ---");
+                      debugPrint("Usuário digitado (raw): '${usernameController.text}'");
+                      debugPrint("Usuário buscado (trim): '$username'");
+                      
                       final enteredHash = _hashPassword(password);
+                      debugPrint("Hash da senha digitada: $enteredHash");
+
                       final docRef = _firestore.collection('admin_users').doc(username);
                       final docSnap = await docRef.get();
 
+                      debugPrint("Conexão com Firestore: OK");
+                      debugPrint("Documento encontrado? ${docSnap.exists}");
+
                       if (!docSnap.exists) {
-                        throw Exception('Usuário Admin não encontrado.');
+                        debugPrint("ERRO: Documento '$username' não existe na coleção 'admin_users'.");
+                        throw Exception('Usuário Admin não encontrado no banco.');
                       }
 
                       final storedHash = docSnap.data()?['password_hash'];
+                      debugPrint("Hash no Banco: $storedHash");
                       
                       if (enteredHash == storedHash) {
-                        // Define as variáveis ESTÁTICAS globais
+                        debugPrint("SUCESSO: Senhas conferem.");
                         AdminService.isAdmin = true;
                         AdminService.loggedInAdminUsername = username; 
-                        
-                        Navigator.of(dialogContext).pop(true); // Retorna true
+                        Navigator.of(dialogContext).pop(true); 
                       } else {
+                        debugPrint("ERRO: Senha incorreta.");
                         throw Exception('Senha incorreta.');
                       }
                     } catch (e) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')),
-                      );
+                      debugPrint("EXCEÇÃO CAPTURADA: $e");
+                      if(dialogContext.mounted) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')),
+                        );
+                      }
                       setDialogState(() { isLoading = false; });
                     }
                   },

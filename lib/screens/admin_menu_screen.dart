@@ -6,12 +6,14 @@ import 'dart:convert';
 //import 'package:flutter/services.dart';
 //import '../services/data_uploader_service.dart';
 import '../services/admin_service.dart';
+import 'admin_voting_nominees_screen.dart';
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
-//import '../services/firestore_service.dart';
+import '../services/firestore_service.dart';
 import 'playoff_rules_screen.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'admin_media_screen.dart';
+import 'voting/admin_voting_results_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -22,9 +24,61 @@ class AdminMenuScreen extends StatefulWidget {
 
 class _AdminMenuScreenState extends State<AdminMenuScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  //final FirestoreService _firestoreService = FirestoreService();
+  final FirestoreService _firestoreService = FirestoreService();
 
   bool _isSaving = false;
+  bool _votingEnabled = true; // Estado local da chave
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVotingStatus();
+  }
+
+  Future<void> _loadVotingStatus() async {
+    try {
+      final doc = await _firestore.collection('config').doc('app_settings').get();
+      if (doc.exists) {
+        setState(() {
+          _votingEnabled = doc.data()?['voting_enabled'] ?? true;
+        });
+      }
+    } catch (e) {
+      debugPrint("Erro ao carregar status votação: $e");
+    }
+  }
+
+  Future<void> _toggleVotingStatus(bool value) async {
+    // 1. Atualiza visualmente imediatamente (Otimista)
+    setState(() => _votingEnabled = value);
+    
+    try {
+      // 2. Tenta salvar no Firebase
+      await _firestore.collection('config').doc('app_settings').set({
+        'voting_enabled': value
+      }, SetOptions(merge: true));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(value ? 'Votação LIBERADA para todos!' : 'Votação BLOQUEADA/ENCERRADA!'), 
+            backgroundColor: value ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 2),
+          )
+        );
+      }
+    } catch (e) {
+      // 3. Se der erro (ex: Sem Permissão), reverte o botão e avisa
+      debugPrint("ERRO AO SALVAR CONFIG: $e");
+      if (mounted) {
+        setState(() => _votingEnabled = !value); // Volta o botão
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red)
+        );
+      }
+    }
+  }
+  
 
   String _hashPassword(String password) {
     final bytes = utf8.encode(password); 
@@ -545,7 +599,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
   // --- FIM DA ALTERAÇÃO ---
 
-  /*
+  
   // --- NOVA FUNÇÃO: Resetar Cartões Amarelos ---
   Future<void> _showResetYellowsConfirmDialog() async {
      final confirm = await showDialog<bool>(
@@ -553,7 +607,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
        builder: (ctx) => AlertDialog(
          title: const Text('Zerar Cartões Amarelos?'),
          content: const Text(
-             'ATENÇÃO!\n\nEsta ação zerará a contagem de cartões amarelos (suspenção) de TODOS os jogadores. Isso é recomendado apenas na mudança de fases (ex: 1ª Fase -> Semifinal).\n\nO histórico total de cartões para estatísticas SERÁ MANTIDO.\n\nDeseja continuar?'),
+             'ATENÇÃO!\n\nEsta ação zerará a contagem de cartões amarelos (suspensão) de TODOS os jogadores. Isso é recomendado apenas na mudança de fases (ex: 1ª Fase -> Semifinal).\n\nO histórico total de cartões para estatísticas SERÁ MANTIDO.\n\nDeseja continuar?'),
           actions: [
            TextButton(
              onPressed: () => Navigator.of(ctx).pop(false),
@@ -578,7 +632,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
      }
   }
   // --- FIM ---
-*/
+
 /*
   Future<void> _showSyncLogosConfirmDialog() async {
      final confirm = await showDialog<bool>(
@@ -642,6 +696,51 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             },
           ),
           const Divider(),
+          Card(
+            color: _votingEnabled ? Colors.green[50] : Colors.red[50],
+            elevation: 2,
+            child: SwitchListTile(
+              title: Text(
+                _votingEnabled ? "Votação ABERTA" : "Votação ENCERRADA", 
+                style: TextStyle(
+                  fontWeight: FontWeight.bold, 
+                  color: _votingEnabled ? Colors.green[800] : Colors.red[800]
+                )
+              ),
+              subtitle: const Text("Controla o acesso dos usuários à tela de votação."),
+              value: _votingEnabled,
+              activeColor: Colors.green,
+              onChanged: _toggleVotingStatus, // Chama a função corrigida
+            ),
+          ),
+          const Divider(),
+
+          // --- RESULTADOS DA VOTAÇÃO ---
+          ListTile(
+            leading: const Icon(Icons.poll, color: Colors.deepPurple),
+            title: const Text('Resultados Parciais (Votação)'),
+            subtitle: const Text('Veja o ranking de votos de todas as categorias.'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+               Navigator.of(context).push(MaterialPageRoute(
+                 builder: (ctx) => const AdminVotingResultsScreen(),
+               ));
+            },
+          ),
+          const Divider(),
+
+          ListTile(
+            leading: const Icon(Icons.how_to_vote, color: Colors.purple),
+            title: const Text('Gerenciar Candidatos Manuais'),
+            subtitle: const Text('Cadastrar Vídeos e Revelação'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+               Navigator.of(context).push(MaterialPageRoute(
+                 builder: (ctx) => const AdminVotingNomineesScreen(),
+               ));
+            },
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.live_tv, color: Colors.red),
             title: const Text('Alterar Vídeo Ao Vivo'),
@@ -675,14 +774,14 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
           const Divider(),
           // --- NOVO BOTÃO DE ZERAR CARTÕES ---
-          /*ListTile(
+          ListTile(
             leading: const Icon(Icons.cleaning_services, color: Colors.orange),
             title: const Text('Zerar Cartões Amarelos'),
             subtitle: const Text('Reseta contagem de CA para suspensão (mantém estatísticas). Útil na virada de fase.'),
             trailing: const Icon(Icons.arrow_forward_ios),
             onTap: _isSaving ? null : _showResetYellowsConfirmDialog,
           ),
-          const Divider(),*/
+          const Divider(),
           // --- FIM DO BOTÃO ---
           ListTile(
             leading: const Icon(Icons.sort_by_alpha),

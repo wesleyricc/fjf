@@ -11,23 +11,19 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="fjf_app">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>FJF</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
-
   <script>
-    // Cole os valores da sua 'FirebaseOptions web' (do firebase_options.dart)
+    // 1. Configuração do Firebase
     var firebaseConfig = {
       apiKey: 'AIzaSyAI3SJkOCdY5Z5lC5hiSiXPeKUwsYu-u2w',
       authDomain: 'fjfapp.firebaseapp.com',
@@ -37,43 +33,37 @@
       appId: '1:211551139323:web:f583360c18907986adc75e',
       measurementId: 'G-GNBBWGHX3G',
     };
-    
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
-    // Initialize Analytics
     firebase.analytics();
-  </script>
 
-  <script>
-  // A versão do service worker é injetada pelo 'flutter build'
-  const serviceWorkerVersion = "{{flutter_service_worker_version}}";
-  
-  // Carrega o service worker principal do Flutter
-  var scriptLoaded = new Promise(function(resolve, reject) {
-    var script = document.createElement('script');
-    script.src = 'flutter_service_worker.js?v=' + serviceWorkerVersion;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-
-  // Quando o script do Flutter estiver pronto...
-  scriptLoaded.then(function() {
+    // 2. FORÇAR REMOÇÃO DE CACHE ANTIGO (Service Workers)
+    // Isso é crucial para resolver a tela preta em celulares que "seguraram" a versão antiga
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(function(registration) {
-        
-        // --- ADIÇÃO MANUAL ---
-        // Registra o service worker do Firebase Messaging
-        // Este é o passo que o 'flutterfire configure' deveria ter feito.
-        console.log('Registrando manualmente o firebase-messaging-sw.js');
-        navigator.serviceWorker.register('firebase-messaging-sw.js');
-        // --- FIM DA ADIÇÃO MANUAL ---
-
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
       });
     }
-  });
-</script>
 
+    // 3. CARREGAR O FLUTTER SEM CACHE
+    var scriptLoaded = false;
+    function loadMainDartJs() {
+      if (scriptLoaded) {
+        return;
+      }
+      scriptLoaded = true;
+      var scriptTag = document.createElement('script');
+      
+      // Adiciona timestamp para obrigar o navegador a baixar o arquivo novo
+      scriptTag.src = 'main.dart.js?v=' + new Date().getTime(); 
+      
+      scriptTag.type = 'application/javascript';
+      document.body.append(scriptTag);
+    }
 
+    // Carrega o app imediatamente
+    loadMainDartJs();
+  </script>
 </body>
 </html>
