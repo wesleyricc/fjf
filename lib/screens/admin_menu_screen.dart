@@ -86,102 +86,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     return digest.toString();
   }
 
-  /*Future<void> _triggerMigrationV1() async {
-     final confirm = await showDialog<bool>(
-       context: context,
-       builder: (ctx) => AlertDialog(
-         title: const Text('Executar Migração de Dados?'),
-         content: const Text('Isso verificará TODOS os jogadores e adicionará os campos faltantes (como "is_staff" e "jersey_number").\n\nExecute isso APENAS UMA VEZ após uma atualização.\n\nDeseja continuar?'),
-         actions: [
-           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.orange))),
-         ],
-       ),
-     );
-
-     if (confirm == true && mounted) {
-       setState(() { _isSaving = true; });
-       final result = await _firestoreService.migratePlayersV1();
-       setState(() { _isSaving = false; });
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
-     }
-  }
-
-  Future<void> _triggerCalculateRanks() async {
-     final confirm = await showDialog<bool>(
-       context: context,
-       builder: (ctx) => AlertDialog(
-         title: const Text('Calcular Ranks da 1ª Fase?'),
-         content: const Text(
-             'Isso ordenará todos os times com base nos resultados finais da 1ª Fase e salvará a posição (rank) em cada time. Execute APENAS após o fim da 1ª Fase.\n\nEste rank é usado para o desempate por "Melhor Classif." no mata-mata caso ocorra empate após a prorrogação.'
-         ),
-          actions: [
-           TextButton(
-             onPressed: () => Navigator.of(ctx).pop(false),
-             child: const Text('Cancelar'),
-           ),
-           TextButton(
-             onPressed: () => Navigator.of(ctx).pop(true),
-             child: const Text(
-                 'Confirmar e Calcular',
-                 style: TextStyle(color: Colors.deepPurple)
-             ),
-           ),
-         ],
-       ),
-     );
-
-     if (confirm == true && mounted) {
-       setState(() { _isSaving = true; });
-       final result = await _firestoreService.calculateAndStorePhase1Ranks();
-       setState(() { _isSaving = false; });
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
-     }
-  }
-
-  Future<void> _showUploadConfirmDialog(BuildContext context) async {
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        bool isLoading = false;
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Carregar Dados Iniciais'),
-              content: Text(
-                isLoading
-                    ? 'Carregando... Por favor, aguarde.'
-                    : 'ATENÇÃO!\n\nIsso irá sobrescrever quaisquer times e jogadores com IDs correspondentes.\n\nUse apenas para a configuração inicial. Deseja continuar?',
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                    child: isLoading ? const CircularProgressIndicator() : const Text('Confirmar Carga', style: TextStyle(color: Colors.red)),
-                    onPressed: isLoading ? null : () async {
-                      setDialogState(() { isLoading = true; });
-                      final uploader = DataUploaderService();
-                      final String result = await uploader.uploadInitialData();
-                      setDialogState(() { isLoading = false; });
-
-                          if (mounted) {
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 5)));
-                          }
-                        },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-*/
-  
-
   Future<void> _showChangeVideoIdDialog() async {
     final urlOrIdController = TextEditingController();
     bool isLoading = false;
@@ -272,72 +176,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  /*Future<bool> _verifyAdminPassword(BuildContext context) async {
-    final String? currentAdminUsername = AdminService.loggedInAdminUsername;
-    if (currentAdminUsername == null) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro: Admin não identificado. Tente relogar.')));
-       return false;
-    }
-    
-    final TextEditingController passwordController = TextEditingController();
-    bool isLoading = false;
-
-    final bool? passwordConfirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Confirmar Ação para usuário "$currentAdminUsername"'),
-              content: TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Digite sua senha'),
-                enabled: !isLoading,
-              ),
-              actions: <Widget>[
-                TextButton(
-                  child: const Text('Cancelar'),
-                  onPressed: isLoading ? null : () => Navigator.of(dialogContext).pop(false),
-                ),
-                TextButton(
-                  child: isLoading ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Confirmar'),
-                  onPressed: isLoading ? null : () async {
-                    final enteredPassword = passwordController.text;
-                    if (enteredPassword.isEmpty) {
-                       ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Digite a senha.')));
-                       return;
-                    } 
-                    setDialogState(() { isLoading = true; });
-                    try {
-                      final enteredHash = _hashPassword(enteredPassword);
-                      final docRef = _firestore.collection('admin_users').doc(currentAdminUsername);
-                      final docSnap = await docRef.get();
-                      
-                      if (!docSnap.exists) throw Exception('Usuário Admin não encontrado.');
-                      
-                      final storedHash = docSnap.data()?['password_hash'];
-                      if (enteredHash == storedHash) {
-                        Navigator.of(dialogContext).pop(true); // Sucesso
-                      } else {
-                        throw Exception('Senha incorreta.');
-                      }
-                    } catch (e) {
-                       ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: ${e.toString().replaceFirst("Exception: ", "")}')));
-                       setDialogState(() { isLoading = false; });
-                    }
-                  },
-                ),
-              ],
-            );
-          }
-        );
-      },
-    );
-    return passwordConfirmed ?? false;
-  }
-  */
   Future<void> _showChangePasswordDialog() async {
     final String? currentAdminUsername = AdminService.loggedInAdminUsername;
     if (currentAdminUsername == null) return;
@@ -424,48 +262,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
   
-  /*Future<void> _triggerGenerateSemifinals() async {
-     final confirm = await showDialog<bool>(
-       context: context,
-       builder: (ctx) => AlertDialog(
-         title: const Text('Gerar Semifinais?'),
-         content: const Text('Isso buscará os 4 primeiros da classificação ATUAL e criará os jogos da semifinal. Tem certeza?\n(Verifique se a 1ª Fase realmente terminou).'),
-         actions: [
-           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.orange))),
-         ],
-       ),
-     );
-
-     if (confirm == true && mounted) {
-       setState(() { _isSaving = true; });
-       final result = await _firestoreService.generateSemifinals();
-       setState(() { _isSaving = false; });
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-     }
-  }
-
-  Future<void> _triggerGenerateFinals() async {
-     final confirm = await showDialog<bool>(
-       context: context,
-       builder: (ctx) => AlertDialog(
-         title: const Text('Gerar Final e 3º Lugar?'),
-         content: const Text('Isso buscará os VENCEDORES e PERDEDORES das semifinais FINALIZADAS e criará os jogos. Tem certeza?\n(Verifique se AMBAS as semifinais estão "Finalizadas" e SEM empates).'),
-         actions: [
-           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-           TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Confirmar', style: TextStyle(color: Colors.green))),
-         ],
-       ),
-     );
-
-     if (confirm == true && mounted) {
-       setState(() { _isSaving = true; });
-       final result = await _firestoreService.generateFinals();
-       setState(() { _isSaving = false; });
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
-     }
-  }*/
-
   // --- INÍCIO DA ALTERAÇÃO (Diálogo de Definir Padrão) ---
   Future<void> _showSetDefaultViewDialog() async {
     bool isDialogSaving = false;
@@ -633,38 +429,62 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
   // --- FIM ---
 
-/*
-  Future<void> _showSyncLogosConfirmDialog() async {
-     final confirm = await showDialog<bool>(
-       context: context,
-       builder: (ctx) => AlertDialog(
-         title: const Text('Sincronizar URLs de Logos?'),
-         content: const Text(
-             'Esta ação verificará TODOS os jogadores, partidas e logs de suspensão, e atualizará as URLs dos logos para corresponder à URL principal na coleção "teams".\n\nIsto pode usar muitas operações de leitura/escrita.\n\nDeseja continuar?'),
-          actions: [
-           TextButton(
-             onPressed: () => Navigator.of(ctx).pop(false),
-             child: const Text('Cancelar'),
-           ),
-           TextButton(
-             onPressed: () => Navigator.of(ctx).pop(true),
-             child: const Text(
-                 'Confirmar Sincronização',
-                 style: TextStyle(color: Colors.orange)
-             ),
-           ),
-         ],
-       ),
-     );
-     
-     if (confirm == true && mounted) {
-       setState(() { _isSaving = true; });
-       final result = await _firestoreService.syncTeamLogosToAllCollections();
-       setState(() { _isSaving = false; });
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 4)));
-     }
+  // --- NOVA FUNÇÃO: Migrar Dados Overall ---
+  Future<void> _runOverallMigration() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Migrar Dados Overall?'),
+        content: const Text(
+            'Esta ação recalculará as estatísticas de TODOS os times, somando todos os jogos (Fase 1 + Mata-Mata) para criar os novos campos de estatísticas gerais.\n\nExecute isso UMA VEZ para corrigir os dados antigos.\n\nDeseja continuar?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Iniciar Migração', style: TextStyle(color: Colors.orange)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    setState(() { _isSaving = true; });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Iniciando migração... aguarde.')),
+    );
+
+    try {
+      final teamsSnapshot = await _firestore.collection('teams').get();
+      int count = 0;
+      
+      for (var doc in teamsSnapshot.docs) {
+        // Chama a função pública do service para cada time
+        await _firestoreService.recalculateTeamStats(doc.id);
+        count++;
+        // debugPrint("Time $count/${teamsSnapshot.docs.length} migrado.");
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sucesso! $count times atualizados.')),
+        );
+      }
+    } catch (e) {
+      debugPrint("Erro na migração: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() { _isSaving = false; });
+    }
   }
-*/
+  // --- FIM ---
 
   @override
   Widget build(BuildContext context) {
@@ -807,30 +627,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             },
           ),
           
-          /*const Divider(),
-          ListTile(
-            leading: const Icon(Icons.format_list_numbered, color: Colors.purple),
-            title: const Text('Calcular Ranks da 1ª Fase'),
-            subtitle: const Text('Salva a posição final da 1ª Fase nos times (p/ desempate)'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : _triggerCalculateRanks,
-          ),
-          const Divider(),
-          ListTile(
-            leading: Icon(Icons.emoji_events_outlined, color: Colors.blue[600]),
-            title: const Text('Gerar Jogos da Semifinal'),
-            subtitle: const Text('Cria os jogos (1ºx4º, 2ºx3º) baseado na classificação final'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : _triggerGenerateSemifinals,
-          ),
-          const Divider(),
-           ListTile(
-            leading: Icon(Icons.emoji_events, color: Colors.amber[700]),
-            title: const Text('Gerar Final e 3º Lugar'),
-            subtitle: const Text('Cria os jogos com vencedores e perdedores das semis'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : _triggerGenerateFinals,
-          ),*/
           const Divider(),
           ListTile(
             leading: const Icon(Icons.password),
@@ -840,53 +636,17 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             onTap: _isSaving ? null : _showChangePasswordDialog,
           ),
           const Divider(),
-          /*
-          // --- NOVO: Botão de Sincronização de Logos ---
+
+          // --- NOVO BOTÃO DE MIGRAÇÃO (MANUTENÇÃO) ---
           ListTile(
-            leading: const Icon(Icons.sync, color: Colors.green),
-            title: const Text('Sincronizar Logos das Equipas'),
-            subtitle: const Text('Atualiza logos em jogos, jogadores e suspensões'),
+            leading: const Icon(Icons.build_circle, color: Colors.teal),
+            title: const Text('Migrar Dados Overall (Manutenção)'),
+            subtitle: const Text('Recalcula estatísticas de todos os times.'),
             trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : () async {
-              final bool passwordConfirmed = await _verifyAdminPassword(context);
-              if (passwordConfirmed && mounted) {
-                _showSyncLogosConfirmDialog();
-              } else if (!passwordConfirmed && mounted) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text('Operação cancelada ou senha incorreta.')),
-                 );
-              }
-            },
+            onTap: _isSaving ? null : _runOverallMigration,
           ),
           const Divider(),
           // --- FIM ---
-          
-          ListTile(
-            leading: const Icon(Icons.upload_file, color: Colors.orange),
-            title: const Text('Carregar Dados Iniciais'),
-            subtitle: const Text('Apaga e recarrega Times, Jogadores e Jogos'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : () async {
-              final bool passwordConfirmed = await _verifyAdminPassword(context);
-              if (passwordConfirmed && mounted) {
-                _showUploadConfirmDialog(context);
-              } else if (!passwordConfirmed && mounted) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text('Operação cancelada ou senha incorreta.')),
-                 );
-              }
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.upgrade, color: Colors.teal),
-            title: const Text('Atualizar Estrutura Jogadores (V1)'),
-            subtitle: const Text('Adiciona campos (is_staff, jersey_number) em jogadores antigos. Execute 1 vez.'),
-            trailing: const Icon(Icons.arrow_forward_ios),
-            onTap: _isSaving ? null : _triggerMigrationV1,
-          ),
-          const Divider(),
-          */
         ],
       ),
     );

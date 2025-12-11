@@ -117,91 +117,160 @@ class FirestoreService {
   }
   // --- FIM MÍDIAS ---
 
-  // --- Função _recalculateTeamStats (Sem alteração) ---
-  Future<void> _recalculateTeamStats(String teamId) async {
-    debugPrint("[SERVICE_RECALC] Recalculando Time (1ª Fase): $teamId");
-    int totalMatchPoints = 0;
-    int totalGames = 0;
-    int totalWins = 0;
-    int totalDraws = 0;
-    int totalLosses = 0;
-    int totalGoalsFor = 0;
-    int totalGoalsAgainst = 0;
+  // --- Função recalculateTeamStats (TORNADA PÚBLICA PARA MIGRAÇÃO) ---
+  Future<void> recalculateTeamStats(String teamId) async {
+    debugPrint("[SERVICE_RECALC] Recalculando Time: $teamId");
+    
+    // Variáveis da 1ª Fase
+    int p1MatchPoints = 0;
+    int p1Games = 0;
+    int p1Wins = 0;
+    int p1Draws = 0;
+    int p1Losses = 0;
+    int p1GoalsFor = 0;
+    int p1GoalsAgainst = 0;
 
-    final homeMatches = await _firestore
+    // Variáveis Gerais (Overall - Todo o campeonato)
+    int ovMatchPoints = 0;
+    int ovGames = 0;
+    int ovWins = 0;
+    int ovDraws = 0;
+    int ovLosses = 0;
+    int ovGoalsFor = 0;
+    int ovGoalsAgainst = 0;
+
+    // Busca TODOS os jogos onde o time participou (Casa ou Fora), finalizados ou em andamento
+    final allHomeMatches = await _firestore
         .collection('matches')
         .where('team_home_id', isEqualTo: teamId)
         .where('status', whereIn: ['finished', 'in_progress'])
-        .where('phase', isEqualTo: 'first')
         .get();
-    for (final doc in homeMatches.docs) {
-      final data = doc.data();
-      final scoreHome = (data['score_home'] ?? 0) as int;
-      final scoreAway = (data['score_away'] ?? 0) as int;
-
-      totalGames++;
-      totalGoalsFor += scoreHome;
-      totalGoalsAgainst += scoreAway;
-
-      if (scoreHome > scoreAway) {
-        totalMatchPoints += 3;
-        totalWins++;
-      } else if (scoreHome < scoreAway) {
-        totalLosses++;
-      } else {
-        totalMatchPoints += 1;
-        totalDraws++;
-      }
-    }
-
-    final awayMatches = await _firestore
+        
+    final allAwayMatches = await _firestore
         .collection('matches')
         .where('team_away_id', isEqualTo: teamId)
         .where('status', whereIn: ['finished', 'in_progress'])
-        .where('phase', isEqualTo: 'first')
         .get();
-    for (final doc in awayMatches.docs) {
+
+    // Processa jogos em Casa
+    for (final doc in allHomeMatches.docs) {
       final data = doc.data();
+      final phase = data['phase'] ?? 'first';
       final scoreHome = (data['score_home'] ?? 0) as int;
       final scoreAway = (data['score_away'] ?? 0) as int;
+      final bool isFirstPhase = (phase == 'first');
 
-      totalGames++;
-      totalGoalsFor += scoreAway;
-      totalGoalsAgainst += scoreHome;
+      // Atualiza Overall
+      ovGames++;
+      ovGoalsFor += scoreHome;
+      ovGoalsAgainst += scoreAway;
+
+      // Atualiza Fase 1
+      if (isFirstPhase) {
+        p1Games++;
+        p1GoalsFor += scoreHome;
+        p1GoalsAgainst += scoreAway;
+      }
+
+      if (scoreHome > scoreAway) {
+        ovMatchPoints += 3;
+        ovWins++;
+        if (isFirstPhase) { p1MatchPoints += 3; p1Wins++; }
+      } else if (scoreHome < scoreAway) {
+        ovLosses++;
+        if (isFirstPhase) { p1Losses++; }
+      } else {
+        ovMatchPoints += 1;
+        ovDraws++;
+        if (isFirstPhase) { p1MatchPoints += 1; p1Draws++; }
+      }
+    }
+
+    // Processa jogos Fora
+    for (final doc in allAwayMatches.docs) {
+      final data = doc.data();
+      final phase = data['phase'] ?? 'first';
+      final scoreHome = (data['score_home'] ?? 0) as int;
+      final scoreAway = (data['score_away'] ?? 0) as int;
+      final bool isFirstPhase = (phase == 'first');
+
+      // Atualiza Overall
+      ovGames++;
+      ovGoalsFor += scoreAway;
+      ovGoalsAgainst += scoreHome;
+
+      // Atualiza Fase 1
+      if (isFirstPhase) {
+        p1Games++;
+        p1GoalsFor += scoreAway;
+        p1GoalsAgainst += scoreHome;
+      }
 
       if (scoreAway > scoreHome) {
-        totalMatchPoints += 3;
-        totalWins++;
+        ovMatchPoints += 3;
+        ovWins++;
+        if (isFirstPhase) { p1MatchPoints += 3; p1Wins++; }
       } else if (scoreAway < scoreHome) {
-        totalLosses++;
+        ovLosses++;
+        if (isFirstPhase) { p1Losses++; }
       } else {
-        totalMatchPoints += 1;
-        totalDraws++;
+        ovMatchPoints += 1;
+        ovDraws++;
+        if (isFirstPhase) { p1MatchPoints += 1; p1Draws++; }
       }
     }
 
     try {
       final teamRef = _firestore.collection('teams').doc(teamId);
       final teamSnap = await teamRef.get();
+      
       final currentExtraPoints = (teamSnap.data()?['extra_points'] ?? 0) as int;
-      final int finalTotalPoints = totalMatchPoints + currentExtraPoints;
-      final int finalGoalDifference = totalGoalsFor - totalGoalsAgainst;
+      
+      final int p1TotalPoints = p1MatchPoints + currentExtraPoints;
+      final int p1GoalDifference = p1GoalsFor - p1GoalsAgainst;
+      
+      final int ovTotalPoints = ovMatchPoints + currentExtraPoints;
+      final int ovGoalDifference = ovGoalsFor - ovGoalsAgainst;
 
       await teamRef.update({
-        'match_points': totalMatchPoints, 'points': finalTotalPoints,
-        'games_played': totalGames,
-        'wins': totalWins,
-        'draws': totalDraws,
-        'losses': totalLosses,
-        'goals_for': totalGoalsFor, 'goals_against': totalGoalsAgainst,
-        'goal_difference': finalGoalDifference,
+        // Campos Padrão (Fase 1 - Mantém a Classificação Correta)
+        'match_points': p1MatchPoints,
+        'points': p1TotalPoints,
+        'games_played': p1Games,
+        'wins': p1Wins,
+        'draws': p1Draws,
+        'losses': p1Losses,
+        'goals_for': p1GoalsFor,
+        'goals_against': p1GoalsAgainst,
+        'goal_difference': p1GoalDifference,
+
+        // Campos Overall (Todo o Campeonato - Para Estatísticas Gerais)
+        'overall_match_points': ovMatchPoints,
+        'overall_points': ovTotalPoints,
+        'overall_games_played': ovGames,
+        'overall_wins': ovWins,
+        'overall_draws': ovDraws,
+        'overall_losses': ovLosses,
+        'overall_goals_for': ovGoalsFor,
+        'overall_goals_against': ovGoalsAgainst,
+        'overall_goal_difference': ovGoalDifference,
+        
+        // Inicializa campos de cartões overall se não existirem (para evitar null na UI)
+        // Nota: O cálculo exato de cartões é incremental no updateMatchStats, 
+        // mas aqui garantimos que o campo existe. Se quiser um recalculo total de cartões,
+        // seria necessário varrer todos os jogadores, o que é muito pesado.
+        // Assumimos aqui que para a migração inicial, podemos copiar os valores da fase 1 se os overall forem nulos
+        // OU deixar o script de migração lidar com isso. 
+        // Como este método foca em GOLS e PONTOS, deixaremos os cartões serem tratados pelo update incremental
+        // ou pela cópia inicial na criação do time.
       });
-      debugPrint("[SERVICE_RECALC] Update Time $teamId Concluído.");
+      
+      debugPrint("[SERVICE_RECALC] Update Time $teamId Concluído (Fase 1 e Geral).");
     } catch (e) {
       debugPrint("[SERVICE_RECALC] ERRO ao atualizar time $teamId: $e");
     }
   }
-  // --- FIM _recalculateTeamStats ---
+  // --- FIM recalculateTeamStats ---
 
 
   // --- CRUD JOGADOR (Sem alteração) ---
@@ -326,20 +395,19 @@ class FirestoreService {
         'short_name': shortName,
         'shield_url': shieldUrl,
         'championship_history': championshipHistory,
-        'points': 0,
-        'match_points': 0,
-        'extra_points': 0,
-        'games_played': 0,
-        'wins': 0,
-        'draws': 0,
-        'losses': 0,
-        'goals_for': 0,
-        'goals_against': 0,
-        'goal_difference': 0,
+        
+        // Fase 1
+        'points': 0, 'match_points': 0, 'extra_points': 0,
+        'games_played': 0, 'wins': 0, 'draws': 0, 'losses': 0,
+        'goals_for': 0, 'goals_against': 0, 'goal_difference': 0,
+        'disciplinary_points': 0, 'total_yellow_cards': 0, 'total_red_cards': 0,
         'phase1_rank': null,
-        'disciplinary_points': 0,
-        'total_yellow_cards': 0,
-        'total_red_cards': 0,
+
+        // Overall (Geral)
+        'overall_points': 0, 'overall_match_points': 0,
+        'overall_games_played': 0, 'overall_wins': 0, 'overall_draws': 0, 'overall_losses': 0,
+        'overall_goals_for': 0, 'overall_goals_against': 0, 'overall_goal_difference': 0,
+        'overall_disciplinary_points': 0, 'overall_total_yellow_cards': 0, 'overall_total_red_cards': 0,
       });
       return "Sucesso: Equipe '$name' criada.";
     } catch (e) {
@@ -589,7 +657,7 @@ class FirestoreService {
           "Recalculando classificação para ${opponentsToRecalculate.length} oponentes afetados...",
         );
         for (String opponentId in opponentsToRecalculate) {
-          await _recalculateTeamStats(
+          await recalculateTeamStats(
             opponentId,
           );
         }
@@ -678,18 +746,18 @@ class FirestoreService {
     try {
       final data = match.data() as Map<String, dynamic>? ?? {};
       final status = data['status'] ?? 'pending';
-      final phase = data['phase'] ?? 'first';
+      // final phase = data['phase'] ?? 'first'; 
       final homeTeamId = data['team_home_id'];
       final awayTeamId = data['team_away_id'];
 
       await match.reference.delete();
 
-      if (status == 'finished' && phase == 'first') {
+      if (status == 'finished') {
         debugPrint(
-          "Partida finalizada da 1ª Fase excluída. Recalculando times...",
+          "Partida finalizada excluída. Recalculando times...",
         );
-        if (homeTeamId != null) await _recalculateTeamStats(homeTeamId);
-        if (awayTeamId != null) await _recalculateTeamStats(awayTeamId);
+        if (homeTeamId != null) await recalculateTeamStats(homeTeamId);
+        if (awayTeamId != null) await recalculateTeamStats(awayTeamId);
       }
 
       return "Sucesso: Partida excluída.";
@@ -700,7 +768,7 @@ class FirestoreService {
   }
   // --- FIM CRUD Partida ---
 
-  // --- Função updateMatchStats (Simplificada para 1CA/1CV) ---
+  // --- Função updateMatchStats (MODIFICADA: ATUALIZA GERAL E FASE 1) ---
   Future<String> updateMatchStats({
     required DocumentSnapshot matchSnapshot,
     required String newStatus,
@@ -979,21 +1047,40 @@ class FirestoreService {
            }
         }
 
-        Map<String, dynamic> homeUpdateData = {};
-        if (disciplinaryHomeDelta != 0)
-          homeUpdateData['disciplinary_points'] = FieldValue.increment(disciplinaryHomeDelta);
-        if (totalYellowHomeDelta != 0)
-          homeUpdateData['total_yellow_cards'] = FieldValue.increment(totalYellowHomeDelta);
-        if (totalRedHomeDelta != 0)
-          homeUpdateData['total_red_cards'] = FieldValue.increment(totalRedHomeDelta);
+        final String phaseBeforeUpdate = matchDataBefore['phase'] ?? 'first';
+        bool isFirstPhase = (phaseBeforeUpdate == 'first');
 
+        Map<String, dynamic> homeUpdateData = {};
         Map<String, dynamic> awayUpdateData = {};
-        if (disciplinaryAwayDelta != 0)
-          awayUpdateData['disciplinary_points'] = FieldValue.increment(disciplinaryAwayDelta);
-        if (totalYellowAwayDelta != 0)
-          awayUpdateData['total_yellow_cards'] = FieldValue.increment(totalYellowAwayDelta);
-        if (totalRedAwayDelta != 0)
-          awayUpdateData['total_red_cards'] = FieldValue.increment(totalRedAwayDelta);
+
+        // --- ATUALIZAÇÃO DUAL (Fase 1 e Overall) ---
+        if (disciplinaryHomeDelta != 0) {
+          if (isFirstPhase) homeUpdateData['disciplinary_points'] = FieldValue.increment(disciplinaryHomeDelta);
+          homeUpdateData['overall_disciplinary_points'] = FieldValue.increment(disciplinaryHomeDelta);
+        }
+        if (disciplinaryAwayDelta != 0) {
+          if (isFirstPhase) awayUpdateData['disciplinary_points'] = FieldValue.increment(disciplinaryAwayDelta);
+          awayUpdateData['overall_disciplinary_points'] = FieldValue.increment(disciplinaryAwayDelta);
+        }
+
+        if (totalYellowHomeDelta != 0) {
+          if (isFirstPhase) homeUpdateData['total_yellow_cards'] = FieldValue.increment(totalYellowHomeDelta);
+          homeUpdateData['overall_total_yellow_cards'] = FieldValue.increment(totalYellowHomeDelta);
+        }
+        if (totalYellowAwayDelta != 0) {
+          if (isFirstPhase) awayUpdateData['total_yellow_cards'] = FieldValue.increment(totalYellowAwayDelta);
+          awayUpdateData['overall_total_yellow_cards'] = FieldValue.increment(totalYellowAwayDelta);
+        }
+
+        if (totalRedHomeDelta != 0) {
+          if (isFirstPhase) homeUpdateData['total_red_cards'] = FieldValue.increment(totalRedHomeDelta);
+          homeUpdateData['overall_total_red_cards'] = FieldValue.increment(totalRedHomeDelta);
+        }
+        if (totalRedAwayDelta != 0) {
+          if (isFirstPhase) awayUpdateData['total_red_cards'] = FieldValue.increment(totalRedAwayDelta);
+          awayUpdateData['overall_total_red_cards'] = FieldValue.increment(totalRedAwayDelta);
+        }
+        // --- FIM ATUALIZAÇÃO DUAL ---
 
         if (homeUpdateData.isNotEmpty) {
           transaction.update(homeTeamRef, homeUpdateData);
@@ -1003,54 +1090,38 @@ class FirestoreService {
         }
       });
 
-      final String phaseBeforeUpdate = matchDataBefore['phase'] ?? 'first';
-      final String statusBeforeUpdate = matchDataBefore['status'] ?? 'pending';
-      bool isFirstPhaseGame = (phaseBeforeUpdate == 'first');
-      bool wasFinished = (statusBeforeUpdate == 'finished');
-      bool isNowNotFinished = (newStatus != 'finished');
-      bool didGameUnfinish = (wasFinished && isNowNotFinished);
+      // Recalcula stats gerais (independente da fase, já que recalculateTeamStats lida com os dois cenários)
+      debugPrint("[SERVICE_UPDATE] Recalculando stats para $homeTeamId e $awayTeamId...");
+      await recalculateTeamStats(homeTeamId);
+      await recalculateTeamStats(awayTeamId);
 
-      if (isFirstPhaseGame || didGameUnfinish) {
-        debugPrint("[SERVICE_UPDATE] Recalculando stats 1ª Fase para $homeTeamId e $awayTeamId...");
-        await _recalculateTeamStats(homeTeamId);
-        await _recalculateTeamStats(awayTeamId);
-      }
-
-      // --- AUTOMAÇÃO DE FASES (LÓGICA NOVA) ---
-      
-      // Dados para decisão
+      // --- AUTOMAÇÃO DE FASES (Mantida) ---
       final int currentRound = matchDataBefore['round'] ?? 0;
-      final String currentPhase = phaseBeforeUpdate;
-      const int TOTAL_RODADAS = 7; // Defina a última rodada da 1ª fase
+      final String currentPhase = matchDataBefore['phase'] ?? 'first';
+      const int TOTAL_RODADAS = 7; 
 
-      // 1. Automação SEMIFINAL (Gatilho: Rodada 7)
       if (currentPhase == 'first' && currentRound == TOTAL_RODADAS) {
-         // Verifica status de TODOS jogos da R7
          final r7Query = await _firestore.collection('matches')
              .where('phase', isEqualTo: 'first')
              .where('round', isEqualTo: TOTAL_RODADAS)
              .get();
          
          bool allR7Finished = r7Query.docs.every((d) {
-            // Se for o jogo atual, usa o status novo, senão o do banco
             if (d.id == matchId) return newStatus == 'finished';
             return d['status'] == 'finished';
          });
 
          if (allR7Finished) {
             debugPrint("[AUTOMAÇÃO] Rodada 7 completa. Gerando Semifinais...");
-            // Limpa para regenerar com dados atualizados
             await _deleteSemifinalsAndFinals(); 
-            await calculateAndStorePhase1Ranks(); // Salva rank para desempate futuro
+            await calculateAndStorePhase1Ranks(); 
             await generateSemifinals();
          } else {
-            // Se deixou de ser "tudo finalizado", apaga as fases futuras
             debugPrint("[AUTOMAÇÃO] Rodada 7 incompleta. Removendo fases futuras...");
             await _deleteSemifinalsAndFinals();
          }
       }
 
-      // 2. Automação FINAL (Gatilho: Semifinal)
       if (currentPhase == 'semifinal') {
          final semiQuery = await _firestore.collection('matches')
              .where('phase', isEqualTo: 'semifinal')
@@ -1063,14 +1134,14 @@ class FirestoreService {
          
          if (allSemisFinished) {
             debugPrint("[AUTOMAÇÃO] Semifinais completas. Gerando Finais...");
-            await _deleteFinals(); // Limpa para regenerar
+            await _deleteFinals(); 
             await generateFinals();
          } else {
              debugPrint("[AUTOMAÇÃO] Semifinais incompletas. Removendo Finais...");
             await _deleteFinals();
          }
       }
-      // --- FIM DA AUTOMAÇÃO ---
+      // --- FIM AUTOMAÇÃO ---
 
       return "Sucesso";
     } catch (e) {

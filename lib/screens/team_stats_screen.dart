@@ -8,8 +8,16 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'team_detail_screen.dart'; // Opcional: para navegação
 import '../services/admin_service.dart'; // Para admin e regras
 
-class TeamStatsScreen extends StatelessWidget {
+class TeamStatsScreen extends StatefulWidget {
   const TeamStatsScreen({super.key});
+
+  @override
+  State<TeamStatsScreen> createState() => _TeamStatsScreenState();
+}
+
+class _TeamStatsScreenState extends State<TeamStatsScreen> {
+  // --- ESTADO DO TOGGLE ---
+  bool _showOverallStats = false; // False = 1ª Fase, True = Geral
 
   Future<void> _showTeamStatsHelp(BuildContext context) async {
     // ... (A sua função de ajuda, sem alterações)
@@ -40,10 +48,8 @@ class TeamStatsScreen extends StatelessWidget {
                   const TextSpan(text: 'Total de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Soma-se o total de CV e CA que a equipe levou e que contabilizam para a pontuação disciplinar. Conforme definido no regulamento do campeonato e pela CBFS. Ex: 2CA e 1CV no mesmo jogo, contabiliza-se nesta guia, apenas 1 CA e 1 CV.\n\n'),
 
-                  // --- INÍCIO DA ALTERAÇÃO (Adicionada nova legenda) ---
                   const TextSpan(text: 'Fair Play (PD):\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Ranking de equipes com menos Pontos Disciplinares (ordem ascendente). Este é o critério de desempate na classificação.\n\n'),
-                  // --- FIM DA ALTERAÇÃO ---
 
                   const TextSpan(text: 'Regra Geral de Suspensão:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextSpan(text: '- Um atleta é suspenso quando toma 1 CV ou ${AdminService.suspensionYellowCards} CA em jogos diferentes (2 CA no mesmo joga contabiliza-se apenas um para regra de Suspensão);\n'),
@@ -69,36 +75,134 @@ class TeamStatsScreen extends StatelessWidget {
     );
   }
 
+  // --- WIDGET DO TOGGLE (VISUAL MELHORADO) ---
+  Widget _buildToggleSwitch() {
+    return Container(
+      // Adicionada margem e decoração para destacar o controle
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          )
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "FILTRO DE DADOS",
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 2),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Text(
+                  _showOverallStats ? "CAMPEONATO GERAL" : "APENAS 1ª FASE",
+                  key: ValueKey<bool>(_showOverallStats), // Para animação
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    // Cor muda conforme o estado para reforçar a seleção
+                    color: _showOverallStats ? Colors.indigo : Colors.green[700],
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          // Switch Customizado
+          Transform.scale(
+            scale: 1.1, // Aumenta levemente o tamanho
+            child: Switch(
+              value: _showOverallStats,
+              onChanged: (val) {
+                setState(() {
+                  _showOverallStats = val;
+                });
+              },
+              // --- CORES ESTADO ATIVO (Geral) ---
+              activeColor: Colors.white, // Bolinha Branca
+              activeTrackColor: Colors.indigo, // Fundo Indigo
+              
+              // --- CORES ESTADO INATIVO (1ª Fase) ---
+              // Usamos uma cor forte (Verde) em vez de cinza para indicar que é uma opção válida
+              inactiveThumbColor: Colors.white, // Bolinha Branca
+              inactiveTrackColor: Colors.green[600], // Fundo Verde
+              
+              // Remove a borda padrão do Material 3 que deixa o switch pálido
+              trackOutlineColor: MaterialStateProperty.resolveWith(
+                (states) => Colors.transparent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRankingList({
     required BuildContext context,
-    required Query query,
-    required String statField,
+    required String statFieldBase, 
+    required bool descending,
     required String statLabel,
     required String emptyMessage,
   }) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: query.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-           debugPrint("Erro Stream TeamStats ($statLabel): ${snapshot.error}");
-           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text(emptyMessage));
-        }
+    // Decide o nome do campo dinamicamente
+    final String fieldName = _showOverallStats 
+        ? 'overall_$statFieldBase' 
+        : statFieldBase;
 
-        final teams = snapshot.data!.docs;
+    // Constrói a query dinamicamente
+    Query query = FirebaseFirestore.instance
+        .collection('teams')
+        .orderBy(fieldName, descending: descending)
+        .orderBy('name'); 
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 16.0),
-          child: Column(
-            children: [
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+    if (statFieldBase.contains('cards') || statFieldBase.contains('disciplinary')) {
+       query = FirebaseFirestore.instance
+        .collection('teams')
+        .where(fieldName, isGreaterThan: 0)
+        .orderBy(fieldName, descending: descending)
+        .orderBy('name');
+    }
+
+    return Column(
+      children: [
+        _buildToggleSwitch(),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: query.snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                 debugPrint("Erro Stream TeamStats ($statLabel): ${snapshot.error}");
+                 return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Center(child: Text(emptyMessage));
+              }
+
+              final teams = snapshot.data!.docs;
+
+              return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 16.0),
                 itemCount: teams.length,
                 itemBuilder: (context, index) {
                   final team = teams[index];
@@ -106,7 +210,7 @@ class TeamStatsScreen extends StatelessWidget {
                     final data = team.data() as Map<String, dynamic>;
                     final rank = index + 1;
                     final String shieldUrl = data['shield_url'] ?? '';
-                    final int statValue = data[statField] ?? 0;
+                    final int statValue = data[fieldName] ?? 0;
 
                     Widget trailingWidget;
                     if (statLabel == 'CA') {
@@ -156,78 +260,76 @@ class TeamStatsScreen extends StatelessWidget {
                       },
                     );
                   } catch (e) {
-                     debugPrint("Erro ao processar time ${team.id} (Ranking $statLabel): $e");
-                     return ListTile(
-                       leading: CircleAvatar(child: Text('${index + 1}')),
-                       title: Text('Erro ao carregar time ${team.id}'),
-                       subtitle: Text(e.toString()),
-                     );
+                     return ListTile(title: Text('Erro ao carregar time'));
                   }
                 },
-              ),
-            ],
+              );
+            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
 
    Widget _buildTotalCardsList({
     required BuildContext context,
-    required Stream<QuerySnapshot> stream,
     required String emptyMessage,
   }) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: stream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-           debugPrint("Erro Stream TeamStats (Total Cartões): ${snapshot.error}");
-           return Center(child: Text('Erro: ${snapshot.error}.'));
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text(emptyMessage));
-        }
+    return Column(
+      children: [
+        _buildToggleSwitch(),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('teams').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                 return Center(child: Text('Erro: ${snapshot.error}.'));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Center(child: Text(emptyMessage));
+              }
 
-        List<Map<String, dynamic>> teamsData = snapshot.data!.docs.map((doc) {
-           final data = doc.data() as Map<String, dynamic>;
-           final yellow = data['total_yellow_cards'] ?? 0;
-           final red = data['total_red_cards'] ?? 0;
-           return {
-             'doc': doc,
-             'name': data['name'] ?? '?',
-             'shield_url': data['shield_url'] ?? '',
-             'yellow_cards': yellow,
-             'red_cards': red,
-             'total_cards': yellow + red,
-           };
-        }).toList();
+              // Prepara os dados
+              List<Map<String, dynamic>> teamsData = snapshot.data!.docs.map((doc) {
+                 final data = doc.data() as Map<String, dynamic>;
+                 
+                 final yellowField = _showOverallStats ? 'overall_total_yellow_cards' : 'total_yellow_cards';
+                 final redField = _showOverallStats ? 'overall_total_red_cards' : 'total_red_cards';
 
-        teamsData.removeWhere((team) => team['total_cards'] == 0);
+                 final yellow = data[yellowField] ?? 0;
+                 final red = data[redField] ?? 0;
+                 
+                 return {
+                   'doc': doc,
+                   'name': data['name'] ?? '?',
+                   'shield_url': data['shield_url'] ?? '',
+                   'yellow_cards': yellow,
+                   'red_cards': red,
+                   'total_cards': yellow + red,
+                 };
+              }).toList();
 
-        // Ordena por MENOS cartões primeiro
-        teamsData.sort((a, b) {
-           int totalComp = a['total_cards'].compareTo(b['total_cards']); 
-           if (totalComp != 0) return totalComp;
-           int redComp = a['red_cards'].compareTo(b['red_cards']);
-            if (redComp != 0) return redComp;
-           return a['name'].compareTo(b['name']);
-        });
-        
-        if (teamsData.isEmpty) {
-           return Center(child: Text(emptyMessage));
-        }
+              teamsData.removeWhere((team) => team['total_cards'] == 0);
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 16.0),
-          child: Column(
-            children: [
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+              // Ordena por MENOS cartões primeiro
+              teamsData.sort((a, b) {
+                 int totalComp = a['total_cards'].compareTo(b['total_cards']); 
+                 if (totalComp != 0) return totalComp;
+                 int redComp = a['red_cards'].compareTo(b['red_cards']);
+                  if (redComp != 0) return redComp;
+                 return a['name'].compareTo(b['name']);
+              });
+              
+              if (teamsData.isEmpty) {
+                 return Center(child: Text(emptyMessage));
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 16.0),
                 itemCount: teamsData.length,
                 itemBuilder: (context, index) {
                   final teamMap = teamsData[index];
@@ -287,43 +389,51 @@ class TeamStatsScreen extends StatelessWidget {
                     },
                   );
                 },
-              ),
-            ],
+              );
+            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
-  // --- INÍCIO DA NOVA FUNÇÃO (Fair Play) ---
   Widget _buildFairPlayList({
     required BuildContext context,
-    required Query query,
     required String emptyMessage,
   }) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: query.snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-           debugPrint("Erro Stream TeamStats (Fair Play): ${snapshot.error}");
-           return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text(emptyMessage));
-        }
+    final String fieldName = _showOverallStats 
+        ? 'overall_disciplinary_points' 
+        : 'disciplinary_points';
 
-        final teams = snapshot.data!.docs;
+    // Query Base
+    Query query = FirebaseFirestore.instance
+        .collection('teams')
+        .where(fieldName, isGreaterThan: 0)
+        .orderBy(fieldName, descending: false) // Menos é melhor
+        .orderBy('name');
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 16.0),
-          child: Column(
-            children: [
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+    return Column(
+      children: [
+        _buildToggleSwitch(),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: query.snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                 debugPrint("Erro Stream TeamStats (Fair Play): ${snapshot.error}");
+                 return Center(child: Text('Erro: ${snapshot.error}.\nVerifique o índice no Firestore.'));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Center(child: Text(emptyMessage));
+              }
+
+              final teams = snapshot.data!.docs;
+
+              return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 16.0),
                 itemCount: teams.length,
                 itemBuilder: (context, index) {
                   final team = teams[index];
@@ -332,10 +442,10 @@ class TeamStatsScreen extends StatelessWidget {
                     final rank = index + 1;
                     final String shieldUrl = data['shield_url'] ?? '';
                     
-                    // Pega os 3 campos necessários
-                    final int statValue = data['disciplinary_points'] ?? 0;
-                    final int yellowCards = data['total_yellow_cards'] ?? 0;
-                    final int redCards = data['total_red_cards'] ?? 0;
+                    // Pega os 3 campos necessários dinamicamente
+                    final int statValue = data[fieldName] ?? 0;
+                    final int yellowCards = data[_showOverallStats ? 'overall_total_yellow_cards' : 'total_yellow_cards'] ?? 0;
+                    final int redCards = data[_showOverallStats ? 'overall_total_red_cards' : 'total_red_cards'] ?? 0;
 
                     return ListTile(
                       leading: RankIndicator(rank: rank),
@@ -388,28 +498,22 @@ class TeamStatsScreen extends StatelessWidget {
                       },
                     );
                   } catch (e) {
-                     debugPrint("Erro ao processar time ${team.id} (Ranking Fair Play): $e");
-                     return ListTile(
-                       leading: CircleAvatar(child: Text('${index + 1}')),
-                       title: Text('Erro ao carregar time ${team.id}'),
-                       subtitle: Text(e.toString()),
-                     );
+                     return ListTile(title: Text('Erro ao carregar time'));
                   }
                 },
-              ),
-            ],
+              );
+            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
-  // --- FIM DA NOVA FUNÇÃO ---
 
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 6, // <-- ALTERADO PARA 6 ABAS
+      length: 6, 
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Estatísticas das Equipes'),
@@ -433,7 +537,7 @@ class TeamStatsScreen extends StatelessWidget {
               Tab(text: 'Cartões Amarelos'),
               Tab(text: 'Cartões Vermelhos'),
               Tab(text: 'Total de Cartões'),
-              Tab(text: 'Fair Play (PD)'), // <-- NOVA ABA
+              Tab(text: 'Fair Play (PD)'), 
             ],
           ),
         ),
@@ -443,16 +547,16 @@ class TeamStatsScreen extends StatelessWidget {
             // 1. Melhor Ataque (Mais GP)
             _buildRankingList(
               context: context,
-              query: FirebaseFirestore.instance.collection('teams').orderBy('goals_for', descending: true).orderBy('name'),
-              statField: 'goals_for',
+              statFieldBase: 'goals_for',
+              descending: true,
               statLabel: 'GP',
               emptyMessage: 'Nenhuma equipe com gols marcados.',
             ),
             // 2. Melhor Defesa (Menos GC)
             _buildRankingList(
               context: context,
-              query: FirebaseFirestore.instance.collection('teams').orderBy('goals_against', descending: false).orderBy('name'),
-              statField: 'goals_against',
+              statFieldBase: 'goals_against',
+              descending: false,
               statLabel: 'GC',
               emptyMessage: 'Nenhuma equipe com gols sofridos.',
             ),
@@ -460,35 +564,30 @@ class TeamStatsScreen extends StatelessWidget {
              // 4. Cartões Amarelos (Mais CA)
             _buildRankingList(
               context: context,
-              query: FirebaseFirestore.instance.collection('teams').where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
-              statField: 'total_yellow_cards',
+              statFieldBase: 'total_yellow_cards',
+              descending: true,
               statLabel: 'CA',
               emptyMessage: 'Nenhuma equipe com cartões amarelos.',
             ),
              // 5. Cartões Vermelhos (Mais CV)
             _buildRankingList(
               context: context,
-              query: FirebaseFirestore.instance.collection('teams').where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
-              statField: 'total_red_cards',
+              statFieldBase: 'total_red_cards',
+              descending: true,
               statLabel: 'CV',
               emptyMessage: 'Nenhuma equipe com cartões vermelhos.',
             ),
              // 6. Total de Cartões (Calculado)
              _buildTotalCardsList(
                context: context,
-               stream: FirebaseFirestore.instance.collection('teams').snapshots(),
                emptyMessage: 'Nenhuma equipe com cartões registrados.',
              ),
 
-             // --- INÍCIO DA NOVA ABA ---
-            // 3. Fair Play (Menos PD)
+             // 3. Fair Play (Menos PD)
             _buildFairPlayList(
               context: context,
-              // Ordena por 'disciplinary_points' (ascendente)
-              query: FirebaseFirestore.instance.collection('teams').where('disciplinary_points', isGreaterThan: 0).orderBy('disciplinary_points', descending: false).orderBy('name'),
               emptyMessage: 'Nenhuma equipe com pontos disciplinares.',
             ),
-            // --- FIM DA NOVA ABA ---
           ],
         ),
         bottomNavigationBar: const SponsorBannerRotator(),
