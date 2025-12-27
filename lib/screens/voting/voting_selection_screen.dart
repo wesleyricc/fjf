@@ -29,11 +29,17 @@ class _VotingSelectionScreenState extends State<VotingSelectionScreen> {
     String? filterTeamId; 
     final key = positionKey.toLowerCase();
     
-    // Filtros
+    // Identifica o tipo de posição
     bool isGoalkeeperSlot = key.contains('gk');
     bool isCoachSlot = key.contains('coach');
-    String? linePositionFilter;
+    
+    // Lógica de Estabilidade iOS:
+    // Se NÃO for Goleiro e NEM Técnico (ou seja, Fixo, Ala, Pivô),
+    // a seleção de time é OBRIGATÓRIA.
+    // Para Técnico e Goleiro, também mantemos obrigatório para evitar OOM no iPhone.
+    const bool requireTeamSelection = true; 
 
+    String? linePositionFilter;
     if (!isGoalkeeperSlot && !isCoachSlot) {
       if (key.contains('fixo')) linePositionFilter = 'Fixo';
       else if (key.contains('ala')) linePositionFilter = 'Ala';
@@ -43,11 +49,15 @@ class _VotingSelectionScreenState extends State<VotingSelectionScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent, 
       builder: (ctx) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
+            
+            // Constrói a query base
             Query playersQuery = _firestore.collection('players').where('isActive', isEqualTo: true);
 
+            // Aplica filtros de posição
             if (isCoachSlot) {
               playersQuery = playersQuery.where('is_staff', isEqualTo: true);
             } else {
@@ -62,107 +72,221 @@ class _VotingSelectionScreenState extends State<VotingSelectionScreen> {
               }
             }
 
+            // Aplica filtro de time
             if (filterTeamId != null) {
               playersQuery = playersQuery.where('team_id', isEqualTo: filterTeamId);
             }
+            
             playersQuery = playersQuery.orderBy('name');
 
             return DraggableScrollableSheet(
-              initialChildSize: 0.9, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+              initialChildSize: 0.9, 
+              minChildSize: 0.5, 
+              maxChildSize: 0.95, 
+              expand: false,
               builder: (context, scrollController) {
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Flexible(child: Text('Escolha: $positionTitle', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
-                          IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))
-                        ],
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    children: [
+                      // --- Cabeçalho do Modal ---
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Escolha: $positionTitle', 
+                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), 
+                                overflow: TextOverflow.ellipsis
+                              )
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close), 
+                              onPressed: () => Navigator.pop(ctx)
+                            )
+                          ],
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: _firestore.collection('teams').orderBy('name').snapshots(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) return const LinearProgressIndicator();
-                          List<DropdownMenuItem<String>> teamItems = [const DropdownMenuItem(value: null, child: Text("Todas as Equipes", style: TextStyle(fontWeight: FontWeight.bold)))];
-                          for (var doc in snapshot.data!.docs) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            final String shieldUrl = data['shield_url'] ?? '';
-                            // --- ALTERAÇÃO: LOGO NO DROPDOWN ---
-                            teamItems.add(DropdownMenuItem(
-                              value: doc.id, 
-                              child: Row(
-                                children: [
-                                  if (shieldUrl.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 8.0),
-                                      child: CachedNetworkImage(
-                                        imageUrl: shieldUrl,
-                                        width: 24, height: 24,
-                                        errorWidget: (c, u, e) => const Icon(Icons.shield, size: 24, color: Colors.grey),
+                      
+                      // --- Filtro de Time (Dropdown) ---
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                        child: StreamBuilder<QuerySnapshot>(
+                          stream: _firestore.collection('teams').orderBy('name').snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) return const LinearProgressIndicator();
+                            
+                            List<DropdownMenuItem<String>> teamItems = [];
+                            
+                            // Adiciona opção "Todas" apenas se NÃO for obrigatório filtrar
+                            if (!requireTeamSelection) {
+                              teamItems.add(const DropdownMenuItem(
+                                value: null, 
+                                child: Text("Todas as Equipes", style: TextStyle(fontWeight: FontWeight.bold))
+                              ));
+                            }
+                            
+                            for (var doc in snapshot.data!.docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final String shieldUrl = data['shield_url'] ?? '';
+                              
+                              teamItems.add(DropdownMenuItem(
+                                value: doc.id, 
+                                child: Row(
+                                  children: [
+                                    if (shieldUrl.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(right: 8.0),
+                                        child: CachedNetworkImage(
+                                          imageUrl: shieldUrl,
+                                          memCacheWidth: 50, 
+                                          maxWidthDiskCache: 50,
+                                          width: 24, height: 24,
+                                          errorWidget: (c, u, e) => const Icon(Icons.shield, size: 24, color: Colors.grey),
+                                        ),
                                       ),
-                                    ),
-                                  Expanded(child: Text(data['name'] ?? 'Time', overflow: TextOverflow.ellipsis)),
+                                    Expanded(child: Text(data['name'] ?? 'Time', overflow: TextOverflow.ellipsis)),
+                                  ],
+                                ),
+                              ));
+                            }
+                            
+                            return DropdownButtonFormField<String>(
+                              value: filterTeamId,
+                              isExpanded: true,
+                              hint: Text(requireTeamSelection ? "Selecione uma Equipe (Obrigatório)" : "Filtrar por Equipe"),
+                              decoration: const InputDecoration(
+                                labelText: 'Equipe', 
+                                border: OutlineInputBorder()
+                              ),
+                              items: teamItems,
+                              onChanged: (newValue) => setModalState(() => filterTeamId = newValue),
+                            );
+                          },
+                        ),
+                      ),
+
+                      // --- Lista de Jogadores ou Aviso ---
+                      Expanded(
+                        child: (requireTeamSelection && filterTeamId == null)
+                          // CASO 1: Bloqueia a lista e pede seleção
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.touch_app, size: 60, color: Colors.grey[300]),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    "Selecione a equipe de seu\n${isCoachSlot ? 'treinador' : 'jogador'} acima.",
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.grey, fontSize: 16),
+                                  ),
                                 ],
                               ),
-                            ));
-                          }
-                          return DropdownButtonFormField<String>(
-                            value: filterTeamId,
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: 'Filtrar por Equipe', border: OutlineInputBorder()),
-                            items: teamItems,
-                            onChanged: (newValue) => setModalState(() => filterTeamId = newValue),
-                          );
-                        },
+                            )
+                          // CASO 2: Mostra a lista (filtrada)
+                          : StreamBuilder<QuerySnapshot>(
+                              stream: playersQuery.snapshots(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Center(child: CircularProgressIndicator());
+                                }
+                                if (snapshot.hasError) {
+                                  return const Center(child: Text("Erro ao carregar lista."));
+                                }
+                                if (snapshot.hasData && snapshot.data!.docs.isEmpty) {
+                                  return const Center(child: Text("Nenhum candidato encontrado nesta equipe."));
+                                }
+                                
+                                var docs = snapshot.data!.docs;
+                                
+                                // --- CORREÇÃO AQUI ---
+                                // Filtra para garantir que é Técnico E NÃO Auxiliar
+                                if (isCoachSlot) {
+                                  docs = docs.where((d) {
+                                    final role = (d['staff_role'] ?? '').toString().toLowerCase();
+                                    // Aceita "técnico" ou "treinador", mas rejeita "auxiliar"
+                                    return (role.contains('técnico') || role.contains('treinador')) && !role.contains('auxiliar');
+                                  }).toList();
+                                }
+
+                                if (docs.isEmpty) {
+                                   return const Center(child: Text("Nenhum técnico encontrado nesta equipe."));
+                                }
+
+                                return ListView.builder(
+                                  controller: scrollController,
+                                  itemCount: docs.length,
+                                  itemExtent: 72.0, 
+                                  itemBuilder: (context, index) {
+                                    final doc = docs[index];
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    bool alreadySelected = false;
+                                    
+                                    _selectedTeam.forEach((k, v) {
+                                      if (v != null && v['id'] == doc.id && k != positionKey) alreadySelected = true;
+                                    });
+
+                                    if (alreadySelected) {
+                                      return ListTile(
+                                        enabled: false, 
+                                        leading: const Icon(Icons.check_circle, color: Colors.grey), 
+                                        title: Text(data['name'] ?? 'Nome'), 
+                                        subtitle: const Text("Já escalado")
+                                      );
+                                    }
+
+                                    final String? photoUrl = data['photo_url'];
+
+                                    return ListTile(
+                                      leading: CircleAvatar(
+                                        backgroundColor: Colors.grey[200],
+                                        // OTIMIZAÇÃO IOS MANTIDA
+                                        child: (photoUrl != null && photoUrl.isNotEmpty) 
+                                          ? CachedNetworkImage(
+                                              imageUrl: photoUrl,
+                                              memCacheWidth: 80,
+                                              memCacheHeight: 80,
+                                              maxWidthDiskCache: 80,
+                                              maxHeightDiskCache: 80,
+                                              imageBuilder: (context, imageProvider) => Container(
+                                                width: 40,
+                                                height: 40,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  image: DecorationImage(
+                                                    image: imageProvider,
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                                ),
+                                              ),
+                                              placeholder: (c, u) => const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2)),
+                                              errorWidget: (c, u, e) => const Icon(Icons.person, color: Colors.grey),
+                                            )
+                                          : const Icon(Icons.person, color: Colors.grey),
+                                      ),
+                                      title: Text(data['name'] ?? 'Nome', overflow: TextOverflow.ellipsis),
+                                      subtitle: Text(
+                                        "${data['team_name'] ?? '-'} • ${isCoachSlot ? 'Técnico' : (data['position'] ?? (data['is_goalkeeper']?'GK':'Linha'))}",
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      onTap: () {
+                                        setState(() { _selectedTeam[positionKey] = { ...data, 'id': doc.id }; });
+                                        Navigator.pop(ctx);
+                                      },
+                                    );
+                                  },
+                                );
+                              },
+                            ),
                       ),
-                    ),
-                    Expanded(
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: playersQuery.snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                          if (snapshot.hasData && snapshot.data!.docs.isEmpty) return const Center(child: Text("Nenhum candidato encontrado."));
-                          
-                          var docs = snapshot.data!.docs;
-                          if (isCoachSlot) {
-                            docs = docs.where((d) => (d['staff_role'] ?? '').toString().toLowerCase().trim() == 'técnico').toList();
-                          }
-
-                          return ListView.builder(
-                            controller: scrollController,
-                            itemCount: docs.length,
-                            itemBuilder: (context, index) {
-                              final doc = docs[index];
-                              final data = doc.data() as Map<String, dynamic>;
-                              bool alreadySelected = false;
-                              _selectedTeam.forEach((k, v) {
-                                if (v != null && v['id'] == doc.id && k != positionKey) alreadySelected = true;
-                              });
-
-                              if (alreadySelected) {
-                                return ListTile(enabled: false, leading: const Icon(Icons.check_circle, color: Colors.grey), title: Text(data['name']), subtitle: const Text("Já escalado"));
-                              }
-
-                              return ListTile(
-                                leading: CircleAvatar(backgroundImage: (data['photo_url'] != null && data['photo_url'] != '') ? CachedNetworkImageProvider(data['photo_url']) : null, child: (data['photo_url'] == null || data['photo_url'] == '') ? const Icon(Icons.person, color: Colors.grey) : null),
-                                title: Text(data['name'] ?? 'Nome'),
-                                subtitle: Text("${data['team_name'] ?? '-'} • ${isCoachSlot ? 'Técnico' : (data['position'] ?? (data['is_goalkeeper']?'GK':'Linha'))}"),
-                                onTap: () {
-                                  setState(() { _selectedTeam[positionKey] = { ...data, 'id': doc.id }; });
-                                  Navigator.pop(ctx);
-                                },
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 );
               },
             );
@@ -246,8 +370,22 @@ class _VotingSelectionScreenState extends State<VotingSelectionScreen> {
         leading: CircleAvatar(
           radius: 26,
           backgroundColor: isSelected ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.grey[300],
-          backgroundImage: (isSelected && player['photo_url'] != null && player['photo_url'] != '') ? CachedNetworkImageProvider(player['photo_url']) : null,
-          child: (!isSelected || player['photo_url'] == null || player['photo_url'] == '') ? Icon(placeholderIcon, color: isSelected ? Theme.of(context).primaryColor : Colors.grey[600]) : null,
+          child: (isSelected && player['photo_url'] != null && player['photo_url'] != '') 
+            ? CachedNetworkImage(
+                imageUrl: player['photo_url'],
+                memCacheWidth: 100, 
+                maxWidthDiskCache: 100,
+                imageBuilder: (context, imageProvider) => Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+                  ),
+                ),
+                errorWidget: (c, u, e) => Icon(placeholderIcon, color: Theme.of(context).primaryColor),
+              )
+            : Icon(placeholderIcon, color: isSelected ? Theme.of(context).primaryColor : Colors.grey[600]),
         ),
         title: Text(label.toUpperCase(), style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.bold)),
         subtitle: Text(isSelected ? "${player['name']}\n${player['team_name']}" : "Toque para selecionar", style: TextStyle(fontSize: 16, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: isSelected ? Colors.black87 : Colors.grey[500])),
