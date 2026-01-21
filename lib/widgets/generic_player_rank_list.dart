@@ -1,3 +1,4 @@
+// lib/widgets/generic_player_rank_list.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -32,7 +33,7 @@ class GenericPlayerRankList extends StatefulWidget {
 }
 
 class _GenericPlayerRankListState extends State<GenericPlayerRankList> with AutomaticKeepAliveClientMixin {
-  final int _pageSize = 20;
+  final int _pageSize = 10;
   final List<DocumentSnapshot> _players = [];
   bool _isLoading = false;
   bool _hasMore = true;
@@ -48,18 +49,15 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     _loadData();
   }
 
-  // --- LÓGICA: Diálogo para limpar suspensão ---
   Future<void> _showClearSuspensionDialog(BuildContext context, DocumentSnapshot player) async {
     final playerName = player['name'] ?? 'Jogador desconhecido';
     final data = player.data() as Map<String, dynamic>? ?? {};
     final int currentYellows = data['yellow_cards'] ?? 0;
     final int currentReds = data['red_cards'] ?? 0;
 
-    // Acessa as regras via AdminService (já carregado)
     bool suspendedByRed = (currentReds > 0 && AdminService.suspensionOnRed);
     bool suspendedByYellow = (currentYellows >= AdminService.suspensionYellowCards);
     
-    // Fallback: Se está marcado como suspenso mas não tem vermelho, assume amarelo
     if (!suspendedByRed && data['is_suspended'] == true) {
        suspendedByYellow = true;
     }
@@ -78,67 +76,36 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Limpar Suspensão'),
-          content: Text(
-            'Tem certeza que deseja liberar $playerName?\n\n$reason\n\n'
-            'Isso definirá "Suspenso=Falso" e zerará os cartões da suspensão atual.'),
+          content: Text('Tem certeza que deseja liberar $playerName?\n\n$reason\n\nIsso definirá "Suspenso=Falso" e zerará os cartões da suspensão atual.'),
           actions: <Widget>[
-            TextButton(
-              child: const Text('Cancelar'),
-              onPressed: () => Navigator.of(dialogContext).pop(),
-            ),
+            TextButton(child: const Text('Cancelar'), onPressed: () => Navigator.of(dialogContext).pop()),
             TextButton(
               child: const Text('Confirmar Liberação'),
               onPressed: () async {
                 try {
-                  // --- ATUALIZAÇÃO NO FIRESTORE ---
                   final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-                  
-                  // Referência correta do jogador na temporada
-                  final playerRef = FirebaseFirestore.instance
-                      .collection('championships')
-                      .doc(seasonId)
-                      .collection('player_stats')
-                      .doc(player.id);
+                  final playerRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('player_stats').doc(player.id);
 
                   Map<String, dynamic> updateData = {
                     'is_suspended': false,
-                    'red_cards': 0, // Zera vermelhos da suspensão atual
-                    if (suspendedByYellow) 'yellow_cards': 0, // Zera amarelos se foi por acúmulo
+                    'red_cards': 0, 
+                    if (suspendedByYellow) 'yellow_cards': 0,
                   };
 
                   await playerRef.update(updateData);
-                      
-                  // Atualiza o log de suspensão para marcar a data de retorno
-                  final logQuery = await FirebaseFirestore.instance
-                      .collection('championships')
-                      .doc(seasonId)
-                      .collection('disciplinary_log')
-                      .where('playerId', isEqualTo: player.id)
-                      .orderBy('timestamp', descending: true)
-                      .limit(1)
-                      .get();
                   
+                  final logQuery = await FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('disciplinary_log').where('playerId', isEqualTo: player.id).orderBy('timestamp', descending: true).limit(1).get();
                   if (logQuery.docs.isNotEmpty) {
-                    await logQuery.docs.first.reference.update({
-                      'return_date': FieldValue.serverTimestamp(),
-                    });
+                    await logQuery.docs.first.reference.update({'return_date': FieldValue.serverTimestamp()});
                   }
 
                   if(dialogContext.mounted) Navigator.of(dialogContext).pop();
                   if (context.mounted) { 
-                     ScaffoldMessenger.of(context).showSnackBar(
-                       SnackBar(content: Text('$playerName liberado da suspensão.')),
-                     );
-                     // Recarrega a lista para sumir o jogador liberado
-                     _loadData(); // ou setState(() => _players.remove(player));
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$playerName liberado da suspensão.')));
+                     _loadData();
                   }
                 } catch (e) {
-                  debugPrint("Erro ao liberar: $e");
-                   if (context.mounted) {
-                     ScaffoldMessenger.of(context).showSnackBar(
-                       SnackBar(content: Text('Erro: $e')),
-                     );
-                  }
+                   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
                 }
               },
             ),
@@ -155,7 +122,6 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     try {
       Query query = widget.baseQuery.limit(_pageSize);
       if (_lastDocument != null) query = query.startAfterDocument(_lastDocument!);
-
       final snapshot = await query.get();
 
       if (snapshot.docs.isNotEmpty) {
@@ -198,13 +164,10 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
         final doc = _players[index];
         final rank = index + 1;
 
-        // --- TOP 3 (Destaque) ---
-        // Apenas se NÃO for lista de status (Pendurados/Suspensos não tem ranking numérico)
         if (index < 3 && !widget.isStatusList) {
            return _buildTopRankItem(doc, rank);
         }
 
-        // --- RESTO DA LISTA ---
         return Column(
           children: [
             _buildPlayerItem(doc, rank),
@@ -219,7 +182,6 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     final data = doc.data() as Map<String, dynamic>;
     final val = data[widget.statField] ?? 0;
     
-    // Define ícone baseado no statLabel
     IconData icon = Icons.star;
     if (widget.statLabel == 'Gols') icon = Icons.sports_soccer;
     else if (widget.statLabel == 'Ass') icon = Icons.assistant;
@@ -258,55 +220,35 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     Widget trailing;
     
     if (widget.isStatusList) {
-      // --- LÓGICA DE SUSPENSOS/PENDURADOS ---
       if (widget.isSuspendedTab) {
         int r = (data['red_cards'] as num?)?.toInt() ?? 0;
         int y = (data['yellow_cards'] as num?)?.toInt() ?? 0;
-        
         List<Widget> icons = [];
         
-        if (r > 0) {
-          icons.add(const Icon(Icons.style, color: Colors.red, size: 20));
-        }
+        if (r > 0) icons.add(const Icon(Icons.style, color: Colors.red, size: 20));
         
-        // Se suspenso por amarelos, mostra a quantidade de amarelos (ex: 3)
         int yellowLimit = AdminService.suspensionYellowCards;
         if (yellowLimit <= 0) yellowLimit = 3;
-
         int yellowToShow = 0;
-        if (y >= yellowLimit) {
-          yellowToShow = yellowLimit;
-        } else if (r == 0) {
-          // Fallback: Se está na lista de suspensos e não tem vermelho, assume acúmulo de amarelos
-          yellowToShow = yellowLimit;
-        }
+        if (y >= yellowLimit) yellowToShow = yellowLimit;
+        else if (r == 0) yellowToShow = yellowLimit;
 
         if (yellowToShow > 0) {
           if (icons.isNotEmpty) icons.add(const SizedBox(width: 6));
           for (int i = 0; i < yellowToShow; i++) {
-             icons.add(Padding(
-               padding: const EdgeInsets.only(left: 1.0),
-               child: Icon(Icons.style, color: Colors.amber[700], size: 20),
-             ));
+             icons.add(Padding(padding: const EdgeInsets.only(left: 1.0), child: Icon(Icons.style, color: Colors.amber[700], size: 20)));
           }
         }
-        
         trailing = Row(mainAxisSize: MainAxisSize.min, children: icons);
       } else {
-        // --- PENDURADOS (ALTERAÇÃO SOLICITADA) ---
-        // Exibe ícones em vez de texto "2 amarelos"
         int y = (data['yellow_cards'] as num?)?.toInt() ?? 0;
         List<Widget> icons = [];
         for (int i = 0; i < y; i++) {
-           icons.add(Padding(
-             padding: const EdgeInsets.only(left: 2.0),
-             child: Icon(Icons.style, color: Colors.amber[700], size: 20),
-           ));
+           icons.add(Padding(padding: const EdgeInsets.only(left: 2.0), child: Icon(Icons.style, color: Colors.amber[700], size: 20)));
         }
         trailing = Row(mainAxisSize: MainAxisSize.min, children: icons);
       }
     } else {
-      // --- LISTA NORMAL (Gols, etc) ---
       final val = data[widget.statField] ?? 0;
       trailing = Text("$val ${widget.statLabel ?? ''}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16));
     }
@@ -315,8 +257,20 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
       leading: CircleAvatar( 
         radius: 22,
         backgroundColor: Colors.grey[200],
-        backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl, cacheManager: PlayerCacheManager.instance) : null,
-        child: photoUrl.isEmpty ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) : null,
+        // PERFORMANCE: Substituído CachedNetworkImageProvider por widget para controle de memória
+        child: photoUrl.isNotEmpty 
+          ? ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: photoUrl,
+                width: 44, height: 44,
+                fit: BoxFit.cover,
+                memCacheWidth: 150, // Limita memória
+                cacheManager: PlayerCacheManager.instance,
+                placeholder: (context, url) => const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey),
+              ),
+            )
+          : Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey),
       ),
       title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
       subtitle: Row(
@@ -328,7 +282,11 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
           ),
           const SizedBox(width: 6),
           if (shieldUrl.isNotEmpty) ...[
-            CachedNetworkImage(imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain, errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)),
+            CachedNetworkImage(
+              imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain,
+              memCacheWidth: 48, // Limita memória do escudo
+              errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)
+            ),
             const SizedBox(width: 4)
           ],
           Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis)),

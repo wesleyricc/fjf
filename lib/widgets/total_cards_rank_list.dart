@@ -1,3 +1,4 @@
+// lib/widgets/total_cards_rank_list.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -108,9 +109,7 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
         final int y = item['y'];
         final int r = item['r'];
 
-        // --- TOP 3 ---
         if (index < 3) {
-          // Define cores para o texto baseado no fundo do card
           Color detailColor = (rank == 3) ? Colors.white70 : Colors.black54;
 
           return RankHighlightCard(
@@ -122,24 +121,22 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
             statLabel: 'Cartões',
             statIcon: Icons.layers,
             isPlayer: true,
-            // Injeta o detalhe dos cartões
             extraInfoWidget: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('$y', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: detailColor)),
                 const SizedBox(width: 2),
-                Icon(Icons.style, size: 12, color: Colors.amber[700]), // Amarelo
+                Icon(Icons.style, size: 12, color: Colors.amber[700]),
                 const SizedBox(width: 6),
                 Text('$r', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: detailColor)),
                 const SizedBox(width: 2),
-                const Icon(Icons.style, size: 12, color: Colors.red), // Vermelho
+                const Icon(Icons.style, size: 12, color: Colors.red),
               ],
             ),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id))),
           );
         }
 
-        // --- RESTO DA LISTA ---
         final name = data['name'] ?? 'Nome';
         final isStaff = data['is_staff'] ?? false;
         final photoUrl = data['photo_url'] ?? '';
@@ -152,8 +149,20 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
               leading: CircleAvatar(
                 radius: 22,
                 backgroundColor: Colors.grey[200],
-                backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl, cacheManager: PlayerCacheManager.instance) : null,
-                child: photoUrl.isEmpty ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) : null,
+                // PERFORMANCE: Controle de memória aplicado
+                child: photoUrl.isNotEmpty 
+                  ? ClipOval(
+                      child: CachedNetworkImage(
+                        imageUrl: photoUrl,
+                        width: 44, height: 44,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 150,
+                        cacheManager: PlayerCacheManager.instance,
+                        placeholder: (context, url) => const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                        errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey),
+                      ),
+                    )
+                  : Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey),
               ),
               title: Text(name, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
               subtitle: Row(
@@ -165,7 +174,11 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
                   ),
                   const SizedBox(width: 6),
                   if (shieldUrl.isNotEmpty) ...[
-                    CachedNetworkImage(imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain, errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)),
+                    CachedNetworkImage(
+                      imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain, 
+                      memCacheWidth: 48,
+                      errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)
+                    ),
                     const SizedBox(width: 4)
                   ],
                   Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis)),

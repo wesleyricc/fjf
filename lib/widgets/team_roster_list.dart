@@ -6,7 +6,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 // Services & Models
 import '../services/championship_service.dart';
 import '../services/firestore_service.dart';
-import '../services/auth_service.dart';
 import '../models/player_model.dart'; 
 
 // Screens
@@ -14,105 +13,13 @@ import '../screens/player_profile_screen.dart';
 import '../screens/edit_player_screen.dart';
 import '../utils/custom_cache_manager.dart';
 
-class TeamRosterList extends StatelessWidget {
-  final String teamId;
-  final String teamName;
-
-  const TeamRosterList({super.key, required this.teamId, required this.teamName});
+// --- HELPER PARA TÍTULOS ---
+class RosterSectionHeader extends StatelessWidget {
+  final String title;
+  const RosterSectionHeader({super.key, required this.title});
 
   @override
   Widget build(BuildContext context) {
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    final authService = Provider.of<AuthService>(context);
-    final firestoreService = FirestoreService();
-
-    return StreamBuilder<List<Player>>(
-      stream: firestoreService.streamPlayers(seasonId, teamId: teamId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
-        }
-        
-        final allMembers = snapshot.data ?? [];
-        if (allMembers.isEmpty) {
-          return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Nenhum membro ativo.')));
-        }
-
-        final players = allMembers.where((p) => !p.isStaff).toList();
-        final staff = allMembers.where((p) => p.isStaff).toList();
-
-        // Ordenação: Goleiros primeiro, depois por número da camisa
-        players.sort((a, b) {
-          if (a.isGoalkeeper && !b.isGoalkeeper) return -1;
-          if (!a.isGoalkeeper && b.isGoalkeeper) return 1;
-          final na = a.jerseyNumber ?? 999;
-          final nb = b.jerseyNumber ?? 999;
-          return na.compareTo(nb);
-        });
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- GRID DE JOGADORES (2 Colunas) ---
-            _buildSectionTitle(context, 'Elenco (${players.length})'),
-            if (players.isEmpty)
-              const Padding(padding: EdgeInsets.all(16), child: Text('Sem jogadores.'))
-            else
-              GridView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2, 
-                  childAspectRatio: 0.70, // Ajustado para ficar proporcional com a linha única
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: players.length,
-                itemBuilder: (context, index) {
-                  return _MemberCard(
-                    member: players[index],
-                    teamId: teamId,
-                    teamName: teamName,
-                    isAdmin: authService.isAuthenticated,
-                    onDelete: () => _showDeletePlayerDialog(context, players[index], seasonId),
-                  );
-                },
-              ),
-
-            // --- LISTA DE COMISSÃO TÉCNICA (Vertical) ---
-            if (staff.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              _buildSectionTitle(context, 'Comissão Técnica'),
-              ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: staff.length,
-                itemBuilder: (context, index) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12.0),
-                    child: SizedBox(
-                      height: 260, // Altura fixa para manter a proporção
-                      child: _MemberCard(
-                        member: staff[index],
-                        teamId: teamId,
-                        teamName: teamName,
-                        isAdmin: authService.isAuthenticated,
-                        onDelete: () => _showDeletePlayerDialog(context, staff[index], seasonId),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildSectionTitle(BuildContext context, String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Row(
@@ -124,43 +31,132 @@ class TeamRosterList extends StatelessWidget {
       ),
     );
   }
+}
 
-  Future<void> _showDeletePlayerDialog(BuildContext context, Player player, String seasonId) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Excluir ${player.name}?'),
-        content: const Text('Isso marcará o membro como inativo nesta temporada.\n\nDeseja continuar?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
-        ],
+// --- SLIVER GRID: JOGADORES (LAZY LOADING) ---
+class SliverTeamPlayersGrid extends StatelessWidget {
+  final List<Player> players;
+  final String teamId;
+  final String teamName;
+  final bool isAdmin;
+
+  const SliverTeamPlayersGrid({
+    super.key,
+    required this.players,
+    required this.teamId,
+    required this.teamName,
+    required this.isAdmin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.70,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final p = players[index];
+            return _MemberCard(
+              member: p,
+              teamId: teamId,
+              teamName: teamName,
+              isAdmin: isAdmin,
+              onDelete: () => _deletePlayer(context, p, seasonId),
+            );
+          },
+          childCount: players.length,
+        ),
       ),
     );
+  }
+}
 
-    if (confirm == true && context.mounted) {
-      try {
-        // ALTERAÇÃO: Referência padronizada para a subcoleção da temporada
-        // Removemos a verificação de LEGACY_ID
-        final ref = FirebaseFirestore.instance
-            .collection('championships')
-            .doc(seasonId)
-            .collection('player_stats')
-            .doc(player.id);
-        
-        final snap = await ref.get();
-        if (snap.exists) {
-          final result = await FirestoreService().deletePlayer(snap, seasonId);
-          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-        }
-      } catch (e) {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e")));
+// --- SLIVER LIST: STAFF ---
+class SliverTeamStaffList extends StatelessWidget {
+  final List<Player> staff;
+  final String teamId;
+  final String teamName;
+  final bool isAdmin;
+
+  const SliverTeamStaffList({
+    super.key,
+    required this.staff,
+    required this.teamId,
+    required this.teamName,
+    required this.isAdmin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: SizedBox(
+                height: 260, 
+                child: _MemberCard(
+                  member: staff[index],
+                  teamId: teamId,
+                  teamName: teamName,
+                  isAdmin: isAdmin,
+                  onDelete: () => _deletePlayer(context, staff[index], seasonId),
+                ),
+              ),
+            );
+          },
+          childCount: staff.length,
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _deletePlayer(BuildContext context, Player player, String seasonId) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('Excluir ${player.name}?'),
+      content: const Text('Isso marcará o membro como inativo nesta temporada.\n\nDeseja continuar?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+        TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
+      ],
+    ),
+  );
+
+  if (confirm == true && context.mounted) {
+    try {
+      final ref = FirebaseFirestore.instance
+          .collection('championships')
+          .doc(seasonId)
+          .collection('player_stats')
+          .doc(player.id);
+      
+      final snap = await ref.get();
+      if (snap.exists) {
+        final result = await FirestoreService().deletePlayer(snap, seasonId);
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
       }
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e")));
     }
   }
 }
 
-// --- WIDGET UNIFICADO: CARD DE MEMBRO ---
+// --- CARD DE MEMBRO OTIMIZADO ---
 class _MemberCard extends StatelessWidget {
   final Player member;
   final String teamId;
@@ -214,6 +210,9 @@ class _MemberCard extends StatelessWidget {
                           fit: BoxFit.cover,
                           alignment: Alignment.topCenter,
                           cacheManager: PlayerCacheManager.instance,
+                          // OTIMIZAÇÃO: MemCache + FadeIn
+                          memCacheWidth: 250, 
+                          fadeInDuration: const Duration(milliseconds: 300),
                           placeholder: (c, u) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 50, color: Colors.grey.shade400)),
                           errorWidget: (c, u, e) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 50, color: Colors.grey.shade400)),
                         )
@@ -241,7 +240,7 @@ class _MemberCard extends StatelessWidget {
                   ),
                 ),
 
-                // 2. DADOS E ESTATÍSTICAS
+                // 2. DADOS
                 Container(
                   padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
                   color: Colors.white,
@@ -266,12 +265,11 @@ class _MemberCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       
-                      // 3. BARRA DE ESTATÍSTICAS (Compacta)
-                      FittedBox( // Garante que cabe numa linha
+                      FittedBox( 
                         fit: BoxFit.scaleDown,
                         child: Wrap(
                           alignment: WrapAlignment.center,
-                          spacing: 3, // Espaçamento reduzido
+                          spacing: 3,
                           runSpacing: 2,
                           children: [
                             if (!isStaff) ...[
@@ -291,7 +289,6 @@ class _MemberCard extends StatelessWidget {
               ],
             ),
 
-            // 4. MENU ADMIN
             if (isAdmin)
               Positioned(
                 top: 0,
@@ -318,7 +315,6 @@ class _MemberCard extends StatelessWidget {
   }
 }
 
-// --- WIDGET AUXILIAR: BADGE DE ESTATÍSTICA (Versão Compacta) ---
 class _StatIcon extends StatelessWidget {
   final IconData icon;
   final int value;
@@ -329,8 +325,6 @@ class _StatIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // SEMPRE usa a cor oficial, mesmo se for zero.
-    // Fundo sutil para não poluir
     final Color bgColor = color.withOpacity(0.08); 
     final Color borderColor = color.withOpacity(0.2);
 
@@ -346,12 +340,9 @@ class _StatIcon extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 10, color: color), // Ícone um pouco menor
+            Icon(icon, size: 10, color: color), 
             const SizedBox(width: 2),
-            Text(
-              '$value',
-              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: color), // Texto menor
-            ),
+            Text('$value', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
       ),

@@ -5,7 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "fjf",
+            "name": "FJF (TESTE)",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "--dart-define=ENV=test"
+            ]
+        },
+        {
+            "name": "fjf (PROD)",
             "request": "launch",
             "type": "dart"
         },
@@ -22,7 +30,7 @@
             "flutterMode": "release"
         },
         {
-            "name": "FJF PWA (Porta 5000)", // Nome que aparecerá no menu
+            "name": "FJF PWA (Porta 5000)",
             "request": "launch",
             "type": "dart",
             "args": [
@@ -31,6 +39,6 @@
                 "--web-port",
                 "5000"
             ]
-        },
+        }
     ]
 }

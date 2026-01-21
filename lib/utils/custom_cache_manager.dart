@@ -8,7 +8,9 @@ class PlayerCacheManager {
     Config(
       key,
       stalePeriod: const Duration(days: 7), // Mantém imagens por 7 dias
-      maxNrOfCacheObjects: 500, // Aumenta o limite de arquivos (padrão é ~200)
+      // Aumentado para 1000 para evitar que fotos de times grandes sejam 
+      // excluídas prematuramente do cache em disco.
+      maxNrOfCacheObjects: 1000, 
       repo: JsonCacheInfoRepository(databaseName: key),
       fileService: HttpFileService(),
     ),

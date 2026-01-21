@@ -117,6 +117,8 @@ class PlayerDisplayCard extends StatelessWidget {
                 height: 20,
                 child: CachedNetworkImage(
                   imageUrl: teamShieldUrl!,
+                  // PERFORMANCE: Adicionado memCacheHeight para ícone pequeno
+                  memCacheHeight: 60, 
                   placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
                   errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.grey),
                   fit: BoxFit.contain,
