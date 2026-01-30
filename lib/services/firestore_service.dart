@@ -36,8 +36,7 @@ class FirestoreService {
   // ===========================================================================
   // 🔄 LEITURA DE DADOS TIPADOS (STREAMS & FUTURES)
   // ===========================================================================
-
-  // --- TIMES ---
+  
   Stream<List<Team>> streamTeams(String seasonId) {
     return _getTeamsRef(seasonId)
         .orderBy('name')
@@ -50,28 +49,19 @@ class FirestoreService {
     if (!doc.exists) return null;
     return Team.fromFirestore(doc);
   }
-
+  
   Future<DocumentSnapshot?> getTeamSnapshot(String teamId, String seasonId) async {
     try {
-      final ref = _getTeamsRef(seasonId).doc(teamId);
-      final doc = await ref.get();
+      final doc = await _getTeamsRef(seasonId).doc(teamId).get();
       return doc.exists ? doc : null;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
 
-  // --- JOGADORES ---
   Stream<List<Player>> streamPlayers(String seasonId, {String? teamId}) {
     Query query = _getPlayerStatsRef(seasonId).where('isActive', isEqualTo: true);
-    
-    if (teamId != null) {
-      query = query.where('team_id', isEqualTo: teamId);
-    }
-
+    if (teamId != null) query = query.where('team_id', isEqualTo: teamId);
     return query.snapshots().map((snapshot) {
       final players = snapshot.docs.map((doc) => Player.fromFirestore(doc)).toList();
-      // Ordenação alfabética no cliente
       players.sort((a, b) => (a.name).compareTo(b.name));
       return players;
     });
@@ -83,19 +73,15 @@ class FirestoreService {
     return Player.fromFirestore(doc);
   }
 
-  // --- PARTIDAS ---
   Stream<List<MatchModel>> streamMatches(String seasonId, {String? phase}) {
     Query query = _getMatchesRef(seasonId).orderBy('datetime');
-    
-    if (phase != null) {
-      query = query.where('phase', isEqualTo: phase);
-    }
-
+    if (phase != null) query = query.where('phase', isEqualTo: phase);
     return query.snapshots().map((snapshot) => 
       snapshot.docs.map((doc) => MatchModel.fromFirestore(doc)).toList()
     );
   }
 
+ 
   // ===========================================================================
   // 📰 MÍDIAS
   // ===========================================================================
@@ -332,42 +318,74 @@ class FirestoreService {
     } catch (e) { return "Erro ao reverter evento: $e"; }
   }
 
+  // ===========================================================================
+  // 🔄 RECÁLCULO DE ESTATÍSTICAS (ATUALIZADO)
+  // ===========================================================================
+
   Future<void> _recalculateTeamStats(String teamId, String seasonId) async {
-    int totalMatchPoints = 0;
-    int totalGames = 0;
-    int totalWins = 0, totalDraws = 0, totalLosses = 0;
-    int totalGoalsFor = 0, totalGoalsAgainst = 0;
+    // 1. Variáveis para 1ª Fase
+    int p1_MatchPoints = 0;
+    int p1_Games = 0;
+    int p1_Wins = 0, p1_Draws = 0, p1_Losses = 0;
+    int p1_GoalsFor = 0, p1_GoalsAgainst = 0;
+
+    // 2. Variáveis Gerais (Overall)
+    int ov_MatchPoints = 0;
+    int ov_Games = 0;
+    int ov_Wins = 0, ov_Draws = 0, ov_Losses = 0;
+    int ov_GoalsFor = 0, ov_GoalsAgainst = 0;
 
     final matchesRef = _getMatchesRef(seasonId);
     
     Future<void> processMatches(String side) async {
+      // ALTERAÇÃO: Removemos o filtro 'phase' da query para pegar TODOS os jogos
       final query = await matchesRef
           .where('team_${side}_id', isEqualTo: teamId)
           .where('status', whereIn: ['finished', 'in_progress'])
-          .where('phase', isEqualTo: 'first')
           .get();
 
       for (final doc in query.docs) {
         final data = doc.data() as Map<String, dynamic>;
         final scoreHome = (data['score_home'] ?? 0) as int;
         final scoreAway = (data['score_away'] ?? 0) as int;
+        final phase = data['phase'] as String? ?? 'first';
 
-        totalGames++;
-        
+        // Determina placar
         int myScore = (side == 'home') ? scoreHome : scoreAway;
         int opponentScore = (side == 'home') ? scoreAway : scoreHome;
-
-        totalGoalsFor += myScore;
-        totalGoalsAgainst += opponentScore;
+        
+        // Cálculos temporários para esta partida
+        int points = 0;
+        bool isWin = false;
+        bool isDraw = false;
+        bool isLoss = false;
 
         if (myScore > opponentScore) {
-          totalMatchPoints += 3;
-          totalWins++;
+          points = 3; isWin = true;
         } else if (myScore < opponentScore) {
-          totalLosses++;
+          isLoss = true;
         } else {
-          totalMatchPoints += 1;
-          totalDraws++;
+          points = 1; isDraw = true;
+        }
+
+        // --- ATUALIZA GERAL (SEMPRE) ---
+        ov_Games++;
+        ov_GoalsFor += myScore;
+        ov_GoalsAgainst += opponentScore;
+        ov_MatchPoints += points;
+        if (isWin) ov_Wins++;
+        if (isDraw) ov_Draws++;
+        if (isLoss) ov_Losses++;
+
+        // --- ATUALIZA 1ª FASE (CONDICIONAL) ---
+        if (phase == 'first') {
+          p1_Games++;
+          p1_GoalsFor += myScore;
+          p1_GoalsAgainst += opponentScore;
+          p1_MatchPoints += points;
+          if (isWin) p1_Wins++;
+          if (isDraw) p1_Draws++;
+          if (isLoss) p1_Losses++;
         }
       }
     }
@@ -381,25 +399,43 @@ class FirestoreService {
       if (!teamSnap.exists) return;
 
       final currentExtraPoints = (teamSnap.data() as Map<String, dynamic>)['extra_points'] as int? ?? 0;
-      final int finalTotalPoints = totalMatchPoints + currentExtraPoints;
-      final int finalGoalDifference = totalGoalsFor - totalGoalsAgainst;
+      
+      // Totais Finais
+      final int p1_TotalPoints = p1_MatchPoints + currentExtraPoints;
+      final int p1_GoalDifference = p1_GoalsFor - p1_GoalsAgainst;
+
+      final int ov_TotalPoints = ov_MatchPoints + currentExtraPoints;
+      final int ov_GoalDifference = ov_GoalsFor - ov_GoalsAgainst;
 
       await teamRef.update({
-        'match_points': totalMatchPoints,
-        'points': finalTotalPoints,
-        'games_played': totalGames,
-        'wins': totalWins,
-        'draws': totalDraws,
-        'losses': totalLosses,
-        'goals_for': totalGoalsFor,
-        'goals_against': totalGoalsAgainst,
-        'goal_difference': finalGoalDifference,
+        // Campos Originais (1ª Fase)
+        'match_points': p1_MatchPoints,
+        'points': p1_TotalPoints,
+        'games_played': p1_Games,
+        'wins': p1_Wins,
+        'draws': p1_Draws,
+        'losses': p1_Losses,
+        'goals_for': p1_GoalsFor,
+        'goals_against': p1_GoalsAgainst,
+        'goal_difference': p1_GoalDifference,
+
+        // Novos Campos (Geral)
+        'overall_match_points': ov_MatchPoints,
+        'overall_points': ov_TotalPoints,
+        'overall_games_played': ov_Games,
+        'overall_wins': ov_Wins,
+        'overall_draws': ov_Draws,
+        'overall_losses': ov_Losses,
+        'overall_goals_for': ov_GoalsFor,
+        'overall_goals_against': ov_GoalsAgainst,
+        'overall_goal_difference': ov_GoalDifference,
       });
     } catch (e) {
       debugPrint("[RECALC] Erro: $e");
     }
   }
 
+  
   // ===========================================================================
   // 🏆 CRUD TIMES & JOGADORES
   // ===========================================================================
@@ -581,10 +617,10 @@ class FirestoreService {
     try {
       final data = match.data() as Map<String, dynamic>;
       final status = data['status'];
-      final phase = data['phase'];
       await match.reference.delete();
 
-      if (status == 'finished' && phase == 'first') {
+      // ALTERAÇÃO: Recalcula se estava finalizada, INDEPENDENTE da fase
+      if (status == 'finished') {
         await _recalculateTeamStats(data['team_home_id'], seasonId);
         await _recalculateTeamStats(data['team_away_id'], seasonId);
       }
@@ -592,7 +628,7 @@ class FirestoreService {
     } catch (e) { return "Erro: $e"; }
   }
 
-  // --- CÓPIA DE TEMPORADA (Refatorado para não depender de Legacy) ---
+// --- CÓPIA DE TEMPORADA (Refatorado para não depender de Legacy) ---
   Future<void> copySeasonData({
     required String sourceSeasonId,
     required String targetSeasonId,
@@ -681,12 +717,9 @@ class FirestoreService {
 
     if (homeTeamId == null || awayTeamId == null) return "Erro: IDs dos times inválidos.";
 
-    // Usa os helpers internos padronizados
     final CollectionReference matchesRef = _getMatchesRef(seasonId);
     final CollectionReference teamsRef = _getTeamsRef(seasonId);
     final CollectionReference playersRef = _getPlayerStatsRef(seasonId);
-    // Log disciplinar agora sempre na temporada
-    final CollectionReference suspensionLogRef = _firestore.collection('championships').doc(seasonId).collection('disciplinary_log');
 
     try {
       await _firestore.runTransaction((transaction) async {
@@ -795,7 +828,8 @@ class FirestoreService {
         }
       });
 
-      if ((newStatus == 'finished' || matchDataBefore['status'] == 'finished') && matchDataBefore['phase'] == 'first') {
+      // ALTERAÇÃO: Recalcula se o status é finished, INDEPENDENTE da fase
+      if ((newStatus == 'finished' || matchDataBefore['status'] == 'finished')) {
         await _recalculateTeamStats(homeTeamId, seasonId);
         await _recalculateTeamStats(awayTeamId, seasonId);
       }

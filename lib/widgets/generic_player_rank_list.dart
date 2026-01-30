@@ -8,15 +8,16 @@ import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../screens/player_profile_screen.dart';
 import '../utils/custom_cache_manager.dart';
-import '../widgets/rank_highlight_card.dart'; 
+import '../widgets/rank_highlight_card.dart';
+import '../widgets/rank_indicator.dart'; // Certifique-se de ter este widget ou use o código abaixo
 
 class GenericPlayerRankList extends StatefulWidget {
   final Query baseQuery;
   final String emptyMessage;
   final String? statField;
   final String? statLabel;
-  final bool isStatusList; // Se true, muda o layout para Pendurados/Suspensos
-  final bool isSuspendedTab; 
+  final bool isStatusList;
+  final bool isSuspendedTab;
 
   const GenericPlayerRankList({
     super.key,
@@ -33,7 +34,7 @@ class GenericPlayerRankList extends StatefulWidget {
 }
 
 class _GenericPlayerRankListState extends State<GenericPlayerRankList> with AutomaticKeepAliveClientMixin {
-  final int _pageSize = 10;
+  final int _pageSize = 20;
   final List<DocumentSnapshot> _players = [];
   bool _isLoading = false;
   bool _hasMore = true;
@@ -49,7 +50,7 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     _loadData();
   }
 
-  Future<void> _showClearSuspensionDialog(BuildContext context, DocumentSnapshot player) async {
+    Future<void> _showClearSuspensionDialog(BuildContext context, DocumentSnapshot player) async {
     final playerName = player['name'] ?? 'Jogador desconhecido';
     final data = player.data() as Map<String, dynamic>? ?? {};
     final int currentYellows = data['yellow_cards'] ?? 0;
@@ -122,6 +123,7 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     try {
       Query query = widget.baseQuery.limit(_pageSize);
       if (_lastDocument != null) query = query.startAfterDocument(_lastDocument!);
+
       final snapshot = await query.get();
 
       if (snapshot.docs.isNotEmpty) {
@@ -150,7 +152,7 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     if (_players.isEmpty && !_hasError) return Center(child: Text(widget.emptyMessage));
     if (_hasError && _players.isEmpty) return Center(child: TextButton(onPressed: _loadData, child: const Text("Erro. Tentar novamente")));
 
-    return ListView.builder( 
+    return ListView.builder(
       padding: const EdgeInsets.only(bottom: 20, top: 8),
       itemCount: _players.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
@@ -160,18 +162,22 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
             child: Center(child: _isLoading ? const CircularProgressIndicator() : ElevatedButton(onPressed: _loadData, child: const Text("Carregar mais"))),
           );
         }
-        
+
         final doc = _players[index];
         final rank = index + 1;
 
+        // --- DESTAQUE TOP 3 ---
+        // Exibe o Card Grande com Foto
         if (index < 3 && !widget.isStatusList) {
-           return _buildTopRankItem(doc, rank);
+          return _buildTopRankItem(doc, rank);
         }
 
+        // --- LISTA PADRÃO (4º em diante) ---
+        // Sem foto, apenas Nome, Time e Estatística
         return Column(
           children: [
-            _buildPlayerItem(doc, rank),
-            const Divider(height: 1, indent: 70),
+            _buildCompactPlayerItem(doc, rank),
+            const Divider(height: 1, indent: 60), // Indent ajustado
           ],
         );
       },
@@ -202,96 +208,87 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
       statLabel: widget.statLabel ?? '',
       statIcon: icon,
       customColor: customColor,
-      isPlayer: true,
+      isPlayer: true, // Garante o recorte circular na foto
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id))),
     );
   }
 
-  Widget _buildPlayerItem(DocumentSnapshot doc, int rank) {
+  Widget _buildCompactPlayerItem(DocumentSnapshot doc, int rank) {
     final data = doc.data() as Map<String, dynamic>;
     final bool isStaff = data['is_staff'] ?? false;
     final String name = data['name'] ?? 'Desconhecido';
-    final String displayName = isStaff ? '$name (Comissão)' : "${data['jersey_number'] ?? '-'} $name";
-    final String photoUrl = data['photo_url'] ?? '';
     final String teamName = data['team_name'] ?? '';
     final String shieldUrl = data['team_shield_url'] ?? '';
     final isAdmin = Provider.of<AuthService>(context).isAuthenticated;
 
+    // Definição do valor (Trailing)
     Widget trailing;
-    
     if (widget.isStatusList) {
+      // Lógica de ícones para cartões (mantida)
+      int y = (data['yellow_cards'] as num?)?.toInt() ?? 0;
+      int r = (data['red_cards'] as num?)?.toInt() ?? 0;
+      List<Widget> icons = [];
+      
       if (widget.isSuspendedTab) {
-        int r = (data['red_cards'] as num?)?.toInt() ?? 0;
-        int y = (data['yellow_cards'] as num?)?.toInt() ?? 0;
-        List<Widget> icons = [];
-        
-        if (r > 0) icons.add(const Icon(Icons.style, color: Colors.red, size: 20));
-        
-        int yellowLimit = AdminService.suspensionYellowCards;
-        if (yellowLimit <= 0) yellowLimit = 3;
-        int yellowToShow = 0;
-        if (y >= yellowLimit) yellowToShow = yellowLimit;
-        else if (r == 0) yellowToShow = yellowLimit;
-
-        if (yellowToShow > 0) {
-          if (icons.isNotEmpty) icons.add(const SizedBox(width: 6));
-          for (int i = 0; i < yellowToShow; i++) {
-             icons.add(Padding(padding: const EdgeInsets.only(left: 1.0), child: Icon(Icons.style, color: Colors.amber[700], size: 20)));
-          }
+        if (r > 0) icons.add(const Icon(Icons.style, color: Colors.red, size: 18));
+        if (y >= (AdminService.suspensionYellowCards > 0 ? AdminService.suspensionYellowCards : 3)) {
+           if (icons.isNotEmpty) icons.add(const SizedBox(width: 4));
+           icons.add(Icon(Icons.style, color: Colors.amber[700], size: 18));
         }
-        trailing = Row(mainAxisSize: MainAxisSize.min, children: icons);
       } else {
-        int y = (data['yellow_cards'] as num?)?.toInt() ?? 0;
-        List<Widget> icons = [];
-        for (int i = 0; i < y; i++) {
-           icons.add(Padding(padding: const EdgeInsets.only(left: 2.0), child: Icon(Icons.style, color: Colors.amber[700], size: 20)));
-        }
-        trailing = Row(mainAxisSize: MainAxisSize.min, children: icons);
+        for(int i=0; i<y; i++) icons.add(Icon(Icons.style, color: Colors.amber[700], size: 18));
       }
+      trailing = Row(mainAxisSize: MainAxisSize.min, children: icons);
     } else {
       final val = data[widget.statField] ?? 0;
-      trailing = Text("$val ${widget.statLabel ?? ''}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16));
+      trailing = Text(
+        "$val ${widget.statLabel ?? ''}", 
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)
+      );
     }
 
     return ListTile(
-      leading: CircleAvatar( 
-        radius: 22,
-        backgroundColor: Colors.grey[200],
-        // PERFORMANCE: Substituído CachedNetworkImageProvider por widget para controle de memória
-        child: photoUrl.isNotEmpty 
-          ? ClipOval(
-              child: CachedNetworkImage(
-                imageUrl: photoUrl,
-                width: 44, height: 44,
-                fit: BoxFit.cover,
-                memCacheWidth: 150, // Limita memória
-                cacheManager: PlayerCacheManager.instance,
-                placeholder: (context, url) => const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey),
-              ),
-            )
-          : Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey),
+      visualDensity: VisualDensity.compact, // Lista mais densa
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+      
+      // 1. LEADING: Apenas o Rank (Sem foto do jogador)
+      leading: RankIndicator(rank: rank, size: 28, fontSize: 12),
+
+      // 2. TÍTULO: Nome do Jogador
+      title: Text(
+        name,
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+          fontStyle: isStaff ? FontStyle.italic : FontStyle.normal
+        ),
       ),
-      title: Text(displayName, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
+
+      // 3. SUBTÍTULO: Escudo + Nome do Time
       subtitle: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)),
-            child: Text("$rankº", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 6),
           if (shieldUrl.isNotEmpty) ...[
             CachedNetworkImage(
-              imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain,
-              memCacheWidth: 48, // Limita memória do escudo
-              errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)
+              imageUrl: shieldUrl, 
+              width: 14, 
+              height: 14, 
+              fit: BoxFit.contain,
+              memCacheWidth: 42,
+              errorWidget: (_,__,___)=>const Icon(Icons.shield, size: 14, color: Colors.grey),
             ),
-            const SizedBox(width: 4)
+            const SizedBox(width: 4),
           ],
-          Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis)),
+          Flexible(
+            child: Text(
+              teamName,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ),
         ],
       ),
+
+      // 4. TRAILING: Estatística
       trailing: trailing,
       onTap: () {
         if (widget.isSuspendedTab && isAdmin) {

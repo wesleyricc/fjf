@@ -3,49 +3,49 @@ import 'package:flutter/material.dart';
 
 class RankIndicator extends StatelessWidget {
   final int rank;
+  final double size;
+  final double fontSize;
 
-  // Construtor constante para performance
   const RankIndicator({
-    super.key,
-    required this.rank,
+    super.key, 
+    required this.rank, 
+    this.size = 30.0,
+    this.fontSize = 14.0
   });
 
   @override
   Widget build(BuildContext context) {
-    Color backgroundColor;
-    Color textColor = Colors.white; // Padrão
+    // Cores sutis para não roubar a atenção
+    Color bgColor = Colors.grey.shade200;
+    Color textColor = Colors.black87;
+    FontWeight weight = FontWeight.bold;
 
-    switch (rank) {
-      case 1:
-        backgroundColor = const Color(0xFFFFD700); // Ouro
-        textColor = Colors.black87;
-        break;
-      case 2:
-        backgroundColor = const Color(0xFFC0C0C0); // Prata
-        textColor = Colors.black87;
-        break;
-      case 3:
-        backgroundColor = const Color(0xFFCD7F32); // Bronze
-        break;
-      default:
-        // Pega a cor secundária do tema ou usa um cinza
-        backgroundColor = const Color.fromARGB(255, 0, 0, 0);
-        // Ou use uma cor fixa: backgroundColor = Colors.blueGrey;
-        break;
+    // Destaque sutil para 1, 2, 3 (caso usados fora do HighlightCard)
+    if (rank == 1) {
+      bgColor = const Color(0xFFFFD700).withOpacity(0.2);
+      textColor = const Color(0xFFB8860B);
+    } else if (rank == 2) {
+      bgColor = const Color(0xFFC0C0C0).withOpacity(0.2);
+      textColor = Colors.grey.shade700;
+    } else if (rank == 3) {
+      bgColor = const Color(0xFFCD7F32).withOpacity(0.2);
+      textColor = const Color(0xFFA0522D);
     }
 
-    // Retorna o CircleAvatar diretamente
-    return CircleAvatar(
-      backgroundColor: backgroundColor,
-      // Define um raio mínimo para garantir tamanho consistente
-      // Radius pode ser ajustado conforme necessário
-      radius: 18, // Ajuste este valor se quiser maior/menor
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bgColor,
+        shape: BoxShape.circle,
+      ),
       child: Text(
-        rank.toString(),
+        '$rankº',
         style: TextStyle(
           color: textColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 14, // Ajuste se necessário com o radius
+          fontWeight: weight,
+          fontSize: fontSize,
         ),
       ),
     );

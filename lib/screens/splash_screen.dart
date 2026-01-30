@@ -139,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   const SizedBox(height: 10),
                   const HomeNewsFeed(),
                   const SizedBox(height: 20),
-                  _buildSectionTitle(context, "Equipes Participantes"),
+                  _buildSectionTitle(context, "Equipes"),
                   _buildTeamsGrid(),
                   const SizedBox(height: 40),
                   const HomeFooter(), 
@@ -250,7 +250,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5, spreadRadius: 1)],
                     ),
                     child: SizedBox(
-                      height: 90, width: 90,
+                      height: 130, width: 130,
                       child: CachedNetworkImage(
                         imageUrl: team.shieldUrl,
                         fit: BoxFit.contain,

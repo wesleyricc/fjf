@@ -12,14 +12,21 @@ import '../models/team_model.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/rank_indicator.dart';
-import '../widgets/rank_highlight_card.dart'; // <-- Novo Widget
+import '../widgets/rank_highlight_card.dart'; 
 import 'team_detail_screen.dart';
 
-class TeamStatsScreen extends StatelessWidget {
+class TeamStatsScreen extends StatefulWidget {
   const TeamStatsScreen({super.key});
 
+  @override
+  State<TeamStatsScreen> createState() => _TeamStatsScreenState();
+}
+
+class _TeamStatsScreenState extends State<TeamStatsScreen> {
+  // Controle do Toggle (False = 1ª Fase, True = Geral)
+  bool _showOverall = false; 
+
   Future<void> _showHelp(BuildContext context) async {
-    // ... (A sua função de ajuda, sem alterações)
     return showDialog<void>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -66,9 +73,7 @@ class TeamStatsScreen extends StatelessWidget {
           actions: <Widget>[
             TextButton(
               child: const Text('Fechar'),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(),
             ),
           ],
         );
@@ -94,7 +99,30 @@ class TeamStatsScreen extends StatelessWidget {
               Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
             ],
           ),
-          actions: [IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context))],
+          actions: [
+            // --- TOGGLE 1ª FASE vs GERAL ---
+            Row(
+              children: [
+                Text(
+                  _showOverall ? "Geral" : "1ª Fase",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                Switch(
+                  value: _showOverall,
+                  activeColor: Colors.white,
+                  activeTrackColor: Colors.greenAccent,
+                  inactiveThumbColor: Colors.white,
+                  inactiveTrackColor: Colors.white24,
+                  onChanged: (val) {
+                    setState(() {
+                      _showOverall = val;
+                    });
+                  },
+                ),
+              ],
+            ),
+            IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
+          ],
           bottom: const TabBar(
             isScrollable: true,
             indicatorColor: Colors.white,
@@ -119,8 +147,21 @@ class TeamStatsScreen extends StatelessWidget {
 
             return TabBarView(
               children: [
-                _buildRankingList(context, allTeams, (t) => t.goalsFor, 'GP', Icons.sports_soccer, descending: true),
-                _buildRankingList(context, allTeams, (t) => t.goalsAgainst, 'GC', Icons.gpp_good, descending: false), 
+                // Melhor Ataque (GP)
+                _buildRankingList(
+                  context, allTeams, 
+                  (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 
+                  'GP', Icons.sports_soccer, descending: true
+                ),
+                // Melhor Defesa (GC)
+                _buildRankingList(
+                  context, allTeams, 
+                  (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 
+                  'GC', Icons.gpp_good, descending: false
+                ), 
+                // Cartões e PD (Estes são acumulativos globais, não mudam com o toggle 
+                // pois são transacionais, a menos que você queira implementar lógica separada para eles também.
+                // Mantive o comportamento padrão global aqui).
                 _buildRankingList(context, allTeams, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800]),
                 _buildRankingList(context, allTeams, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red),
                 _buildRankingList(context, allTeams, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true),
@@ -146,7 +187,6 @@ class TeamStatsScreen extends StatelessWidget {
       Color? color
     }
   ) {
-    // 1. Filtra e Ordena
     var list = List<Team>.from(teams);
     if (filterZero) {
       list = list.where((t) => valueSelector(t) > 0).toList();
@@ -184,7 +224,7 @@ class TeamStatsScreen extends StatelessWidget {
           );
         }
 
-        // --- RESTO DA LISTA (Padrão) ---
+        // --- RESTO DA LISTA ---
         Widget trailing;
         if (color != null) {
           trailing = Row(mainAxisSize: MainAxisSize.min, children: [

@@ -45,7 +45,7 @@ class RankHighlightCard extends StatelessWidget {
         bgColor = const Color(0xFFFFD700); // Ouro
         textColor = Colors.black87;
         iconColor = Colors.black54;
-        scale = 1.05;
+        scale = 1.0;
         break;
       case 2:
         bgColor = const Color(0xFFC0C0C0); // Prata
@@ -57,7 +57,7 @@ class RankHighlightCard extends StatelessWidget {
         bgColor = const Color(0xFFCD7F32); // Bronze
         textColor = Colors.white;
         iconColor = Colors.white70;
-        scale = 0.95;
+        scale = 1.0;
         break;
       default:
         bgColor = Colors.white;

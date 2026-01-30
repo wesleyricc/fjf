@@ -4,7 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../screens/player_profile_screen.dart';
 import '../utils/custom_cache_manager.dart';
-import '../widgets/rank_highlight_card.dart'; 
+import '../widgets/rank_highlight_card.dart';
+import '../widgets/rank_indicator.dart';
 
 class TotalCardsRankList extends StatefulWidget {
   final Query baseQuery;
@@ -47,13 +48,7 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
         final int total = y + r;
 
         if (total > 0) {
-          temp.add({
-            'doc': doc,
-            'data': data,
-            'total': total,
-            'y': y,
-            'r': r,
-          });
+          temp.add({'doc': doc, 'data': data, 'total': total, 'y': y, 'r': r});
         }
       }
 
@@ -105,13 +100,12 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
         final data = item['data'];
         final doc = item['doc'] as DocumentSnapshot;
         final rank = index + 1;
-        
         final int y = item['y'];
         final int r = item['r'];
 
+        // --- DESTAQUE TOP 3 ---
         if (index < 3) {
           Color detailColor = (rank == 3) ? Colors.white70 : Colors.black54;
-
           return RankHighlightCard(
             rank: rank,
             title: data['name'] ?? 'Nome',
@@ -137,73 +131,49 @@ class _TotalCardsRankListState extends State<TotalCardsRankList> with AutomaticK
           );
         }
 
+        // --- LISTA COMPACTA (4º+) ---
         final name = data['name'] ?? 'Nome';
-        final isStaff = data['is_staff'] ?? false;
-        final photoUrl = data['photo_url'] ?? '';
         final shieldUrl = data['team_shield_url'] ?? '';
         final teamName = data['team_name'] ?? '';
 
         return Column(
           children: [
             ListTile(
-              leading: CircleAvatar(
-                radius: 22,
-                backgroundColor: Colors.grey[200],
-                // PERFORMANCE: Controle de memória aplicado
-                child: photoUrl.isNotEmpty 
-                  ? ClipOval(
-                      child: CachedNetworkImage(
-                        imageUrl: photoUrl,
-                        width: 44, height: 44,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 150,
-                        cacheManager: PlayerCacheManager.instance,
-                        placeholder: (context, url) => const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                        errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey),
-                      ),
-                    )
-                  : Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey),
-              ),
-              title: Text(name, style: TextStyle(fontStyle: isStaff ? FontStyle.italic : FontStyle.normal)),
+              visualDensity: VisualDensity.compact,
+              // LEADING: Rank Indicator
+              leading: RankIndicator(rank: rank, size: 28, fontSize: 12),
+              
+              // TITLE: Nome
+              title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              
+              // SUBTITLE: Time
               subtitle: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(4)),
-                    child: Text("$rankº", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 6),
                   if (shieldUrl.isNotEmpty) ...[
                     CachedNetworkImage(
-                      imageUrl: shieldUrl, width: 16, height: 16, fit: BoxFit.contain, 
-                      memCacheWidth: 48,
-                      errorWidget: (_,__,___)=>const Icon(Icons.shield, size:16)
+                      imageUrl: shieldUrl, width: 14, height: 14, fit: BoxFit.contain, 
+                      memCacheWidth: 42,
+                      errorWidget: (_,__,___)=>const Icon(Icons.shield, size:14, color:Colors.grey)
                     ),
                     const SizedBox(width: 4)
                   ],
-                  Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis)),
+                  Flexible(child: Text(teamName, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey[600]))),
                 ],
               ),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
+              
+              // TRAILING: Cartões
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('${item['total']} Cartões', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('$y', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      Icon(Icons.style, color: Colors.yellow[700], size: 12),
-                      const SizedBox(width: 4),
-                      Text('$r', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      const Icon(Icons.style, color: Colors.red, size: 12),
-                    ],
-                  )
+                  Text('${item['total']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(width: 8),
+                  if (y > 0) ...[Text('$y', style: const TextStyle(fontSize: 11, color: Colors.grey)), Icon(Icons.style, color: Colors.amber[700], size: 14)],
+                  if (r > 0) ...[const SizedBox(width: 4), Text('$r', style: const TextStyle(fontSize: 11, color: Colors.grey)), const Icon(Icons.style, color: Colors.red, size: 14)],
                 ],
               ),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id))),
             ),
-            const Divider(height: 1, indent: 70),
+            const Divider(height: 1, indent: 60),
           ],
         );
       },

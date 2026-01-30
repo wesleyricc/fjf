@@ -66,23 +66,23 @@ class AppDrawer extends StatelessWidget {
 
               // --- ITENS DE NAVEGAÇÃO ---
               _buildDrawerItem(context, Icons.home, 'Início', '/'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.calendar_today, 'Tabela de Jogos', '/fixtures'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.leaderboard, 'Classificação', '/standings'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.group, 'Equipes', '/teams'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.query_stats, 'Estatísticas das Equipes', '/team-stats'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.person_search, 'Estatísticas dos Jogadores', '/player-stats'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.history_toggle_off, 'Histórico de Suspensões', '/suspension-history'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.compare_arrows, 'Comparador de Jogadores', '/player-comparison'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
               _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
-              const Divider(height: 1, indent: 16, endIndent: 16),
+              const Divider(height: 10, indent: 16, endIndent: 16),
 
               // --- ÁREA ADMIN ---
               ListTile(
