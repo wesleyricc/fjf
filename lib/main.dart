@@ -26,6 +26,7 @@ import 'screens/suspension_history_screen.dart';
 import 'screens/player_comparison_screen.dart';
 import 'screens/report_bug_screen.dart';
 import 'screens/admin_menu_screen.dart';
+import 'screens/photo_sales_screen.dart';
 
 void _logFirestoreIndexError(Object error) {
   final e = error.toString();
@@ -120,6 +121,7 @@ class FjfApp extends StatelessWidget {
           '/player-comparison': (ctx) => const PlayerComparisonScreen(),
           '/report-bug': (ctx) => const ReportBugScreen(),
           '/admin-menu': (ctx) => const AdminMenuScreen(),
+          '/photo-sales': (ctx) => const PhotoSalesScreen(),
         },
       ),
     );

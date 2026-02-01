@@ -17,6 +17,7 @@ import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/home_live_video_card.dart';
 import '../widgets/home_news_feed.dart';
 import '../widgets/home_footer.dart';
+import '../widgets/photo_store_banner.dart';
 import 'team_detail_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -31,6 +32,8 @@ class _SplashScreenState extends State<SplashScreen> {
   bool _isDrawerOpen = false; 
   html.Event? _installPromptEvent;
   bool _showInstallButton = false;
+  bool _hasError = false; 
+  String _debugStatus = "Iniciando...";
 
   @override
   void initState() {
@@ -40,6 +43,37 @@ class _SplashScreenState extends State<SplashScreen> {
         e.preventDefault();
         if (mounted) setState(() { _installPromptEvent = e; _showInstallButton = true; });
       });
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeData();
+    });
+  }
+
+  Future<void> _initializeData() async {
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    
+    if (service.currentSeasonId.isEmpty) {
+      setState(() => _debugStatus = "Buscando temporadas no Firebase...");
+      
+      try {
+        await service.init();
+        
+        if (mounted) {
+          if (service.availableSeasons.isNotEmpty) {
+            setState(() => _debugStatus = "Sucesso! ${service.availableSeasons.length} encontradas.");
+            // O build vai redesenhar e entrar no app automaticamente
+          } else {
+            setState(() => _debugStatus = "Conectado, mas NENHUMA temporada encontrada na coleção 'championships'.");
+            setState(() => _hasError = true);
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+           setState(() => _debugStatus = "Erro Crítico: $e");
+           setState(() => _hasError = true);
+        }
+      }
     }
   }
 
@@ -53,8 +87,6 @@ class _SplashScreenState extends State<SplashScreen> {
     final championshipService = Provider.of<ChampionshipService>(context, listen: false);
     final currentId = championshipService.currentSeasonId;
     
-    // ALTERAÇÃO: Removemos a injeção manual do LEGACY_ID.
-    // Agora usamos apenas a lista vinda do serviço (banco padronizado).
     final List<Map<String, dynamic>> allSeasons = championshipService.availableSeasons;
 
     if (allSeasons.isEmpty) {
@@ -93,6 +125,57 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final championshipService = Provider.of<ChampionshipService>(context);
+    final seasonId = championshipService.currentSeasonId;
+
+    // TELA DE CARREGAMENTO COM DIAGNÓSTICO
+    if (seasonId.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.white, // Fundo branco para ler bem
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_hasError) 
+                  const Icon(Icons.error_outline, size: 60, color: Colors.red)
+                else 
+                  const CircularProgressIndicator(color: Colors.green),
+                
+                const SizedBox(height: 20),
+                
+                // --- AQUI ESTÁ O SEGREDO: MOSTRAR O STATUS NA TELA ---
+                Text(
+                  _debugStatus,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _hasError ? Colors.red : Colors.grey[700],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14
+                  ),
+                ),
+                
+                const SizedBox(height: 20),
+                
+                if (_hasError)
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() { 
+                        _hasError = false; 
+                        _debugStatus = "Tentando novamente..."; 
+                      });
+                      _initializeData();
+                    },
+                    child: const Text("Tentar Novamente"),
+                  )
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       extendBodyBehindAppBar: true, 
       appBar: AppBar(
@@ -100,11 +183,12 @@ class _SplashScreenState extends State<SplashScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Trocar Temporada',
-            onPressed: () => _showSeasonSelectionDialog(context),
-          ),
+          if (seasonId.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: 'Trocar Temporada',
+              onPressed: () => _showSeasonSelectionDialog(context),
+            ),
         ],
       ),
       drawer: const AppDrawer(),
@@ -120,6 +204,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 children: [
                   _buildModernHeader(),
                   
+                  // Botão de Instalação PWA
                   if (_showInstallButton)
                     Container(
                       margin: const EdgeInsets.all(16),
@@ -135,19 +220,60 @@ class _SplashScreenState extends State<SplashScreen> {
                       ),
                     ),
 
-                  HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
-                  const SizedBox(height: 10),
-                  const HomeNewsFeed(),
-                  const SizedBox(height: 20),
-                  _buildSectionTitle(context, "Equipes"),
-                  _buildTeamsGrid(),
+                  // --- ÁREA DE CONTEÚDO (PROTEGIDA) ---
+                  // Se existir temporada, mostra os widgets de dados.
+                  // Se não existir (seasonId vazio), mostra mensagem de boas-vindas.
+                  if (seasonId.isNotEmpty) ...[
+                    HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
+                    const SizedBox(height: 10),
+                    const HomeNewsFeed(),
+                    
+                    const SizedBox(height: 20),
+                    _buildSectionTitle(context, "Loja de Fotos"),
+                    const PhotoStoreBanner(),
+                    const SizedBox(height: 20),
+                    
+                    _buildSectionTitle(context, "Equipes"),
+                    _buildTeamsGrid(),
+                  ] else ...[
+                    // --- ESTADO VAZIO (BOAS VINDAS) ---
+                    Padding(
+                      padding: const EdgeInsets.all(30.0),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.sports_soccer, size: 80, color: Colors.grey),
+                          const SizedBox(height: 20),
+                          const Text(
+                            "Bem-vindo ao App FJF!",
+                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            "Nenhuma temporada ativa encontrada.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            "Acesse o Menu Lateral > Admin para criar a primeira temporada.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    )
+                  ],
+
                   const SizedBox(height: 40),
                   const HomeFooter(), 
                 ],
               ),
             ),
           ),
-          const SponsorBannerRotator(),
+          
+          // Só mostra o banner de patrocinadores se houver temporada
+          if (seasonId.isNotEmpty)
+            const SponsorBannerRotator(),
         ],
       ),
     );
@@ -158,6 +284,10 @@ class _SplashScreenState extends State<SplashScreen> {
     final int year = championshipService.currentSeasonYear;
     final String honoree = championshipService.currentSeasonHonoree;
     
+    // Se não tiver temporada, usa valores genéricos
+    final displayYear = (year > 0) ? year.toString() : "";
+    final displayHonoree = honoree.isNotEmpty ? honoree : 'Bem-vindo';
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -177,13 +307,14 @@ class _SplashScreenState extends State<SplashScreen> {
               const SizedBox(height: 10),
               Image.asset('assets/logo3_fjf.png', height: 110, errorBuilder: (_,__,___) => const Icon(Icons.sports_soccer, size: 100, color: Colors.white)),
               const SizedBox(height: 16),
-              Text('FJF $year', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2.0)),
+              // Só mostra o ano se ele existir
+              Text('FJF $displayYear', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2.0)),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
                 child: Text(
-                  honoree.isNotEmpty ? honoree : 'O Maior Campeonato da Região',
+                  displayHonoree,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -212,9 +343,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Widget _buildTeamsGrid() {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
+    if (seasonId.isEmpty) return const SizedBox();
     final firestoreService = FirestoreService();
 
-    // streamTeams já está refatorado para buscar na subcoleção da temporada atual
     return StreamBuilder<List<Team>>(
       stream: firestoreService.streamTeams(seasonId),
       builder: (context, snapshot) {
@@ -236,7 +367,6 @@ class _SplashScreenState extends State<SplashScreen> {
           itemCount: teams.length,
           itemBuilder: (context, index) {
             final team = teams[index];
-            
             return InkWell(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team))),
               child: Column(

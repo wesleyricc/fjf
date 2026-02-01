@@ -12,6 +12,7 @@ import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'admin_media_screen.dart';
 import 'manage_seasons_screen.dart';
 import '../services/migration_service.dart'; // Para o botão de migração
+import 'admin_upload_photo_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -289,6 +290,15 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             subtitle: const Text('Adiciona/Edita notícias e vídeos da tela inicial'),
             trailing: const Icon(Icons.arrow_forward_ios),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminMediaScreen())),
+          ),
+
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.camera_enhance, color: Colors.purple), // Ícone de câmera
+            title: const Text('Área do Fotógrafo'),
+            subtitle: const Text('Enviar fotos para venda (Loja)'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminUploadPhotoScreen())),
           ),
           const Divider(),
           ListTile(

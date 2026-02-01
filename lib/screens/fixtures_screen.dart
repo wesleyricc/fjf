@@ -15,6 +15,7 @@ import '../models/match_model.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/modern_fixtures_nav.dart';
+import '../widgets/palpitometro_widget.dart'; // <--- 1. IMPORT NOVO
 import 'admin_match_screen.dart';
 import 'match_stats_screen.dart';
 import 'team_detail_screen.dart';
@@ -73,7 +74,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
        try {
          final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
          
-         // ALTERAÇÃO: Caminho padronizado (sem verificação de legacy)
          final docRef = FirebaseFirestore.instance
              .collection('championships')
              .doc(seasonId)
@@ -99,7 +99,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
        try {
          final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
          
-         // ALTERAÇÃO: Caminho padronizado para leitura de stats
          final docRef = FirebaseFirestore.instance
              .collection('championships')
              .doc(seasonId)
@@ -123,7 +122,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
             title: const Text('Editar Súmula'), 
             onTap: () { 
               Navigator.pop(ctx); 
-              // Passa o Snapshot direto, conforme o AdminMatchScreen refatorado espera
               Navigator.push(context, MaterialPageRoute(builder: (_) => AdminMatchScreen(match: matchSnap))); 
             }
           ),
@@ -163,7 +161,7 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
     final authService = Provider.of<AuthService>(context);
     final seasonId = championshipService.currentSeasonId;
     final seasonName = championshipService.currentSeasonName;
-    final firestoreService = FirestoreService(); // Serviço já refatorado
+    final firestoreService = FirestoreService();
 
     String? phaseFilter = (_selectedPhase == TournamentPhase.first) ? 'first' : null;
     if (_selectedPhase == TournamentPhase.second) {
@@ -248,7 +246,7 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
                   padding: const EdgeInsets.fromLTRB(0, 8, 0, 80),
                   itemCount: matches.length,
                   itemBuilder: (context, index) {
-                    return _buildMatchCard(matches[index], authService.isAuthenticated);
+                    return _buildMatchCard(matches[index], authService.isAuthenticated, seasonId);
                   },
                 );
               },
@@ -267,12 +265,10 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildMatchCard(MatchModel match, bool isAdmin) {
+  Widget _buildMatchCard(MatchModel match, bool isAdmin, String seasonId) {
+    // Cores e Status
     Color statusColor = Colors.grey;
-    IconData statusIcon = Icons.schedule;
-    String statusText = ''; // Padrão vazio, só preenche se InProgress ou Finished
-
-    // Formatadores
+    String statusText = '';
     String dateText = 'DATA A DEFINIR';
     String timeText = '--:--';
 
@@ -282,15 +278,10 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
     }
 
     if (match.isFinished) {
-      statusColor = Colors.green; 
-      statusIcon = Icons.check_circle; 
-      statusText = 'FINALIZADO';
+      statusColor = Colors.green; statusText = 'FINALIZADO';
     } else if (match.isInProgress) {
-      statusColor = Colors.orange; 
-      statusIcon = Icons.timer; 
-      statusText = 'EM ANDAMENTO';
-    } 
-    // Se for pendente, statusText fica vazio, pois o horário já está no header
+      statusColor = Colors.orange; statusText = 'EM ANDAMENTO';
+    }
 
     return Card(
       elevation: 2,
@@ -299,128 +290,80 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
       child: InkWell(
         onTap: () => _handleMatchTap(match, isAdmin),
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // --- 1. CABEÇALHO (Data e Hora) ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          children: [
+            // CONTEÚDO PRINCIPAL DO CARD (Data, Local, Placar, Times)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 children: [
-                  Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    dateText,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[800], fontWeight: FontWeight.bold),
-                  ),
+                  // Data e Hora
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Text(dateText, style: TextStyle(fontSize: 12, color: Colors.grey[800], fontWeight: FontWeight.bold)),
+                    Padding(padding: const EdgeInsets.symmetric(horizontal: 8.0), child: Text("|", style: TextStyle(color: Colors.grey[400], fontSize: 12))),
+                    Icon(Icons.access_time, size: 12, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Text(timeText, style: TextStyle(fontSize: 12, color: Colors.grey[800], fontWeight: FontWeight.bold)),
+                  ]),
                   
-                  // Separador visual
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text("|", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-                  ),
-
-                  Icon(Icons.access_time, size: 12, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    timeText,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[800], fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 6), // Espaço entre data/hora e local
-
-              // --- 2. LOCAL (Linha abaixo) ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      match.location.toUpperCase(),
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-
-              const Divider(height: 24),
-              
-              // --- 3. TIMES E PLACAR ---
-              Row(
-                children: [
-                  // TIME CASA
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      children: [
-                        if(match.homeTeamShield.isNotEmpty) 
-                          CachedNetworkImage(imageUrl: match.homeTeamShield, width: 45, height: 45, fit: BoxFit.contain),
-                        const SizedBox(height: 6),
-                        Text(match.homeTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(height: 6),
                   
-                  // PLACAR CENTRAL
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey.shade300)
-                          ),
-                          child: Text(
-                            match.formattedScore,
-                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 1),
-                          ),
-                        ),
-                        
-                        // Mostra status APENAS se estiver Em Andamento ou Finalizado
-                        if (statusText.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          if (match.isInProgress)
-                            FadeTransition(
-                              opacity: _blinkAnimationController,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.fiber_manual_record, size: 10, color: statusColor),
-                                  const SizedBox(width: 4),
-                                  Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold))
-                                ],
-                              ),
-                            )
-                          else
-                            Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold))
-                        ]
-                      ],
-                    ),
-                  ),
-
-                  // TIME FORA
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      children: [
-                        if(match.awayTeamShield.isNotEmpty) 
-                          CachedNetworkImage(imageUrl: match.awayTeamShield, width: 45, height: 45, fit: BoxFit.contain),
-                        const SizedBox(height: 6),
-                        Text(match.awayTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  ),
+                  // Local
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Flexible(child: Text(match.location.toUpperCase(), style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+                  ]),
+                  
+                  const Divider(height: 24),
+                  
+                  // Times e Placar
+                  Row(children: [
+                    // Time Casa
+                    Expanded(flex: 4, child: Column(children: [
+                      if(match.homeTeamShield.isNotEmpty) CachedNetworkImage(imageUrl: match.homeTeamShield, width: 45, height: 45, fit: BoxFit.contain),
+                      const SizedBox(height: 6),
+                      Text(match.homeTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    ])),
+                    // Placar
+                    Expanded(flex: 3, child: Column(children: [
+                      Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)), child: Text(match.formattedScore, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 1))),
+                      if (statusText.isNotEmpty) ...[const SizedBox(height: 6), Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold))]
+                    ])),
+                    // Time Fora
+                    Expanded(flex: 4, child: Column(children: [
+                      if(match.awayTeamShield.isNotEmpty) CachedNetworkImage(imageUrl: match.awayTeamShield, width: 45, height: 45, fit: BoxFit.contain),
+                      const SizedBox(height: 6),
+                      Text(match.awayTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    ])),
+                  ]),
                 ],
               ),
-            ],
-          ),
+            ),
+            
+            // --- PALPITÔMETRO ---
+            // REMOVI O: && !match.isFinished
+            // Agora aparece sempre que seasonId existir
+            if (seasonId.isNotEmpty) ...[
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: PalpitometroWidget(
+                  seasonId: seasonId,
+                  matchId: match.id,
+                  homeTeamName: match.homeTeamName,
+                  awayTeamName: match.awayTeamName,
+                  homeVotes: match.votesHome,
+                  awayVotes: match.votesAway,
+                  homeColor: Colors.blue.shade700,
+                  awayColor: Colors.red.shade700,
+                  isClosed: !match.isPending,
+                ),
+              ),
+            ]
+          ],
         ),
       ),
     );

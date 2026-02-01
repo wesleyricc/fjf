@@ -14,7 +14,7 @@ class ChampionshipService with ChangeNotifier {
   String _currentSeasonHonoree = '';
   
   List<Map<String, dynamic>> _availableSeasons = [];
-  bool _isLoading = true;
+  bool _isLoading = false; // Começa falso, a Splash que ativa
 
   // Getters
   String get currentSeasonId => _currentSeasonId;
@@ -25,20 +25,27 @@ class ChampionshipService with ChangeNotifier {
   List<Map<String, dynamic>> get availableSeasons => _availableSeasons;
   bool get isLoading => _isLoading;
 
-  ChampionshipService() {
-    _init();
-  }
+  // --- ALTERAÇÃO 1: Construtor Vazio (Não chama init aqui) ---
+  ChampionshipService(); 
 
-  Future<void> _init() async {
+  // --- ALTERAÇÃO 2: Método Público (init) ---
+  Future<void> init() async {
+    // Evita chamadas duplicadas
+    if (_isLoading) return; 
+
     _isLoading = true;
-    notifyListeners();
+    // O notifyListeners aqui é opcional na primeira chamada, 
+    // mas bom para garantir que a UI mostre o loading
+    notifyListeners(); 
 
     try {
       // Busca todas as temporadas padronizadas ordenadas por ano (decrescente)
       final snapshot = await _firestore
           .collection('championships')
-          .orderBy('year', descending: true)
+          //.orderBy('year', descending: true)
           .get();
+
+      print("SERVICE INIT: Encontrados ${snapshot.docs.length} documentos.");
 
       _availableSeasons = snapshot.docs.map((doc) {
         final data = doc.data();
@@ -117,7 +124,7 @@ class ChampionshipService with ChangeNotifier {
       await batch.commit();
       
       // Recarrega estado local para refletir a mudança na UI
-      await _init();
+      await init(); // Chama o init público agora
       // Força a seleção da nova temporada ativa
       await setSeason(seasonId); 
 
@@ -139,7 +146,7 @@ class ChampionshipService with ChangeNotifier {
       _currentSeasonYear = season['year'];
       _currentSeasonHonoree = season['honoree'] ?? '';
       
-      // Carrega regras específicas desta temporada (AdminService já foi refatorado para não usar legacy)
+      // Carrega regras específicas desta temporada
       await AdminService.loadAllRules(seasonId);
     }
     notifyListeners();
@@ -161,7 +168,7 @@ class ChampionshipService with ChangeNotifier {
         'created_at': FieldValue.serverTimestamp(),
       });
       
-      // Copia dados da temporada ATUAL para a NOVA (se solicitado e se houver atual selecionada)
+      // Copia dados da temporada ATUAL para a NOVA
       if (copyTeams && _currentSeasonId.isNotEmpty) {
         await FirestoreService().copySeasonData(
           sourceSeasonId: _currentSeasonId,
@@ -170,7 +177,7 @@ class ChampionshipService with ChangeNotifier {
         );
       }
       
-      await _init();
+      await init();
       return "Sucesso";
     } catch (e) {
       return "Erro: $e";
@@ -183,7 +190,7 @@ class ChampionshipService with ChangeNotifier {
         'name': name,
         'honoree': honoree,
       });
-      await _init(); 
+      await init(); 
       if (_currentSeasonId == seasonId) _setSeasonInternal(seasonId);
       return "Sucesso";
     } catch (e) {
