@@ -8,12 +8,18 @@ import 'package:intl/date_symbol_data_local.dart';
 // Configurações
 import 'firebase_options.dart'; 
 import 'firebase_options_test.dart'; 
+import 'screens/fantasy_admin_control_screen.dart';
+import 'screens/fantasy_history_screen.dart';
+import 'screens/fantasy_ranking_screen.dart';
+import 'screens/fantasy_rules_screen.dart';
 import 'theme/app_theme.dart'; // <-- Import do Tema
 
 // Services
 import 'services/auth_service.dart';
 import 'services/notification_service.dart';
 import 'services/championship_service.dart';
+import 'services/fantasy_service.dart';      // <-- Novo
+import 'services/fantasy_auth_service.dart'; // <-- Novo
 
 // Screens
 import 'screens/splash_screen.dart';
@@ -27,6 +33,9 @@ import 'screens/player_comparison_screen.dart';
 import 'screens/report_bug_screen.dart';
 import 'screens/admin_menu_screen.dart';
 import 'screens/photo_sales_screen.dart';
+import 'screens/fantasy_home_screen.dart';
+import 'screens/fantasy_market_screen.dart';
+import 'screens/fantasy_lineup_screen.dart';
 
 void _logFirestoreIndexError(Object error) {
   final e = error.toString();
@@ -78,8 +87,20 @@ class FjfApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        // Services existentes
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ChampionshipService()),
+        
+        // --- NOVOS SERVICES DO FANTASY ---
+        Provider(create: (_) => FantasyService()),
+        
+        // FantasyAuthService depende de FantasyService, por isso usamos o contexto para injetar
+        ChangeNotifierProvider(
+          create: (context) => FantasyAuthService(
+            context.read<FantasyService>(),
+          ),
+        ),
+        // ---------------------------------
       ],
       child: MaterialApp(
         title: 'FJF 2025',
@@ -122,6 +143,13 @@ class FjfApp extends StatelessWidget {
           '/report-bug': (ctx) => const ReportBugScreen(),
           '/admin-menu': (ctx) => const AdminMenuScreen(),
           '/photo-sales': (ctx) => const PhotoSalesScreen(),
+          '/fantasy-home': (ctx) => const FantasyHomeScreen(),
+          '/fantasy-market': (ctx) => const FantasyMarketScreen(),
+          '/fantasy-lineup': (ctx) => const FantasyLineupScreen(),
+          '/fantasy-rankings': (ctx) => const FantasyRankingScreen(),
+          '/fantasy-admin': (ctx) => const FantasyAdminControlScreen(),
+          '/fantasy-rules': (ctx) => const FantasyRulesScreen(),
+          '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
         },
       ),
     );

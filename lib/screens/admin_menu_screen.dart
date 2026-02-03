@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
-import 'package:provider/provider.dart'; // <-- Importante
-import '../services/auth_service.dart';   // <-- Importante
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 import '../services/admin_service.dart';
+import '../services/fantasy_service.dart'; // <-- Novo Import necessário
+import 'fantasy_admin_control_screen.dart'; // <-- Novo Import necessário
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
 import 'playoff_rules_screen.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'admin_media_screen.dart';
 import 'manage_seasons_screen.dart';
-import '../services/migration_service.dart'; // Para o botão de migração
+import '../services/migration_service.dart';
 import 'admin_upload_photo_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
@@ -29,6 +31,32 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     final bytes = utf8.encode(password); 
     final digest = sha256.convert(bytes); 
     return digest.toString();
+  }
+
+  // --- AÇÃO RÁPIDA: SINCRONIZAR ATLETAS ---
+  Future<void> _syncMarketPlayers(BuildContext context) async {
+    setState(() => _isSaving = true);
+    try {
+      final fantasyService = Provider.of<FantasyService>(context, listen: false);
+      // Ajuste o ID da temporada conforme sua configuração ('2026' ou '2025_fjf')
+      final result = await fantasyService.populateMarketFromSeason('2026'); 
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result), 
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          )
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   Future<void> _showChangeVideoIdDialog() async {
@@ -82,9 +110,9 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vídeo atualizado!')));
                       }
                     } catch (e) {
-                       if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                        if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
                     } finally {
-                       if (mounted) setDialogState(() => isLoading = false);
+                        if (mounted) setDialogState(() => isLoading = false);
                     }
                   },
                   child: isLoading ? const CircularProgressIndicator(strokeWidth: 2) : const Text('Salvar'),
@@ -98,10 +126,8 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
 
   Future<void> _showChangePasswordDialog() async {
-    // --- CORREÇÃO: Obtém o usuário do AuthService ---
     final authService = Provider.of<AuthService>(context, listen: false);
     final String? currentAdminUsername = authService.adminUsername;
-    // ------------------------------------------------
 
     if (currentAdminUsername == null) return;
     
@@ -155,9 +181,9 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha alterada!')));
                       }
                     } catch (e) {
-                       if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                        if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
                     } finally {
-                       if (mounted) setDialogState(() => isLoading = false);
+                        if (mounted) setDialogState(() => isLoading = false);
                     }
                   },
                   child: const Text('Alterar'),
@@ -170,7 +196,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  // --- INÍCIO DA ALTERAÇÃO (Diálogo de Definir Padrão) ---
   Future<void> _showSetDefaultViewDialog() async {
     bool isDialogSaving = false;
     
@@ -276,9 +301,9 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
               subtitle: const Text('Criar novos anos (2026) e alternar visualização'),
               trailing: const Icon(Icons.arrow_forward_ios),
               onTap: () {
-                 Navigator.of(context).push(MaterialPageRoute(
-                   builder: (ctx) => const ManageSeasonsScreen(),
-                 ));
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (ctx) => const ManageSeasonsScreen(),
+                  ));
               },
             ),
           ),
@@ -300,6 +325,37 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             trailing: const Icon(Icons.arrow_forward_ios),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminUploadPhotoScreen())),
           ),
+          
+          const Divider(),
+
+          // --- SEÇÃO GESTÃO DO FANTASY (NOVA) ---
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8.0),
+            child: Text("GESTÃO DO FANTASY", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+          
+          // 1. PAINEL DE CONTROLE (SUBSTITUI O BOTÃO DE FECHAR RODADA SOLTO)
+          Card(
+            color: Colors.blue[50],
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Colors.blue,
+                child: Icon(Icons.sports_soccer, color: Colors.white),
+              ),
+              title: const Text("Painel de Controle Fantasy", style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text("Abrir/Fechar Mercado, Processar e Virar Rodada."),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.blue),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FantasyAdminControlScreen()),
+                );
+              },
+            ),
+          ),
+
           const Divider(),
           ListTile(
             leading: const Icon(Icons.live_tv, color: Colors.red),
@@ -349,7 +405,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             onTap: _isSaving ? null : _showChangePasswordDialog,
           ),
           const SizedBox(height: 30),
-
 
           // --- BOTÃO DE MIGRAÇÃO (Uso Único/Raro) ---
           Card(
