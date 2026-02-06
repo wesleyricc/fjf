@@ -1,25 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/fantasy_models.dart';
+import 'fantasy_service.dart'; // Importar para buscar config
 
 class FantasyAdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FantasyService _fantasyService = FantasyService();
 
-  // --- TABELA DE PONTUAÇÃO ---
-  static const double PTS_GOAL = 5.0;
-  static const double PTS_ASSIST = 3.0;
-  static const double PTS_YELLOW_CARD = -1.0;
-  static const double PTS_RED_CARD = -3.0;
-  static const double PTS_GOAL_CONCEDED = -1.0; 
-
-  // --- CONSTANTES DA ECONOMIA ---
-  static const double FACTOR_EXPECTATION = 0.35; 
-  static const double FACTOR_VARIATION = 0.25;   
-  static const double CAP_LIMIT_PERCENT = 0.25;  
-  static const double MIN_PRICE = 1.0;           
-
-  // --- 0. LEITURA DOS SCOUTS ---
-  Future<Map<String, double>> _fetchSeasonScores(String seasonId, int round) async {
+  // --- 0. LEITURA DOS SCOUTS (Agora recebe a Config) ---
+  Future<Map<String, double>> _fetchSeasonScores(String seasonId, int round, FantasyGameConfig config) async {
     final Map<String, double> scoresMap = {};
     debugPrint("--- LENDO SCOUTS R$round (Temporada $seasonId) ---");
 
@@ -54,11 +43,11 @@ class FantasyAdminService {
 
         for (String pid in allPlayerIds) {
           double points = 0.0;
-          points += (goalsMap[pid] ?? 0) * PTS_GOAL;
-          points += (assistsMap[pid] ?? 0) * PTS_ASSIST;
-          points += (yellowsMap[pid] ?? 0) * PTS_YELLOW_CARD;
-          points += (redsMap[pid] ?? 0) * PTS_RED_CARD;
-          points += (concededMap[pid] ?? 0) * PTS_GOAL_CONCEDED;
+          points += (goalsMap[pid] ?? 0) * config.ptsGoal;
+          points += (assistsMap[pid] ?? 0) * config.ptsAssist;
+          points += (yellowsMap[pid] ?? 0) * config.ptsYellowCard;
+          points += (redsMap[pid] ?? 0) * config.ptsRedCard;
+          points += (concededMap[pid] ?? 0) * config.ptsGoalConceded;
           
           scoresMap[pid] = (scoresMap[pid] ?? 0.0) + points;
         }
@@ -74,26 +63,27 @@ class FantasyAdminService {
     return rawMap.map((key, value) => MapEntry(key.toString(), (value is num) ? value.toInt() : 0));
   }
 
-  // --- 1. LÓGICA DE CÁLCULO DE PREÇO E HISTÓRICO ---
+  // --- 1. LÓGICA DE CÁLCULO DE PREÇO (Agora usa Config) ---
   
   Map<String, dynamic> _calculateNewPriceState(
     double currentPrice, 
     double score, 
     bool played, 
-    int round
+    int round,
+    FantasyGameConfig config,
   ) {
     // 1. VALORIZAÇÃO
-    double expectation = currentPrice * FACTOR_EXPECTATION;
+    double expectation = currentPrice * config.factorExpectation;
     double performance = score - expectation;
-    double rawVariation = performance * FACTOR_VARIATION;
-    double limit = currentPrice * CAP_LIMIT_PERCENT;
+    double rawVariation = performance * config.factorVariation;
+    double limit = currentPrice * config.capLimitPercent;
 
     double finalVariation = rawVariation;
     if (finalVariation > limit) finalVariation = limit;   
     if (finalVariation < -limit) finalVariation = -limit; 
 
     double newPrice = currentPrice + finalVariation;
-    if (newPrice < MIN_PRICE) newPrice = MIN_PRICE;
+    if (newPrice < config.minPrice) newPrice = config.minPrice;
 
     finalVariation = double.parse(finalVariation.toStringAsFixed(1));
     newPrice = double.parse(newPrice.toStringAsFixed(1));
@@ -116,7 +106,12 @@ class FantasyAdminService {
 
   // --- 2. PROCESSAMENTO DE JOGADORES (MERCADO) ---
 
-  Future<Map<String, double>> processMarketValuation(String seasonId, Map<String, double> actualScores, {int? roundForHistory}) async {
+  Future<Map<String, double>> processMarketValuation(
+      String seasonId, 
+      Map<String, double> actualScores, 
+      FantasyGameConfig config,
+      {int? roundForHistory}
+  ) async {
     final Map<String, double> newPricesMap = {};
     final WriteBatch batch = _firestore.batch();
     
@@ -128,12 +123,11 @@ class FantasyAdminService {
       double score = actualScores[player.playerId] ?? 0.0;
       double currentPrice = player.currentPrice;
 
-      // --- ALTERAÇÃO SOLICITADA: played é sempre TRUE ---
+      // --- played é sempre TRUE no MVP ---
       bool played = true; 
-      // --------------------------------------------------
-
-      // Chama a lógica centralizada de cálculo
-      final result = _calculateNewPriceState(currentPrice, score, played, roundForHistory ?? 0);
+      
+      // Chama a lógica centralizada de cálculo PASSANDO A CONFIG
+      final result = _calculateNewPriceState(currentPrice, score, played, roundForHistory ?? 0, config);
       
       double newPrice = result['new_price'];
       newPricesMap[player.playerId] = newPrice;
@@ -147,7 +141,6 @@ class FantasyAdminService {
       }
 
       // --- CÁLCULO DA MÉDIA ---
-      // Agora, como played=true sempre, a média será (Total Pontos / Total Rodadas)
       double sumScores = 0.0;
       int countMatches = 0;
 
@@ -163,7 +156,7 @@ class FantasyAdminService {
       batch.update(doc.reference, {
         'current_price': newPrice,
         'last_price_change': result['variation'],
-        'last_score': score, // Score é 0.0 se não tiver scout
+        'last_score': score, 
         'average_score': double.parse(newAverage.toStringAsFixed(2)),
         'matches_played': countMatches, 
         'history': updatedHistory,
@@ -174,7 +167,7 @@ class FantasyAdminService {
     return newPricesMap;
   }
 
-  // --- 3. PROCESSAMENTO DE TIMES (Mantido) ---
+  // --- 3. PROCESSAMENTO DE TIMES (Mantido, mas recebe apenas os preços novos) ---
 
   Future<String> processUserTeams(Map<String, double> newPricesMap, Map<String, double> actualScores, int round) async {
     try {
@@ -230,13 +223,19 @@ class FantasyAdminService {
 
   Future<String> closeRoundFullRoutine(String seasonId, int round) async {
     try {
-      final Map<String, double> scores = await _fetchSeasonScores(seasonId, round);
+      // 1. CARREGA CONFIG
+      final config = await _fantasyService.getGameConfig();
+
+      // 2. USA CONFIG NA LEITURA DE PONTOS
+      final Map<String, double> scores = await _fetchSeasonScores(seasonId, round, config);
       if (scores.isEmpty) return "AVISO: Nenhum scout encontrado na Rodada $round.";
 
-      final newPrices = await processMarketValuation(seasonId, scores, roundForHistory: round);
+      // 3. USA CONFIG NO CÁLCULO DO MERCADO
+      final newPrices = await processMarketValuation(seasonId, scores, config, roundForHistory: round);
+      
       final resultTeams = await processUserTeams(newPrices, scores, round);
       
-      return "Rodada $round fechada.\nJogadores: ${scores.length}\nTimes: $resultTeams";
+      return "Rodada $round fechada com Config Dinâmica.\nJogadores: ${scores.length}\nTimes: $resultTeams";
     } catch (e) {
       return "Erro crítico: $e";
     }
@@ -248,6 +247,9 @@ class FantasyAdminService {
     try {
       debugPrint("=== INICIANDO RECONSTRUÇÃO DA TEMPORADA (1 a $maxRound) ===");
       
+      // 1. CARREGA CONFIG
+      final config = await _fantasyService.getGameConfig();
+
       final playersSnap = await _firestore.collection('fantasy_market_players').get();
       
       Map<String, dynamic> playerSimulationState = {};
@@ -279,19 +281,17 @@ class FantasyAdminService {
       for (int r = 1; r <= maxRound; r++) {
         debugPrint("> Processando Rodada $r...");
 
-        final Map<String, double> roundScores = await _fetchSeasonScores(seasonId, r);
+        // Usa Config nos Scores
+        final Map<String, double> roundScores = await _fetchSeasonScores(seasonId, r, config);
 
         // Atualizar Mercado (Simulação)
         playerSimulationState.forEach((pid, state) {
           double priceBefore = state['current_price'];
-          
           double score = roundScores[pid] ?? 0.0;
-          
-          // --- ALTERAÇÃO: played sempre true ---
           bool played = true; 
-          // -------------------------------------
 
-          final result = _calculateNewPriceState(priceBefore, score, played, r);
+          // Usa Config no cálculo de preço
+          final result = _calculateNewPriceState(priceBefore, score, played, r, config);
 
           state['current_price'] = result['new_price'];
           state['last_score'] = score;
@@ -304,9 +304,8 @@ class FantasyAdminService {
           }
         });
 
-        // Atualizar Times
+        // Atualizar Times (código mantido igual)
         final WriteBatch roundBatch = _firestore.batch();
-        
         for (var teamDoc in teamsSnap.docs) {
           final historyDocRef = teamDoc.reference.collection('history').doc(r.toString());
           final historySnap = await historyDocRef.get();
@@ -323,7 +322,6 @@ class FantasyAdminService {
           }
 
           double roundPoints = 0.0;
-
           for (var pid in lineup) {
             double pScore = roundScores[pid] ?? 0.0;
             if (captainId != null && captainId == pid) {
@@ -343,9 +341,8 @@ class FantasyAdminService {
         await roundBatch.commit();
       }
 
-      // SALVAMENTO FINAL
+      // SALVAMENTO FINAL (Código mantido igual)
       debugPrint("Salvando estado final...");
-      
       List<QueryDocumentSnapshot> allPlayerDocs = playersSnap.docs;
       int chunkSize = 400;
       for (int i = 0; i < allPlayerDocs.length; i += chunkSize) {
@@ -356,10 +353,8 @@ class FantasyAdminService {
           final doc = allPlayerDocs[j];
           final pid = doc.id;
           final state = playerSimulationState[pid];
-
           if (state == null) continue;
 
-          // Cálculo da média final
           double avg = (state['matches_played'] > 0) 
              ? state['total_score_sum'] / state['matches_played'] 
              : 0.0;
@@ -368,7 +363,7 @@ class FantasyAdminService {
             'current_price': state['current_price'],
             'last_price_change': state['last_price_change'],
             'last_score': state['last_score'],
-            'average_score': double.parse(avg.toStringAsFixed(2)), // Salva a média calculada
+            'average_score': double.parse(avg.toStringAsFixed(2)), 
             'matches_played': state['matches_played'],
             'history': state['history'], 
           });
@@ -380,15 +375,12 @@ class FantasyAdminService {
       for (var teamDoc in teamsSnap.docs) {
         final team = FantasyTeam.fromFirestore(teamDoc);
         final newTotalPoints = teamTotalPointsMap[teamDoc.id] ?? 0.0;
-        
         double currentPlayersValue = 0.0;
         double currentLastScore = 0.0; 
-        
         for (var pid in team.lineupPlayerIds) {
           final pState = playerSimulationState[pid];
           if (pState != null) {
             currentPlayersValue += (pState['current_price'] as num).toDouble();
-            
              final historyList = pState['history'] as List<Map<String, dynamic>>;
              if (historyList.isNotEmpty && historyList.last['round'] == maxRound) {
                 double pScore = (historyList.last['score'] as num).toDouble();
@@ -397,9 +389,7 @@ class FantasyAdminService {
              }
           }
         }
-
         double newTeamValue = team.currentBalance + currentPlayersValue;
-
         batchTeams.update(teamDoc.reference, {
           'total_points': newTotalPoints,
           'team_value': double.parse(newTeamValue.toStringAsFixed(2)),
@@ -408,7 +398,7 @@ class FantasyAdminService {
       }
       await batchTeams.commit();
 
-      return "Reprocessamento COMPLETO concluído!\nRodadas: 1 a $maxRound\nMédias corrigidas (Todos jogaram).";
+      return "Reprocessamento COMPLETO com CONFIGURAÇÃO DINÂMICA!\nRodadas: 1 a $maxRound";
 
     } catch (e, stack) {
       debugPrint(stack.toString());

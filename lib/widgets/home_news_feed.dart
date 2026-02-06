@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/championship_service.dart';
+import 'sponsor_banner_rotator.dart'; // Import corrigido
 
 class HomeNewsFeed extends StatelessWidget {
   const HomeNewsFeed({super.key});
@@ -18,12 +19,9 @@ class HomeNewsFeed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Obtém contexto da temporada
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
     final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
-    // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
-    // Removemos a verificação de LEGACY_ID
     final Query mediaQuery = firestore
         .collection('championships')
         .doc(seasonId)
@@ -38,16 +36,16 @@ class HomeNewsFeed extends StatelessWidget {
             children: [
               Icon(Icons.newspaper, size: 20, color: Theme.of(context).primaryColor),
               const SizedBox(width: 8),
-              Text(
+              const Text(
                 'Últimas Notícias',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
         ),
         
         SizedBox(
-          height: 210, // Altura fixa para o carrossel
+          height: 210, 
           child: StreamBuilder<QuerySnapshot>(
             stream: mediaQuery
                 .where('isActive', isEqualTo: true)
@@ -58,6 +56,8 @@ class HomeNewsFeed extends StatelessWidget {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
+              
+              // Se não tiver dados, mostra mensagem vazia
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return Center(
                   child: Column(
@@ -72,15 +72,23 @@ class HomeNewsFeed extends StatelessWidget {
               }
 
               final docs = snapshot.data!.docs;
+              List<Widget> carouselItems = [];
 
-              return ListView.builder(
+              for (int i = 0; i < docs.length; i++) {
+                final data = docs[i].data() as Map<String, dynamic>;
+                
+                carouselItems.add(_buildNewsCard(context, data));
+
+                // A cada 3 notícias, adiciona o card de publicidade
+                if ((i + 1) % 3 == 0) {
+                  carouselItems.add(_buildAdCard());
+                }
+              }
+
+              return ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                itemCount: docs.length,
-                itemBuilder: (context, index) {
-                  final data = docs[index].data() as Map<String, dynamic>;
-                  return _buildNewsCard(context, data);
-                },
+                children: carouselItems,
               );
             },
           ),
@@ -96,7 +104,7 @@ class HomeNewsFeed extends StatelessWidget {
     final String author = data['author'] ?? '';
 
     return Container(
-      width: 240, // Largura do card
+      width: 240, 
       margin: const EdgeInsets.only(right: 12.0, bottom: 8.0),
       child: Card(
         elevation: 2,
@@ -107,7 +115,6 @@ class HomeNewsFeed extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Imagem
               SizedBox(
                 height: 130,
                 width: double.infinity,
@@ -120,8 +127,6 @@ class HomeNewsFeed extends StatelessWidget {
                         errorWidget: (c, u, e) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
                       ),
               ),
-              
-              // Texto
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(10.0),
@@ -149,6 +154,50 @@ class HomeNewsFeed extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdCard() {
+    return Container(
+      width: 240, // Largura igual à do card de notícia
+      margin: const EdgeInsets.only(right: 12.0, bottom: 8.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade200),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Passamos height: double.infinity para ele preencher o card verticalmente
+            const SponsorBannerRotator(
+              location: 'news_feed',
+              isStatic: false,
+              height: double.infinity, 
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  "Publicidade",
+                  style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

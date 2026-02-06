@@ -2,26 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import 'admin_login_dialog.dart'; // <-- Importa o novo widget
+import 'admin_login_dialog.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
   Future<void> _handleAdminAction(BuildContext context, AuthService authService) async {
-    // Fecha o Drawer primeiro para evitar sobreposição visual
     Navigator.of(context).pop();
 
     if (authService.isAuthenticated) {
-      // Se já está logado, vai pro menu
       Navigator.of(context).pushNamed('/admin-menu');
     } else {
-      // Se não, abre o diálogo de login
       final bool? success = await showDialog<bool>(
         context: context,
         builder: (ctx) => const AdminLoginDialog(),
       );
 
-      // Se logou com sucesso, navega para o menu
       if (success == true && context.mounted) {
         Navigator.of(context).pushNamed('/admin-menu');
       }
@@ -37,96 +33,94 @@ class AppDrawer extends StatelessWidget {
     return Consumer<AuthService>(
       builder: (context, authService, child) {
         return Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: <Widget>[
+          child: Column(
+            children: [
               // --- HEADER ---
-              DrawerHeader(
-                decoration: BoxDecoration(color: Theme.of(context).primaryColor),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.asset('assets/logo2_fjf.png', height: 80, errorBuilder: (c, o, s) => const Icon(Icons.sports_soccer, size: 80, color: Colors.white)),
-                    const SizedBox(height: 8),
-                    Text('FJF $year', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        honoree.isNotEmpty ? honoree : 'Campeonato Oficial',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+              UserAccountsDrawerHeader(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  image: const DecorationImage(
+                    image: AssetImage('assets/icon/icon_foreground.png'), // Fundo sutil se quiser
+                    opacity: 0.1,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                accountName: Text('FJF $year', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                accountEmail: Text(
+                  honoree.isNotEmpty ? honoree : 'Campeonato Oficial',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                currentAccountPicture: CircleAvatar(
+                  backgroundColor: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Image.asset('assets/logo2_fjf.png', errorBuilder: (c, o, s) => const Icon(Icons.sports_soccer, color: Colors.orange)),
+                  ),
+                ),
+              ),
+
+              // --- LISTA ROLÁVEL ---
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: <Widget>[
+                    _buildDrawerItem(context, Icons.dashboard, 'Início', '/'),
+                    
+                    _buildSectionHeader(context, "DESTAQUES"),
+                    _buildDrawerItem(context, Icons.sports_soccer, 'Fantasy FJF', '/fantasy-home', highlight: true),
+                    _buildDrawerItem(context, Icons.collections, 'Loja de Fotos', '/photo-sales', highlight: true),
+
+                    _buildSectionHeader(context, "COMPETIÇÃO"),
+                    _buildDrawerItem(context, Icons.calendar_month, 'Tabela de Jogos', '/fixtures'),
+                    _buildDrawerItem(context, Icons.leaderboard, 'Classificação', '/standings'),
+                    _buildDrawerItem(context, Icons.group, 'Equipes', '/teams'),
+
+                    _buildSectionHeader(context, "DADOS & ESTATÍSTICAS"),
+                    _buildDrawerItem(context, Icons.query_stats, 'Números das Equipes', '/team-stats'),
+                    _buildDrawerItem(context, Icons.person_search, 'Top Jogadores', '/player-stats'),
+                    _buildDrawerItem(context, Icons.history_toggle_off, 'Suspensões', '/suspension-history'),
+                    _buildDrawerItem(context, Icons.compare_arrows, 'Comparador', '/player-comparison'),
+
+                    const Divider(height: 30),
+
+                    // --- ADMINISTRAÇÃO ---
+                    ListTile(
+                      leading: Icon(
+                        authService.isAuthenticated ? Icons.admin_panel_settings : Icons.settings_outlined,
+                        color: authService.isAuthenticated ? Colors.green : Colors.grey,
                       ),
+                      title: Text(
+                        authService.isAuthenticated ? 'Painel Admin' : 'Acesso Restrito',
+                        style: TextStyle(
+                          color: authService.isAuthenticated ? Colors.green[700] : Colors.grey[700],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onTap: () => _handleAdminAction(context, authService),
                     ),
+                    _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
+
+                    if (authService.isAuthenticated)
+                      ListTile(
+                        leading: const Icon(Icons.logout, color: Colors.red),
+                        title: const Text('Sair', style: TextStyle(color: Colors.red)),
+                        onTap: () async {
+                          await authService.logout();
+                          if (context.mounted) Navigator.of(context).pop();
+                        },
+                      ),
                   ],
                 ),
               ),
-
-              // --- ITENS DE NAVEGAÇÃO ---
-              _buildDrawerItem(context, Icons.home, 'Início', '/'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.calendar_today, 'Tabela de Jogos', '/fixtures'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.leaderboard, 'Classificação', '/standings'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.group, 'Equipes', '/teams'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.query_stats, 'Estatísticas das Equipes', '/team-stats'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.person_search, 'Estatísticas dos Jogadores', '/player-stats'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.history_toggle_off, 'Histórico de Suspensões', '/suspension-history'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.compare_arrows, 'Comparador de Jogadores', '/player-comparison'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.collections, 'Loja de Fotos', '/photo-sales'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.sports_soccer, 'Fantasy FJF', '/fantasy-home'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-              _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
-              const Divider(height: 10, indent: 16, endIndent: 16),
-
-              // --- ÁREA ADMIN ---
-              ListTile(
-                leading: Icon(
-                  authService.isAuthenticated ? Icons.admin_panel_settings : Icons.lock_outline,
-                  color: authService.isAuthenticated ? Colors.green : Colors.grey,
-                ),
-                title: Text(
-                  authService.isAuthenticated ? 'Menu Administrador' : 'Acesso Admin',
-                  style: TextStyle(
-                    color: authService.isAuthenticated ? Colors.green[700] : Colors.grey[700],
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: authService.isAuthenticated ? Text('Logado como: ${authService.adminUsername}') : null,
-                onTap: () => _handleAdminAction(context, authService),
-              ),
-
-              if (authService.isAuthenticated)
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text('Sair', style: TextStyle(color: Colors.red)),
-                  onTap: () async {
-                    await authService.logout();
-                    if (context.mounted) {
-                      Navigator.of(context).pop(); // Fecha Drawer
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sessão encerrada.')));
-                    }
-                  },
-                ),
-
-              const SizedBox(height: 20),
-              Center(
+              
+              // --- FOOTER ---
+              Container(
+                padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Versão 2.1.0\n© FJF 2026',
-                  textAlign: TextAlign.center,
+                  'FJF App v2.1.0',
                   style: TextStyle(color: Colors.grey[400], fontSize: 10),
                 ),
               ),
-              const SizedBox(height: 10),
             ],
           ),
         );
@@ -134,15 +128,39 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerItem(BuildContext context, IconData icon, String title, String route) {
+  Widget _buildSectionHeader(BuildContext context, String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: Theme.of(context).primaryColor,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem(BuildContext context, IconData icon, String title, String route, {bool highlight = false}) {
     return ListTile(
-      leading: Icon(icon, color: Colors.grey[700]),
-      title: Text(title),
       dense: true,
+      horizontalTitleGap: 8, // Aproxima ícone do texto
+      leading: Icon(
+        icon, 
+        color: highlight ? Colors.purple : Colors.grey[700],
+        size: 22,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
+          color: highlight ? Colors.purple : Colors.black87,
+        ),
+      ),
       onTap: () {
-        Navigator.of(context).pop(); // Fecha o Drawer
-        // Usa pushReplacement para não empilhar telas infinitamente
-        // Exceto se for a Home (/) que geralmente é a base
+        Navigator.of(context).pop();
         if (route == '/') {
            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
         } else {

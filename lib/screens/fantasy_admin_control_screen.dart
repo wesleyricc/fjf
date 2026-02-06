@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/fantasy_service.dart';
 import '../services/fantasy_admin_service.dart';
-import '../services/championship_service.dart'; // Importante para pegar a temporada ativa
+import '../services/championship_service.dart'; 
+import '../models/fantasy_models.dart';
 
 class FantasyAdminControlScreen extends StatefulWidget {
   const FantasyAdminControlScreen({super.key});
@@ -29,11 +30,7 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // AUTOMATIZAÇÃO: Busca a temporada ativa no serviço de campeonato
-    // Isso evita o risco de usar "2026" chumbado se estivermos em "2027_fjf"
     final currentSeasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
-    
-    // Só preenche se o campo estiver vazio (para não sobrescrever edições do usuário)
     if (_seasonController.text.isEmpty && currentSeasonId.isNotEmpty) {
       _seasonController.text = currentSeasonId;
     }
@@ -100,7 +97,7 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
     setState(() => _isLoading = true);
     try {
       _addLog("Iniciando fechamento da Rodada $round...");
-      String seasonId = _seasonController.text.trim(); // Usa o ID carregado automaticamente
+      String seasonId = _seasonController.text.trim();
       
       if (seasonId.isEmpty) {
          _addLog("ERRO: ID da temporada não identificado.");
@@ -181,6 +178,104 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
     }
   }
 
+  // --- NOVA UI PARA CONFIGURAÇÃO ---
+  Future<void> _openConfigDialog(BuildContext context, FantasyService service) async {
+    setState(() => _isLoading = true);
+    // 1. Busca Config Atual
+    FantasyGameConfig currentConfig = await service.getGameConfig();
+    setState(() => _isLoading = false);
+
+    if (!mounted) return;
+
+    // Controladores
+    final cGoal = TextEditingController(text: currentConfig.ptsGoal.toString());
+    final cAssist = TextEditingController(text: currentConfig.ptsAssist.toString());
+    final cYellow = TextEditingController(text: currentConfig.ptsYellowCard.toString());
+    final cRed = TextEditingController(text: currentConfig.ptsRedCard.toString());
+    final cConceded = TextEditingController(text: currentConfig.ptsGoalConceded.toString());
+
+    final cExpectation = TextEditingController(text: currentConfig.factorExpectation.toString());
+    final cVariation = TextEditingController(text: currentConfig.factorVariation.toString());
+    final cCap = TextEditingController(text: currentConfig.capLimitPercent.toString());
+    final cMin = TextEditingController(text: currentConfig.minPrice.toString());
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Configuração Global"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("PONTUAÇÃO", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+              const SizedBox(height: 8),
+              _buildCompactField("Gol", cGoal),
+              _buildCompactField("Assistência", cAssist),
+              _buildCompactField("Amarelo", cYellow),
+              _buildCompactField("Vermelho", cRed),
+              _buildCompactField("Gol Sofrido", cConceded),
+              const Divider(),
+              const Text("ECONOMIA", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+              const SizedBox(height: 8),
+              _buildCompactField("Expectativa (Ex: 0.35)", cExpectation),
+              _buildCompactField("Variação (Ex: 0.25)", cVariation),
+              _buildCompactField("Cap Limite (Ex: 0.25)", cCap),
+              _buildCompactField("Preço Min (Ex: 1.0)", cMin),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
+          ElevatedButton(
+            onPressed: () async {
+              final newConfig = FantasyGameConfig(
+                ptsGoal: double.parse(cGoal.text),
+                ptsAssist: double.parse(cAssist.text),
+                ptsYellowCard: double.parse(cYellow.text),
+                ptsRedCard: double.parse(cRed.text),
+                ptsGoalConceded: double.parse(cConceded.text),
+                factorExpectation: double.parse(cExpectation.text),
+                factorVariation: double.parse(cVariation.text),
+                capLimitPercent: double.parse(cCap.text),
+                minPrice: double.parse(cMin.text),
+              );
+              
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              await service.saveGameConfig(newConfig);
+              setState(() => _isLoading = false);
+              _addLog("Configuração salva com sucesso!");
+            },
+            child: const Text("SALVAR NO FIREBASE"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactField(String label, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        children: [
+          Expanded(flex: 2, child: Text(label + ":", style: const TextStyle(fontSize: 13))),
+          Expanded(
+            flex: 3,
+            child: SizedBox(
+              height: 35,
+              child: TextField(
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)),
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final fantasyService = Provider.of<FantasyService>(context, listen: false);
@@ -190,6 +285,13 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
         title: const Text("Painel Admin Fantasy"),
         backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: "Configurar Pontos/Economia",
+            onPressed: () => _openConfigDialog(context, fantasyService),
+          )
+        ],
       ),
       body: StreamBuilder<Map<String, dynamic>>(
         stream: fantasyService.streamMarketStatus(),
@@ -271,7 +373,7 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                     icon: Icons.calculate,
                     color: Colors.blue,
                     title: "Processar Fechamento",
-                    subtitle: "Calcula rodada atual.",
+                    subtitle: "Calcula rodada atual (Config Dinâmica).",
                     onTap: () => _processRoundClosing(context, currentRound),
                   ),
 
@@ -299,8 +401,8 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                 _buildActionTile(
                   icon: Icons.history_edu,
                   color: Colors.red,
-                  title: "Reprocessar Tudo (Baseado em Scouts)",
-                  subtitle: "Recalcula histórico, preços e times do zero.",
+                  title: "Reprocessar Tudo (Config Dinâmica)",
+                  subtitle: "Recalcula histórico usando a nova configuração.",
                   onTap: _executeReprocessHistory,
                 ),
 

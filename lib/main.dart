@@ -12,14 +12,14 @@ import 'screens/fantasy_admin_control_screen.dart';
 import 'screens/fantasy_history_screen.dart';
 import 'screens/fantasy_ranking_screen.dart';
 import 'screens/fantasy_rules_screen.dart';
-import 'theme/app_theme.dart'; // <-- Import do Tema
+import 'theme/app_theme.dart';
 
 // Services
 import 'services/auth_service.dart';
 import 'services/notification_service.dart';
 import 'services/championship_service.dart';
-import 'services/fantasy_service.dart';      // <-- Novo
-import 'services/fantasy_auth_service.dart'; // <-- Novo
+import 'services/fantasy_service.dart';      
+import 'services/fantasy_auth_service.dart'; 
 
 //Viewmodels
 import 'viewmodels/photo_sales_viewmodel.dart';
@@ -95,7 +95,6 @@ class FjfApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
-        // Services existentes
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ChampionshipService()),
         ChangeNotifierProvider(create: (_) => PhotoSalesViewModel()),
@@ -105,25 +104,18 @@ class FjfApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => FantasyHomeViewModel()),
         ChangeNotifierProvider(create: (_) => FantasyLineupViewModel()),
         
-        // --- NOVOS SERVICES DO FANTASY ---
         Provider(create: (_) => FantasyService()),
         
-        // FantasyAuthService depende de FantasyService, por isso usamos o contexto para injetar
         ChangeNotifierProvider(
           create: (context) => FantasyAuthService(
             context.read<FantasyService>(),
           ),
         ),
-        // ---------------------------------
       ],
       child: MaterialApp(
         title: 'FJF 2025',
         debugShowCheckedModeBanner: false,
-        
-        // --- APLICAÇÃO DO TEMA CENTRALIZADO ---
         theme: AppTheme.lightTheme, 
-        // --------------------------------------
-
         builder: (context, child) {
           if (isTestEnv) {
             return Banner(
@@ -136,7 +128,6 @@ class FjfApp extends StatelessWidget {
           }
           return child!;
         },
-
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,

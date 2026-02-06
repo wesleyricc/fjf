@@ -137,3 +137,74 @@ class FantasyTeam {
     };
   }
 }
+
+/// --- CLASSE NOVA DE CONFIGURAÇÃO ---
+class FantasyGameConfig {
+  // Pontuação
+  final double ptsGoal;
+  final double ptsAssist;
+  final double ptsYellowCard;
+  final double ptsRedCard;
+  final double ptsGoalConceded;
+
+  // Economia
+  final double factorExpectation;
+  final double factorVariation;
+  final double capLimitPercent;
+  final double minPrice;
+
+  FantasyGameConfig({
+    required this.ptsGoal,
+    required this.ptsAssist,
+    required this.ptsYellowCard,
+    required this.ptsRedCard,
+    required this.ptsGoalConceded,
+    required this.factorExpectation,
+    required this.factorVariation,
+    required this.capLimitPercent,
+    required this.minPrice,
+  });
+
+  // Valores padrão (caso não exista no banco)
+  factory FantasyGameConfig.defaults() {
+    return FantasyGameConfig(
+      ptsGoal: 5.0,
+      ptsAssist: 3.0,
+      ptsYellowCard: -1.0,
+      ptsRedCard: -3.0,
+      ptsGoalConceded: -1.0,
+      factorExpectation: 0.35,
+      factorVariation: 0.25,
+      capLimitPercent: 0.25,
+      minPrice: 1.0,
+    );
+  }
+
+  factory FantasyGameConfig.fromMap(Map<String, dynamic> map) {
+    return FantasyGameConfig(
+      ptsGoal: (map['pts_goal'] ?? 5.0).toDouble(),
+      ptsAssist: (map['pts_assist'] ?? 3.0).toDouble(),
+      ptsYellowCard: (map['pts_yellow_card'] ?? -1.0).toDouble(),
+      ptsRedCard: (map['pts_red_card'] ?? -3.0).toDouble(),
+      ptsGoalConceded: (map['pts_goal_conceded'] ?? -1.0).toDouble(),
+      factorExpectation: (map['factor_expectation'] ?? 0.35).toDouble(),
+      factorVariation: (map['factor_variation'] ?? 0.25).toDouble(),
+      capLimitPercent: (map['cap_limit_percent'] ?? 0.25).toDouble(),
+      minPrice: (map['min_price'] ?? 1.0).toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'pts_goal': ptsGoal,
+      'pts_assist': ptsAssist,
+      'pts_yellow_card': ptsYellowCard,
+      'pts_red_card': ptsRedCard,
+      'pts_goal_conceded': ptsGoalConceded,
+      'factor_expectation': factorExpectation,
+      'factor_variation': factorVariation,
+      'cap_limit_percent': capLimitPercent,
+      'min_price': minPrice,
+    };
+  }
+}

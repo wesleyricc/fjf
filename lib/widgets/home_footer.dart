@@ -4,7 +4,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HomeFooter extends StatelessWidget {
-  const HomeFooter({super.key});
+  // Parâmetro opcional para a versão
+  final String? appVersion;
+
+  const HomeFooter({
+    super.key, 
+    this.appVersion
+  });
 
   final List<Map<String, dynamic>> _socialLinks = const [
     {'icon': FontAwesomeIcons.facebook, 'url': 'https://www.facebook.com/forcajovemfumacense', 'color': Colors.white},
@@ -88,6 +94,22 @@ class HomeFooter extends StatelessWidget {
             'Desenvolvido por Wesley Ricardo',
             style: TextStyle(color: Colors.white24, fontSize: 10),
           ),
+
+          // --- VERSÃO DO APP (Agora integrada) ---
+          if (appVersion != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'v$appVersion',
+                style: const TextStyle(color: Colors.white12, fontSize: 9, fontFamily: 'monospace'),
+              ),
+            ),
+          ],
         ],
       ),
     );

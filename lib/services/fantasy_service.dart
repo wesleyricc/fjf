@@ -7,6 +7,24 @@ class FantasyService {
 
   CollectionReference get _fantasyTeamsRef => _firestore.collection('fantasy_teams');
   CollectionReference get _fantasyMarketRef => _firestore.collection('fantasy_market_players');
+  
+  // --- CONFIGURAÇÃO DO JOGO (NOVO) ---
+
+  Future<FantasyGameConfig> getGameConfig() async {
+    try {
+      final doc = await _firestore.collection('fantasy_config').doc('rules').get();
+      if (doc.exists && doc.data() != null) {
+        return FantasyGameConfig.fromMap(doc.data() as Map<String, dynamic>);
+      }
+    } catch (e) {
+      debugPrint("Erro ao buscar config do fantasy (usando default): $e");
+    }
+    return FantasyGameConfig.defaults();
+  }
+
+  Future<void> saveGameConfig(FantasyGameConfig config) async {
+    await _firestore.collection('fantasy_config').doc('rules').set(config.toMap());
+  }
 
   // --- LEITURA DE DADOS ---
   
@@ -96,7 +114,7 @@ class FantasyService {
     final docSnap = await _fantasyTeamsRef.doc(userId).get();
     
     if (!docSnap.exists) {
-      // NOVA REGRA: INÍCIO COM 50 MOEDAS
+      // NOVA REGRA: INÍCIO COM 50 MOEDAS (Isso também poderia virar config no futuro)
       final newTeam = FantasyTeam(
         id: userId,
         ownerId: userId,

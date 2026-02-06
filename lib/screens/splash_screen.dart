@@ -1,8 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:html' as html; // Para PWA
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+// ADICIONADO: Para usar o ícone de handshake igual ao do rodapé
+import 'package:font_awesome_flutter/font_awesome_flutter.dart'; 
+import 'package:url_launcher/url_launcher.dart'; // Import necessário para o launchUrl do Grid
 
 // Services & Models
 import '../services/championship_service.dart';
@@ -21,6 +25,8 @@ import 'team_detail_screen.dart';
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   static const routeName = '/splash';
+  
+  static const String appVersion = '1.0.2';
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -51,26 +57,25 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _initializeData() async {
     final service = Provider.of<ChampionshipService>(context, listen: false);
     
-    if (service.currentSeasonId.isEmpty) {
-      setState(() => _debugStatus = "Buscando temporadas no Firebase...");
+    if (service.currentSeasonId.isNotEmpty) return;
+
+    setState(() => _debugStatus = "Buscando temporadas...");
       
-      try {
-        await service.init();
-        
-        if (mounted) {
-          if (service.availableSeasons.isNotEmpty) {
-            setState(() => _debugStatus = "Sucesso! ${service.availableSeasons.length} encontradas.");
-            // O build vai redesenhar e entrar no app automaticamente
-          } else {
-            setState(() => _debugStatus = "Conectado, mas NENHUMA temporada encontrada na coleção 'championships'.");
-            setState(() => _hasError = true);
-          }
+    try {
+      await service.init();
+      
+      if (mounted) {
+        if (service.availableSeasons.isNotEmpty) {
+          setState(() => _debugStatus = "Sucesso!");
+        } else {
+          setState(() => _debugStatus = "Conectado, mas NENHUMA temporada encontrada.");
+          setState(() => _hasError = true);
         }
-      } catch (e) {
-        if (mounted) {
-           setState(() => _debugStatus = "Erro Crítico: $e");
-           setState(() => _hasError = true);
-        }
+      }
+    } catch (e) {
+      if (mounted) {
+         setState(() => _debugStatus = "Erro Crítico: $e");
+         setState(() => _hasError = true);
       }
     }
   }
@@ -84,7 +89,6 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _showSeasonSelectionDialog(BuildContext context) async {
     final championshipService = Provider.of<ChampionshipService>(context, listen: false);
     final currentId = championshipService.currentSeasonId;
-    
     final List<Map<String, dynamic>> allSeasons = championshipService.availableSeasons;
 
     if (allSeasons.isEmpty) {
@@ -126,47 +130,43 @@ class _SplashScreenState extends State<SplashScreen> {
     final championshipService = Provider.of<ChampionshipService>(context);
     final seasonId = championshipService.currentSeasonId;
 
-    // TELA DE CARREGAMENTO COM DIAGNÓSTICO
     if (seasonId.isEmpty) {
       return Scaffold(
-        backgroundColor: Colors.white, // Fundo branco para ler bem
+        backgroundColor: Colors.white,
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(30.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (_hasError) 
                   const Icon(Icons.error_outline, size: 60, color: Colors.red)
                 else 
-                  const CircularProgressIndicator(color: Colors.green),
-                
-                const SizedBox(height: 20),
-                
-                // --- AQUI ESTÁ O SEGREDO: MOSTRAR O STATUS NA TELA ---
+                  const SizedBox(
+                    height: 50, width: 50,
+                    child: CircularProgressIndicator(color: Color(0xFFC25F22), strokeWidth: 3),
+                  ),
+                const SizedBox(height: 24),
                 Text(
                   _debugStatus,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: _hasError ? Colors.red : Colors.grey[700],
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14
+                    color: _hasError ? Colors.red : Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                    fontSize: 15
                   ),
                 ),
-                
-                const SizedBox(height: 20),
-                
-                if (_hasError)
-                  ElevatedButton(
+                if (_hasError) ...[
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
                     onPressed: () {
-                      setState(() { 
-                        _hasError = false; 
-                        _debugStatus = "Tentando novamente..."; 
-                      });
+                      setState(() { _hasError = false; _debugStatus = "Tentando novamente..."; });
                       _initializeData();
                     },
-                    child: const Text("Tentar Novamente"),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text("Tentar Novamente"),
                   )
+                ]
               ],
             ),
           ),
@@ -174,231 +174,428 @@ class _SplashScreenState extends State<SplashScreen> {
       );
     }
 
+    final theme = Theme.of(context);
+    final primaryColor = theme.primaryColor;
+    final int displayYear = championshipService.currentSeasonYear;
+
     return Scaffold(
-      extendBodyBehindAppBar: true, 
-      appBar: AppBar(
-        backgroundColor: _isDrawerOpen ? Theme.of(context).primaryColor : Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          if (seasonId.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.history),
-              tooltip: 'Trocar Temporada',
-              onPressed: () => _showSeasonSelectionDialog(context),
-            ),
-        ],
-      ),
       drawer: const AppDrawer(),
       onDrawerChanged: (isOpen) => setState(() => _isDrawerOpen = isOpen),
-      
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.zero,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildModernHeader(),
-                  
-                  // Botão de Instalação PWA
-                  if (_showInstallButton)
-                    Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.shade200)),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.download_for_offline, color: Colors.green, size: 30),
-                          const SizedBox(width: 12),
-                          const Expanded(child: Text("Instale o app para uma melhor experiência.", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
-                          ElevatedButton(onPressed: _triggerInstallPrompt, style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white), child: const Text("Instalar")),
-                        ],
-                      ),
-                    ),
-
-                  // --- ÁREA DE CONTEÚDO (PROTEGIDA) ---
-                  // Se existir temporada, mostra os widgets de dados.
-                  // Se não existir (seasonId vazio), mostra mensagem de boas-vindas.
-                  if (seasonId.isNotEmpty) ...[
-                    HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
-                    const SizedBox(height: 10),
-                    const HomeNewsFeed(),
-                    
-                    const SizedBox(height: 20),
-                    _buildSectionTitle(context, "Loja de Fotos"),
-                    const PhotoStoreBanner(),
-                    const SizedBox(height: 20),
-                    
-                    _buildSectionTitle(context, "Equipes"),
-                    _buildTeamsGrid(),
-                  ] else ...[
-                    // --- ESTADO VAZIO (BOAS VINDAS) ---
-                    Padding(
-                      padding: const EdgeInsets.all(30.0),
-                      child: Column(
-                        children: [
-                          const Icon(Icons.sports_soccer, size: 80, color: Colors.grey),
-                          const SizedBox(height: 20),
-                          const Text(
-                            "Bem-vindo ao App FJF!",
-                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            "Nenhuma temporada ativa encontrada.",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            "Acesse o Menu Lateral > Admin para criar a primeira temporada.",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    )
-                  ],
-
-                  const SizedBox(height: 40),
-                  const HomeFooter(), 
+          CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                expandedHeight: 240.0,
+                floating: false,
+                pinned: true,
+                backgroundColor: primaryColor,
+                elevation: 0,
+                stretch: true,
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.history_outlined),
+                    tooltip: 'Trocar Temporada',
+                    onPressed: () => _showSeasonSelectionDialog(context),
+                  ),
                 ],
+                flexibleSpace: FlexibleSpaceBar(
+                  stretchModes: const [StretchMode.zoomBackground, StretchMode.blurBackground],
+                  centerTitle: true,
+                  title: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isCollapsed = constraints.maxHeight <= kToolbarHeight + 30;
+                      return AnimatedOpacity(
+                        duration: const Duration(milliseconds: 300),
+                        opacity: isCollapsed ? 1.0 : 0.0,
+                        child: Text(
+                          "FJF $displayYear",
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    },
+                  ),
+                  background: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              primaryColor,
+                              Color.lerp(primaryColor, Colors.black, 0.4)!,
+                            ],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: -50,
+                        top: -50,
+                        child: Icon(Icons.sports_soccer, size: 250, color: Colors.white.withOpacity(0.05)),
+                      ),
+                      SafeArea(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                             const SizedBox(height: 10),
+                             Hero(
+                               tag: 'app_logo',
+                               child: Container(
+                                 decoration: BoxDecoration(
+                                   shape: BoxShape.circle,
+                                   boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))],
+                                 ),
+                                 child: CircleAvatar(
+                                   radius: 40,
+                                   backgroundColor: Colors.white,
+                                   backgroundImage: const AssetImage('assets/logo3_fjf.png'),
+                                   onBackgroundImageError: (_, __) {},
+                                   child: Image.asset('assets/logo3_fjf.png', height: 70, errorBuilder: (_,__,___) => const SizedBox()), 
+                                 ),
+                               ),
+                             ),
+                             const SizedBox(height: 12),
+                             Text(
+                               "FJF $displayYear",
+                               style: const TextStyle(
+                                 color: Colors.white,
+                                 fontSize: 26, 
+                                 fontWeight: FontWeight.w900,
+                                 letterSpacing: 1.5,
+                                 shadows: [Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))]
+                               ),
+                             ),
+                             const SizedBox(height: 6),
+                             Container(
+                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                               decoration: BoxDecoration(
+                                 color: Colors.white.withOpacity(0.15),
+                                 borderRadius: BorderRadius.circular(20),
+                                 border: Border.all(color: Colors.white.withOpacity(0.2)),
+                               ),
+                               child: Text(
+                                 championshipService.currentSeasonHonoree.isNotEmpty 
+                                    ? championshipService.currentSeasonHonoree 
+                                    : "Bem-vindo",
+                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                               ),
+                             ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          
-          // Só mostra o banner de patrocinadores se houver temporada
-          if (seasonId.isNotEmpty)
-            const SponsorBannerRotator(),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildModernHeader() {
-    final championshipService = Provider.of<ChampionshipService>(context);
-    final int year = championshipService.currentSeasonYear;
-    final String honoree = championshipService.currentSeasonHonoree;
-    
-    // Se não tiver temporada, usa valores genéricos
-    final displayYear = (year > 0) ? year.toString() : "";
-    final displayHonoree = honoree.isNotEmpty ? honoree : 'Bem-vindo';
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_showInstallButton)
+                        Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [Colors.green.shade50, Colors.white]),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green.withOpacity(0.3)),
+                            boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.download_rounded, color: Colors.green),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Text("Instale o app para melhor experiência.", 
+                                  style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600, fontSize: 13)),
+                              ),
+                              TextButton(
+                                onPressed: _triggerInstallPrompt,
+                                style: TextButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: const Text("Instalar"),
+                              ),
+                            ],
+                          ),
+                        ),
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Theme.of(context).primaryColor, Theme.of(context).primaryColor.withOpacity(0.8), Colors.black87],
-        ),
-        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))],
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-          child: Column(
-            children: [
-              const SizedBox(height: 10),
-              Image.asset('assets/logo3_fjf.png', height: 110, errorBuilder: (_,__,___) => const Icon(Icons.sports_soccer, size: 100, color: Colors.white)),
-              const SizedBox(height: 16),
-              // Só mostra o ano se ele existir
-              Text('FJF $displayYear', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2.0)),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                child: Text(
-                  displayHonoree,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                      const SizedBox(height: 10),
+                      HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
+                      const SizedBox(height: 10),
+                      const HomeNewsFeed(),
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Card(
+                          elevation: 3,
+                          color: Colors.blue[900],
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: ListTile(
+                            leading: const Icon(Icons.sports_soccer, color: Colors.white, size: 32),
+                            title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            subtitle: const Text("Escale seu time agora!", style: TextStyle(color: Colors.white70)),
+                            trailing: const Icon(Icons.arrow_forward, color: Colors.white),
+                            onTap: () => Navigator.pushNamed(context, '/fantasy-home'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      _buildSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: PhotoStoreBanner(),
+                      ),
+                      const SizedBox(height: 24),
+                      _buildSectionHeader(context, "Equipes Participantes", Icons.groups),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SliverPadding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                sliver: _TeamsSliverGrid(),
+              ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 40, bottom: 80),
+                  child: HomeFooter(appVersion: SplashScreen.appVersion),
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Row(
-        children: [
-          Container(width: 4, height: 24, color: Theme.of(context).primaryColor),
-          const SizedBox(width: 8),
-          Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          if (seasonId.isNotEmpty)
+            const Positioned(
+              left: 0, right: 0, bottom: 0,
+              child: SponsorBannerRotator(location: 'footer_home'),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildTeamsGrid() {
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: Theme.of(context).primaryColor),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title, 
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- WIDGET ATUALIZADO: _SponsorGridCard ---
+class _SponsorGridCard extends StatelessWidget {
+  const _SponsorGridCard();
+
+  static const String _partnerContactUrl = "https://wa.me/5548999999999?text=Quero%20anunciar%20no%20Grid";
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('sponsors')
+          .where('location', isEqualTo: 'grid_teams')
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          final doc = snapshot.data!.docs.first;
+          final data = doc.data() as Map<String, dynamic>;
+          
+          return InkWell(
+            onTap: () async {
+              final url = data['targetUrl'];
+              if (url != null) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200), // Borda padrão do banner
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: data['imageUrl'],
+                  fit: BoxFit.contain,
+                  // Se a imagem falhar, mostra o card padrão
+                  errorWidget: (_,__,___) => _buildDefaultCard(),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return _buildDefaultCard();
+      },
+    );
+  }
+
+  // PADRONIZAÇÃO DO LAYOUT (HOUSE AD)
+  // Agora usa o mesmo ícone, cores e estilo do SponsorBannerRotator
+  Widget _buildDefaultCard() {
+    return InkWell(
+      onTap: () => launchUrl(Uri.parse(_partnerContactUrl), mode: LaunchMode.externalApplication),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white, // Fundo Branco
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200), // Borda Cinza
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Ícone Handshake em círculo âmbar
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(FontAwesomeIcons.handshake, color: Colors.amber, size: 28),
+            ),
+            const SizedBox(height: 8),
+            // Texto Principal
+            const Text(
+              "SEJA PARCEIRO",
+              style: TextStyle(
+                fontWeight: FontWeight.w900, 
+                fontSize: 11, // Fonte ajustada para o tamanho do grid
+                color: Color(0xFFC25F22), // Cor exata do banner
+                letterSpacing: 0.5
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Subtítulo
+            const Text(
+              "Anuncie aqui",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 10, 
+                color: Colors.grey
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TeamsSliverGrid extends StatelessWidget {
+  const _TeamsSliverGrid();
+
+  @override
+  Widget build(BuildContext context) {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
-    if (seasonId.isEmpty) return const SizedBox();
+    if (seasonId.isEmpty) return const SliverToBoxAdapter(child: SizedBox());
+
     final firestoreService = FirestoreService();
 
     return StreamBuilder<List<Team>>(
       stream: firestoreService.streamTeams(seasonId),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()));
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator())));
+        }
         
         final teams = snapshot.data ?? [];
-        if (teams.isEmpty) return const Padding(padding: EdgeInsets.all(20), child: Center(child: Text("Nenhuma equipe cadastrada.")));
+        if (teams.isEmpty) {
+          return const SliverToBoxAdapter(child: Center(child: Text("Nenhuma equipe cadastrada.")));
+        }
 
-        return GridView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+        final bool insertSponsor = (teams.length == 8);
+        final int itemCount = insertSponsor ? 9 : teams.length;
+
+        return SliverGrid(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 1.1,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
+            crossAxisCount: 3, 
+            childAspectRatio: 0.85,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
           ),
-          itemCount: teams.length,
-          itemBuilder: (context, index) {
-            final team = teams[index];
-            return InkWell(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team))),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              if (insertSponsor && index == 4) {
+                return const _SponsorGridCard();
+              }
+
+              final int teamIndex = (insertSponsor && index > 4) ? index - 1 : index;
+              final team = teams[teamIndex];
+              
+              return InkWell(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team))),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 5, spreadRadius: 1)],
+                      border: Border.all(color: Colors.grey.shade100),
+                      boxShadow: [
+                        BoxShadow(color: Colors.grey.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3)),
+                      ],
                     ),
-                    child: SizedBox(
-                      height: 130, width: 130,
-                      child: CachedNetworkImage(
-                        imageUrl: team.shieldUrl,
-                        fit: BoxFit.contain,
-                        placeholder: (_,__) => const Icon(Icons.shield, color: Colors.grey),
-                        errorWidget: (_,__,___) => const Icon(Icons.shield, color: Colors.grey),
-                      ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: CachedNetworkImage(
+                              imageUrl: team.shieldUrl,
+                              fit: BoxFit.contain,
+                              placeholder: (_,__) => Container(color: Colors.grey.shade50),
+                              errorWidget: (_,__,___) => const Icon(Icons.shield_outlined, color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                          child: Text(
+                            team.name,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11, color: Colors.black87),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    team.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ],
-              ),
-            );
-          },
+                );
+            },
+            childCount: itemCount,
+          ),
         );
       },
     );

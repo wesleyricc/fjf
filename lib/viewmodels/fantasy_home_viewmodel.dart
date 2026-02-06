@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/fantasy_models.dart';
-import '../repositories/fantasy_repository.dart'; // <--- Uso do Repository
+import '../repositories/fantasy_repository.dart'; 
 import '../services/fantasy_scout_service.dart';
 
 class FantasyHomeViewModel extends ChangeNotifier {
-  // Instância do Repository (Singleton ou injetado)
   final FantasyRepository _repository = FantasyRepository();
   final FantasyScoutService _scoutService = FantasyScoutService();
+
+  // --- CONTROLE DE INICIALIZAÇÃO (NOVO) ---
+  String? _loadedUserId;
+  String? _loadedSeasonId;
 
   // --- ESTADO ---
   bool _isLoading = true;
@@ -36,30 +39,40 @@ class FantasyHomeViewModel extends ChangeNotifier {
   FantasyTeam? get team => _team;
   Map<String, FantasyScoutDetail> get liveScores => _liveScores;
 
-  // Lógica Computada: Calcula o total parcial do time
+  // Lógica Computada
   double get teamPartialScore {
     if (_team == null) return 0.0;
     
     double total = 0.0;
     for (String pid in _team!.lineupPlayerIds) {
       double score = _liveScores[pid]?.totalScore ?? 0.0;
-      if (_team!.captainId == pid) score *= 2; // Regra do Capitão
+      if (_team!.captainId == pid) score *= 2; 
       total += score;
     }
     return total;
   }
 
-  // --- INICIALIZAÇÃO ---
+  // --- INICIALIZAÇÃO SEGURA ---
   void init(String userId, String seasonId) {
+    // PROTEÇÃO: Se já carregamos dados para este usuário e temporada, não faz nada.
+    // Isso impede loops infinitos e recargas desnecessárias.
+    if (_loadedUserId == userId && _loadedSeasonId == seasonId && !_isLoading) {
+      return;
+    }
+
+    _loadedUserId = userId;
+    _loadedSeasonId = seasonId;
     _isLoading = true;
+    
+    // Notifica logo para mostrar loading na UI caso estivesse false
     notifyListeners();
 
-    // 1. Monitora Status do Mercado (Via Repository)
+    // 1. Monitora Status do Mercado
+    _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
       _isMarketOpen = status['is_open'] ?? true;
       _currentRound = status['current_round'] ?? 1;
       
-      // Se mercado fechar, precisamos garantir que estamos ouvindo os scouts
       _updateScoutSubscription(seasonId);
       notifyListeners();
     }, onError: (e) {
@@ -67,10 +80,11 @@ class FantasyHomeViewModel extends ChangeNotifier {
       notifyListeners();
     });
 
-    // 2. Monitora o Time do Usuário (Via Repository)
+    // 2. Monitora o Time do Usuário
+    _teamSub?.cancel();
     _teamSub = _repository.streamUserTeam(userId).listen((team) {
       _team = team;
-      _updateScoutSubscription(seasonId); // Atualiza scouts se o time mudou
+      _updateScoutSubscription(seasonId); 
       _isLoading = false;
       notifyListeners();
     }, onError: (e) {
@@ -80,13 +94,11 @@ class FantasyHomeViewModel extends ChangeNotifier {
     });
   }
 
-  // Lógica Inteligente: Só ouve scouts se necessário
   void _updateScoutSubscription(String seasonId) {
     _scoutSub?.cancel(); 
     _scoutSub = null;
 
     if (_isMarketOpen) {
-      // Se mercado aberto, não precisamos de parciais ao vivo
       _liveScores = {}; 
       notifyListeners();
       return;
@@ -94,7 +106,6 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
     if (_team == null || _team!.lineupPlayerIds.isEmpty) return;
 
-    // Inicia stream de scouts AO VIVO (Direto do Service de Scouts, pois é realtime puro)
     _scoutSub = _scoutService.streamLiveScores(seasonId, _currentRound, _team!.lineupPlayerIds).listen((scores) {
       _liveScores = scores;
       notifyListeners();

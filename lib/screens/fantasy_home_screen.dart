@@ -4,9 +4,9 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../services/fantasy_auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/fantasy_service.dart'; // Necessário para getPlayersByIds (Future)
+import '../services/fantasy_service.dart'; 
 import '../models/fantasy_models.dart';
-import '../viewmodels/fantasy_home_viewmodel.dart'; // <--- ViewModel
+import '../viewmodels/fantasy_home_viewmodel.dart'; 
 import 'fantasy_edit_team_screen.dart';
 
 class FantasyHomeScreen extends StatefulWidget {
@@ -18,35 +18,36 @@ class FantasyHomeScreen extends StatefulWidget {
 
 class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   
-  @override
-  void initState() {
-    super.initState();
-    // Inicializa o ViewModel apenas uma vez ao criar a tela
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final authService = Provider.of<FantasyAuthService>(context, listen: false);
-      final champService = Provider.of<ChampionshipService>(context, listen: false);
-      
-      if (authService.user != null) {
-        Provider.of<FantasyHomeViewModel>(context, listen: false)
-            .init(authService.user!.uid, champService.currentSeasonId);
-      }
-    });
-  }
+  // Removemos o initState problemático.
+  // A inicialização agora é reativa no build.
 
   @override
   Widget build(BuildContext context) {
     return Consumer<FantasyAuthService>(
       builder: (context, authService, _) {
+        // 1. Estado de Auth Loading
         if (authService.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        
+        // 2. Não Logado -> Mostra Tela de Login
         if (!authService.isAuthenticated) return _buildLoginView(context, authService);
 
-        // AQUI ESTÁ A MÁGICA MVVM:
-        // Consumimos o ViewModel em vez de criar StreamBuilders
+        // 3. Logado -> Garante que o ViewModel do Fantasy está inicializado
+        // Usamos addPostFrameCallback para não chamar setState durante o build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final champService = Provider.of<ChampionshipService>(context, listen: false);
+            // O método init agora é seguro (idempotente), podemos chamar sem medo
+            Provider.of<FantasyHomeViewModel>(context, listen: false)
+                .init(authService.user!.uid, champService.currentSeasonId);
+        });
+
+        // 4. Exibe o Dashboard consumindo o ViewModel
         return Consumer<FantasyHomeViewModel>(
           builder: (context, vm, child) {
             if (vm.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
             if (vm.errorMessage != null) return Scaffold(body: Center(child: Text(vm.errorMessage!)));
-            if (vm.team == null) return const Scaffold(body: Center(child: Text("Erro ao carregar time.")));
+            // Se carregou mas não tem time (caso raro de erro no backend ou delay do create), trata aqui
+            if (vm.team == null) return const Scaffold(body: Center(child: CircularProgressIndicator())); // Ainda carregando ou criando time
 
             return _buildDashboardView(context, authService, vm);
           },
@@ -91,7 +92,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  // --- DASHBOARD VIEW (Refatorada para usar VM) ---
+  // --- DASHBOARD VIEW (Mantida igual) ---
   Widget _buildDashboardView(BuildContext context, FantasyAuthService authService, FantasyHomeViewModel vm) {
     final team = vm.team!;
 
@@ -100,14 +101,21 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
         title: const Text("Meu Time"),
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.logout), tooltip: "Sair", onPressed: () async => await authService.signOut())
+          IconButton(
+            icon: const Icon(Icons.logout), 
+            tooltip: "Sair", 
+            onPressed: () async {
+               // Reseta o viewmodel ao sair para forçar recarga no próximo login
+               // (Opcional, mas boa prática se o VM for singleton)
+               await authService.signOut();
+            }
+          )
         ],
       ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header recebe dados puros do VM
             _buildTeamHeader(context, team, vm.isMarketOpen, vm.currentRound),
             
             Padding(
@@ -130,7 +138,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   
-                  // Preview agora usa o VM para calcular parciais
                   _buildLineupPreview(context, vm),
 
                   const SizedBox(height: 24),
@@ -156,7 +163,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  // --- PREVIEW ESCALAÇÃO (Limpa e eficiente) ---
+  // --- PREVIEW ESCALAÇÃO (Mantido igual) ---
   Widget _buildLineupPreview(BuildContext context, FantasyHomeViewModel vm) {
     if (vm.team!.lineupPlayerIds.isEmpty) {
       return Container(
@@ -173,8 +180,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
       );
     }
 
-    // Nota: O carregamento da lista de jogadores (nomes/fotos) ainda é Future porque muda pouco.
-    // Poderíamos mover para o VM, mas para não complicar demais agora, mantemos aqui.
     return FutureBuilder<List<FantasyPlayer>>(
       future: Provider.of<FantasyService>(context, listen: false).getPlayersByIds(vm.team!.lineupPlayerIds),
       builder: (context, playerSnapshot) {
@@ -183,7 +188,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
         List<FantasyPlayer> players = playerSnapshot.data!;
         players.sort((a, b) => _rankingPos(a.position).compareTo(_rankingPos(b.position)));
 
-        // CENÁRIO 1: MERCADO FECHADO (Parciais do VM)
         if (!vm.isMarketOpen) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,13 +200,11 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text("Parcial R${vm.currentRound}:", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-                    // O VM já calculou o total pra nós!
                     Text("${vm.teamPartialScore.toStringAsFixed(2)} pts", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)), 
                   ],
                 ),
               ),
               ...players.map((p) {
-                // Pegamos o score direto do mapa do VM
                 final score = vm.liveScores[p.playerId]?.totalScore ?? 0.0;
                 return _buildMiniPlayerRow(p, vm.team!.captainId == p.playerId, score: score, showScore: true, label: "Parcial");
               }),
@@ -210,7 +212,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
           );
         }
 
-        // CENÁRIO 2: MERCADO ABERTO
         return Column(
           children: players.map((p) {
             return _buildMiniPlayerRow(p, vm.team!.captainId == p.playerId, score: p.lastScore, showScore: true, label: "Última");
@@ -250,7 +251,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  // --- MÉTODOS AUXILIARES UI (Mesma lógica visual, apenas organizados) ---
+  // --- MÉTODOS AUXILIARES UI ---
   int _rankingPos(String pos) {
     switch (pos) { case 'Goleiro': return 1; case 'Fixo': return 2; case 'Ala': return 3; case 'Pivô': return 4; case 'Técnico': return 5; default: return 99; }
   }

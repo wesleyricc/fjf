@@ -71,7 +71,6 @@ class _PhotoSalesScreenState extends State<PhotoSalesScreen> {
   @override
   void initState() {
     super.initState();
-    // Carrega as fotos ao entrar na tela (apenas uma vez)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<PhotoSalesViewModel>(context, listen: false).loadPhotos();
     });
@@ -80,14 +79,16 @@ class _PhotoSalesScreenState extends State<PhotoSalesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Galeria de Fotos'), backgroundColor: Colors.black, foregroundColor: Colors.white),
+      // CORREÇÃO: Removido backgroundColor/foregroundColor para usar o tema padrão
+      appBar: AppBar(
+        title: const Text('Galeria de Fotos'),
+      ),
       body: Consumer<PhotoSalesViewModel>(
         builder: (context, vm, _) {
           if (vm.isLoadingPhotos) return const Center(child: CircularProgressIndicator());
           if (vm.errorMessage != null) return Center(child: Text(vm.errorMessage!));
           if (vm.allPhotos.isEmpty) return const Center(child: Text('Nenhuma foto disponível.'));
 
-          // Lógica de Agrupamento (UI Logic apenas)
           final Set<int> yearsSet = {};
           for (var photo in vm.allPhotos) { yearsSet.add(photo.takenAt.year); }
           final List<int> sortedYears = yearsSet.toList()..sort((a, b) => b.compareTo(a));
@@ -150,7 +151,10 @@ class _SeasonFoldersScreen extends StatelessWidget {
     final folderNames = folders.keys.toList();
 
     return Scaffold(
-      appBar: AppBar(title: Text('Jogos de $year'), backgroundColor: Colors.black, foregroundColor: Colors.white),
+      // CORREÇÃO: Usando tema padrão
+      appBar: AppBar(
+        title: Text('Jogos de $year'),
+      ),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: folderNames.length,
@@ -199,7 +203,6 @@ class _FolderGalleryScreen extends StatelessWidget {
   const _FolderGalleryScreen({required this.folderName, required this.photos});
 
   void _showCheckoutModal(BuildContext context) {
-    // Inicializa o estado do checkout no ViewModel
     Provider.of<PhotoSalesViewModel>(context, listen: false).initCheckout();
     
     showModalBottomSheet(
@@ -212,16 +215,18 @@ class _FolderGalleryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Usamos Consumer para reconstruir quando o carrinho mudar
     return Consumer<PhotoSalesViewModel>(
       builder: (context, vm, _) {
         return Scaffold(
+          // CORREÇÃO: Usando tema padrão (Actions mantido)
           appBar: AppBar(
             title: Text(folderName),
-            backgroundColor: Colors.black, foregroundColor: Colors.white,
             actions: [
               if (vm.cartCount > 0)
-                TextButton(onPressed: vm.clearCart, child: const Text("Limpar", style: TextStyle(color: Colors.white)))
+                TextButton(
+                  onPressed: vm.clearCart, 
+                  child: const Text("Limpar", style: TextStyle(color: Colors.white))
+                )
             ],
           ),
           body: GridView.builder(
@@ -242,7 +247,7 @@ class _FolderGalleryScreen extends StatelessWidget {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto indisponível")));
                             return;
                          }
-                         vm.toggleCartItem(photo); // Ação no ViewModel
+                         vm.toggleCartItem(photo);
                       },
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
@@ -315,14 +320,12 @@ class _CheckoutModalMVVMState extends State<_CheckoutModalMVVM> {
   @override
   void initState() {
     super.initState();
-    // Preenche o controller com o dado do VM
     final vm = Provider.of<PhotoSalesViewModel>(context, listen: false);
     _emailController.text = vm.customerEmail;
   }
 
   @override
   Widget build(BuildContext context) {
-    // Ouve as mudanças de estado do checkout
     return Consumer<PhotoSalesViewModel>(
       builder: (context, vm, _) {
         final bool canDismiss = vm.checkoutStep == CheckoutStep.form || vm.checkoutStep == CheckoutStep.success;
@@ -446,7 +449,7 @@ class _CheckoutModalMVVMState extends State<_CheckoutModalMVVM> {
 }
 
 // ==========================================
-// TELA ZOOM
+// TELA ZOOM (MANTIDA PRETA PARA IMERSÃO)
 // ==========================================
 class _PhotoDetailView extends StatelessWidget {
   final PhotoProduct photo;

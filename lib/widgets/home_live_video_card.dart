@@ -89,7 +89,7 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
       }
 
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 15.0),
         child: SizedBox(
           width: double.infinity,
           child: ElevatedButton(
@@ -97,7 +97,7 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
               backgroundColor: Colors.red[700],
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14.0),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              //shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 4,
               shadowColor: Colors.redAccent.withOpacity(0.4),
             ),
