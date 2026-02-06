@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../screens/player_profile_screen.dart';
-import '../utils/custom_cache_manager.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/rank_indicator.dart';
 

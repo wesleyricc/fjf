@@ -10,6 +10,21 @@ class FantasyService {
 
   // --- LEITURA DE DADOS ---
   
+  Future<List<FantasyPlayer>> getAllPlayers() async {
+    try {
+      final snapshot = await _firestore.collection('players').get();
+      
+      if (snapshot.docs.isEmpty) return [];
+
+      return snapshot.docs
+          .map((doc) => FantasyPlayer.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print("Erro ao buscar todos os jogadores: $e");
+      return [];
+    }
+  }
+
   Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids) async {
     if (ids.isEmpty) return [];
     try {

@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
 import '../utils/custom_cache_manager.dart';
 
 class PlayerSelectionModal extends StatefulWidget {

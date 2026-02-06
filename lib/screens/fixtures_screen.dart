@@ -18,7 +18,6 @@ import '../widgets/modern_fixtures_nav.dart';
 import '../widgets/palpitometro_widget.dart'; // <--- 1. IMPORT NOVO
 import 'admin_match_screen.dart';
 import 'match_stats_screen.dart';
-import 'team_detail_screen.dart';
 import 'edit_match_screen.dart';
 import 'match_roster_screen.dart';
 

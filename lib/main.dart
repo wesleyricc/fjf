@@ -21,6 +21,14 @@ import 'services/championship_service.dart';
 import 'services/fantasy_service.dart';      // <-- Novo
 import 'services/fantasy_auth_service.dart'; // <-- Novo
 
+//Viewmodels
+import 'viewmodels/photo_sales_viewmodel.dart';
+import 'viewmodels/fantasy_home_viewmodel.dart';
+import 'viewmodels/fantasy_lineup_viewmodel.dart';
+
+//Repositories
+import 'repositories/fantasy_repository.dart';
+
 // Screens
 import 'screens/splash_screen.dart';
 import 'screens/fixtures_screen.dart';
@@ -90,6 +98,12 @@ class FjfApp extends StatelessWidget {
         // Services existentes
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ChampionshipService()),
+        ChangeNotifierProvider(create: (_) => PhotoSalesViewModel()),
+
+        Provider<FantasyRepository>(create: (_) => FantasyRepository()),
+
+        ChangeNotifierProvider(create: (_) => FantasyHomeViewModel()),
+        ChangeNotifierProvider(create: (_) => FantasyLineupViewModel()),
         
         // --- NOVOS SERVICES DO FANTASY ---
         Provider(create: (_) => FantasyService()),

@@ -69,10 +69,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
   Player? _team2Pivo;
   List<Player> _team2Reserves = [];
 
-  // Cores (mantido como null por enquanto, conforme estrutura atual)
-  Color? _team1Color;
-  Color? _team2Color;
-
   @override
   void initState() {
     super.initState();

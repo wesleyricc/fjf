@@ -6,7 +6,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
-import 'dart:typed_data';
 
 // Widgets Refatorados
 import '../widgets/sponsor_banner_rotator.dart';

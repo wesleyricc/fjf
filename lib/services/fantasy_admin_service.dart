@@ -5,25 +5,23 @@ import '../models/fantasy_models.dart';
 class FantasyAdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // --- NOVA TABELA DE PONTUAÇÃO ---
+  // --- TABELA DE PONTUAÇÃO ---
   static const double PTS_GOAL = 5.0;
   static const double PTS_ASSIST = 3.0;
   static const double PTS_YELLOW_CARD = -1.0;
   static const double PTS_RED_CARD = -3.0;
-  static const double PTS_GOAL_CONCEDED = -1.0;
+  static const double PTS_GOAL_CONCEDED = -1.0; 
 
   // --- CONSTANTES DA ECONOMIA ---
-  static const double FACTOR_EXPECTATION = 0.35; // Fator de Expectativa
-  static const double FACTOR_VARIATION = 0.25;   // Multiplicador da Variação
-  static const double CAP_LIMIT_PERCENT = 0.25;  // Teto de 25% (Valorização/Desvalorização)
-  static const double MIN_PRICE = 1.0;           // Preço Mínimo
+  static const double FACTOR_EXPECTATION = 0.35; 
+  static const double FACTOR_VARIATION = 0.25;   
+  static const double CAP_LIMIT_PERCENT = 0.25;  
+  static const double MIN_PRICE = 1.0;           
 
-  // --- 0. LEITURA DOS SCOUTS (FILTRADO POR RODADA) ---
-
+  // --- 0. LEITURA DOS SCOUTS ---
   Future<Map<String, double>> _fetchSeasonScores(String seasonId, int round) async {
     final Map<String, double> scoresMap = {};
-    debugPrint("--- INICIANDO LEITURA DE SCOUTS (SISTEMA DE EXPECTATIVA) ---");
-    debugPrint("Temporada: $seasonId | Rodada: $round");
+    debugPrint("--- LENDO SCOUTS R$round (Temporada $seasonId) ---");
 
     try {
       final matchesRef = _firestore
@@ -34,11 +32,8 @@ class FantasyAdminService {
       
       final matchesSnap = await matchesRef.get();
 
-      debugPrint("Partidas encontradas nesta rodada: ${matchesSnap.docs.length}");
-
       for (var matchDoc in matchesSnap.docs) {
         final data = matchDoc.data();
-        
         if (data['stats_applied'] == null) continue;
 
         final statsApplied = data['stats_applied'] as Map<String, dynamic>;
@@ -50,11 +45,11 @@ class FantasyAdminService {
         final assistsMap = getStatMap('assists');
         final yellowsMap = getStatMap('yellows');
         final redsMap = getStatMap('reds');
-        // final concededMap = getStatMap('goals_conceded'); // Se não for usar, ignorar
+        final concededMap = getStatMap('goals_conceded'); 
 
         final Set<String> allPlayerIds = {
           ...goalsMap.keys, ...assistsMap.keys, ...yellowsMap.keys, 
-          ...redsMap.keys
+          ...redsMap.keys, ...concededMap.keys
         };
 
         for (String pid in allPlayerIds) {
@@ -63,17 +58,14 @@ class FantasyAdminService {
           points += (assistsMap[pid] ?? 0) * PTS_ASSIST;
           points += (yellowsMap[pid] ?? 0) * PTS_YELLOW_CARD;
           points += (redsMap[pid] ?? 0) * PTS_RED_CARD;
+          points += (concededMap[pid] ?? 0) * PTS_GOAL_CONCEDED;
           
           scoresMap[pid] = (scoresMap[pid] ?? 0.0) + points;
         }
       }
-      
-      debugPrint("Jogadores Pontuados na Rodada $round: ${scoresMap.length}");
-      
     } catch (e) {
-      debugPrint("ERRO CRÍTICO ao consolidar scouts: $e");
+      debugPrint("Erro scouts: $e");
     }
-    
     return scoresMap;
   }
 
@@ -82,9 +74,49 @@ class FantasyAdminService {
     return rawMap.map((key, value) => MapEntry(key.toString(), (value is num) ? value.toInt() : 0));
   }
 
-  // --- 1. PROCESSAMENTO DE JOGADORES (MERCADO) ---
+  // --- 1. LÓGICA DE CÁLCULO DE PREÇO E HISTÓRICO ---
+  
+  Map<String, dynamic> _calculateNewPriceState(
+    double currentPrice, 
+    double score, 
+    bool played, 
+    int round
+  ) {
+    // 1. VALORIZAÇÃO
+    double expectation = currentPrice * FACTOR_EXPECTATION;
+    double performance = score - expectation;
+    double rawVariation = performance * FACTOR_VARIATION;
+    double limit = currentPrice * CAP_LIMIT_PERCENT;
 
-  Future<Map<String, double>> processMarketValuation(String seasonId, Map<String, double> actualScores) async {
+    double finalVariation = rawVariation;
+    if (finalVariation > limit) finalVariation = limit;   
+    if (finalVariation < -limit) finalVariation = -limit; 
+
+    double newPrice = currentPrice + finalVariation;
+    if (newPrice < MIN_PRICE) newPrice = MIN_PRICE;
+
+    finalVariation = double.parse(finalVariation.toStringAsFixed(1));
+    newPrice = double.parse(newPrice.toStringAsFixed(1));
+
+    // 2. CRIAÇÃO DO ITEM DE HISTÓRICO
+    return {
+      'new_price': newPrice,
+      'variation': finalVariation,
+      'history_entry': {
+        'round': round,
+        'score': score,
+        'price_before': currentPrice,
+        'price_after': newPrice,
+        'variation': finalVariation,
+        'played': played,
+        'processed_at': Timestamp.now(),
+      }
+    };
+  }
+
+  // --- 2. PROCESSAMENTO DE JOGADORES (MERCADO) ---
+
+  Future<Map<String, double>> processMarketValuation(String seasonId, Map<String, double> actualScores, {int? roundForHistory}) async {
     final Map<String, double> newPricesMap = {};
     final WriteBatch batch = _firestore.batch();
     
@@ -96,61 +128,45 @@ class FantasyAdminService {
       double score = actualScores[player.playerId] ?? 0.0;
       double currentPrice = player.currentPrice;
 
-      // ==========================================================
-      // NOVA LÓGICA DE VALORIZAÇÃO (EXPECTATIVA)
-      // ==========================================================
+      // --- ALTERAÇÃO SOLICITADA: played é sempre TRUE ---
+      bool played = true; 
+      // --------------------------------------------------
+
+      // Chama a lógica centralizada de cálculo
+      final result = _calculateNewPriceState(currentPrice, score, played, roundForHistory ?? 0);
       
-      // 1. Calcular Expectativa (Valor * 0.35)
-      double expectation = currentPrice * FACTOR_EXPECTATION;
-
-      // 2. Calcular Desempenho (Pontos - Expectativa)
-      double performance = score - expectation;
-
-      // 3. Calcular Variação Bruta (Desempenho * 0.15)
-      double rawVariation = performance * FACTOR_VARIATION;
-
-      // 4. Calcular Limites (15% do Valor Atual)
-      double limit = currentPrice * CAP_LIMIT_PERCENT;
-
-      // 5. Aplicar Travas (Clamp)
-      double finalVariation = rawVariation;
-      if (finalVariation > limit) finalVariation = limit;   // Teto Valorização
-      if (finalVariation < -limit) finalVariation = -limit; // Teto Desvalorização
-
-      // 6. Novo Preço
-      double newPrice = currentPrice + finalVariation;
-
-      // 7. Preço Mínimo
-      if (newPrice < MIN_PRICE) newPrice = MIN_PRICE;
-
-      // 8. Arredondamento (1 casa decimal)
-      // Ex: 18.705 -> "18.7" -> 18.7
-      finalVariation = double.parse(finalVariation.toStringAsFixed(1));
-      newPrice = double.parse(newPrice.toStringAsFixed(1));
-
-      // ==========================================================
-
+      double newPrice = result['new_price'];
       newPricesMap[player.playerId] = newPrice;
 
-      // Se não jogou, salvamos score 0.0, mas o preço pode ter variado (pela expectativa)
-      // OBS: Na lógica de expectativa, se score é 0, a expectativa (ex: 6.3) gera desempenho negativo (-6.3),
-      // logo, quem não joga DESVALORIZA. Se quiser evitar isso, coloque um `if (!actualScores.containsKey)`
+      // ATUALIZAÇÃO DO HISTÓRICO
+      List<Map<String, dynamic>> updatedHistory = List.from(player.history);
       
-      // Decisão de Projeto: Jogador que não jogou deve desvalorizar?
-      // Pela sua lógica "Atleta caro = expectativa alta", se ele não joga, ele frustra a expectativa.
-      // Vou manter a desvalorização. Se quiser proteger quem não jogou, descomente abaixo:
-      
-      /*if (!actualScores.containsKey(player.playerId)) {
-         newPrice = currentPrice;
-         finalVariation = 0.0;
-         newPricesMap[player.playerId] = newPrice;
-      }*/
-      
+      if (roundForHistory != null) {
+        updatedHistory.removeWhere((h) => h['round'] == roundForHistory);
+        updatedHistory.add(result['history_entry']);
+      }
+
+      // --- CÁLCULO DA MÉDIA ---
+      // Agora, como played=true sempre, a média será (Total Pontos / Total Rodadas)
+      double sumScores = 0.0;
+      int countMatches = 0;
+
+      for (var entry in updatedHistory) {
+        if (entry['played'] == true) {
+          sumScores += (entry['score'] as num).toDouble();
+          countMatches++;
+        }
+      }
+
+      double newAverage = countMatches > 0 ? sumScores / countMatches : 0.0;
 
       batch.update(doc.reference, {
         'current_price': newPrice,
-        'last_price_change': finalVariation,
-        'last_score': actualScores.containsKey(player.playerId) ? score : 0.0, 
+        'last_price_change': result['variation'],
+        'last_score': score, // Score é 0.0 se não tiver scout
+        'average_score': double.parse(newAverage.toStringAsFixed(2)),
+        'matches_played': countMatches, 
+        'history': updatedHistory,
       });
     }
 
@@ -158,8 +174,7 @@ class FantasyAdminService {
     return newPricesMap;
   }
 
-  // --- 2. PROCESSAMENTO DE TIMES (USUÁRIOS) ---
-  // (Mantido igual, apenas consome os novos preços)
+  // --- 3. PROCESSAMENTO DE TIMES (Mantido) ---
 
   Future<String> processUserTeams(Map<String, double> newPricesMap, Map<String, double> actualScores, int round) async {
     try {
@@ -174,36 +189,26 @@ class FantasyAdminService {
         double newTeamValueFromPlayers = 0.0;
 
         for (String playerId in team.lineupPlayerIds) {
-          // Pontos
           double pScore = actualScores[playerId] ?? 0.0;
           if (team.captainId == playerId) pScore *= 2;
           roundPoints += pScore;
 
-          // Patrimônio (Usa o novo preço calculado com a nova regra)
-          double updatedPrice = newPricesMap[playerId] ?? 1.0; // Fallback min 1.0
+          double updatedPrice = newPricesMap[playerId] ?? 1.0; 
           newTeamValueFromPlayers += updatedPrice;
         }
 
         double newTotalPatrimony = team.currentBalance + newTeamValueFromPlayers;
-
-        // Arredondar patrimônio também para 1 ou 2 casas para ficar limpo
         newTotalPatrimony = double.parse(newTotalPatrimony.toStringAsFixed(2));
 
-        // 1. Cria a referência para a sub-coleção 'history' dentro do time
-        final historyRef = _firestore
-        .collection('fantasy_teams')
-        .doc(doc.id) // ID do time (usuário)
-        .collection('history')
-        .doc(round.toString()); // Doc ID é o número da rodada (ex: "1")
+        final historyRef = _firestore.collection('fantasy_teams').doc(doc.id).collection('history').doc(round.toString()); 
 
-        // 2. Salva os dados estáticos daquela rodada
         batch.set(historyRef, {
           'round': round,
           'points': roundPoints,
-          'patrimony': newTotalPatrimony, // Para ver a evolução da riqueza
+          'patrimony': newTotalPatrimony, 
           'processed_at': FieldValue.serverTimestamp(),
-          // Opcional: Salvar o time que jogou para consulta futura
-          'lineup_snapshot': team.lineupPlayerIds, 
+          'lineup_snapshot': team.lineupPlayerIds,
+          'captain_id': team.captainId,
         });
 
         batch.update(doc.reference, {
@@ -211,7 +216,6 @@ class FantasyAdminService {
           'last_score': roundPoints, 
           'team_value': newTotalPatrimony,
         });
-        
         count++;
       }
 
@@ -222,22 +226,193 @@ class FantasyAdminService {
     }
   }
 
-  // --- ORQUESTRADOR ---
-  
+  // --- 4. ROTINA DE FECHAMENTO (ORQUESTRADOR) ---
+
   Future<String> closeRoundFullRoutine(String seasonId, int round) async {
     try {
       final Map<String, double> scores = await _fetchSeasonScores(seasonId, round);
-      
-      if (scores.isEmpty) {
-        return "AVISO: Nenhum scout encontrado na Rodada $round.";
-      }
+      if (scores.isEmpty) return "AVISO: Nenhum scout encontrado na Rodada $round.";
 
-      final newPrices = await processMarketValuation(seasonId, scores);
+      final newPrices = await processMarketValuation(seasonId, scores, roundForHistory: round);
       final resultTeams = await processUserTeams(newPrices, scores, round);
       
-      return "Rodada $round fechada.\nRegra: Expectativa\nJogadores: ${scores.length}\nTimes: $resultTeams";
+      return "Rodada $round fechada.\nJogadores: ${scores.length}\nTimes: $resultTeams";
     } catch (e) {
       return "Erro crítico: $e";
+    }
+  }
+
+  // --- 5. REPROCESSAMENTO COMPLETO ---
+  
+  Future<String> reprocessFullHistory(String seasonId, int maxRound) async {
+    try {
+      debugPrint("=== INICIANDO RECONSTRUÇÃO DA TEMPORADA (1 a $maxRound) ===");
+      
+      final playersSnap = await _firestore.collection('fantasy_market_players').get();
+      
+      Map<String, dynamic> playerSimulationState = {};
+
+      for (var doc in playersSnap.docs) {
+        final p = FantasyPlayer.fromFirestore(doc);
+        double startPrice = p.currentPrice;
+        
+        // Tenta achar o preço inicial (antes da R1) no histórico existente
+        if (p.history.isNotEmpty) {
+           var r1 = p.history.where((h) => h['round'] == 1);
+           if (r1.isNotEmpty) startPrice = (r1.first['price_before'] as num).toDouble();
+        }
+
+        playerSimulationState[p.playerId] = {
+          'current_price': startPrice,
+          'history': <Map<String, dynamic>>[], 
+          'last_score': 0.0,
+          'last_price_change': 0.0,
+          'matches_played': 0,
+          'total_score_sum': 0.0,
+        };
+      }
+
+      final teamsSnap = await _firestore.collection('fantasy_teams').get();
+      Map<String, double> teamTotalPointsMap = { for (var d in teamsSnap.docs) d.id : 0.0 };
+
+      // LOOP RODADA A RODADA
+      for (int r = 1; r <= maxRound; r++) {
+        debugPrint("> Processando Rodada $r...");
+
+        final Map<String, double> roundScores = await _fetchSeasonScores(seasonId, r);
+
+        // Atualizar Mercado (Simulação)
+        playerSimulationState.forEach((pid, state) {
+          double priceBefore = state['current_price'];
+          
+          double score = roundScores[pid] ?? 0.0;
+          
+          // --- ALTERAÇÃO: played sempre true ---
+          bool played = true; 
+          // -------------------------------------
+
+          final result = _calculateNewPriceState(priceBefore, score, played, r);
+
+          state['current_price'] = result['new_price'];
+          state['last_score'] = score;
+          state['last_price_change'] = result['variation'];
+          (state['history'] as List).add(result['history_entry']);
+          
+          if (played) {
+            state['matches_played'] = (state['matches_played'] as int) + 1;
+            state['total_score_sum'] = (state['total_score_sum'] as double) + score;
+          }
+        });
+
+        // Atualizar Times
+        final WriteBatch roundBatch = _firestore.batch();
+        
+        for (var teamDoc in teamsSnap.docs) {
+          final historyDocRef = teamDoc.reference.collection('history').doc(r.toString());
+          final historySnap = await historyDocRef.get();
+
+          if (!historySnap.exists) continue; 
+
+          final historyData = historySnap.data()!;
+          final List<String> lineup = List<String>.from(historyData['lineup_snapshot'] ?? []);
+          
+          String? captainId = historyData['captain_id'] as String?;
+          if (captainId == null) {
+            final currentTeamData = teamDoc.data();
+            captainId = currentTeamData['captain_id'] as String?;
+          }
+
+          double roundPoints = 0.0;
+
+          for (var pid in lineup) {
+            double pScore = roundScores[pid] ?? 0.0;
+            if (captainId != null && captainId == pid) {
+              pScore *= 2;
+            }
+            roundPoints += pScore;
+          }
+
+          teamTotalPointsMap[teamDoc.id] = (teamTotalPointsMap[teamDoc.id] ?? 0.0) + roundPoints;
+
+          roundBatch.update(historyDocRef, {
+            'points': roundPoints,
+            'captain_id': captainId,
+            'reprocessed_at': FieldValue.serverTimestamp(),
+          });
+        }
+        await roundBatch.commit();
+      }
+
+      // SALVAMENTO FINAL
+      debugPrint("Salvando estado final...");
+      
+      List<QueryDocumentSnapshot> allPlayerDocs = playersSnap.docs;
+      int chunkSize = 400;
+      for (int i = 0; i < allPlayerDocs.length; i += chunkSize) {
+        final batch = _firestore.batch();
+        final end = (i + chunkSize < allPlayerDocs.length) ? i + chunkSize : allPlayerDocs.length;
+        
+        for (var j = i; j < end; j++) {
+          final doc = allPlayerDocs[j];
+          final pid = doc.id;
+          final state = playerSimulationState[pid];
+
+          if (state == null) continue;
+
+          // Cálculo da média final
+          double avg = (state['matches_played'] > 0) 
+             ? state['total_score_sum'] / state['matches_played'] 
+             : 0.0;
+
+          batch.update(doc.reference, {
+            'current_price': state['current_price'],
+            'last_price_change': state['last_price_change'],
+            'last_score': state['last_score'],
+            'average_score': double.parse(avg.toStringAsFixed(2)), // Salva a média calculada
+            'matches_played': state['matches_played'],
+            'history': state['history'], 
+          });
+        }
+        await batch.commit();
+      }
+
+      final batchTeams = _firestore.batch();
+      for (var teamDoc in teamsSnap.docs) {
+        final team = FantasyTeam.fromFirestore(teamDoc);
+        final newTotalPoints = teamTotalPointsMap[teamDoc.id] ?? 0.0;
+        
+        double currentPlayersValue = 0.0;
+        double currentLastScore = 0.0; 
+        
+        for (var pid in team.lineupPlayerIds) {
+          final pState = playerSimulationState[pid];
+          if (pState != null) {
+            currentPlayersValue += (pState['current_price'] as num).toDouble();
+            
+             final historyList = pState['history'] as List<Map<String, dynamic>>;
+             if (historyList.isNotEmpty && historyList.last['round'] == maxRound) {
+                double pScore = (historyList.last['score'] as num).toDouble();
+                if (team.captainId == pid) pScore *= 2;
+                currentLastScore += pScore;
+             }
+          }
+        }
+
+        double newTeamValue = team.currentBalance + currentPlayersValue;
+
+        batchTeams.update(teamDoc.reference, {
+          'total_points': newTotalPoints,
+          'team_value': double.parse(newTeamValue.toStringAsFixed(2)),
+          'last_score': currentLastScore, 
+        });
+      }
+      await batchTeams.commit();
+
+      return "Reprocessamento COMPLETO concluído!\nRodadas: 1 a $maxRound\nMédias corrigidas (Todos jogaram).";
+
+    } catch (e, stack) {
+      debugPrint(stack.toString());
+      return "Erro fatal no reprocessamento: $e";
     }
   }
 }

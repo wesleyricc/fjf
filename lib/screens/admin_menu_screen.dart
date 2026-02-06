@@ -5,7 +5,6 @@ import 'dart:convert';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/admin_service.dart';
-import '../services/fantasy_service.dart'; // <-- Novo Import necessário
 import 'fantasy_admin_control_screen.dart'; // <-- Novo Import necessário
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
@@ -31,32 +30,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     final bytes = utf8.encode(password); 
     final digest = sha256.convert(bytes); 
     return digest.toString();
-  }
-
-  // --- AÇÃO RÁPIDA: SINCRONIZAR ATLETAS ---
-  Future<void> _syncMarketPlayers(BuildContext context) async {
-    setState(() => _isSaving = true);
-    try {
-      final fantasyService = Provider.of<FantasyService>(context, listen: false);
-      // Ajuste o ID da temporada conforme sua configuração ('2026' ou '2025_fjf')
-      final result = await fantasyService.populateMarketFromSeason('2026'); 
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result), 
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          )
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
-      }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
   }
 
   Future<void> _showChangeVideoIdDialog() async {
@@ -298,7 +271,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
             child: ListTile(
               leading: const Icon(Icons.calendar_month, color: Colors.orange),
               title: const Text('Gerenciar Temporadas'),
-              subtitle: const Text('Criar novos anos (2026) e alternar visualização'),
+              subtitle: const Text('Criar novos anos e alternar visualização'),
               trailing: const Icon(Icons.arrow_forward_ios),
               onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(

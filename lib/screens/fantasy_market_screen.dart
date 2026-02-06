@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/fantasy_service.dart';
+import '../services/championship_service.dart'; // Import necessário para pegar a temporada ativa
 import '../models/fantasy_models.dart';
 import '../widgets/fantasy_player_card.dart';
 
@@ -41,9 +42,31 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
   }
 
   void _populateMarket(BuildContext context) async {
-    final service = context.read<FantasyService>();
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Atualizando mercado...")));
-    final result = await service.populateMarketFromSeason('2025_fjf'); 
+    final fantasyService = context.read<FantasyService>();
+    final championshipService = context.read<ChampionshipService>();
+    
+    // Obtém o ID da temporada ativa dinamicamente
+    final seasonId = championshipService.currentSeasonId;
+
+    if (seasonId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Erro: Nenhuma temporada ativa identificada."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Sincronizando mercado com a temporada $seasonId..."))
+    );
+    
+    // Passa o ID dinâmico em vez de chumbado
+    final result = await fantasyService.populateMarketFromSeason(seasonId); 
+    
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
     }

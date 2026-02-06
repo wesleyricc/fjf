@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
 
 class HomeNewsFeed extends StatelessWidget {
   const HomeNewsFeed({super.key});

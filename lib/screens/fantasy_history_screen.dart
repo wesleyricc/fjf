@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import '../services/fantasy_auth_service.dart';
 
 class FantasyHistoryScreen extends StatelessWidget {

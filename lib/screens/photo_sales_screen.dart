@@ -1,115 +1,95 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Para Clipboard
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // IMPORTANTE PARA WEB
+import 'package:flutter/foundation.dart' show kIsWeb; 
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 
-import '../models/photo_product_model.dart'; 
+import '../models/photo_product_model.dart';
+import '../viewmodels/photo_sales_viewmodel.dart';
 
 // ==========================================
-// WIDGET PARA CORRIGIR ERRO DE IMAGEM (WEB vs MOBILE)
+// WIDGETS AUXILIARES (UI Pura)
 // ==========================================
-Widget _buildResponsiveImage({
-  required String url, 
-  BoxFit fit = BoxFit.cover,
-  double? width,
-  double? height,
-}) {
+Widget _buildResponsiveImage({required String url, BoxFit fit = BoxFit.cover}) {
   if (url.isEmpty) return Container(color: Colors.grey[300]);
-
-  // NA WEB: Usa Image.network (Nativo do navegador - evita CORS/EncodingError)
   if (kIsWeb) {
-    return Image.network(
-      url,
-      fit: fit,
-      width: width,
-      height: height,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Container(
-          width: width,
-          height: height,
-          color: Colors.grey[200],
-          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          width: width,
-          height: height,
-          color: Colors.grey[300],
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.broken_image, color: Colors.grey),
-              Text("Erro", style: TextStyle(fontSize: 10, color: Colors.grey))
-            ],
+    return Image.network(url, fit: fit,
+      loadingBuilder: (_, child, prog) => prog == null ? child : Container(color: Colors.grey[200]),
+      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.grey));
+  }
+  return CachedNetworkImage(imageUrl: url, fit: fit,
+    placeholder: (_, __) => Container(color: Colors.grey[200]),
+    errorWidget: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.grey));
+}
+
+class _WatermarkOverlay extends StatelessWidget {
+  const _WatermarkOverlay();
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(color: Colors.black.withOpacity(0.1)),
+          ClipRect(
+            child: OverflowBox(
+              maxWidth: double.infinity, maxHeight: double.infinity,
+              child: Transform.rotate(
+                angle: -0.5,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(8, (_) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20.0),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (__) => const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Text("PROIBIDO REPRODUÇÃO", style: TextStyle(color: Colors.white38, fontWeight: FontWeight.w900, fontSize: 14, decoration: TextDecoration.none)),
+                    ))),
+                  )),
+                ),
+              ),
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
-
-  // NO MOBILE: Usa CachedNetworkImage (Melhor performance)
-  return CachedNetworkImage(
-    imageUrl: url,
-    fit: fit,
-    width: width,
-    height: height,
-    placeholder: (context, url) => Container(
-      width: width,
-      height: height,
-      color: Colors.grey[200],
-    ),
-    errorWidget: (context, url, error) => Container(
-      width: width,
-      height: height,
-      color: Colors.grey[300],
-      child: const Icon(Icons.broken_image, color: Colors.grey),
-    ),
-  );
 }
 
 // ==========================================
-// TELA 1: LISTAGEM DE TEMPORADAS
+// TELA 1: TEMPORADAS (Consome ViewModel)
 // ==========================================
-class PhotoSalesScreen extends StatelessWidget {
+class PhotoSalesScreen extends StatefulWidget {
   const PhotoSalesScreen({super.key});
+
+  @override
+  State<PhotoSalesScreen> createState() => _PhotoSalesScreenState();
+}
+
+class _PhotoSalesScreenState extends State<PhotoSalesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Carrega as fotos ao entrar na tela (apenas uma vez)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<PhotoSalesViewModel>(context, listen: false).loadPhotos();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Galeria de Fotos'),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('photo_sales')
-            .orderBy('taken_at', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      appBar: AppBar(title: const Text('Galeria de Fotos'), backgroundColor: Colors.black, foregroundColor: Colors.white),
+      body: Consumer<PhotoSalesViewModel>(
+        builder: (context, vm, _) {
+          if (vm.isLoadingPhotos) return const Center(child: CircularProgressIndicator());
+          if (vm.errorMessage != null) return Center(child: Text(vm.errorMessage!));
+          if (vm.allPhotos.isEmpty) return const Center(child: Text('Nenhuma foto disponível.'));
 
-          final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) {
-            return const Center(child: Text('Nenhuma foto disponível.'));
-          }
-
-          // Converter documentos usando o Model corrigido
-          final allPhotos = docs.map((d) => PhotoProduct.fromFirestore(d)).toList();
-
+          // Lógica de Agrupamento (UI Logic apenas)
           final Set<int> yearsSet = {};
-          for (var photo in allPhotos) {
-            yearsSet.add(photo.takenAt.year);
-          }
+          for (var photo in vm.allPhotos) { yearsSet.add(photo.takenAt.year); }
           final List<int> sortedYears = yearsSet.toList()..sort((a, b) => b.compareTo(a));
 
           return ListView.separated(
@@ -118,12 +98,7 @@ class PhotoSalesScreen extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final year = sortedYears[index];
-              
-              // Pega a primeira foto válida para capa
-              final firstPhotoOfYear = allPhotos.firstWhere(
-                (p) => p.takenAt.year == year && p.previewUrl.isNotEmpty,
-                orElse: () => allPhotos.firstWhere((p) => p.takenAt.year == year)
-              );
+              final firstPhoto = vm.allPhotos.firstWhere((p) => p.takenAt.year == year, orElse: () => vm.allPhotos.first);
 
               return Card(
                 elevation: 4,
@@ -131,33 +106,17 @@ class PhotoSalesScreen extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () {
-                    final photosInThisYear = allPhotos.where((p) => p.takenAt.year == year).toList();
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => _SeasonFoldersScreen(year: year, photos: photosInThisYear),
-                    ));
+                    final photosInYear = vm.allPhotos.where((p) => p.takenAt.year == year).toList();
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => _SeasonFoldersScreen(year: year, photos: photosInYear)));
                   },
                   child: SizedBox(
                     height: 100,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        _buildResponsiveImage(url: firstPhotoOfYear.previewUrl),
+                        _buildResponsiveImage(url: firstPhoto.previewUrl),
                         Container(color: Colors.black.withOpacity(0.4)),
-                        Center(
-                          child: Text(
-                            "Temporada $year",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2.0,
-                            ),
-                          ),
-                        ),
-                        const Positioned(
-                          right: 16, top: 0, bottom: 0,
-                          child: Icon(Icons.arrow_forward_ios, color: Colors.white70),
-                        )
+                        Center(child: Text("Temporada $year", style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 2.0))),
                       ],
                     ),
                   ),
@@ -172,7 +131,7 @@ class PhotoSalesScreen extends StatelessWidget {
 }
 
 // ==========================================
-// TELA 2: LISTAGEM DE PASTAS
+// TELA 2: PASTAS (Stateless - Recebe dados puros)
 // ==========================================
 class _SeasonFoldersScreen extends StatelessWidget {
   final int year;
@@ -184,64 +143,41 @@ class _SeasonFoldersScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final Map<String, List<PhotoProduct>> folders = {};
     for (var photo in photos) {
-      final folderName = photo.eventName.isNotEmpty ? photo.eventName : 'Geral';
-      if (!folders.containsKey(folderName)) folders[folderName] = [];
-      folders[folderName]!.add(photo);
+      final name = photo.eventName.isNotEmpty ? photo.eventName : 'Geral';
+      if (!folders.containsKey(name)) folders[name] = [];
+      folders[name]!.add(photo);
     }
     final folderNames = folders.keys.toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Jogos de $year'),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: Text('Jogos de $year'), backgroundColor: Colors.black, foregroundColor: Colors.white),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: folderNames.length,
         itemBuilder: (context, index) {
-          final folderName = folderNames[index];
-          final photosInFolder = folders[folderName]!;
-          final coverPhoto = photosInFolder.firstWhere(
-            (p) => p.previewUrl.isNotEmpty, orElse: () => photosInFolder.first
-          );
-
+          final name = folderNames[index];
+          final folderPhotos = folders[name]!;
+          
           return Card(
-            elevation: 4,
-            margin: const EdgeInsets.only(bottom: 16),
+            elevation: 4, margin: const EdgeInsets.only(bottom: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => _FolderGalleryScreen(folderName: folderName, photos: photosInFolder),
-                ));
-              },
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _FolderGalleryScreen(folderName: name, photos: folderPhotos))),
               child: Column(
                 children: [
-                  SizedBox(
-                    height: 140,
-                    width: double.infinity,
-                    child: _buildResponsiveImage(url: coverPhoto.previewUrl),
-                  ),
+                  SizedBox(height: 140, width: double.infinity, child: _buildResponsiveImage(url: folderPhotos.first.previewUrl)),
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
+                    child: Row(children: [
                         const Icon(Icons.folder, color: Color(0xFF32BCAD)),
                         const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(folderName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              Text("${photosInFolder.length} fotos", style: const TextStyle(color: Colors.grey)),
-                            ],
-                          ),
-                        ),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text("${folderPhotos.length} fotos", style: const TextStyle(color: Colors.grey)),
+                        ])),
                         const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                      ],
-                    ),
+                    ]),
                   ),
                 ],
               ),
@@ -254,506 +190,276 @@ class _SeasonFoldersScreen extends StatelessWidget {
 }
 
 // ==========================================
-// TELA 3: GALERIA E CARRINHO
+// TELA 3: GALERIA E CARRINHO (Totalmente MVVM)
 // ==========================================
-class _FolderGalleryScreen extends StatefulWidget {
+class _FolderGalleryScreen extends StatelessWidget {
   final String folderName;
   final List<PhotoProduct> photos;
 
   const _FolderGalleryScreen({required this.folderName, required this.photos});
 
-  @override
-  State<_FolderGalleryScreen> createState() => _FolderGalleryScreenState();
-}
-
-class _FolderGalleryScreenState extends State<_FolderGalleryScreen> {
-  final Set<PhotoProduct> _cart = {};
-
-  void _toggleSelection(PhotoProduct photo) {
-    if (photo.previewUrl.isEmpty) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto indisponível.")));
-       return;
-    }
-    setState(() {
-      if (_cart.contains(photo)) {
-        _cart.remove(photo);
-      } else {
-        _cart.add(photo);
-      }
-    });
-  }
-
-  double get _totalPrice => _cart.fold(0, (sum, item) => sum + item.price);
-
-  void _clearCart() {
-    setState(() {
-      _cart.clear();
-    });
-  }
-
-  void _showCheckoutModal() {
+  void _showCheckoutModal(BuildContext context) {
+    // Inicializa o estado do checkout no ViewModel
+    Provider.of<PhotoSalesViewModel>(context, listen: false).initCheckout();
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _CheckoutModal(
-        cartItems: _cart.toList(),
-        totalPrice: _totalPrice,
-        onSuccess: _clearCart,
-      ),
+      builder: (ctx) => const _CheckoutModalMVVM(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.folderName),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        actions: [
-          if (_cart.isNotEmpty)
-            TextButton(
-              onPressed: _clearCart,
-              child: const Text("Limpar", style: TextStyle(color: Colors.white)),
-            )
-        ],
-      ),
-      body: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          childAspectRatio: 0.7,
-          crossAxisSpacing: 4,
-          mainAxisSpacing: 4,
-        ),
-        itemCount: widget.photos.length,
-        itemBuilder: (ctx, i) {
-          final photo = widget.photos[i];
-          final isSelected = _cart.contains(photo);
-
-          return GestureDetector(
-            onTap: () => _toggleSelection(photo),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: _buildResponsiveImage(url: photo.previewUrl),
-                ),
-                if (isSelected)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF32BCAD), width: 3),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.check_circle, color: Colors.white, size: 40),
-                    ),
-                  ),
-                if (!isSelected && photo.previewUrl.isNotEmpty)
-                  Positioned(
-                    bottom: 0, right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      decoration: const BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.only(topLeft: Radius.circular(4)),
-                      ),
-                      child: Text(
-                        NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(photo.price),
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                
-                if (photo.previewUrl.isNotEmpty)
-                  Positioned(
-                    top: 4, right: 4,
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => _PhotoDetailView(photo: photo)
-                        ));
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                        child: const Icon(Icons.zoom_in, color: Colors.white, size: 18),
-                      ),
-                    ),
-                  )
-              ],
-            ),
-          );
-        },
-      ),
-      bottomSheet: _cart.isNotEmpty ? Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: const Offset(0, -2))],
-        ),
-        child: SafeArea(
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("${_cart.length} selecionadas", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                    Text(
-                      "Total: ${NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(_totalPrice)}",
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.shopping_cart_checkout),
-                label: const Text("COMPRAR"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF32BCAD),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                ),
-                onPressed: _showCheckoutModal,
-              )
+    // Usamos Consumer para reconstruir quando o carrinho mudar
+    return Consumer<PhotoSalesViewModel>(
+      builder: (context, vm, _) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(folderName),
+            backgroundColor: Colors.black, foregroundColor: Colors.white,
+            actions: [
+              if (vm.cartCount > 0)
+                TextButton(onPressed: vm.clearCart, child: const Text("Limpar", style: TextStyle(color: Colors.white)))
             ],
           ),
-        ),
-      ) : null,
+          body: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 4, mainAxisSpacing: 4),
+            itemCount: photos.length,
+            itemBuilder: (ctx, i) {
+              final photo = photos[i];
+              final isSelected = vm.cartItems.contains(photo);
+              
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: () {
+                         if(photo.previewUrl.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto indisponível")));
+                            return;
+                         }
+                         vm.toggleCartItem(photo); // Ação no ViewModel
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            _buildResponsiveImage(url: photo.previewUrl),
+                            const _WatermarkOverlay(),
+                            if (isSelected) Container(
+                              decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), border: Border.all(color: const Color(0xFF32BCAD), width: 3), borderRadius: BorderRadius.circular(4)),
+                              child: const Center(child: Icon(Icons.check_circle, color: Colors.white, size: 40))
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (!isSelected) Positioned(bottom: 0, right: 0, child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.only(topLeft: Radius.circular(4))),
+                        child: Text(NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(photo.price), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  )),
+                  Positioned(top: 4, right: 4, child: Material(color: Colors.transparent, child: InkWell(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _PhotoDetailView(photo: photo))),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          child: const Icon(Icons.zoom_in, color: Colors.white, size: 18),
+                        ),
+                  ))),
+                ],
+              );
+            },
+          ),
+          bottomSheet: vm.cartCount > 0 ? Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)]),
+            child: SafeArea(child: Row(children: [
+                  Expanded(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text("${vm.cartCount} selecionadas", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        Text(NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(vm.totalPrice), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  ])),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.shopping_cart_checkout),
+                    label: const Text("COMPRAR"),
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF32BCAD), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+                    onPressed: () => _showCheckoutModal(context),
+                  )
+            ])),
+          ) : null,
+        );
+      },
     );
   }
 }
 
 // ==========================================
-// MODAL DE CHECKOUT + PIX + EMAIL
+// MODAL DE CHECKOUT (MVVM)
 // ==========================================
-class _CheckoutModal extends StatefulWidget {
-  final List<PhotoProduct> cartItems;
-  final double totalPrice;
-  final VoidCallback onSuccess;
-
-  const _CheckoutModal({required this.cartItems, required this.totalPrice, required this.onSuccess});
-
+class _CheckoutModalMVVM extends StatefulWidget {
+  const _CheckoutModalMVVM();
   @override
-  State<_CheckoutModal> createState() => _CheckoutModalState();
+  State<_CheckoutModalMVVM> createState() => _CheckoutModalMVVMState();
 }
 
-class _CheckoutModalState extends State<_CheckoutModal> {
+class _CheckoutModalMVVMState extends State<_CheckoutModalMVVM> {
   final _emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSavedEmail();
+    // Preenche o controller com o dado do VM
+    final vm = Provider.of<PhotoSalesViewModel>(context, listen: false);
+    _emailController.text = vm.customerEmail;
   }
 
-  Future<void> _loadSavedEmail() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedEmail = prefs.getString('user_email_delivery');
-    if (savedEmail != null && mounted) {
-      _emailController.text = savedEmail;
-    }
-  }
+  @override
+  Widget build(BuildContext context) {
+    // Ouve as mudanças de estado do checkout
+    return Consumer<PhotoSalesViewModel>(
+      builder: (context, vm, _) {
+        final bool canDismiss = vm.checkoutStep == CheckoutStep.form || vm.checkoutStep == CheckoutStep.success;
 
-  Future<void> _processPixPayment() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
-    try {
-      final email = _emailController.text.trim();
-      await SharedPreferences.getInstance().then((p) => p.setString('user_email_delivery', email));
-
-      final photoIds = widget.cartItems.map((e) => e.id).toList();
-
-      // 1. CHAMA O MERCADO PAGO (Cloud Function)
-      final result = await FirebaseFunctions.instance.httpsCallable('createPixPayment').call({
-        'photoIds': photoIds,
-        'customerContact': email, 
-      });
-
-      final data = Map<String, dynamic>.from(result.data as Map);
-      final pixCode = data['pix_code']?.toString() ?? '';
-      final paymentId = data['payment_id']?.toString() ?? '';
-
-      // 2. ATUALIZA O PEDIDO COM O E-MAIL E AS URLs DE ALTA RESOLUÇÃO
-      // Importante: Salvamos a 'original_url' para o download posterior
-      if (paymentId.isNotEmpty) {
-        final List<Map<String, dynamic>> itemsWithHighRes = widget.cartItems.map((photo) {
-          return {
-            'photo_id': photo.id,
-            'price': photo.price,
-            'original_url': photo.highResUrl, 
-          };
-        }).toList();
-
-        await FirebaseFirestore.instance.collection('orders').doc(paymentId).update({
-          'email_delivery': email,
-          'items': itemsWithHighRes,
-        });
-      }
-
-      if (mounted) {
-        Navigator.pop(context); // Fecha input
-        _showLivePaymentDialog(context, pixCode, paymentId, email);
-      }
-
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao gerar Pix: $e'), backgroundColor: Colors.red));
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  // Monitora o pagamento e dispara e-mail se aprovado
-  void _showLivePaymentDialog(BuildContext context, String pixCode, String orderId, String email) {
-    bool emailTriggered = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('orders').doc(orderId).snapshots(),
-          builder: (context, snapshot) {
-            String status = 'pending';
-            List<dynamic> items = [];
-            
-            if (snapshot.hasData && snapshot.data!.exists) {
-              final data = snapshot.data!.data() as Map<String, dynamic>;
-              status = data['status'] ?? 'pending';
-              items = data['items'] ?? [];
-            }
-
-            // --- GATILHO DE SUCESSO ---
-            if (status == 'approved' || status == 'paid') {
-              
-              // Dispara o e-mail APENAS se ainda não disparou nesta sessão
-              if (!emailTriggered) {
-                emailTriggered = true;
-                
-                String linksHtml = "";
-                for (var item in items) {
-                   final url = item['original_url'] ?? item['photo_url'] ?? '#';
-                   linksHtml += '<li><a href="$url">Baixar Imagem Original</a></li>';
-                }
-
-                FirebaseFirestore.instance.collection('mail').add({
-                  'to': [email],
-                  'message': {
-                    'subject': 'Sua Foto FJF Chegou! 📸',
-                    'html': '''
-                      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                        <h2 style="color: #4CAF50;">Pagamento Confirmado!</h2>
-                        <p>Obrigado pela compra. Aqui estão suas fotos em alta resolução:</p>
-                        <ul>$linksHtml</ul>
-                        <hr>
-                        <p>Equipe FJF</p>
-                      </div>
-                    ''',
-                  },
-                }).catchError((e) => debugPrint("Erro ao enviar email: $e"));
-
-                // Limpa o carrinho
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                   widget.onSuccess();
-                });
-              }
-
-              // UI DE SUCESSO
-              return AlertDialog(
-                title: const Row(children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text("Pagamento Aprovado!")]),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Enviamos o link de download para:\n$email", style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 16),
-                      const Text("Você também pode baixar agora:"),
-                      const SizedBox(height: 8),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 250),
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: items.length,
-                          itemBuilder: (ctx, i) {
-                            final item = items[i];
-                            return ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.photo, color: Colors.green),
-                              title: Text("Foto ${i + 1} (Alta Resolução)"),
-                              trailing: ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 10)),
-                                child: const Text("BAIXAR"),
-                                onPressed: () async {
-                                  final uri = Uri.parse(item['original_url'] ?? '');
-                                  if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                },
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(child: const Text("Fechar"), onPressed: () => Navigator.pop(dialogContext))
-                ],
-              );
-            }
-
-            // --- UI DE ESPERA DO PIX ---
-            return AlertDialog(
-              title: const Text("Pague com Pix"),
-              content: Column(
+        return PopScope(
+          canPop: canDismiss,
+          child: Container(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+            child: SingleChildScrollView(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!snapshot.hasData) const LinearProgressIndicator(),
-                  Text("Total: ${NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(widget.totalPrice)}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
-                    child: SelectableText(pixCode, style: const TextStyle(fontFamily: 'Courier', fontSize: 11), maxLines: 4),
-                  ),
-                  const SizedBox(height: 10),
-                  
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.copy), label: const Text("Copiar Código Pix"),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF32BCAD), foregroundColor: Colors.white),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: pixCode));
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Código Pix Copiado!')));
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                      SizedBox(width: 8),
-                      Text("Aguardando confirmação...", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  )
+                  if (vm.errorMessage != null)
+                     Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(vm.errorMessage!, style: const TextStyle(color: Colors.red))),
+
+                  _buildContent(vm),
+                  const SizedBox(height: 20),
                 ],
               ),
-              actions: [TextButton(child: const Text("Cancelar"), onPressed: () => Navigator.pop(dialogContext))],
-            );
-          },
+            ),
+          ),
         );
       },
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.only(
-        left: 24, right: 24, top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text("Finalizar Compra", style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 10),
-            
-            SizedBox(
-              height: 60,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: widget.cartItems.length,
-                itemBuilder: (ctx, i) => Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: SizedBox(
-                      width: 60, height: 60,
-                      child: _buildResponsiveImage(url: widget.cartItems[i].previewUrl),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            
+  Widget _buildContent(PhotoSalesViewModel vm) {
+    switch (vm.checkoutStep) {
+      case CheckoutStep.form:
+        return Form(
+          key: _formKey,
+          child: Column(children: [
+            const Text("Finalizar Compra", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
-            
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: "Seu E-mail (Obrigatório)",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.email),
-                hintText: "Para receber a foto em Alta Resolução",
-                helperText: "Enviaremos o arquivo original para este endereço.",
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) return 'O e-mail é obrigatório';
-                if (!value.contains('@') || !value.contains('.')) return 'Informe um e-mail válido';
-                return null;
-              },
+              decoration: const InputDecoration(labelText: "E-mail", prefixIcon: Icon(Icons.email), border: OutlineInputBorder()),
+              onChanged: (v) => vm.setEmail(v),
+              validator: (v) => (v == null || !v.contains('@')) ? 'Inválido' : null,
             ),
-            
+            const SizedBox(height: 10),
+            Text("Total: ${NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(vm.totalPrice)}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
             const SizedBox(height: 20),
+            SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF32BCAD), foregroundColor: Colors.white),
+              onPressed: () {
+                if(_formKey.currentState!.validate()) vm.generatePix();
+              },
+              child: const Text("GERAR PIX"),
+            )),
+          ]),
+        );
 
-            _isLoading 
-              ? const Center(child: CircularProgressIndicator())
-              : ElevatedButton.icon(
-                  icon: const Icon(Icons.pix, color: Colors.white),
-                  label: Text("Gerar PIX (${NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(widget.totalPrice)})"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF32BCAD),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  onPressed: _processPixPayment,
-                ),
-          ],
-        ),
-      ),
-    );
+      case CheckoutStep.loading:
+        return const Column(children: [CircularProgressIndicator(), SizedBox(height: 16), Text("Processando...")]);
+
+      case CheckoutStep.pix:
+        return Column(children: [
+          const Text("Pague com Pix", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)), child: SelectableText(vm.pixCode, style: const TextStyle(fontFamily: 'Courier', fontSize: 12), maxLines: 4)),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.copy), label: const Text("Copiar Código"),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF32BCAD), foregroundColor: Colors.white),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: vm.pixCode));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copiado!')));
+            },
+          ),
+          const SizedBox(height: 20),
+          const LinearProgressIndicator(),
+          const SizedBox(height: 8),
+          const Text("Aguardando pagamento...", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 20),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar"))
+        ]);
+
+      case CheckoutStep.success:
+        return Column(children: [
+          const Icon(Icons.check_circle, color: Colors.green, size: 60),
+          const SizedBox(height: 10),
+          const Text("Sucesso!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+          const SizedBox(height: 10),
+          if (vm.purchasedItems.isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 250),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: vm.purchasedItems.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final photo = vm.purchasedItems[i];
+                  return ListTile(
+                    dense: true, contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.image),
+                    title: Text("Foto ${i + 1}"),
+                    trailing: ElevatedButton.icon(
+                      icon: const Icon(Icons.download, size: 14), label: const Text("BAIXAR"),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                      onPressed: () async {
+                        final uri = Uri.parse(photo.highResUrl);
+                        if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 20),
+          SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text("FECHAR GALERIA"),
+          )),
+        ]);
+    }
   }
 }
 
+// ==========================================
+// TELA ZOOM
+// ==========================================
 class _PhotoDetailView extends StatelessWidget {
   final PhotoProduct photo;
   const _PhotoDetailView({required this.photo});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
-      body: Center(
-        child: InteractiveViewer(
-          minScale: 1.0, maxScale: 4.0,
-          child: _buildResponsiveImage(
-            url: photo.previewUrl,
-            fit: BoxFit.contain,
-          ),
-        ),
-      ),
+      body: Center(child: InteractiveViewer(minScale: 1.0, maxScale: 4.0, child: Stack(fit: StackFit.loose, children: [
+        _buildResponsiveImage(url: photo.previewUrl, fit: BoxFit.contain),
+        const Positioned.fill(child: _WatermarkOverlay()),
+      ]))),
     );
   }
 }

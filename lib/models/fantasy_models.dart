@@ -12,7 +12,10 @@ class FantasyPlayer {
   final double lastScore;
   final double averageScore;
   final int matchesPlayed;
-  final String status; // 'probable', 'injured', etc.
+  final String status;
+  
+  // --- NOVO: Histórico para auditoria e recálculo exato da média ---
+  final List<Map<String, dynamic>> history; 
 
   FantasyPlayer({
     required this.playerId,
@@ -27,6 +30,7 @@ class FantasyPlayer {
     required this.averageScore,
     required this.matchesPlayed,
     required this.status,
+    required this.history, // Obrigatório
   });
 
   factory FantasyPlayer.fromFirestore(DocumentSnapshot doc) {
@@ -44,6 +48,8 @@ class FantasyPlayer {
       averageScore: (data['average_score'] ?? 0).toDouble(),
       matchesPlayed: (data['matches_played'] ?? 0).toInt(),
       status: data['status'] ?? 'probable',
+      // Carrega o histórico (ou lista vazia se não existir)
+      history: List<Map<String, dynamic>>.from(data['history'] ?? []),
     );
   }
 
@@ -60,6 +66,7 @@ class FantasyPlayer {
       'average_score': averageScore,
       'matches_played': matchesPlayed,
       'status': status,
+      'history': history, // Salva o histórico
     };
   }
 }
@@ -71,7 +78,7 @@ class FantasyTeam {
   final String ownerName;
   final String teamName;
   final double totalPoints;
-  final double lastScore; // <--- NOVO CAMPO ADICIONADO
+  final double lastScore; 
   final double teamValue;
   final double currentBalance;
   final List<String> lineupPlayerIds;
@@ -85,7 +92,7 @@ class FantasyTeam {
     required this.ownerName,
     required this.teamName,
     required this.totalPoints,
-    required this.lastScore, // <--- ADICIONADO
+    required this.lastScore, 
     required this.teamValue,
     required this.currentBalance,
     required this.lineupPlayerIds,
@@ -103,18 +110,12 @@ class FantasyTeam {
       ownerName: data['owner_name'] ?? 'Cartoleiro',
       teamName: data['team_name'] ?? 'Time sem nome',
       totalPoints: (data['total_points'] ?? 0).toDouble(),
-      
-      // <--- Lendo do banco (se não existir, assume 0)
       lastScore: (data['last_score'] ?? 0).toDouble(), 
-      
       teamValue: (data['team_value'] ?? 100).toDouble(),
       currentBalance: (data['current_balance'] ?? 100).toDouble(),
-      
-      // Leitura robusta do lineup (tenta ler do novo, se falhar tenta do antigo)
       lineupPlayerIds: List<String>.from(
           data['lineup_player_ids'] ?? data['lineup'] ?? []
       ),
-      
       captainId: data['captain_id'],
       shieldType: data['shield_type'] ?? '1', 
     );
@@ -127,7 +128,7 @@ class FantasyTeam {
       'owner_name': ownerName,
       'team_name': teamName,
       'total_points': totalPoints,
-      'last_score': lastScore, // <--- ADICIONADO
+      'last_score': lastScore,
       'team_value': teamValue,
       'current_balance': currentBalance,
       'lineup_player_ids': lineupPlayerIds,

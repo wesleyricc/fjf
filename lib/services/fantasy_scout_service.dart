@@ -32,7 +32,7 @@ class FantasyScoutService {
   static const double PTS_RED_CARD = -3.0;
   static const double PTS_GOAL_CONCEDED = -1.0; 
 
-  Stream<Map<String, FantasyScoutDetail>> streamLiveScores(String seasonId, List<String> playerIds) {
+  Stream<Map<String, FantasyScoutDetail>> streamLiveScores(String seasonId, int round, List<String> playerIds) {
     // Debug: Verificar o ID que está chegando
     debugPrint("FantasyScout: Escutando jogos ao vivo na temporada: $seasonId");
 
@@ -42,7 +42,7 @@ class FantasyScoutService {
         .collection('championships')
         .doc(seasonId)
         .collection('matches')
-        .where('status', isEqualTo: 'in_progress') 
+        .where('round', isEqualTo: round)
         .snapshots()
         .map((snapshot) {
       

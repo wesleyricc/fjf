@@ -7,7 +7,6 @@ import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../screens/player_profile_screen.dart';
-import '../utils/custom_cache_manager.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/rank_indicator.dart'; // Certifique-se de ter este widget ou use o código abaixo
 

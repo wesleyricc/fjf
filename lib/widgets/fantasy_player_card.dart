@@ -89,7 +89,7 @@ class FantasyPlayerCard extends StatelessWidget {
                 ),
               ),
 
-              // 3. Preço e Variação
+              // 3. Preço e Variação (FORMATADO 2 CASAS)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -116,15 +116,14 @@ class FantasyPlayerCard extends StatelessWidget {
 
   Widget _buildStatusBadge(String status) {
     Color color;
-    String label;
     switch (status) {
-      case 'injured': color = Colors.red; label = 'Contundido'; break;
-      case 'suspended': color = Colors.red; label = 'Suspenso'; break;
-      case 'doubtful': color = Colors.orange; label = 'Dúvida'; break;
-      default: color = Colors.green; label = 'Provável';
+      case 'injured': color = Colors.red; break;
+      case 'suspended': color = Colors.red; break;
+      case 'doubtful': color = Colors.orange; break;
+      default: color = Colors.green;
     }
     
-    if (status == 'probable') return const SizedBox.shrink(); // Não mostra nada se for provável
+    if (status == 'probable') return const SizedBox.shrink();
 
     return Icon(Icons.health_and_safety, size: 14, color: color);
   }
