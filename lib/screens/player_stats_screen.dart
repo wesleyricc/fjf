@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/admin_service.dart';
 import '../services/championship_service.dart';
@@ -7,6 +6,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/generic_player_rank_list.dart'; 
 import '../widgets/total_cards_rank_list.dart';    
+import '../models/player_model.dart'; // Import Model
 
 class PlayerStatsScreen extends StatelessWidget {
   const PlayerStatsScreen({super.key});
@@ -33,99 +33,99 @@ class PlayerStatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final championshipService = Provider.of<ChampionshipService>(context);
-    final seasonId = championshipService.currentSeasonId;
-    final seasonName = championshipService.currentSeasonName;
-    
-    // ALTERAÇÃO: Define a referência base sempre para a temporada atual
-    // Removemos a verificação de LEGACY_ID
-    final Query baseQuery = FirebaseFirestore.instance
-        .collection('championships')
-        .doc(seasonId)
-        .collection('player_stats');
+    // 1. Obtém a lista completa do Cache
+    return Consumer<ChampionshipService>(
+      builder: (context, service, _) {
+        final seasonName = service.currentSeasonName;
+        
+        // Clona a lista para não afetar o cache original durante a ordenação
+        final List<Player> allPlayers = List.from(service.allPlayers);
 
-    return DefaultTabController(
-      length: 9,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Estatísticas'),
-              Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
-            ],
+        // Prepara as listas filtradas (Custo de processamento local, não de leitura)
+        // Isso é extremamente rápido e gratuito.
+        
+        // Artilheiros
+        final scorers = allPlayers.where((p) => !p.isStaff && p.goals > 0).toList()
+          ..sort((a, b) => b.goals.compareTo(a.goals));
+        
+        // Assistências
+        final assists = allPlayers.where((p) => !p.isStaff && p.assists > 0).toList()
+          ..sort((a, b) => b.assists.compareTo(a.assists));
+        
+        // Goleiros
+        final goalkeepers = allPlayers.where((p) => p.isGoalkeeper).toList()
+          ..sort((a, b) => a.goalsConceded.compareTo(b.goalsConceded)); // Menor é melhor
+        
+        // Craques
+        final motm = allPlayers.where((p) => p.motmAwards > 0).toList()
+          ..sort((a, b) => b.motmAwards.compareTo(a.motmAwards));
+        
+        // Pendurados
+        final pending = allPlayers.where((p) => p.yellowCards == AdminService.pendingYellowCards).toList();
+        
+        // Suspensos
+        final suspended = allPlayers.where((p) => p.isSuspended).toList();
+        
+        // Amarelos Total
+        final yellows = allPlayers.where((p) => p.totalYellowCards > 0).toList()
+          ..sort((a, b) => b.totalYellowCards.compareTo(a.totalYellowCards));
+        
+        // Vermelhos Total
+        final reds = allPlayers.where((p) => p.totalRedCards > 0).toList()
+          ..sort((a, b) => b.totalRedCards.compareTo(a.totalRedCards));
+
+        return DefaultTabController(
+          length: 9,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Estatísticas'),
+                  Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+                ],
+              ),
+              actions: [
+                IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
+                IconButton(icon: const Icon(Icons.refresh), onPressed: () => service.fetchStaticData(forceRefresh: true)),
+              ],
+              bottom: const TabBar(
+                isScrollable: true,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                indicatorColor: Colors.white,
+                tabs: [
+                  Tab(text: 'Artilheiros'),
+                  Tab(text: 'Assistências'),
+                  Tab(text: 'Goleiro MV'),
+                  Tab(text: 'Craque do Jogo'),
+                  Tab(text: 'Pendurados'),
+                  Tab(text: 'Suspensos'),
+                  Tab(text: 'Amarelos'),
+                  Tab(text: 'Vermelhos'),
+                  Tab(text: 'Total Cartões'),
+                ],
+              ),
+            ),
+            drawer: const AppDrawer(),
+            // Passamos as listas JÁ FILTRADAS para os widgets
+            body: TabBarView(
+              children: [
+                GenericPlayerRankList(players: scorers, statField: 'goals', statLabel: 'Gols', emptyMessage: 'Nenhum gol marcado.'),
+                GenericPlayerRankList(players: assists, statField: 'assists', statLabel: 'Ass', emptyMessage: 'Nenhuma assistência.'),
+                GenericPlayerRankList(players: goalkeepers, statField: 'goalsConceded', statLabel: 'GS', emptyMessage: 'Sem dados de goleiros.'),
+                GenericPlayerRankList(players: motm, statField: 'motmAwards', statLabel: 'x', emptyMessage: 'Nenhum craque eleito.'),
+                GenericPlayerRankList(players: pending, isStatusList: true, emptyMessage: 'Ninguém pendurado.'),
+                GenericPlayerRankList(players: suspended, isStatusList: true, isSuspendedTab: true, emptyMessage: 'Ninguém suspenso.'),
+                GenericPlayerRankList(players: yellows, statField: 'totalYellowCards', statLabel: 'CA', emptyMessage: 'Sem cartões.'),
+                GenericPlayerRankList(players: reds, statField: 'totalRedCards', statLabel: 'CV', emptyMessage: 'Sem cartões.'),
+                //TotalCardsRankList(allPlayers: allPlayers), // Passa todos
+              ],
+            ),
+            bottomNavigationBar: const SponsorBannerRotator(),
           ),
-          actions: [IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context))],
-          bottom: const TabBar(
-            isScrollable: true,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.white,
-            tabs: [
-              Tab(text: 'Artilheiros'),
-              Tab(text: 'Assistências'),
-              Tab(text: 'Goleiro MV'),
-              Tab(text: 'Craque do Jogo'),
-              Tab(text: 'Pendurados'),
-              Tab(text: 'Suspensos'),
-              Tab(text: 'Amarelos'),
-              Tab(text: 'Vermelhos'),
-              Tab(text: 'Total Cartões'),
-            ],
-          ),
-        ),
-        drawer: const AppDrawer(),
-        body: TabBarView(
-          children: [
-            // 1. Artilheiros
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('goals', isGreaterThan: 0).orderBy('goals', descending: true).orderBy('name'),
-              statField: 'goals', statLabel: 'Gols', emptyMessage: 'Nenhum gol marcado.',
-            ),
-            // 2. Assistências
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('is_staff', isEqualTo: false).where('assists', isGreaterThan: 0).orderBy('assists', descending: true).orderBy('name'),
-              statField: 'assists', statLabel: 'Ass', emptyMessage: 'Nenhuma assistência.',
-            ),
-            // 3. Goleiros
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('is_goalkeeper', isEqualTo: true).orderBy('goals_conceded', descending: false).orderBy('name'),
-              statField: 'goals_conceded', statLabel: 'GS', emptyMessage: 'Sem dados de goleiros.',
-            ),
-            // 4. Craque
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('man_of_the_match_awards', isGreaterThan: 0).orderBy('man_of_the_match_awards', descending: true).orderBy('name'),
-              statField: 'man_of_the_match_awards', statLabel: 'x', emptyMessage: 'Nenhum craque eleito.',
-            ),
-            // 5. Pendurados
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('yellow_cards', isEqualTo: AdminService.pendingYellowCards).orderBy('name'),
-              emptyMessage: 'Ninguém pendurado.', isStatusList: true,
-            ),
-            // 6. Suspensos
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('is_suspended', isEqualTo: true).orderBy('name'),
-              emptyMessage: 'Ninguém suspenso.', isStatusList: true, isSuspendedTab: true,
-            ),
-            // 7. Amarelos Total
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('total_yellow_cards', isGreaterThan: 0).orderBy('total_yellow_cards', descending: true).orderBy('name'),
-              statField: 'total_yellow_cards', statLabel: 'CA', emptyMessage: 'Sem cartões.',
-            ),
-            // 8. Vermelhos Total
-            GenericPlayerRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true).where('total_red_cards', isGreaterThan: 0).orderBy('total_red_cards', descending: true).orderBy('name'),
-              statField: 'total_red_cards', statLabel: 'CV', emptyMessage: 'Sem cartões.',
-            ),
-            // 9. Total (Client Side)
-            TotalCardsRankList(
-              baseQuery: baseQuery.where('isActive', isEqualTo: true),
-              emptyMessage: 'Sem cartões registrados.',
-            ),
-          ],
-        ),
-        bottomNavigationBar: const SponsorBannerRotator(),
-      ),
+        );
+      }
     );
   }
 }

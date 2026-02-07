@@ -40,7 +40,7 @@ class AppDrawer extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor,
                   image: const DecorationImage(
-                    image: AssetImage('assets/icon/icon_foreground.png'), // Fundo sutil se quiser
+                    image: AssetImage('assets/logo3_fjf.png'), // Fundo sutil se quiser
                     opacity: 0.1,
                     fit: BoxFit.cover,
                   ),
@@ -80,9 +80,14 @@ class AppDrawer extends StatelessWidget {
                     _buildDrawerItem(context, Icons.person_search, 'Estatísticas de Atletas', '/player-stats'),
                     _buildDrawerItem(context, Icons.history_toggle_off, 'Suspensões', '/suspension-history'),
                     _buildDrawerItem(context, Icons.compare_arrows, 'Comparador de Atletas', '/player-comparison'),
-                    _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
                     
+                    // --- NOVA SEÇÃO SOBRE A FJF ---
+                    _buildSectionHeader(context, "SOBRE A FJF"),
+                    _buildDrawerItem(context, Icons.history_edu, 'Nossa História', '/about-history'),
+                    _buildDrawerItem(context, Icons.groups_2, 'Diretoria', '/about-board'),
+
                     const Divider(height: 30),
+                    _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
                     
                     // --- ADMINISTRAÇÃO ---
                     ListTile(

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../utils/standings_sorter.dart'; // Importa TeamStanding
+import '../utils/standings_sorter.dart'; 
 import '../screens/team_detail_screen.dart';
-import '../models/team_model.dart'; // <-- Import necessário para conversão
+import '../models/match_model.dart';
+import '../services/admin_service.dart';
 
 class StandingsTableWidget extends StatelessWidget {
   final List<TeamStanding> standings;
-  final List<DocumentSnapshot> allMatches;
-  final Map<String, Map<String, dynamic>> liveScores; // Para destacar placar ao vivo
+  final List<MatchModel> allMatches;
+  final Map<String, Map<String, dynamic>> liveScores; 
 
   const StandingsTableWidget({
     super.key,
@@ -24,6 +24,7 @@ class StandingsTableWidget extends StatelessWidget {
     }
 
     final bool showLast5 = allMatches.isNotEmpty;
+    final bool isModel2 = AdminService.tournamentFormat == 'model_2';
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -43,22 +44,31 @@ class StandingsTableWidget extends StatelessWidget {
           const DataColumn(label: Text('GP')),
           const DataColumn(label: Text('GC')),
           const DataColumn(label: Text('SG')),
-          const DataColumn(label: Text('PD')), // Pontos Disciplinares
-          const DataColumn(label: Text('PE')), // Pontos Extras
+          const DataColumn(label: Text('PD')),
+          const DataColumn(label: Text('PE')),
           const DataColumn(label: Text('APR %')),
           if (showLast5) const DataColumn(label: Center(child: Text('Últ. 5'))),
         ],
         rows: standings.asMap().entries.map((entry) {
           final index = entry.key + 1;
-          final teamStanding = entry.value; // Objeto auxiliar de cálculo
-          final data = teamStanding.data;   // Map<String, dynamic> do snapshot
+          final standing = entry.value; 
+          final team = standing.team;   
 
-          // Zona de Classificação (G4) - Destaque visual
+          // Cores
           Color? rowColor;
-          if (index <= 4) rowColor = Colors.green.withOpacity(0.15);
+          if (isModel2) {
+            if (index <= 2) {
+              rowColor = Colors.green.withOpacity(0.15);
+            } else if (index >= 3 && index <= 6) {
+              rowColor = Colors.blue.withOpacity(0.10);
+            }
+          } else {
+            if (index <= 4) {
+              rowColor = Colors.green.withOpacity(0.15);
+            }
+          }
 
-          // Obtém o nome completo e converte para MAIÚSCULAS
-          final String teamName = (data['name'] ?? '???').toString().toUpperCase();
+          final String teamName = team.name.toUpperCase();
 
           return DataRow(
             color: rowColor != null ? MaterialStateProperty.all(rowColor) : null,
@@ -67,30 +77,17 @@ class StandingsTableWidget extends StatelessWidget {
               DataCell(
                 InkWell(
                   onTap: () {
-                    // --- CORREÇÃO AQUI ---
-                    // Convertemos o Snapshot armazenado no TeamStanding para o Model Team
-                    final teamModel = Team.fromFirestore(teamStanding.teamDoc);
-                    
-                    Navigator.push(
-                      context, 
-                      MaterialPageRoute(
-                        builder: (_) => TeamDetailScreen(team: teamModel)
-                      )
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team)));
                   },
                   child: Row(
                     children: [
-                      if (data['shield_url'] != null)
+                      if (team.shieldUrl.isNotEmpty)
                         CachedNetworkImage(
-                          imageUrl: data['shield_url'], 
-                          width: 20, 
-                          height: 20, 
-                          fit: BoxFit.contain, 
+                          imageUrl: team.shieldUrl, width: 20, height: 20, fit: BoxFit.contain, 
                           errorWidget: (_,__,___) => const Icon(Icons.shield, size: 18)
                         ),
                       const SizedBox(width: 6),
                       
-                      // Nome em Maiúsculas
                       Container(
                         constraints: const BoxConstraints(maxWidth: 160),
                         child: Text(
@@ -100,31 +97,30 @@ class StandingsTableWidget extends StatelessWidget {
                         ),
                       ),
                       
-                      // Indicador de Placar ao Vivo na Tabela
-                      if (liveScores.containsKey(teamStanding.id))
+                      if (liveScores.containsKey(team.id))
                         Padding(
                           padding: const EdgeInsets.only(left: 4.0),
                           child: Text(
-                            liveScores[teamStanding.id]!['score'],
-                            style: TextStyle(color: liveScores[teamStanding.id]!['color'], fontSize: 10, fontWeight: FontWeight.bold),
+                            liveScores[team.id]!['score'],
+                            style: TextStyle(color: liveScores[team.id]!['color'], fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         ),
                     ],
                   ),
                 ),
               ),
-              DataCell(Text('${teamStanding.points}', style: const TextStyle(fontWeight: FontWeight.bold))),
-              DataCell(Text('${teamStanding.gamesPlayed}')),
-              DataCell(Text('${teamStanding.wins}')),
-              DataCell(Text('${teamStanding.draws}')),
-              DataCell(Text('${teamStanding.losses}')),
-              DataCell(Text('${teamStanding.goalsFor}')),
-              DataCell(Text('${teamStanding.goalsAgainst}')),
-              DataCell(Text('${teamStanding.goalDifference}')),
-              DataCell(Text('${teamStanding.disciplinaryPoints}')),
-              DataCell(Text('${teamStanding.extraPoints}')),
-              DataCell(_buildAproveitamento(teamStanding)),
-              if (showLast5) DataCell(_buildLast5Games(teamStanding.id, allMatches)),
+              DataCell(Text('${standing.points}', style: const TextStyle(fontWeight: FontWeight.bold))),
+              DataCell(Text('${standing.gamesPlayed}')),
+              DataCell(Text('${standing.wins}')),
+              DataCell(Text('${standing.draws}')),
+              DataCell(Text('${standing.losses}')),
+              DataCell(Text('${standing.goalsFor}')),
+              DataCell(Text('${standing.goalsAgainst}')),
+              DataCell(Text('${standing.goalDifference}')),
+              DataCell(Text('${standing.disciplinaryPoints}')),
+              DataCell(Text('${standing.extraPoints}')),
+              DataCell(_buildAproveitamento(standing)),
+              if (showLast5) DataCell(_buildLast5Games(team.id, allMatches)),
             ],
           );
         }).toList(),
@@ -138,31 +134,20 @@ class StandingsTableWidget extends StatelessWidget {
     return Text('${apr.toStringAsFixed(1)}%', style: const TextStyle(fontWeight: FontWeight.bold));
   }
 
-  Widget _buildLast5Games(String teamId, List<DocumentSnapshot> matches) {
-    // Filtra jogos do time
+  Widget _buildLast5Games(String teamId, List<MatchModel> matches) {
     var teamMatches = matches.where((m) {
-      final d = m.data() as Map<String, dynamic>;
-      final status = d['status'];
-      return (status == 'finished' || status == 'in_progress') && (d['team_home_id'] == teamId || d['team_away_id'] == teamId);
+      return (m.isFinished || m.isInProgress) && (m.homeTeamId == teamId || m.awayTeamId == teamId);
     }).toList();
 
-    // Ordenação decrescente (mais recente primeiro)
-    teamMatches.sort((a, b) {
-       final tA = (a.data() as Map)['datetime'] as Timestamp? ?? Timestamp(0,0);
-       final tB = (b.data() as Map)['datetime'] as Timestamp? ?? Timestamp(0,0);
-       return tB.compareTo(tA); 
-    });
-    
-    // Pega os 5 mais recentes e inverte para exibir na ordem cronológica (esq -> dir: antigo -> novo)
+    teamMatches.sort((a, b) => (b.datetime ?? DateTime(0)).compareTo(a.datetime ?? DateTime(0)));
     final displayList = teamMatches.take(5).toList().reversed.toList();
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: displayList.map((m) {
-        final d = m.data() as Map<String, dynamic>;
-        final scoreH = d['score_home'] as int;
-        final scoreA = d['score_away'] as int;
-        final isHome = d['team_home_id'] == teamId;
+        final scoreH = m.scoreHome ?? 0;
+        final scoreA = m.scoreAway ?? 0;
+        final isHome = m.homeTeamId == teamId;
         
         Color color;
         if (scoreH == scoreA) {

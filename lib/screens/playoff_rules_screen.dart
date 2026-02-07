@@ -16,6 +16,7 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
   bool _isSaving = false;
 
   // Estados
+  late String _playoffRule; // <-- NOVO
   late String _semiRule;
   late String _thirdRule;
   late String _finalRule;
@@ -31,14 +32,13 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
   void initState() {
     super.initState();
     // Inicializa com os valores já carregados no AdminService
+    _playoffRule = AdminService.playoffTiebreaker; // <-- Inicializa
     _semiRule = AdminService.semifinalTiebreaker;
     _thirdRule = AdminService.thirdPlaceTiebreaker;
     _finalRule = AdminService.finalTiebreaker;
   }
 
-  // Helper de roteamento (PADRONIZADO)
   DocumentReference _getSettingsDocRef(String seasonId, String docId) {
-    // Aponta sempre para a subcoleção da temporada atual
     return FirebaseFirestore.instance
         .collection('championships')
         .doc(seasonId)
@@ -49,18 +49,18 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
   Future<void> _saveRules() async {
     setState(() => _isSaving = true);
     
-    // 1. Pega Temporada
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
     try {
-      // 2. Salva no doc correto
       await _getSettingsDocRef(seasonId, 'playoff_rules').set({
+        'playoff_tiebreaker': _playoffRule, // <-- Salva
         'semifinal_tiebreaker': _semiRule,
         'third_place_tiebreaker': _thirdRule,
         'final_tiebreaker': _finalRule,
       }, SetOptions(merge: true));
 
-      // 3. Atualiza memória (Cache local para uso imediato)
+      // Atualiza memória
+      AdminService.playoffTiebreaker = _playoffRule; // <-- Atualiza memória
       AdminService.semifinalTiebreaker = _semiRule;
       AdminService.thirdPlaceTiebreaker = _thirdRule;
       AdminService.finalTiebreaker = _finalRule;
@@ -93,6 +93,10 @@ class _PlayoffRulesScreenState extends State<PlayoffRulesScreen> {
           : ListView(
               padding: const EdgeInsets.all(16.0),
               children: [
+                _buildRuleSelector('Playoffs (Quartas)', _playoffRule, (value) { // <-- UI Novo Campo
+                  if (value != null) setState(() => _playoffRule = value);
+                }),
+                const SizedBox(height: 20),
                 _buildRuleSelector('Semifinal', _semiRule, (value) {
                   if (value != null) setState(() => _semiRule = value);
                 }),

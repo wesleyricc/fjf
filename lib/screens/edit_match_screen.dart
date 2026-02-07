@@ -12,7 +12,7 @@ import '../models/match_model.dart';
 import '../models/team_model.dart';  
 
 class EditMatchScreen extends StatefulWidget {
-  final MatchModel? match; // Recebe Model para edição (ou null para criação)
+  final MatchModel? match; 
 
   const EditMatchScreen({super.key, this.match});
 
@@ -24,10 +24,8 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
   final _formKey = GlobalKey<FormState>();
   final FirestoreService _firestoreService = FirestoreService();
 
-  bool _isLoading = true;
   bool _isSaving = false;
-  List<Team> _teams = []; 
-
+  
   // Seleções
   String? _selectedHomeTeamId;
   String? _selectedAwayTeamId;
@@ -50,36 +48,23 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
     super.dispose();
   }
 
-  Future<void> _loadInitialData() async {
-    setState(() => _isLoading = true);
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+  void _loadInitialData() {
+    // 1. Dados iniciais dos times já estão no ChampionshipService, não precisa carregar.
     
-    try {
-      // 1. Carrega Times (usando o Stream do serviço refatorado)
-      // O streamTeams já aponta para a coleção correta da temporada
-      final teamsList = await _firestoreService.streamTeams(seasonId).first;
-      
-      _teams = teamsList;
-
-      // 2. Preenche dados se for Edição
-      if (widget.match != null) {
-        final m = widget.match!;
-        _selectedHomeTeamId = m.homeTeamId;
-        _selectedAwayTeamId = m.awayTeamId;
-        _locationController.text = m.location;
-        _roundController.text = m.round.toString();
-        _selectedPhase = m.phase;
-        _selectedDateTime = m.datetime ?? DateTime.now();
-      } else {
-         // Valores Padrão para Criação
-         _selectedPhase = 'first';
-         _selectedDateTime = DateTime.now();
-         _locationController.text = 'Ginásio Principal'; 
-      }
-    } catch (e) {
-      debugPrint("Erro loading match data: $e");
-    } finally {
-      if(mounted) setState(() => _isLoading = false);
+    // 2. Preenche dados se for Edição
+    if (widget.match != null) {
+      final m = widget.match!;
+      _selectedHomeTeamId = m.homeTeamId;
+      _selectedAwayTeamId = m.awayTeamId;
+      _locationController.text = m.location;
+      _roundController.text = m.round.toString();
+      _selectedPhase = m.phase;
+      _selectedDateTime = m.datetime ?? DateTime.now();
+    } else {
+       // Valores Padrão para Criação
+       _selectedPhase = 'first';
+       _selectedDateTime = DateTime.now();
+       _locationController.text = 'Ginásio Principal'; 
     }
   }
 
@@ -125,8 +110,7 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
       final location = _locationController.text;
       final round = int.tryParse(_roundController.text) ?? 0;
       
-      // O serviço createMatch espera DocumentSnapshot para extrair dados duplicados (nome, escudo).
-      // Buscamos o snapshot atualizado dos times selecionados.
+      // Busca snapshots atualizados (Leitura necessária aqui para consistência de dados na hora de salvar)
       final homeSnap = await _firestoreService.getTeamSnapshot(_selectedHomeTeamId!, seasonId);
       final awaySnap = await _firestoreService.getTeamSnapshot(_selectedAwayTeamId!, seasonId);
 
@@ -145,7 +129,6 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
         );
       } else {
         // --- EDIÇÃO ---
-        // Busca a referência da partida usando o caminho padronizado (sem legacy)
         final matchRef = FirebaseFirestore.instance
             .collection('championships')
             .doc(seasonId)
@@ -187,11 +170,12 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
     required String label,
     required String? value,
     required ValueChanged<String?> onChanged,
+    required List<Team> teamsList, // Recebe lista
   }) {
     return DropdownButtonFormField<String>(
       value: value,
       decoration: InputDecoration(labelText: label),
-      items: _teams.map((team) {
+      items: teamsList.map((team) {
         return DropdownMenuItem<String>(
           value: team.id,
           child: Row(
@@ -213,19 +197,21 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Consome times do cache
+    final teams = Provider.of<ChampionshipService>(context).teams;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.match == null ? 'Criar Partida' : 'Editar Detalhes'),
         actions: [
-          if (!_isLoading)
-            IconButton(
-              icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save),
-              onPressed: _isSaving ? null : _saveForm,
-            ),
+          IconButton(
+            icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save),
+            onPressed: _isSaving ? null : _saveForm,
+          ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+      body: teams.isEmpty 
+          ? const Center(child: Text("Nenhum time disponível. Carregue as equipes primeiro."))
           : Form(
               key: _formKey,
               child: ListView(
@@ -237,12 +223,14 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
                     label: 'Time da Casa',
                     value: _selectedHomeTeamId,
                     onChanged: (val) => setState(() => _selectedHomeTeamId = val),
+                    teamsList: teams,
                   ),
                   const SizedBox(height: 16),
                   _buildTeamDropdown(
                     label: 'Time Visitante',
                     value: _selectedAwayTeamId,
                     onChanged: (val) => setState(() => _selectedAwayTeamId = val),
+                    teamsList: teams,
                   ),
                   
                   const Divider(height: 40),

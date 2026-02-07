@@ -5,7 +5,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 // Services & Models
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
 import '../models/team_model.dart'; 
 
 // Widgets & Screens
@@ -83,95 +82,85 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final championshipService = Provider.of<ChampionshipService>(context);
-    final seasonId = championshipService.currentSeasonId;
-    final seasonName = championshipService.currentSeasonName;
-    final firestoreService = FirestoreService();
+    // Consumindo do Cache
+    return Consumer<ChampionshipService>(
+      builder: (context, champService, child) {
+        final seasonName = champService.currentSeasonName;
+        final allTeams = champService.teams; // Dados em memória (Custo zero)
 
-    return DefaultTabController(
-      length: 6,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Estatísticas das Equipes'),
-              Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
-            ],
-          ),
-          actions: [
-            // --- TOGGLE 1ª FASE vs GERAL ---
-            Row(
-              children: [
-                Text(
-                  _showOverall ? "Geral" : "1ª Fase",
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+        return DefaultTabController(
+          length: 6,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Estatísticas das Equipes'),
+                  Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+                ],
+              ),
+              actions: [
+                Row(
+                  children: [
+                    Text(
+                      _showOverall ? "Geral" : "1ª Fase",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    Switch(
+                      value: _showOverall,
+                      activeColor: Colors.white,
+                      activeTrackColor: Colors.greenAccent,
+                      inactiveThumbColor: Colors.white,
+                      inactiveTrackColor: Colors.white24,
+                      onChanged: (val) {
+                        setState(() {
+                          _showOverall = val;
+                        });
+                      },
+                    ),
+                  ],
                 ),
-                Switch(
-                  value: _showOverall,
-                  activeColor: Colors.white,
-                  activeTrackColor: Colors.greenAccent,
-                  inactiveThumbColor: Colors.white,
-                  inactiveTrackColor: Colors.white24,
-                  onChanged: (val) {
-                    setState(() {
-                      _showOverall = val;
-                    });
-                  },
+                IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
+                IconButton(
+                  icon: const Icon(Icons.refresh), 
+                  tooltip: "Atualizar Dados",
+                  onPressed: () => champService.fetchStaticData(forceRefresh: true),
                 ),
               ],
+              bottom: const TabBar(
+                isScrollable: true,
+                indicatorColor: Colors.white,
+                tabs: [
+                  Tab(text: 'Melhor Ataque'),
+                  Tab(text: 'Melhor Defesa'),
+                  Tab(text: 'Amarelos'),
+                  Tab(text: 'Vermelhos'),
+                  Tab(text: 'Total Cartões'),
+                  Tab(text: 'Fair Play (PD)'),
+                ],
+              ),
             ),
-            IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
-          ],
-          bottom: const TabBar(
-            isScrollable: true,
-            indicatorColor: Colors.white,
-            tabs: [
-              Tab(text: 'Melhor Ataque'),
-              Tab(text: 'Melhor Defesa'),
-              Tab(text: 'Amarelos'),
-              Tab(text: 'Vermelhos'),
-              Tab(text: 'Total Cartões'),
-              Tab(text: 'Fair Play (PD)'),
-            ],
+            drawer: const AppDrawer(),
+            // RefreshIndicator permite atualizar puxando para baixo
+            body: RefreshIndicator(
+              onRefresh: () => champService.fetchStaticData(forceRefresh: true),
+              child: allTeams.isEmpty 
+                  ? const Center(child: Text("Nenhuma equipe encontrada."))
+                  : TabBarView(
+                      children: [
+                        _buildRankingList(context, allTeams, (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 'GP', Icons.sports_soccer, descending: true),
+                        _buildRankingList(context, allTeams, (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 'GC', Icons.gpp_good, descending: false), 
+                        _buildRankingList(context, allTeams, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800]),
+                        _buildRankingList(context, allTeams, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red),
+                        _buildRankingList(context, allTeams, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true),
+                        _buildRankingList(context, allTeams, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true), 
+                      ],
+                    ),
+            ),
+            bottomNavigationBar: const SponsorBannerRotator(),
           ),
-        ),
-        drawer: const AppDrawer(),
-        body: StreamBuilder<List<Team>>(
-          stream: firestoreService.streamTeams(seasonId),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-            
-            final allTeams = snapshot.data ?? [];
-            if (allTeams.isEmpty) return const Center(child: Text("Nenhuma equipe encontrada."));
-
-            return TabBarView(
-              children: [
-                // Melhor Ataque (GP)
-                _buildRankingList(
-                  context, allTeams, 
-                  (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 
-                  'GP', Icons.sports_soccer, descending: true
-                ),
-                // Melhor Defesa (GC)
-                _buildRankingList(
-                  context, allTeams, 
-                  (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 
-                  'GC', Icons.gpp_good, descending: false
-                ), 
-                // Cartões e PD (Estes são acumulativos globais, não mudam com o toggle 
-                // pois são transacionais, a menos que você queira implementar lógica separada para eles também.
-                // Mantive o comportamento padrão global aqui).
-                _buildRankingList(context, allTeams, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800]),
-                _buildRankingList(context, allTeams, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red),
-                _buildRankingList(context, allTeams, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true),
-                _buildRankingList(context, allTeams, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true), 
-              ],
-            );
-          },
-        ),
-        bottomNavigationBar: const SponsorBannerRotator(),
-      ),
+        );
+      },
     );
   }
 
@@ -198,7 +187,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       return descending ? vb.compareTo(va) : va.compareTo(vb);
     });
 
-    if (list.isEmpty) return Center(child: Text("Sem dados para '$suffix'."));
+    if (list.isEmpty) return const Center(child: Text("Sem dados para exibir."));
 
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 16, top: 8),
@@ -208,7 +197,6 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
         final rank = index + 1;
         final val = valueSelector(team);
 
-        // --- TOP 3 (Destaque) ---
         if (index < 3) {
           return RankHighlightCard(
             rank: rank,
@@ -224,7 +212,6 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
           );
         }
 
-        // --- RESTO DA LISTA ---
         Widget trailing;
         if (color != null) {
           trailing = Row(mainAxisSize: MainAxisSize.min, children: [

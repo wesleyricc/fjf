@@ -6,6 +6,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:provider/provider.dart'; // Importante
+
+// Services
+import '../services/championship_service.dart';
 
 // Widgets Refatorados
 import '../widgets/sponsor_banner_rotator.dart';
@@ -22,15 +26,14 @@ class MatchStatsScreen extends StatefulWidget {
 }
 
 class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerProviderStateMixin {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ScreenshotController _screenshotController = ScreenshotController();
   late TabController _tabController;
 
-  // Cache Local de Jogadores (Necessário para montar os nomes nas estatísticas)
+  // Cache Local de Jogadores (Agora populado via Memória)
   Map<String, Map<String, dynamic>> _playerDataCache = {};
   bool _isLoadingPlayerData = true;
   
-  // Stats parseados do documento
+  // Stats parseados
   Map<String, int> _goals = {};
   Map<String, int> _assists = {};
   Map<String, int> _yellows = {};
@@ -43,9 +46,12 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _extractStatsAndFetchPlayers();
     
-    // Log Analytics
+    // Inicia o processamento
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _extractStatsAndLoadPlayersFromCache();
+    });
+    
     try {
       final data = widget.match.data() as Map<String, dynamic>? ?? {};
       FirebaseAnalytics.instance.logScreenView(
@@ -60,11 +66,11 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
     super.dispose();
   }
 
-  // --- LÓGICA DE DADOS ---
-  Future<void> _extractStatsAndFetchPlayers() async {
+  // --- LÓGICA DE DADOS OTIMIZADA ---
+  void _extractStatsAndLoadPlayersFromCache() {
     final data = widget.match.data() as Map<String, dynamic>;
     
-    // 1. Extrai links de mídia
+    // 1. Extrai links
     if (data['stats_applied']?['media_links'] != null) {
       final links = data['stats_applied']['media_links'] as List<dynamic>;
       _mediaLinks = List<Map<String, dynamic>>.from(links.map((i) => Map<String, dynamic>.from(i)));
@@ -79,48 +85,52 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
     _yellows = Map<String, int>.from(playerStats['yellows'] ?? {});
     _reds = Map<String, int>.from(playerStats['reds'] ?? {});
 
-    // 3. Coleta IDs para buscar nomes/fotos
+    // 3. Coleta IDs necessários
     Set<String> playerIds = {
       ..._goals.keys, ..._assists.keys, ..._yellows.keys, ..._reds.keys,
       if (_manOfTheMatchId != null) _manOfTheMatchId!
     };
     playerIds.removeWhere((id) => id.isEmpty);
 
-    await _fetchPlayerData(playerIds);
+    // 4. Busca dados no Cache Central (ZERO LEITURAS)
+    _populatePlayerCache(playerIds);
   }
 
-  Future<void> _fetchPlayerData(Set<String> playerIds) async {
+  void _populatePlayerCache(Set<String> playerIds) {
     if (playerIds.isEmpty) {
       if (mounted) setState(() => _isLoadingPlayerData = false);
       return;
     }
 
-    try {
-      // Busca em lote (max 10 por vez no 'whereIn')
-      List<String> idList = playerIds.toList();
-      Map<String, Map<String, dynamic>> fetchedData = {};
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final allPlayers = service.allPlayers; // Lista completa em memória
+    
+    Map<String, Map<String, dynamic>> tempCache = {};
 
-      for (int i = 0; i < idList.length; i += 10) {
-        int end = (i + 10 < idList.length) ? i + 10 : idList.length;
-        // Importante: Jogadores são globais (coleção raiz) por enquanto
-        final snapshot = await _firestore.collection('players')
-            .where(FieldPath.documentId, whereIn: idList.sublist(i, end))
-            .get();
+    for (var id in playerIds) {
+      try {
+        // Encontra o jogador na lista em memória
+        final player = allPlayers.firstWhere((p) => p.id == id);
+        
+        // Converte para o formato Map que o widget filho espera
+        tempCache[id] = {
+          'name': player.name,
+          'jersey_number': player.jerseyNumber,
+          'team_id': player.teamId,
+          'photo_url': player.photoUrl,
+          'is_staff': player.isStaff,
+        };
+      } catch (e) {
+        // Jogador não encontrado no cache (pode ter sido deletado)
+        tempCache[id] = {'name': 'Desconhecido', 'team_id': ''};
+      }
+    }
 
-        for (var doc in snapshot.docs) {
-          fetchedData[doc.id] = doc.data();
-        }
-      }
-      
-      if (mounted) {
-        setState(() {
-          _playerDataCache = fetchedData;
-          _isLoadingPlayerData = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Erro ao buscar jogadores: $e");
-      if (mounted) setState(() => _isLoadingPlayerData = false);
+    if (mounted) {
+      setState(() {
+        _playerDataCache = tempCache;
+        _isLoadingPlayerData = false;
+      });
     }
   }
 
@@ -128,7 +138,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
   Future<void> _shareMatchCard() async {
     final data = widget.match.data() as Map<String, dynamic>;
     
-    // Prepara listas de goleadores para o card
     List<String> homeScorersList = [];
     List<String> awayScorersList = [];
     
@@ -136,7 +145,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
       _goals.forEach((pid, count) {
         if (count > 0 && _playerDataCache.containsKey(pid)) {
           final pData = _playerDataCache[pid]!;
-          // Formata nome
           final parts = (pData['name'] as String).trim().split(' ');
           String shortName = parts.length > 1 ? "${parts[0]} ${parts.last}" : parts[0];
           String entry = count > 1 ? "$shortName ($count)" : shortName;
@@ -147,15 +155,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
       });
     }
 
-    // Label da fase
     String label = 'JOGO';
     final phase = data['phase'];
     final round = data['round'];
     if (phase == 'first') label = '${round}ª RODADA';
+    else if (phase == 'quarter_final') label = 'PLAYOFFS';
     else if (phase == 'semifinal') label = 'SEMIFINAL';
+    else if (phase == 'third_place') label = '3º LUGAR';
     else if (phase == 'final') label = 'FINAL';
 
-    // Mostra o Dialogo Invisível para captura
     if (!mounted) return;
     showDialog(
       context: context, 
@@ -233,7 +241,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
         ),
         body: Column(
           children: [
-            // Placar Fixo no Topo
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -265,14 +272,13 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
             ),
             const Divider(height: 1),
             
-            // Conteúdo das Abas
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
                   MatchStatsTab(
                     matchData: data,
-                    playerDataCache: _playerDataCache,
+                    playerDataCache: _playerDataCache, // Passa o cache local montado da memória
                     goals: _goals,
                     assists: _assists,
                     yellows: _yellows,

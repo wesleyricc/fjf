@@ -3,11 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AdminService {
   // --- CONFIGURAÇÕES GLOBAIS (Valores em Cache na Memória) ---
-  // Mantemos static para não quebrar as referências atuais na UI (ex: AdminService.pendingYellowCards)
-  // No futuro, podemos migrar isso para um Provider reativo.
   
   static String defaultPhase = 'first';
   static String defaultStage = '1';
+
+  static String tournamentFormat = 'model_1'; 
 
   static int pendingYellowCards = 2;
   static int suspensionYellowCards = 3;
@@ -15,6 +15,8 @@ class AdminService {
   static bool resetYellowsOnSuspension = true;
   static bool resetYellowsOnRed = false;
 
+  // REGRAS DE MATA-MATA
+  static String playoffTiebreaker = 'penalties'; // <-- NOVO: Regra para Playoffs (Quartas)
   static String semifinalTiebreaker = 'extra_time_penalties';
   static String thirdPlaceTiebreaker = 'penalties';
   static String finalTiebreaker = 'extra_time_penalties';
@@ -25,8 +27,6 @@ class AdminService {
 
   // --- HELPER DE ROTEAMENTO PADRONIZADO ---
   static DocumentReference _getConfigDocRef(String seasonId, String docId) {
-    // REMOVIDO: Verificação de LEGACY_ID.
-    // Agora aponta sempre para a estrutura de temporada.
     return FirebaseFirestore.instance
         .collection('championships')
         .doc(seasonId)
@@ -38,7 +38,6 @@ class AdminService {
   static Future<void> loadAllRules(String seasonId) async {
     debugPrint("🔄 [AdminService] Carregando regras para temporada: $seasonId");
     
-    // Carrega tudo em paralelo para ser mais rápido
     await Future.wait([
       loadAppSettings(seasonId),
       loadDisciplinaryRules(seasonId),
@@ -54,17 +53,17 @@ class AdminService {
         final data = doc.data() as Map<String, dynamic>;
         
         defaultPhase = data['default_phase'] ?? 'first';
-        // Fallback para 'default_fixtures_round' para manter compatibilidade com nomes antigos de campo se houver
         defaultStage = data['default_stage'] ?? (data['default_fixtures_round']?.toString() ?? '1');
-        
+        tournamentFormat = data['tournament_format'] ?? 'model_1';
+
         if (data.containsKey('default_fixtures_round') && !data.containsKey('default_phase')) {
           defaultPhase = 'first';
           defaultStage = data['default_fixtures_round'].toString();
         }
       } else {
-        // Se não existir configuração, mantém os padrões (Reset)
         defaultPhase = 'first';
         defaultStage = '1';
+        tournamentFormat = 'model_1';
       }
     } catch (e) { 
       debugPrint("Erro config app_settings: $e"); 
@@ -82,7 +81,6 @@ class AdminService {
         resetYellowsOnSuspension = data['reset_yellows_on_suspension'] ?? true;
         resetYellowsOnRed = data['reset_yellows_on_red'] ?? false;
       } else {
-        // Padrões FJF se não houver config salva
         pendingYellowCards = 2;
         suspensionYellowCards = 3;
         suspensionOnRed = true;
@@ -99,10 +97,12 @@ class AdminService {
       final doc = await _getConfigDocRef(seasonId, 'playoff_rules').get();
       if (doc.exists && doc.data() != null) {
         final data = doc.data() as Map<String, dynamic>;
+        playoffTiebreaker = data['playoff_tiebreaker'] ?? 'penalties'; // <-- Carrega Playoff
         semifinalTiebreaker = data['semifinal_tiebreaker'] ?? 'extra_time_penalties';
         thirdPlaceTiebreaker = data['third_place_tiebreaker'] ?? 'penalties';
         finalTiebreaker = data['final_tiebreaker'] ?? 'extra_time_penalties';
       } else {
+        playoffTiebreaker = 'penalties';
         semifinalTiebreaker = 'extra_time_penalties';
         thirdPlaceTiebreaker = 'penalties';
         finalTiebreaker = 'extra_time_penalties';
@@ -121,7 +121,6 @@ class AdminService {
           tiebreakerOrder = List<String>.from(data['order']);
         }
       } else {
-        // Ordem padrão se não houver config
         tiebreakerOrder = [
           'head_to_head', 'disciplinary_points', 'wins', 'goal_difference', 'goals_against', 'draw_sort',
         ];

@@ -21,7 +21,7 @@ import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/team_stats_summary.dart';
 import '../widgets/trophy_room_widget.dart';
 import '../widgets/recent_form_widget.dart';
-import '../widgets/team_roster_list.dart'; // Agora exporta os Slivers
+import '../widgets/team_roster_list.dart'; 
 import '../utils/custom_cache_manager.dart';
 
 class TeamDetailScreen extends StatefulWidget {
@@ -37,26 +37,20 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirestoreService _firestoreService = FirestoreService();
   
-  // Stream movido para o nível da tela para alimentar os Slivers
-  late Stream<List<Player>> _rosterStream;
-
   @override
   void initState() {
     super.initState();
     try {
       FirebaseAnalytics.instance.logScreenView(screenName: '/team/detail/${widget.team.name}');
     } catch (_) {}
-    
-    // Inicializa o stream uma única vez
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    _rosterStream = _firestoreService.streamPlayers(seasonId, teamId: widget.team.id);
   }
 
   // --- LÓGICA: DEFINIR TITULARES ---
   Future<void> _showDefineStartersDialog() async {
-    // Reutiliza o stream atual, mas converte para Future para pegar o estado atual
-    final players = await _rosterStream.first;
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    // Busca do cache local
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final players = service.getCachedRoster(widget.team.id);
+    final seasonId = service.currentSeasonId;
     
     List<String> selectedIds = [];
     bool isLoading = true;
@@ -68,7 +62,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            // Carregamento inicial dos dados do time (para pegar titulares salvos)
+            // Busca dados atuais do time para saber quem já é titular
             if (isLoading) {
               _firestoreService.getTeam(widget.team.id, seasonId).then((teamDoc) {
                 if (ctx.mounted) {
@@ -81,7 +75,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               });
             }
 
-            // Filtra e ordena
             final validPlayers = players.where((p) => !p.isStaff && p.isActive).toList();
             validPlayers.sort((a, b) {
               if (a.isGoalkeeper && !b.isGoalkeeper) return -1;
@@ -176,7 +169,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     );
   }
 
-  // Lógica de Pontos Extras (Mantida idêntica)
   Future<void> _showAddExtraPointsDialog() async {
     String? selectedReason;
     final pointsController = TextEditingController();
@@ -271,6 +263,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       batch.set(logRef, {'timestamp': Timestamp.fromDate(selectedDate), 'reason': selectedReason, 'points': finalPoints});
 
                       await batch.commit();
+                      // Atualiza cache global após mudar pontos
+                      if (mounted) Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
+                      
                       if (mounted) Navigator.of(dialogContext).pop();
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pontos (${finalPoints > 0 ? '+' : ''}$finalPoints) aplicados.')));
                     } catch (e) {
@@ -294,78 +289,81 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final authService = Provider.of<AuthService>(context);
     final primaryColor = Theme.of(context).primaryColor;
 
-    // StreamBuilder na raiz para distribuir os dados aos Slivers
-    return StreamBuilder<List<Player>>(
-      stream: _rosterStream,
-      builder: (context, snapshot) {
+    // --- USO DO CACHE AQUI ---
+    return Consumer<ChampionshipService>(
+      builder: (context, service, _) {
+        final all = service.getCachedRoster(widget.team.id);
         
-        // Separação de Listas
-        List<Player> players = [];
-        List<Player> staff = [];
-        bool isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final players = all.where((p) => !p.isStaff).toList();
+        final staff = all.where((p) => p.isStaff).toList();
 
-        if (snapshot.hasData) {
-          final all = snapshot.data!;
-          players = all.where((p) => !p.isStaff).toList();
-          staff = all.where((p) => p.isStaff).toList();
+        // Ordenação
+        players.sort((a, b) {
+          if (a.isGoalkeeper && !b.isGoalkeeper) return -1;
+          if (!a.isGoalkeeper && b.isGoalkeeper) return 1;
+          return (a.jerseyNumber ?? 999).compareTo(b.jerseyNumber ?? 999);
+        });
 
-          // Ordenação Padrão
-          players.sort((a, b) {
-            if (a.isGoalkeeper && !b.isGoalkeeper) return -1;
-            if (!a.isGoalkeeper && b.isGoalkeeper) return 1;
-            return (a.jerseyNumber ?? 999).compareTo(b.jerseyNumber ?? 999);
-          });
+        // Caso o cache esteja vazio, tenta forçar um refresh (se não estiver carregando)
+        if (all.isEmpty && !service.isLoading) {
+           WidgetsBinding.instance.addPostFrameCallback((_) => service.fetchStaticData(forceRefresh: true));
         }
 
         return Scaffold(
-          body: CustomScrollView(
-            cacheExtent: 1000,
-            slivers: [
-              // 1. App Bar
-              SliverAppBar(
-                expandedHeight: 200.0,
-                floating: false,
-                pinned: true,
-                backgroundColor: primaryColor,
-                actions: authService.isAuthenticated
-                    ? [
-                        IconButton(icon: const Icon(Icons.add_circle_outline), tooltip: 'Pontos Extras', onPressed: _showAddExtraPointsDialog),
-                        IconButton(icon: const Icon(Icons.star_border), tooltip: 'Definir Titulares', onPressed: _showDefineStartersDialog),
-                        IconButton(
-                          icon: const Icon(Icons.person_add_alt_1),
-                          tooltip: 'Novo Membro',
-                          onPressed: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => EditPlayerScreen(teamId: widget.team.id, teamName: widget.team.name, player: null),
-                            ),
+          body: RefreshIndicator(
+            onRefresh: () => service.fetchStaticData(forceRefresh: true),
+            child: CustomScrollView(
+              cacheExtent: 1000,
+              slivers: [
+                // 1. App Bar
+                SliverAppBar(
+                  expandedHeight: 200.0,
+                  floating: false,
+                  pinned: true,
+                  backgroundColor: primaryColor,
+                  actions: authService.isAuthenticated
+                      ? [
+                          IconButton(icon: const Icon(Icons.add_circle_outline), tooltip: 'Pontos Extras', onPressed: _showAddExtraPointsDialog),
+                          IconButton(icon: const Icon(Icons.star_border), tooltip: 'Definir Titulares', onPressed: _showDefineStartersDialog),
+                          IconButton(
+                            icon: const Icon(Icons.person_add_alt_1),
+                            tooltip: 'Novo Membro',
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => EditPlayerScreen(teamId: widget.team.id, teamName: widget.team.name, player: null),
+                                ),
+                              );
+                              if (context.mounted) service.fetchStaticData(forceRefresh: true);
+                            },
                           ),
-                        ),
-                      ]
-                    : null,
-                flexibleSpace: FlexibleSpaceBar(
-                  centerTitle: true,
-                  title: Text(
-                    widget.team.name,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16.0, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
-                  ),
-                  background: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [primaryColor.withOpacity(0.8), primaryColor]),
+                        ]
+                      : null,
+                  flexibleSpace: FlexibleSpaceBar(
+                    centerTitle: true,
+                    title: Text(
+                      widget.team.name,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16.0, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
                     ),
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 40.0),
-                        child: Hero(
-                          tag: 'team_shield_${widget.team.id}',
-                          child: SizedBox(
-                            height: 100, width: 100,
-                            child: CachedNetworkImage(
-                              imageUrl: widget.team.shieldUrl,
-                              fit: BoxFit.contain,
-                              cacheManager: PlayerCacheManager.instance,
-                              memCacheHeight: 300,
-                              placeholder: (_, __) => const Icon(Icons.shield, size: 50, color: Colors.white24),
-                              errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 50, color: Colors.white24),
+                    background: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [primaryColor.withOpacity(0.8), primaryColor]),
+                      ),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 40.0),
+                          child: Hero(
+                            tag: 'team_shield_${widget.team.id}',
+                            child: SizedBox(
+                              height: 100, width: 100,
+                              child: CachedNetworkImage(
+                                imageUrl: widget.team.shieldUrl,
+                                fit: BoxFit.contain,
+                                cacheManager: PlayerCacheManager.instance,
+                                memCacheHeight: 300,
+                                placeholder: (_, __) => const Icon(Icons.shield, size: 50, color: Colors.white24),
+                                errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 50, color: Colors.white24),
+                              ),
                             ),
                           ),
                         ),
@@ -373,38 +371,34 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                     ),
                   ),
                 ),
-              ),
 
-              // 2. Estatísticas e Info (Box Adapter)
-              SliverList(
-                delegate: SliverChildListDelegate([
-                  const SizedBox(height: 10),
-                  TrophyRoomWidget(historyList: widget.team.championshipHistory),
-                  TeamStatsSummary(team: widget.team),
-                  RecentFormWidget(teamId: widget.team.id),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.history),
-                      label: const Text('Ver Histórico de Pontos Extras'),
-                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ExtraPointsLogScreen(teamId: widget.team.id, teamName: widget.team.name))),
+                // 2. Estatísticas e Info
+                SliverList(
+                  delegate: SliverChildListDelegate([
+                    const SizedBox(height: 10),
+                    TrophyRoomWidget(historyList: widget.team.championshipHistory),
+                    TeamStatsSummary(team: widget.team),
+                    RecentFormWidget(teamId: widget.team.id),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.history),
+                        label: const Text('Ver Histórico de Pontos Extras'),
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ExtraPointsLogScreen(teamId: widget.team.id, teamName: widget.team.name))),
+                      ),
                     ),
-                  ),
-                  const Divider(thickness: 1, height: 30),
-                ]),
-              ),
+                    const Divider(thickness: 1, height: 30),
+                  ]),
+                ),
 
-              // 3. SLIVERS DO ELENCO (Lazy Loading Real)
-              if (isLoading)
-                const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())))
-              else ...[
-                // Header Elenco
+                // 3. SLIVERS DO ELENCO
                 SliverToBoxAdapter(child: RosterSectionHeader(title: 'Elenco (${players.length})')),
                 
-                if (players.isEmpty)
+                if (service.isLoading && players.isEmpty)
+                   const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())))
+                else if (players.isEmpty)
                    const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(16), child: Text('Sem jogadores ativos.')))
                 else
-                   // AQUI ESTÁ A MÁGICA: SliverGrid nativo
                    SliverTeamPlayersGrid(
                      players: players, 
                      teamId: widget.team.id, 
@@ -412,7 +406,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                      isAdmin: authService.isAuthenticated
                    ),
 
-                // Staff (Lista)
+                // Staff
                 if (staff.isNotEmpty) ...[
                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
                    SliverToBoxAdapter(child: RosterSectionHeader(title: 'Comissão Técnica')),
@@ -422,14 +416,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                      teamName: widget.team.name, 
                      isAdmin: authService.isAuthenticated
                    ),
-                ]
-              ],
+                ],
 
-              // 4. Rodapé
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              const SliverToBoxAdapter(child: SponsorBannerRotator()),
-              //const SliverToBoxAdapter(child: SizedBox(height: 40)),
-            ],
+                // 4. Rodapé
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                const SliverToBoxAdapter(child: SponsorBannerRotator()),
+              ],
+            ),
           ),
         );
       },

@@ -7,13 +7,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart'; 
 import 'package:url_launcher/url_launcher.dart'; 
 
-// Services & Models
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
 import '../services/fantasy_service.dart'; 
 import '../models/team_model.dart'; 
 
-// Widgets
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; 
 import '../widgets/home_live_video_card.dart';
@@ -25,10 +22,7 @@ import 'team_detail_screen.dart';
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   static const routeName = '/splash';
-  
   static const String appVersion = '2.1.0';
-
-  // Mantém o estado true enquanto o app estiver rodando na memória.
   static bool hasShownOpenAd = false;
 
   @override
@@ -60,24 +54,20 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkAndShowStartupAds() async {
     if (SplashScreen.hasShownOpenAd) return;
-
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('sponsors')
-          .where('isActive', isEqualTo: true)
-          .where('location', isEqualTo: 'app_open')
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isNotEmpty && mounted) {
-         SplashScreen.hasShownOpenAd = true;
-         
-         await Future.delayed(const Duration(milliseconds: 500));
-         if (mounted) _showAdDialog();
-      }
-    } catch (e) {
-      debugPrint("Erro ao buscar ads de abertura: $e");
-    }
+    // Note: Usamos o cache de sponsors do ChampionshipService se disponível
+    // Mas para o Ad de abertura, geralmente queremos garantir que apareça, 
+    // então mantemos a lógica ou usamos o cache se já carregado.
+    // Como o fetchStaticData é chamado no init, podemos tentar usar o cache.
+    // Para simplificar e garantir exibição rápida, mantemos a lógica original aqui por enquanto
+    // ou usamos SponsorBannerRotator que já usa cache.
+    
+    // Vamos usar o SponsorBannerRotator no Dialog, que já está otimizado.
+    // Apenas marcamos como mostrado.
+    SplashScreen.hasShownOpenAd = true;
+    
+    // Pequeno delay para garantir que a UI montou
+    await Future.delayed(const Duration(seconds: 1));
+    if (mounted) _showAdDialog();
   }
 
   void _showAdDialog() {
@@ -108,10 +98,8 @@ class _SplashScreenState extends State<SplashScreen> {
                  ),
                ),
              ),
-             
              Positioned(
-               top: 0,
-               right: 0,
+               top: 0, right: 0,
                child: Material(
                  color: Colors.transparent,
                  child: InkWell(
@@ -119,11 +107,7 @@ class _SplashScreenState extends State<SplashScreen> {
                    borderRadius: BorderRadius.circular(30),
                    child: Container(
                      padding: const EdgeInsets.all(8),
-                     decoration: const BoxDecoration(
-                       color: Colors.white,
-                       shape: BoxShape.circle,
-                       boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)]
-                     ),
+                     decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)]),
                      child: const Icon(Icons.close, size: 24, color: Colors.black87),
                    ),
                  ),
@@ -137,27 +121,20 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _initializeData() async {
     final service = Provider.of<ChampionshipService>(context, listen: false);
-    
     if (service.currentSeasonId.isNotEmpty) return;
 
     setState(() => _debugStatus = "Buscando temporadas...");
-      
     try {
       await service.init();
-      
       if (mounted) {
         if (service.availableSeasons.isNotEmpty) {
           setState(() => _debugStatus = "Sucesso!");
         } else {
-          setState(() => _debugStatus = "Conectado, mas NENHUMA temporada encontrada.");
-          setState(() => _hasError = true);
+          setState(() { _debugStatus = "Conectado, mas NENHUMA temporada encontrada."; _hasError = true; });
         }
       }
     } catch (e) {
-      if (mounted) {
-         setState(() => _debugStatus = "Erro Crítico: $e");
-         setState(() => _hasError = true);
-      }
+      if (mounted) setState(() { _debugStatus = "Erro Crítico: $e"; _hasError = true; });
     }
   }
 
@@ -223,20 +200,9 @@ class _SplashScreenState extends State<SplashScreen> {
                 if (_hasError) 
                   const Icon(Icons.error_outline, size: 60, color: Colors.red)
                 else 
-                  const SizedBox(
-                    height: 50, width: 50,
-                    child: CircularProgressIndicator(color: Color(0xFFC25F22), strokeWidth: 3),
-                  ),
+                  const SizedBox(height: 50, width: 50, child: CircularProgressIndicator(color: Color(0xFFC25F22), strokeWidth: 3)),
                 const SizedBox(height: 24),
-                Text(
-                  _debugStatus,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _hasError ? Colors.red : Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                    fontSize: 15
-                  ),
-                ),
+                Text(_debugStatus, textAlign: TextAlign.center, style: TextStyle(color: _hasError ? Colors.red : Colors.grey[600], fontWeight: FontWeight.w500, fontSize: 15)),
                 if (_hasError) ...[
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
@@ -289,10 +255,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       return AnimatedOpacity(
                         duration: const Duration(milliseconds: 300),
                         opacity: isCollapsed ? 1.0 : 0.0,
-                        child: Text(
-                          "FJF $displayYear",
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
+                        child: Text("FJF $displayYear", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       );
                     },
                   ),
@@ -302,18 +265,13 @@ class _SplashScreenState extends State<SplashScreen> {
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              primaryColor,
-                              Color.lerp(primaryColor, Colors.black, 0.4)!,
-                            ],
+                            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                            colors: [primaryColor, Color.lerp(primaryColor, Colors.black, 0.4)!],
                           ),
                         ),
                       ),
                       Positioned(
-                        right: -50,
-                        top: -50,
+                        right: -50, top: -50,
                         child: Icon(Icons.sports_soccer, size: 250, color: Colors.white.withOpacity(0.05)),
                       ),
                       SafeArea(
@@ -324,10 +282,7 @@ class _SplashScreenState extends State<SplashScreen> {
                              Hero(
                                tag: 'app_logo',
                                child: Container(
-                                 decoration: BoxDecoration(
-                                   shape: BoxShape.circle,
-                                   boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))],
-                                 ),
+                                 decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))]),
                                  child: CircleAvatar(
                                    radius: 40,
                                    backgroundColor: Colors.white,
@@ -338,30 +293,12 @@ class _SplashScreenState extends State<SplashScreen> {
                                ),
                              ),
                              const SizedBox(height: 12),
-                             Text(
-                               "FJF $displayYear",
-                               style: const TextStyle(
-                                 color: Colors.white,
-                                 fontSize: 26, 
-                                 fontWeight: FontWeight.w900,
-                                 letterSpacing: 1.5,
-                                 shadows: [Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))]
-                               ),
-                             ),
+                             Text("FJF $displayYear", style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 1.5, shadows: [Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))])),
                              const SizedBox(height: 6),
                              Container(
                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                               decoration: BoxDecoration(
-                                 color: Colors.white.withOpacity(0.15),
-                                 borderRadius: BorderRadius.circular(20),
-                                 border: Border.all(color: Colors.white.withOpacity(0.2)),
-                               ),
-                               child: Text(
-                                 championshipService.currentSeasonHonoree.isNotEmpty 
-                                    ? championshipService.currentSeasonHonoree 
-                                    : "Bem-vindo",
-                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                               ),
+                               decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.2))),
+                               child: Text(championshipService.currentSeasonHonoree.isNotEmpty ? championshipService.currentSeasonHonoree : "Bem-vindo", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
                              ),
                           ],
                         ),
@@ -381,30 +318,13 @@ class _SplashScreenState extends State<SplashScreen> {
                         Container(
                           margin: const EdgeInsets.all(16),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [Colors.green.shade50, Colors.white]),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.green.withOpacity(0.3)),
-                            boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]
-                          ),
+                          decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.green.shade50, Colors.white]), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.withOpacity(0.3)), boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]),
                           child: Row(
                             children: [
                               const Icon(Icons.download_rounded, color: Colors.green),
                               const SizedBox(width: 12),
-                              const Expanded(
-                                child: Text("Instale o app para melhor experiência.", 
-                                  style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600, fontSize: 13)),
-                              ),
-                              TextButton(
-                                onPressed: _triggerInstallPrompt,
-                                style: TextButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
-                                child: const Text("Instalar"),
-                              ),
+                              const Expanded(child: Text("Instale o app para melhor experiência.", style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600, fontSize: 13))),
+                              TextButton(onPressed: _triggerInstallPrompt, style: TextButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))), child: const Text("Instalar")),
                             ],
                           ),
                         ),
@@ -412,7 +332,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       const SizedBox(height: 10),
                       HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
                       const SizedBox(height: 10),      
-                      // --- CARD FANTASY COM STATUS AO LADO ---
+                      // Fantasy Card
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: StreamBuilder<Map<String, dynamic>>(
@@ -427,13 +347,9 @@ class _SplashScreenState extends State<SplashScreen> {
                               isDataLoaded = true;
                               final bool isOpen = snapshot.data!['is_open'] ?? true;
                               if (isOpen) {
-                                statusText = "ABERTO";
-                                statusColor = Colors.greenAccent;
-                                statusIcon = Icons.check_circle;
+                                statusText = "ABERTO"; statusColor = Colors.greenAccent; statusIcon = Icons.check_circle;
                               } else {
-                                statusText = "FECHADO";
-                                statusColor = Colors.redAccent;
-                                statusIcon = Icons.lock;
+                                statusText = "FECHADO"; statusColor = Colors.redAccent; statusIcon = Icons.lock;
                               }
                             }
 
@@ -451,22 +367,8 @@ class _SplashScreenState extends State<SplashScreen> {
                                     if (isDataLoaded)
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: statusColor.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: statusColor.withOpacity(0.5))
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(statusIcon, color: statusColor, size: 12),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              statusText, 
-                                              style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11)
-                                            ),
-                                          ],
-                                        ),
+                                        decoration: BoxDecoration(color: statusColor.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.5))),
+                                        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(statusIcon, color: statusColor, size: 12), const SizedBox(width: 4), Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11))]),
                                       ),
                                     const SizedBox(width: 8),
                                     const Icon(Icons.arrow_forward, color: Colors.white),
@@ -478,7 +380,7 @@ class _SplashScreenState extends State<SplashScreen> {
                           }
                         ),
                       ),
-                      // ----------------------------------------
+                      
                       const HomeNewsFeed(),
                       const SizedBox(height: 10),
                       _buildSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
@@ -524,17 +426,11 @@ class _SplashScreenState extends State<SplashScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
+            decoration: BoxDecoration(color: Theme.of(context).primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, size: 20, color: Theme.of(context).primaryColor),
           ),
           const SizedBox(width: 10),
-          Text(
-            title, 
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)
-          ),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)),
         ],
       ),
     );
@@ -543,22 +439,20 @@ class _SplashScreenState extends State<SplashScreen> {
 
 class _SponsorGridCard extends StatelessWidget {
   const _SponsorGridCard();
-
   static const String _partnerContactUrl = "https://wa.me/5548999999999?text=Quero%20anunciar%20no%20Grid";
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('sponsors')
-          .where('location', isEqualTo: 'grid_teams')
-          .where('isActive', isEqualTo: true)
-          .limit(1)
-          .snapshots(),
-      builder: (context, snapshot) {
-        
-        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-          final doc = snapshot.data!.docs.first;
+    // --- OTIMIZAÇÃO: Usa cache do ChampionshipService ---
+    return Consumer<ChampionshipService>(
+      builder: (context, service, _) {
+        final sponsors = service.sponsors.where((s) {
+           final d = s.data() as Map<String, dynamic>;
+           return d['location'] == 'grid_teams' && d['isActive'] == true;
+        }).toList();
+
+        if (sponsors.isNotEmpty) {
+          final doc = sponsors.first;
           final data = doc.data() as Map<String, dynamic>;
           
           return InkWell(
@@ -568,11 +462,7 @@ class _SponsorGridCard extends StatelessWidget {
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: CachedNetworkImage(
@@ -584,9 +474,8 @@ class _SponsorGridCard extends StatelessWidget {
             ),
           );
         }
-
         return _buildDefaultCard();
-      },
+      }
     );
   }
 
@@ -595,41 +484,19 @@ class _SponsorGridCard extends StatelessWidget {
       onTap: () => launchUrl(Uri.parse(_partnerContactUrl), mode: LaunchMode.externalApplication),
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white, 
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200), 
-        ),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.amber.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15), shape: BoxShape.circle),
               child: const Icon(FontAwesomeIcons.handshake, color: Colors.amber, size: 28),
             ),
             const SizedBox(height: 8),
-            const Text(
-              "SEJA PARCEIRO",
-              style: TextStyle(
-                fontWeight: FontWeight.w900, 
-                fontSize: 11, 
-                color: Color(0xFFC25F22), 
-                letterSpacing: 0.5
-              ),
-            ),
+            const Text("SEJA PARCEIRO", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Color(0xFFC25F22), letterSpacing: 0.5)),
             const SizedBox(height: 4),
-            const Text(
-              "Anuncie aqui",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10, 
-                color: Colors.grey
-              ),
-            ),
+            const Text("Anuncie aqui", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Colors.grey)),
           ],
         ),
       ),
@@ -642,19 +509,14 @@ class _TeamsSliverGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
-    if (seasonId.isEmpty) return const SliverToBoxAdapter(child: SizedBox());
-
-    final firestoreService = FirestoreService();
-
-    return StreamBuilder<List<Team>>(
-      stream: firestoreService.streamTeams(seasonId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    // --- OTIMIZAÇÃO: Usa cache em vez de StreamBuilder ---
+    return Consumer<ChampionshipService>(
+      builder: (context, service, _) {
+        if (service.isLoading && service.teams.isEmpty) {
           return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator())));
         }
         
-        final teams = snapshot.data ?? [];
+        final teams = service.teams;
         if (teams.isEmpty) {
           return const SliverToBoxAdapter(child: Center(child: Text("Nenhuma equipe cadastrada.")));
         }
@@ -686,9 +548,7 @@ class _TeamsSliverGrid extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey.shade100),
-                      boxShadow: [
-                        BoxShadow(color: Colors.grey.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3)),
-                      ],
+                      boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3))],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,

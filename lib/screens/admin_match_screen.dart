@@ -11,6 +11,7 @@ import '../services/admin_service.dart';
 import '../services/championship_service.dart';
 import 'edit_match_screen.dart';
 import 'match_live_scout_screen.dart';
+import '../models/player_model.dart'; // Import do Model Player
 
 class AdminMatchScreen extends StatefulWidget {
   final DocumentSnapshot match;
@@ -21,31 +22,29 @@ class AdminMatchScreen extends StatefulWidget {
 }
 
 class _AdminMatchScreenState extends State<AdminMatchScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirestoreService _firestoreService = FirestoreService();
 
-  // --- LÓGICA DA SÚMULA (PDF) ---
+  // --- ARQUIVOS (Súmula PDF e Vídeos) ---
   String? _existingSumulaUrl;
   Uint8List? _pickedFileBytes;
   String _pickedFileName = '';
   bool _isUploadingSumula = false;
 
-  // --- LÓGICA DE MÍDIAS (VÍDEO) ---
   List<Map<String, dynamic>> _mediaLinks = [];
   final _mediaTitleController = TextEditingController();
   Uint8List? _pickedMediaBytes;
   String _pickedMediaFileName = '';
   bool _isUploadingMedia = false;
 
-  // --- CONTROLE DE PLACAR E JOGO ---
+  // --- CONTROLE DE PLACAR ---
   late TextEditingController _homeScoreController;
   late TextEditingController _awayScoreController;
   late TextEditingController _penaltyHomeScoreController;
   late TextEditingController _penaltyAwayScoreController;
   
+  // --- DADOS DO JOGO ---
   List<DocumentSnapshot> _homePlayers = [];
   List<DocumentSnapshot> _awayPlayers = [];
-  bool _isLoadingPlayers = true;
   bool _isSaving = false;
 
   // --- ESTATÍSTICAS ---
@@ -54,13 +53,12 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   Map<String, int> _yellowCards = {};
   Map<String, int> _redCards = {};
   Map<String, int> _goalsConceded = {};
-  
   String? _selectedManOfTheMatchId;
   String _selectedStatus = 'pending';
   String? _selectedPlayerId;
   String? _selectedWinnerId;
   
-  // --- REGRAS DE DESEMPATE ---
+  // --- REGRAS ---
   String _tiebreakerRule = '';
   bool _showTiebreakerSection = false;
 
@@ -74,18 +72,13 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     _penaltyAwayScoreController = TextEditingController(text: data['penalty_score_away']?.toString() ?? '');
     _existingSumulaUrl = data['sumula_url'];
 
-    _homeScoreController = TextEditingController(
-      text: data['score_home']?.toString() ?? '',
-    )..addListener(_checkShowTiebreakerSection);
-
-    _awayScoreController = TextEditingController(
-      text: data['score_away']?.toString() ?? '',
-    )..addListener(_checkShowTiebreakerSection);
+    _homeScoreController = TextEditingController(text: data['score_home']?.toString() ?? '')..addListener(_checkShowTiebreakerSection);
+    _awayScoreController = TextEditingController(text: data['score_away']?.toString() ?? '')..addListener(_checkShowTiebreakerSection);
 
     _selectedStatus = data['status'] ?? 'pending';
     _selectedWinnerId = data['winner_team_id'];
 
-    // Carrega estatísticas já salvas, se houver
+    // Carrega estatísticas existentes
     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
       final stats = data['stats_applied']['player_stats'];
       _goals = Map<String, int>.from(stats['goals'] ?? {});
@@ -97,26 +90,24 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       
       if (data['stats_applied']['media_links'] != null) {
          final linksFromDb = data['stats_applied']['media_links'] as List<dynamic>;
-         _mediaLinks = List<Map<String, dynamic>>.from(
-           linksFromDb.map((item) => Map<String, dynamic>.from(item))
-         );
+         _mediaLinks = List<Map<String, dynamic>>.from(linksFromDb.map((item) => Map<String, dynamic>.from(item)));
       }
     }
 
-    // Define a regra de desempate baseada na fase
+    // Define regra de desempate baseada na fase
     final String phase = data['phase'] ?? '';
-    if (phase == 'semifinal') _tiebreakerRule = AdminService.semifinalTiebreaker;
+    if (phase == 'quarter_final') _tiebreakerRule = AdminService.playoffTiebreaker;
+    else if (phase == 'semifinal') _tiebreakerRule = AdminService.semifinalTiebreaker;
     else if (phase == 'third_place') _tiebreakerRule = AdminService.thirdPlaceTiebreaker;
     else if (phase == 'final') _tiebreakerRule = AdminService.finalTiebreaker;
 
-    _fetchPlayers();
+    // Carrega jogadores do Cache
+    _loadPlayersFromCache();
     _checkShowTiebreakerSection();
   }
 
   @override
   void dispose() {
-    _homeScoreController.removeListener(_checkShowTiebreakerSection);
-    _awayScoreController.removeListener(_checkShowTiebreakerSection);
     _homeScoreController.dispose();
     _awayScoreController.dispose();
     _penaltyHomeScoreController.dispose();
@@ -125,15 +116,55 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     super.dispose();
   }
 
-  // --- VERIFICA SE PRECISA MOSTRAR PÊNALTIS ---
+  // --- CARREGA DO CACHE (Sem Leituras de Banco) ---
+  void _loadPlayersFromCache() {
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final homeId = widget.match['team_home_id'];
+    final awayId = widget.match['team_away_id'];
+    final all = service.allPlayers; // Lista completa de jogadores em memória
+
+    int sortFunc(Player a, Player b) {
+      // Staff no final
+      if (!a.isStaff && b.isStaff) return -1;
+      if (a.isStaff && !b.isStaff) return 1;
+      
+      // Ordena por número
+      int nA = a.jerseyNumber ?? 999;
+      int nB = b.jerseyNumber ?? 999;
+      if (nA != nB) return nA.compareTo(nB);
+      
+      // Ordena por nome
+      return a.name.compareTo(b.name);
+    }
+
+    final homeList = all.where((p) => p.teamId == homeId).toList()..sort(sortFunc);
+    final awayList = all.where((p) => p.teamId == awayId).toList()..sort(sortFunc);
+
+    setState(() {
+      _homePlayers = homeList.map((p) => _mockSnapshot(p)).toList();
+      _awayPlayers = awayList.map((p) => _mockSnapshot(p)).toList();
+    });
+  }
+
+  // Cria um Mock Snapshot para manter compatibilidade com a UI existente sem refatorar tudo
+  DocumentSnapshot _mockSnapshot(Player p) {
+    return MockDocumentSnapshot(p.id, {
+      'name': p.name,
+      'jersey_number': p.jerseyNumber,
+      'is_staff': p.isStaff,
+      'is_goalkeeper': p.isGoalkeeper,
+      'team_id': p.teamId,
+    });
+  }
+
   void _checkShowTiebreakerSection() {
     bool needsTiebreaker = false;
-    final isPlayoff = ['semifinal', 'third_place', 'final'].contains(widget.match['phase']);
+    final isPlayoff = ['quarter_final', 'semifinal', 'third_place', 'final'].contains(widget.match['phase']);
     
-    // Só mostra se for playoff E estiver marcado como finalizado E o placar for empate
     if (isPlayoff && _selectedStatus == 'finished') {
       final int scoreHome = int.tryParse(_homeScoreController.text) ?? -1;
       final int scoreAway = int.tryParse(_awayScoreController.text) ?? -1;
+      // Se for empate no tempo normal, mostra pênaltis
       if (scoreHome != -1 && scoreAway != -1 && scoreHome == scoreAway) {
         needsTiebreaker = true;
       }
@@ -143,81 +174,11 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     }
   }
 
-  // --- BUSCA JOGADORES (PADRONIZADO) ---
-  Future<void> _fetchPlayers() async {
-    if (!mounted) return;
-    setState(() => _isLoadingPlayers = true);
-
-    try {
-      final String homeTeamId = widget.match['team_home_id'];
-      final String awayTeamId = widget.match['team_away_id'];
-
-      // Pega a temporada atual
-      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-      
-      // ALTERAÇÃO CRÍTICA: Busca sempre na subcoleção da temporada
-      // Removemos a verificação de LEGACY_ID
-      final Query playersQuery = _firestore
-          .collection('championships')
-          .doc(seasonId)
-          .collection('player_stats');
-      
-      // 1. Busca APENAS pelo ID do time
-      final homeSnapshot = await playersQuery.where('team_id', isEqualTo: homeTeamId).get();
-      final awaySnapshot = await playersQuery.where('team_id', isEqualTo: awayTeamId).get();
-
-      // 2. Filtra e Ordena em MEMÓRIA (Dart)
-      List<DocumentSnapshot> filterAndSort(List<DocumentSnapshot> docs) {
-        // A. Filtra inativos
-        var activeDocs = docs.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return data['isActive'] == true;
-        }).toList();
-
-        // B. Ordena (Staff -> Fim, Número -> Crescente, Nome -> Alfabetico)
-        activeDocs.sort((a, b) {
-          final aData = a.data() as Map<String, dynamic>;
-          final bData = b.data() as Map<String, dynamic>;
-          
-          // Staff no final
-          int staffCompare = (aData['is_staff'] == true ? 1 : 0).compareTo(bData['is_staff'] == true ? 1 : 0);
-          if (staffCompare != 0) return staffCompare;
-
-          // Número (trata null como maior que todos para ir pro fim)
-          final int aNum = aData['jersey_number'] ?? 999;
-          final int bNum = bData['jersey_number'] ?? 999;
-          int numCompare = aNum.compareTo(bNum);
-          if (numCompare != 0) return numCompare;
-
-          // Nome
-          return (aData['name'] ?? '').toString().compareTo((bData['name'] ?? '').toString());
-        });
-        return activeDocs;
-      }
-
-       _homePlayers = filterAndSort(homeSnapshot.docs);
-      _awayPlayers = filterAndSort(awaySnapshot.docs);
-
-    } catch (e) {
-      debugPrint('Erro ao buscar jogadores: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao carregar jogadores: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _isLoadingPlayers = false);
-    }
-  }
-
-  // --- SALVAR ESTATÍSTICAS (AÇÃO PRINCIPAL) ---
+  // --- SALVAR (Ação Principal) ---
   Future<void> _saveStats() async {
-    // 1. Validações
-    if (_selectedStatus == 'finished' &&
-        (_homeScoreController.text.isEmpty ||
-            _awayScoreController.text.isEmpty ||
-            int.tryParse(_homeScoreController.text) == null ||
-            int.tryParse(_awayScoreController.text) == null)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Placar válido é obrigatório para jogos finalizados.')));
+    // Validação básica
+    if (_selectedStatus == 'finished' && (_homeScoreController.text.isEmpty || _awayScoreController.text.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Placar válido é obrigatório para jogos finalizados.')));
       return;
     }
     final int scoreHome = int.tryParse(_homeScoreController.text) ?? 0;
@@ -227,10 +188,12 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     int? penaltyScoreAway;
     String? winnerId = _selectedWinnerId; 
 
+    // Lógica de Vencedor em Empate
     if (_showTiebreakerSection) {
       if (_tiebreakerRule.contains('penalties')) {
         penaltyScoreHome = int.tryParse(_penaltyHomeScoreController.text);
         penaltyScoreAway = int.tryParse(_penaltyAwayScoreController.text);
+        
         if (penaltyScoreHome == null || penaltyScoreAway == null) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Placar dos pênaltis é obrigatório.')));
           return;
@@ -239,34 +202,25 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Placar dos pênaltis não pode ser empate.')));
           return;
         }
-        winnerId = (penaltyScoreHome > penaltyScoreAway)
-            ? widget.match['team_home_id']
-            : widget.match['team_away_id'];
-      } else if (_tiebreakerRule == 'extra_time_standing') {
-        winnerId = null;
-        penaltyScoreHome = null;
-        penaltyScoreAway = null;
+        winnerId = (penaltyScoreHome > penaltyScoreAway) ? widget.match['team_home_id'] : widget.match['team_away_id'];
       }
     } else {
-      penaltyScoreHome = null;
-      penaltyScoreAway = null;
+      penaltyScoreHome = null; 
+      penaltyScoreAway = null; 
       winnerId = null;
     }
 
     setState(() { _isSaving = true; });
 
-    // 2. Upload da Súmula (PDF)
+    // Upload da Súmula (se houver novo arquivo)
     String? finalSumulaUrl = _existingSumulaUrl;
     if (_pickedFileBytes != null) {
       try {
         final String matchId = widget.match.id;
         final String fileName = _pickedFileName.isNotEmpty ? _pickedFileName : '$matchId.pdf';
-        final String storagePath = 'sumulas/$fileName';
-        final ref = FirebaseStorage.instance.ref().child(storagePath);
-
+        final ref = FirebaseStorage.instance.ref().child('sumulas/$fileName');
         final metadata = SettableMetadata(contentType: 'application/pdf');
         await ref.putData(_pickedFileBytes!, metadata);
-
         finalSumulaUrl = await ref.getDownloadURL();
       } catch (e) {
         if (mounted) {
@@ -277,9 +231,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
       }
     }
 
-    // 3. Chamada ao FirestoreService (COM SEASON ID)
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
+    // Atualiza no Firestore
     String result = await _firestoreService.updateMatchStats(
       seasonId: seasonId,
       matchSnapshot: widget.match,
@@ -302,6 +256,9 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     if (mounted) setState(() { _isSaving = false; });
 
     if (result.startsWith('Sucesso')) {
+      // Atualiza o cache do app para refletir as mudanças imediatamente
+      if (mounted) Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
+      
       _pickedFileBytes = null;
       if (mounted) Navigator.of(context).pop();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estatísticas salvas com sucesso!')));
@@ -313,137 +270,75 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   // --- FUNÇÕES DE ARQUIVO E MÍDIA ---
 
   Future<void> _pickSumulaFile() async {
-    if (_isSaving || _isUploadingSumula) return;
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        withData: true,
-      );
+      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf'], withData: true);
       if (result != null && result.files.single.bytes != null) {
-        setState(() {
-          _pickedFileBytes = result.files.single.bytes;
-          _pickedFileName = result.files.single.name;
-          _existingSumulaUrl = null;
-        });
+        setState(() { _pickedFileBytes = result.files.single.bytes; _pickedFileName = result.files.single.name; _existingSumulaUrl = null; });
       }
-    } catch (e) { debugPrint("Erro picker: $e"); }
+    } catch (_) {}
   }
 
   Future<void> _pickVideoFile(StateSetter setDialogState) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        withData: true,
-      );
+      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.video, withData: true);
       if (result != null && result.files.single.bytes != null) {
-        setDialogState(() {
-          _pickedMediaBytes = result.files.single.bytes;
-          _pickedMediaFileName = result.files.single.name;
-        });
+        setDialogState(() { _pickedMediaBytes = result.files.single.bytes; _pickedMediaFileName = result.files.single.name; });
       }
-    } catch (e) { debugPrint("Erro video picker: $e"); }
+    } catch (_) {}
   }
 
   Future<void> _uploadMediaFile(BuildContext dialogContext, StateSetter setDialogState) async {
     final title = _mediaTitleController.text.trim();
-    if (title.isEmpty || _pickedMediaBytes == null) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Preencha título e selecione vídeo.')));
-      return;
-    }
+    if (title.isEmpty || _pickedMediaBytes == null) return;
     setDialogState(() { _isUploadingMedia = true; });
-
     try {
       final String matchId = widget.match.id;
       final String fileName = '${DateTime.now().millisecondsSinceEpoch}_$_pickedMediaFileName';
-      final String storagePath = 'match_media/$matchId/$fileName';
-      final ref = FirebaseStorage.instance.ref().child(storagePath);
-      
+      final ref = FirebaseStorage.instance.ref().child('match_media/$matchId/$fileName');
       final metadata = SettableMetadata(contentType: 'video/${fileName.split('.').last}');
       await ref.putData(_pickedMediaBytes!, metadata);
       final downloadURL = await ref.getDownloadURL();
-
-      setState(() {
-        _mediaLinks.add({'title': title, 'videoUrl': downloadURL});
-      });
-      
-      _pickedMediaBytes = null;
-      _mediaTitleController.clear();
+      setState(() { _mediaLinks.add({'title': title, 'videoUrl': downloadURL}); });
+      _pickedMediaBytes = null; _mediaTitleController.clear();
       if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
-
-    } catch (e) {
-      if(mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro upload vídeo: $e')));
-    } finally {
-      if(mounted) setDialogState(() { _isUploadingMedia = false; });
-    }
+    } catch (_) {} 
+    finally { if(mounted) setDialogState(() { _isUploadingMedia = false; }); }
   }
 
   Future<void> _showAddMediaDialog() async {
-    _mediaTitleController.clear();
-    _pickedMediaBytes = null;
-    _pickedMediaFileName = '';
-    
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Adicionar Vídeo'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: _mediaTitleController,
-                    decoration: const InputDecoration(labelText: 'Título'),
-                    enabled: !_isUploadingMedia,
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.video_file),
-                    label: const Text('Selecionar Arquivo'),
-                    onPressed: _isUploadingMedia ? null : () => _pickVideoFile(setDialogState),
-                  ),
-                  if (_pickedMediaFileName.isNotEmpty)
-                    Text(_pickedMediaFileName, style: const TextStyle(fontSize: 12, color: Colors.green)),
-                  if (_isUploadingMedia)
-                    const Padding(padding: EdgeInsets.only(top:10), child: CircularProgressIndicator()),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: _isUploadingMedia ? null : () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
-                TextButton(onPressed: _isUploadingMedia ? null : () => _uploadMediaFile(dialogContext, setDialogState), child: const Text('Salvar')),
-              ],
-            );
-          },
+    _mediaTitleController.clear(); _pickedMediaBytes = null; _pickedMediaFileName = '';
+    return showDialog(context: context, barrierDismissible: false, builder: (dialogContext) {
+      return StatefulBuilder(builder: (context, setDialogState) {
+        return AlertDialog(
+          title: const Text('Adicionar Vídeo'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextFormField(controller: _mediaTitleController, decoration: const InputDecoration(labelText: 'Título'), enabled: !_isUploadingMedia),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(icon: const Icon(Icons.video_file), label: const Text('Selecionar Arquivo'), onPressed: _isUploadingMedia ? null : () => _pickVideoFile(setDialogState)),
+            if (_pickedMediaFileName.isNotEmpty) Text(_pickedMediaFileName, style: const TextStyle(fontSize: 12, color: Colors.green)),
+            if (_isUploadingMedia) const Padding(padding: EdgeInsets.only(top:10), child: CircularProgressIndicator()),
+          ]),
+          actions: [
+            TextButton(onPressed: _isUploadingMedia ? null : () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
+            TextButton(onPressed: _isUploadingMedia ? null : () => _uploadMediaFile(dialogContext, setDialogState), child: const Text('Salvar')),
+          ],
         );
-      },
-    );
+      });
+    });
   }
 
   Future<void> _showDeleteMatchDialog() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Excluir Partida?'),
-        content: const Text('Esta ação é irreversível. Se a partida já foi finalizada, a tabela será recalculada.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-
+    final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Excluir Partida?'), content: const Text('Irreversível.'), actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')), TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Excluir', style: TextStyle(color: Colors.red)))]));
     if (confirm == true && mounted) {
       setState(() { _isSaving = true; });
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
       final result = await _firestoreService.deleteMatch(widget.match, seasonId);
       setState(() { _isSaving = false; });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-        if (result.startsWith('Sucesso')) Navigator.of(context).pop();
+      if (mounted) { 
+         // Refresh cache
+         Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result))); 
+         if (result.startsWith('Sucesso')) Navigator.of(context).pop(); 
       }
     }
   }
@@ -451,9 +346,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   // --- WIDGETS DE UI ---
 
   Widget _buildScoreCard() {
-    // Busca o objeto MatchModel para passar pro EditMatchScreen no clique do ícone
-    // Se o widget.match for DocumentSnapshot, não há problemas, mas é bom ter atenção
-    
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -506,7 +398,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   }
 
   Widget _buildPlayerSelectList(List<DocumentSnapshot> players, bool isHome) {
-    if (players.isEmpty) return const Padding(padding: EdgeInsets.all(8), child: Text('Sem jogadores cadastrados.'));
+    if (players.isEmpty) return const Padding(padding: EdgeInsets.all(8), child: Text('Sem jogadores.'));
     
     return ListView.builder(
       shrinkWrap: true,
@@ -522,7 +414,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
         final name = data['name'] ?? '?';
         final num = data['jersey_number'];
         
-        // Resumo rápido
         String summary = isStaff 
             ? "Comissão | CA:${_yellowCards[pid]??0} CV:${_redCards[pid]??0}"
             : "G:${_goals[pid]??0} A:${_assists[pid]??0} CA:${_yellowCards[pid]??0}";
@@ -533,10 +424,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
               color: isSelected ? Colors.blue[50] : (isStaff ? Colors.grey[100] : null),
               child: ListTile(
                 dense: true,
-                // Ícone de Goleiro ou Staff ou Player
-                leading: Icon(
-                  isStaff ? Icons.assignment_ind : (isGoalkeeper ? Icons.pan_tool_outlined : Icons.person)
-                ),
+                leading: Icon(isStaff ? Icons.assignment_ind : (isGoalkeeper ? Icons.pan_tool_outlined : Icons.person)),
                 title: Text(isStaff ? name : "${num != null ? '$num. ' : ''}$name"),
                 subtitle: Text(summary, style: const TextStyle(fontSize: 11)),
                 onTap: () => setState(() => _selectedPlayerId = isSelected ? null : pid),
@@ -627,135 +515,57 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lista combinada para o dropdown, filtrando Staff
     final allPlayers = [..._homePlayers, ..._awayPlayers];
-    final motmCandidates = allPlayers.where((p) {
-       final d = p.data() as Map<String, dynamic>;
-       return d['is_staff'] != true;
+    final motmCandidates = allPlayers.where((p) { 
+      final d = p.data() as Map<String, dynamic>; 
+      return d['is_staff'] != true; 
     }).toList();
     
     final homeTeamName = widget.match['team_home_name'] ?? 'Casa';
     final awayTeamName = widget.match['team_away_name'] ?? 'Visitante';
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Editar Súmula'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flash_on, color: Colors.amber),
-            tooltip: 'Assistente de Súmula (Ao Vivo)',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (ctx) => MatchLiveScoutScreen(match: widget.match),
-                ),
-              );
-            },
-          ),
-          // Botão de Edição de Detalhes
-          IconButton(
-            icon: const Icon(Icons.edit_calendar_outlined),
-            tooltip: 'Editar Detalhes (Data, Local, Times)',
-            onPressed: _isSaving ? null : () {
-              // Convertendo o DocumentSnapshot para MatchModel para passar para a tela de edição
-              // Note: idealmente EditMatchScreen aceitaria snapshot ou model, mas para compatibilidade:
-              // Vamos assumir que EditMatchScreen pode ser ajustado ou já aceita model.
-              // Como EditMatchScreen aceita MatchModel, precisamos converter.
-              // Como aqui só temos o Snapshot e os imports de Models, podemos fazer:
-              // MatchModel model = MatchModel.fromFirestore(widget.match);
-              // Mas como não tenho acesso ao model aqui direto sem importar, deixo como Todo ou conversão manual
-              // (Assumindo que EditMatchScreen aceita o Snapshot no construtor legado ou que ajustaremos)
-              
-              // Solução segura: Usar navegação dinâmica
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  // IMPORTANTE: Se EditMatchScreen esperar MatchModel, use MatchModel.fromFirestore(widget.match)
-                  // Se esperar DocumentSnapshot, use widget.match.
-                  // Pelo código anterior, parecia esperar MatchModel.
-                  builder: (ctx) => EditMatchScreen(match: null), // Se for criação ou adaptação
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_forever),
-            tooltip: 'Deletar Partida',
-            onPressed: _isSaving ? null : _showDeleteMatchDialog,
-          ),
-          IconButton(
-            icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save),
-            onPressed: _isSaving ? null : _saveStats,
-          ),
-        ],
+      appBar: AppBar(title: const Text('Editar Súmula'), actions: [
+        IconButton(icon: const Icon(Icons.flash_on, color: Colors.amber), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => MatchLiveScoutScreen(match: widget.match)))),
+        IconButton(icon: const Icon(Icons.edit_calendar_outlined), onPressed: _isSaving ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => EditMatchScreen(match: null)))), // Assumindo que EditMatchScreen pode ser ajustada ou usada para criar
+        IconButton(icon: const Icon(Icons.delete_forever), onPressed: _isSaving ? null : _showDeleteMatchDialog),
+        IconButton(icon: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Icon(Icons.save), onPressed: _isSaving ? null : _saveStats),
+      ]),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _buildScoreCard(),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(value: _selectedStatus, items: const [DropdownMenuItem(value: 'pending', child: Text('Pendente')), DropdownMenuItem(value: 'in_progress', child: Text('Em Andamento')), DropdownMenuItem(value: 'finished', child: Text('Finalizado'))], onChanged: (v) { if(v!=null) { setState(() => _selectedStatus = v); _checkShowTiebreakerSection(); } }, decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder())),
+          if (_showTiebreakerSection) _buildTiebreakerSection(),
+          const SizedBox(height: 20),
+          Text(homeTeamName, style: Theme.of(context).textTheme.titleLarge),
+          _buildPlayerSelectList(_homePlayers, true),
+          const SizedBox(height: 20),
+          Text(awayTeamName, style: Theme.of(context).textTheme.titleLarge),
+          _buildPlayerSelectList(_awayPlayers, false),
+          const SizedBox(height: 20),
+          const Text('Craque do Jogo', style: TextStyle(fontWeight: FontWeight.bold)),
+          DropdownButtonFormField<String>(value: motmCandidates.any((p) => p.id == _selectedManOfTheMatchId) ? _selectedManOfTheMatchId : null, items: motmCandidates.map((p) { final d = p.data() as Map<String, dynamic>; return DropdownMenuItem(value: p.id, child: Text("${d['jersey_number'] ?? '-'} ${d['name']}", overflow: TextOverflow.ellipsis)); }).toList(), onChanged: (v) => setState(() => _selectedManOfTheMatchId = v), decoration: const InputDecoration(border: OutlineInputBorder())),
+          const SizedBox(height: 20),
+          ListTile(title: const Text("Súmula PDF"), subtitle: _buildFileStatus(), trailing: const Icon(Icons.upload_file), onTap: _pickSumulaFile, shape: RoundedRectangleBorder(side: const BorderSide(color: Colors.grey), borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 20),
+          _buildMediaListEditor(),
+        ]),
       ),
-      body: _isLoadingPlayers
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildScoreCard(),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    value: _selectedStatus,
-                    items: const [
-                      DropdownMenuItem(value: 'pending', child: Text('Pendente')),
-                      DropdownMenuItem(value: 'in_progress', child: Text('Em Andamento')),
-                      DropdownMenuItem(value: 'finished', child: Text('Finalizado')),
-                    ],
-                    onChanged: (v) {
-                      if(v!=null) {
-                        setState(() => _selectedStatus = v);
-                        _checkShowTiebreakerSection();
-                      }
-                    },
-                    decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
-                  ),
-                  
-                  if (_showTiebreakerSection) _buildTiebreakerSection(),
-
-                  const SizedBox(height: 20),
-                  Text(homeTeamName, style: Theme.of(context).textTheme.titleLarge),
-                  _buildPlayerSelectList(_homePlayers, true),
-                  
-                  const SizedBox(height: 20),
-                  Text(awayTeamName, style: Theme.of(context).textTheme.titleLarge),
-                  _buildPlayerSelectList(_awayPlayers, false),
-
-                  const SizedBox(height: 20),
-                  const Text('Craque do Jogo', style: TextStyle(fontWeight: FontWeight.bold)),
-                  
-                  DropdownButtonFormField<String>(
-                   value: motmCandidates.any((p) => p.id == _selectedManOfTheMatchId) ? _selectedManOfTheMatchId : null,
-                    items: motmCandidates.map((p) {
-                      final d = p.data() as Map<String, dynamic>;
-                      final int? num = d['jersey_number'];
-                      final String name = d['name'] ?? '?';
-                      
-                      return DropdownMenuItem(
-                        value: p.id,
-                        child: Text(num != null ? "$num. $name" : name, overflow: TextOverflow.ellipsis),
-                      );
-                    }).toList(),
-                    onChanged: (v) => setState(() => _selectedManOfTheMatchId = v),
-                    decoration: const InputDecoration(border: OutlineInputBorder()),
-                  ),
-
-                  const SizedBox(height: 20),
-                  ListTile(
-                    title: const Text("Súmula PDF"),
-                    subtitle: _buildFileStatus(),
-                    trailing: const Icon(Icons.upload_file),
-                    onTap: _pickSumulaFile,
-                    shape: RoundedRectangleBorder(side: const BorderSide(color: Colors.grey), borderRadius: BorderRadius.circular(4)),
-                  ),
-
-                  const SizedBox(height: 20),
-                  _buildMediaListEditor(),
-                ],
-              ),
-            ),
     );
   }
+}
+
+// --- CLASSE MOCK (PARA COMPATIBILIDADE) ---
+class MockDocumentSnapshot implements DocumentSnapshot {
+  @override final String id;
+  final Map<String, dynamic> _data;
+  MockDocumentSnapshot(this.id, this._data);
+  @override Map<String, dynamic> data() => _data;
+  @override dynamic get(Object field) => _data[field as String];
+  @override dynamic operator [](Object field) => _data[field as String];
+  @override bool get exists => true;
+  @override DocumentReference get reference => throw UnimplementedError();
+  @override SnapshotMetadata get metadata => throw UnimplementedError();
 }

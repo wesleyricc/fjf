@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import necessário
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -44,6 +45,9 @@ import 'screens/photo_sales_screen.dart';
 import 'screens/fantasy_home_screen.dart';
 import 'screens/fantasy_market_screen.dart';
 import 'screens/fantasy_lineup_screen.dart';
+// --- NOVAS TELAS IMPORTADAS ---
+import 'screens/about_history_screen.dart';
+import 'screens/about_board_screen.dart';
 
 void _logFirestoreIndexError(Object error) {
   final e = error.toString();
@@ -68,6 +72,15 @@ void main() async {
     if (environment == 'test') debugPrint("⚠️ AMBIENTE DE TESTE ⚠️");
 
     await Firebase.initializeApp(options: firebaseOptions);
+    
+    // --- OTIMIZAÇÃO: CONFIGURAÇÃO DE PERSISTÊNCIA ---
+    // Garante que o cache offline funcione
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+    // -----------------------------------------------
+
     await NotificationService().init();
     await initializeDateFormatting('pt_BR', null);
 
@@ -143,7 +156,7 @@ class FjfApp extends StatelessWidget {
           '/teams': (ctx) => const TeamsListScreen(),
           '/team-stats': (ctx) => const TeamStatsScreen(),
           '/player-stats': (ctx) => const PlayerStatsScreen(),
-          '/suspension-history': (ctx) => SuspensionHistoryScreen(),
+          '/suspension-history': (ctx) => const SuspensionHistoryScreen(),
           '/player-comparison': (ctx) => const PlayerComparisonScreen(),
           '/report-bug': (ctx) => const ReportBugScreen(),
           '/admin-menu': (ctx) => const AdminMenuScreen(),
@@ -155,6 +168,9 @@ class FjfApp extends StatelessWidget {
           '/fantasy-admin': (ctx) => const FantasyAdminControlScreen(),
           '/fantasy-rules': (ctx) => const FantasyRulesScreen(),
           '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
+          // --- NOVAS ROTAS ---
+          '/about-history': (ctx) => const AboutHistoryScreen(),
+          '/about-board': (ctx) => const AboutBoardScreen(),
         },
       ),
     );

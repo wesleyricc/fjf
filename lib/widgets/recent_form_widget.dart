@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
-import '../models/match_model.dart'; // <-- Model
+import '../models/match_model.dart'; 
 
 class RecentFormWidget extends StatelessWidget {
   final String teamId;
@@ -12,24 +11,20 @@ class RecentFormWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    final firestoreService = FirestoreService();
+    // Usa o cache do Service
+    return Consumer<ChampionshipService>(
+      builder: (context, service, _) {
+        final allMatches = service.matches; // Cacheado
 
-    return StreamBuilder<List<MatchModel>>(
-      stream: firestoreService.streamMatches(seasonId), // Busca todos, filtra em memória (ou ajuste a query no service)
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox.shrink();
-
-        // Filtra jogos finalizados do time
-        final allMatches = snapshot.data!;
+        // Filtra jogos finalizados ou em andamento do time
         final teamMatches = allMatches.where((m) {
           return (m.isFinished || m.isInProgress) && 
                  (m.homeTeamId == teamId || m.awayTeamId == teamId);
         }).toList();
 
-        // Ordena por data (mais recente primeiro) e pega 5
+        // Ordena (já deve vir ordenado, mas garantimos)
         teamMatches.sort((a, b) => (b.datetime ?? DateTime(0)).compareTo(a.datetime ?? DateTime(0)));
-        final last5 = teamMatches.take(5).toList().reversed.toList(); // Exibe E->D: Antigo->Novo
+        final last5 = teamMatches.take(5).toList().reversed.toList(); 
 
         if (last5.isEmpty) return const SizedBox.shrink();
 

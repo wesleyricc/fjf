@@ -1,80 +1,83 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'standings_sorter.dart'; // Reutiliza sua classe de ordenação existente
+import '../models/team_model.dart';
+import '../models/match_model.dart';
+import 'standings_sorter.dart';
 
 class StandingsCalculator {
   
-  /// Calcula e ordena a tabela baseada nos times e partidas fornecidos.
-  /// [simulatedScores] é um mapa opcional: { matchId: {'home': 2, 'away': 1} }
   static List<TeamStanding> calculate({
-    required List<DocumentSnapshot> teamsDocs,
-    required List<DocumentSnapshot> matchesDocs,
+    required List<Team> teams,
+    required List<MatchModel> matches,
     Map<String, Map<String, int>>? simulatedScores,
   }) {
-    // 1. Inicializa os objetos de classificação zerados (mas mantendo pontos extras do banco)
-    List<TeamStanding> standings = teamsDocs.map((doc) {
-      final t = TeamStanding(doc);
-      // Zera stats calculáveis, mantém o que é fixo/manual
-      t.points = t.extraPoints; 
-      t.matchPoints = 0;
-      t.gamesPlayed = 0;
-      t.wins = 0;
-      t.draws = 0;
-      t.losses = 0;
-      t.goalsFor = 0;
-      t.goalsAgainst = 0;
-      t.goalDifference = 0;
-      return t;
+    // 1. Inicializa
+    List<TeamStanding> standings = teams.map((t) {
+      final s = TeamStanding(t);
+      // Zera variáveis dinâmicas
+      s.points = s.extraPoints; 
+      s.matchPoints = 0;
+      s.gamesPlayed = 0;
+      s.wins = 0;
+      s.draws = 0;
+      s.losses = 0;
+      s.goalsFor = 0;
+      s.goalsAgainst = 0;
+      s.goalDifference = 0;
+      return s;
     }).toList();
 
-    // Cria um mapa para acesso rápido: TeamId -> TeamStanding
     final Map<String, TeamStanding> teamMap = {
       for (var t in standings) t.id: t
     };
 
-    // Lista para guardar os dados dos jogos finalizados (para o Sorter usar no confronto direto)
-    List<Map<String, dynamic>> finishedMatchesData = [];
+    List<MatchModel> finishedMatches = [];
 
-    // 2. Processa as partidas
-    for (var match in matchesDocs) {
-      final data = match.data() as Map<String, dynamic>;
-      final String matchId = match.id;
-      final String homeId = data['team_home_id'];
-      final String awayId = data['team_away_id'];
-
+    // 2. Processa Partidas
+    for (var match in matches) {
+      // Ignora jogos de outras fases se necessário, mas aqui assumimos que a lista já vem filtrada
+      
       int? scoreHome;
       int? scoreAway;
-      String status = data['status'] ?? 'pending';
+      bool isFinished = false;
 
-      // A. Verifica se tem simulação para este jogo
-      if (simulatedScores != null && simulatedScores.containsKey(matchId)) {
-        final simul = simulatedScores[matchId]!;
+      // A. Simulação
+      if (simulatedScores != null && simulatedScores.containsKey(match.id)) {
+        final simul = simulatedScores[match.id]!;
         if (simul['home'] != -1 && simul['away'] != -1) {
           scoreHome = simul['home'];
           scoreAway = simul['away'];
-          status = 'finished'; // Trata como finalizado para o cálculo
+          isFinished = true;
         }
       }
 
-      // B. Se não for simulado, usa o dado real se estiver finalizado ou em andamento (live)
+      // B. Dados Reais
       if (scoreHome == null) {
-        if (status == 'finished' || (status == 'in_progress' && data['score_home'] != null)) {
-          scoreHome = (data['score_home'] ?? 0) as int;
-          scoreAway = (data['score_away'] ?? 0) as int;
+        if (match.isFinished || (match.isInProgress && match.scoreHome != null)) {
+          scoreHome = match.scoreHome;
+          scoreAway = match.scoreAway;
+          isFinished = true;
         }
       }
 
-      // C. Aplica Estatísticas se tivermos um placar válido
-      if (scoreHome != null && scoreAway != null) {
-        final homeTeam = teamMap[homeId];
-        final awayTeam = teamMap[awayId];
+      if (isFinished && scoreHome != null && scoreAway != null) {
+        final homeTeam = teamMap[match.homeTeamId];
+        final awayTeam = teamMap[match.awayTeamId];
 
-        // Guarda dados para o Sorter (Critério de Desempate)
-        finishedMatchesData.add({
-          'team_home_id': homeId,
-          'team_away_id': awayId,
-          'score_home': scoreHome,
-          'score_away': scoreAway,
-        });
+        // Cria objeto temporário com placar definido para o Sorter
+        finishedMatches.add(MatchModel(
+          id: match.id,
+          location: match.location,
+          round: match.round,
+          phase: match.phase,
+          status: 'finished',
+          homeTeamId: match.homeTeamId,
+          homeTeamName: match.homeTeamName,
+          homeTeamShield: match.homeTeamShield,
+          scoreHome: scoreHome,
+          awayTeamId: match.awayTeamId,
+          awayTeamName: match.awayTeamName,
+          awayTeamShield: match.awayTeamShield,
+          scoreAway: scoreAway,
+        ));
 
         if (homeTeam != null) {
           homeTeam.gamesPlayed++;
@@ -110,14 +113,14 @@ class StandingsCalculator {
       }
     }
 
-    // 3. Atualiza totais derivados
+    // 3. Totais
     for (var t in standings) {
-      t.points = t.matchPoints + t.extraPoints; // Soma pontos de jogo + pontos extras
+      t.points = t.matchPoints + t.extraPoints;
       t.goalDifference = t.goalsFor - t.goalsAgainst;
     }
 
-    // 4. Ordena usando o Sorter existente
-    final sorter = StandingsSorter(finishedMatches: finishedMatchesData);
+    // 4. Ordena
+    final sorter = StandingsSorter(finishedMatches: finishedMatches);
     return sorter.sort(standings);
   }
 }

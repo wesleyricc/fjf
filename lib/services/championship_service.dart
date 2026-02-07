@@ -4,8 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'admin_service.dart';
 import 'firestore_service.dart'; 
 import '../models/team_model.dart'; 
-import '../models/player_model.dart'; // Import para o cache de elenco
-import '../models/photo_product_model.dart'; // Import para o cache da loja
+import '../models/player_model.dart'; 
+import '../models/photo_product_model.dart'; 
+import '../models/match_model.dart';
 
 class ChampionshipService with ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -19,18 +20,25 @@ class ChampionshipService with ChangeNotifier {
   List<Map<String, dynamic>> _availableSeasons = [];
   bool _isLoading = false; 
 
-  // --- CACHE CENTRALIZADO (OTIMIZAÇÃO DE CUSTO) ---
+  // --- CACHE CENTRALIZADO ---
   List<Team> _cachedTeams = [];
+  List<Player> _cachedPlayers = [];
   List<DocumentSnapshot> _cachedSponsors = [];
+  List<Map<String, dynamic>> _cachedNews = [];
+  List<MatchModel> _cachedMatches = [];
+  List<DocumentSnapshot> _cachedSuspensions = [];
   
   // Cache Home
   PhotoProduct? _cachedLatestPhotoProduct;
-  Map<String, dynamic>? _cachedAppSettings; // Para o vídeo ao vivo
+  Map<String, dynamic>? _cachedAppSettings; 
 
-  // Cache Elencos (Evita baixar jogadores repetidamente)
+  // Cache Elencos
   final Map<String, List<Player>> _rosterCache = {};
 
   bool _hasLoadedStaticData = false;
+  
+  // Constante de Validade do Cache (Ex: 30 minutos)
+  static const int CACHE_VALIDITY_MINUTES = 30;
 
   // Getters
   String get currentSeasonId => _currentSeasonId;
@@ -43,13 +51,16 @@ class ChampionshipService with ChangeNotifier {
 
   // Getters do Cache
   List<Team> get teams => _cachedTeams;
+  List<Player> get allPlayers => _cachedPlayers;
   List<DocumentSnapshot> get sponsors => _cachedSponsors;
+  List<Map<String, dynamic>> get news => _cachedNews;
+  List<MatchModel> get matches => _cachedMatches;
+  List<DocumentSnapshot> get suspensions => _cachedSuspensions;
   PhotoProduct? get latestPhotoProduct => _cachedLatestPhotoProduct;
   Map<String, dynamic>? get appSettings => _cachedAppSettings;
 
   ChampionshipService(); 
 
-  // --- MÉTODO init ---
   Future<void> init() async {
     if (_isLoading) return; 
 
@@ -57,9 +68,8 @@ class ChampionshipService with ChangeNotifier {
     notifyListeners(); 
 
     try {
+      // Temporadas sempre buscamos do servidor (são poucos docs e vitais)
       final snapshot = await _firestore.collection('championships').get();
-
-      print("SERVICE INIT: Encontrados ${snapshot.docs.length} documentos.");
 
       _availableSeasons = snapshot.docs.map((doc) {
         final data = doc.data();
@@ -108,61 +118,137 @@ class ChampionshipService with ChangeNotifier {
     }
   }
 
-  // --- OTIMIZAÇÃO: Carrega TUDO da Home UMA VEZ ---
-  Future<void> fetchStaticData() async {
+  // --- OTIMIZAÇÃO: Cache Inteligente (Server vs Cache) ---
+  Future<void> fetchStaticData({bool forceRefresh = false}) async {
     if (_currentSeasonId.isEmpty) return;
-    if (_hasLoadedStaticData) return;
+    
+    // Se já carregamos e não foi pedido refresh forçado, aborta
+    if (_hasLoadedStaticData && !forceRefresh) return;
 
     try {
-      debugPrint("🔥 CUSTO FIREBASE: Baixando Dados Estáticos da Home (Leitura Única)...");
+      // 1. Decide a Fonte (Server ou Cache)
+      Source source = Source.server;
       
-      // Executa todas as queries em paralelo para ser rápido
-      final results = await Future.wait([
-        // 0: Times
-        _firestore.collection('teams').where('seasonId', isEqualTo: _currentSeasonId).get(),
-        // 1: Patrocinadores
-        _firestore.collection('sponsors').where('isActive', isEqualTo: true).orderBy('order').get(),
-        // 2: Foto Capa Loja (Limit 1)
-        _firestore.collection('photo_sales').orderBy('taken_at', descending: true).limit(1).get(),
-        // 3: Config App (Vídeo)
-        _firestore.collection('config').doc('app_settings').get(),
-      ]);
-      
-      // Processa Times
-      final teamsSnap = results[0] as QuerySnapshot;
-      _cachedTeams = teamsSnap.docs.map((doc) => Team.fromFirestore(doc)).toList();
+      if (!forceRefresh) {
+        final prefs = await SharedPreferences.getInstance();
+        final lastFetch = prefs.getInt('last_static_fetch_${_currentSeasonId}') ?? 0;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final diffMinutes = (now - lastFetch) / 1000 / 60;
 
-      // Processa Patrocinadores
-      final sponsorsSnap = results[1] as QuerySnapshot;
-      _cachedSponsors = sponsorsSnap.docs;
-
-      // Processa Foto Loja
-      final photoSnap = results[2] as QuerySnapshot;
-      if (photoSnap.docs.isNotEmpty) {
-        _cachedLatestPhotoProduct = PhotoProduct.fromFirestore(photoSnap.docs.first);
+        if (diffMinutes < CACHE_VALIDITY_MINUTES) {
+          source = Source.cache;
+          debugPrint("💾 [CACHE] Usando dados locais (Última atualização: ${diffMinutes.toStringAsFixed(1)} min atrás).");
+        } else {
+          debugPrint("☁️ [SERVER] Cache expirado. Buscando dados novos...");
+        }
+      } else {
+        debugPrint("🔄 [REFRESH] Forçando atualização do servidor...");
       }
 
-      // Processa Config App
-      final configSnap = results[3] as DocumentSnapshot;
-      if (configSnap.exists) {
-        _cachedAppSettings = configSnap.data() as Map<String, dynamic>;
+      // 2. Executa Queries com a Fonte decidida
+      // Se source for cache e falhar (cache vazio), o Firestore lança exceção em alguns casos,
+      // então envolvemos em try-catch para fallback.
+      try {
+        await _performFetch(source);
+      } catch (e) {
+        if (source == Source.cache) {
+          debugPrint("⚠️ Erro ao ler cache ($e). Tentando servidor...");
+          await _performFetch(Source.server);
+        } else {
+          rethrow;
+        }
       }
       
+      // 3. Atualiza Timestamp se veio do servidor com sucesso
+      if (source == Source.server) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('last_static_fetch_${_currentSeasonId}', DateTime.now().millisecondsSinceEpoch);
+      }
+
       _hasLoadedStaticData = true;
       notifyListeners();
+
     } catch (e) {
-      debugPrint("Erro ao carregar dados estáticos: $e");
+      debugPrint("❌ Erro fatal ao carregar dados estáticos: $e");
     }
+  }
+
+  Future<void> _performFetch(Source source) async {
+    final options = GetOptions(source: source);
+
+    final results = await Future.wait([
+      // 0: Times
+      _firestore.collection('championships').doc(_currentSeasonId).collection('teams_participation').get(options),
+      // 1: Patrocinadores
+      _firestore.collection('sponsors').where('isActive', isEqualTo: true).orderBy('order').get(options),
+      // 2: Foto Capa Loja
+      _firestore.collection('photo_sales').orderBy('taken_at', descending: true).limit(1).get(options),
+      // 3: Config App
+      _firestore.collection('config').doc('app_settings').get(options),
+      // 4: Jogadores
+      _firestore.collection('championships').doc(_currentSeasonId).collection('player_stats').where('isActive', isEqualTo: true).get(options),
+      // 5: Notícias
+      _firestore.collection('championships').doc(_currentSeasonId).collection('news').where('isActive', isEqualTo: true).orderBy('order', descending: true).limit(10).get(options),
+      // 6: Partidas
+      _firestore.collection('championships').doc(_currentSeasonId).collection('matches').orderBy('datetime').get(options),
+      // 7: Suspensões
+      _firestore.collection('championships').doc(_currentSeasonId).collection('disciplinary_log').orderBy('return_date', descending: true).get(options),
+    ]);
+    
+    // Processamento (Idêntico ao anterior)
+    final teamsSnap = results[0] as QuerySnapshot;
+    _cachedTeams = teamsSnap.docs.map((doc) => Team.fromFirestore(doc)).toList();
+    _cachedTeams.sort((a, b) => a.name.compareTo(b.name));
+
+    final sponsorsSnap = results[1] as QuerySnapshot;
+    _cachedSponsors = sponsorsSnap.docs;
+
+    final photoSnap = results[2] as QuerySnapshot;
+    if (photoSnap.docs.isNotEmpty) {
+      _cachedLatestPhotoProduct = PhotoProduct.fromFirestore(photoSnap.docs.first);
+    }
+
+    final configSnap = results[3] as DocumentSnapshot;
+    if (configSnap.exists) {
+      _cachedAppSettings = configSnap.data() as Map<String, dynamic>;
+    }
+
+    final playersSnap = results[4] as QuerySnapshot;
+    _cachedPlayers = playersSnap.docs.map((doc) => Player.fromFirestore(doc)).toList();
+
+    final newsSnap = results[5] as QuerySnapshot;
+    _cachedNews = newsSnap.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+
+    final matchesSnap = results[6] as QuerySnapshot;
+    _cachedMatches = matchesSnap.docs.map((doc) => MatchModel.fromFirestore(doc)).toList();
+
+    final suspensionSnap = results[7] as QuerySnapshot;
+    _cachedSuspensions = suspensionSnap.docs;
+
+    debugPrint("✅ Dados carregados (${source.name.toUpperCase()}). Times: ${_cachedTeams.length}, Jogadores: ${_cachedPlayers.length}");
   }
 
   // --- MÉTODOS DE CACHE DE ELENCO ---
   bool hasRosterCached(String teamId) => _rosterCache.containsKey(teamId);
 
-  List<Player> getCachedRoster(String teamId) => _rosterCache[teamId] ?? [];
+  List<Player> getCachedRoster(String teamId) {
+    if (_rosterCache.containsKey(teamId)) return _rosterCache[teamId]!;
+    
+    if (_cachedPlayers.isNotEmpty) {
+      final roster = _cachedPlayers.where((p) => p.teamId == teamId).toList();
+      roster.sort((a, b) {
+         if (a.isGoalkeeper && !b.isGoalkeeper) return -1;
+         if (!a.isGoalkeeper && b.isGoalkeeper) return 1;
+         return (a.jerseyNumber ?? 99).compareTo(b.jerseyNumber ?? 99);
+      });
+      _rosterCache[teamId] = roster;
+      return roster;
+    }
+    return [];
+  }
 
   void cacheRoster(String teamId, List<Player> players) {
     _rosterCache[teamId] = players;
-    // Não precisa de notifyListeners() aqui pois quem usa gerencia seu estado local
   }
 
   Future<void> setSeason(String seasonId) async {
@@ -185,39 +271,38 @@ class ChampionshipService with ChangeNotifier {
       
       await AdminService.loadAllRules(seasonId);
 
-      // Limpa TODOS os caches ao mudar temporada
       _cachedTeams = [];
+      _cachedPlayers = [];
       _cachedSponsors = [];
+      _cachedNews = [];
+      _cachedMatches = [];
+      _cachedSuspensions = [];
       _rosterCache.clear();
       _cachedLatestPhotoProduct = null;
       _cachedAppSettings = null;
       _hasLoadedStaticData = false;
       
+      // Tenta usar cache primeiro se disponível para a nova temporada
       fetchStaticData();
     }
     notifyListeners();
   }
 
-  // Métodos de Admin (createSeason, updateSeason, etc) mantidos...
+  // Métodos Admin mantidos (sem alterações na escrita)...
   Future<String> setGlobalActiveSeason(String seasonId) async {
     try {
       final batch = _firestore.batch();
       final allDocs = await _firestore.collection('championships').get();
       for (var doc in allDocs.docs) {
-        if (doc.data()['is_active'] == true) {
-          batch.update(doc.reference, {'is_active': false});
-        }
+        if (doc.data()['is_active'] == true) batch.update(doc.reference, {'is_active': false});
       }
       final targetRef = _firestore.collection('championships').doc(seasonId);
       batch.update(targetRef, {'is_active': true});
       await batch.commit();
-      
       await init(); 
       await setSeason(seasonId); 
       return "Sucesso";
-    } catch (e) {
-      return "Erro ao ativar temporada: $e";
-    }
+    } catch (e) { return "Erro: $e"; }
   }
   
   Future<String> createSeason(int year, String name, String honoree, {bool copyTeams = false, bool copyPlayers = false}) async {
@@ -227,40 +312,26 @@ class ChampionshipService with ChangeNotifier {
       if (doc.exists) return "Temporada já existe.";
 
       await _firestore.collection('championships').doc(docId).set({
-        'year': year,
-        'name': name,
-        'honoree': honoree,
-        'is_active': false,
-        'status': 'open',
-        'created_at': FieldValue.serverTimestamp(),
+        'year': year, 'name': name, 'honoree': honoree,
+        'is_active': false, 'status': 'open', 'created_at': FieldValue.serverTimestamp(),
       });
       
       if (copyTeams && _currentSeasonId.isNotEmpty) {
         await FirestoreService().copySeasonData(
-          sourceSeasonId: _currentSeasonId,
-          targetSeasonId: docId,
-          includeRoster: copyPlayers,
+          sourceSeasonId: _currentSeasonId, targetSeasonId: docId, includeRoster: copyPlayers,
         );
       }
-      
       await init();
       return "Sucesso";
-    } catch (e) {
-      return "Erro: $e";
-    }
+    } catch (e) { return "Erro: $e"; }
   }
   
    Future<String> updateSeason(String seasonId, String name, String honoree) async {
     try {
-      await _firestore.collection('championships').doc(seasonId).update({
-        'name': name,
-        'honoree': honoree,
-      });
+      await _firestore.collection('championships').doc(seasonId).update({'name': name, 'honoree': honoree});
       await init(); 
       if (_currentSeasonId == seasonId) _setSeasonInternal(seasonId);
       return "Sucesso";
-    } catch (e) {
-      return "Erro: $e";
-    }
+    } catch (e) { return "Erro: $e"; }
   }
 }

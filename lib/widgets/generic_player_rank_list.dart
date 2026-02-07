@@ -1,17 +1,18 @@
-// lib/widgets/generic_player_rank_list.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
+import '../services/firestore_service.dart'; // Para limpar suspensão
 import '../screens/player_profile_screen.dart';
 import '../widgets/rank_highlight_card.dart';
-import '../widgets/rank_indicator.dart'; // Certifique-se de ter este widget ou use o código abaixo
+import '../widgets/rank_indicator.dart'; 
+import '../models/player_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Para acesso ao Firestore direto na suspensão
 
-class GenericPlayerRankList extends StatefulWidget {
-  final Query baseQuery;
+class GenericPlayerRankList extends StatelessWidget {
+  final List<Player> players; // Recebe lista já pronta
   final String emptyMessage;
   final String? statField;
   final String? statLabel;
@@ -20,7 +21,7 @@ class GenericPlayerRankList extends StatefulWidget {
 
   const GenericPlayerRankList({
     super.key,
-    required this.baseQuery,
+    required this.players,
     required this.emptyMessage,
     this.statField,
     this.statLabel,
@@ -28,37 +29,15 @@ class GenericPlayerRankList extends StatefulWidget {
     this.isSuspendedTab = false,
   });
 
-  @override
-  State<GenericPlayerRankList> createState() => _GenericPlayerRankListState();
-}
-
-class _GenericPlayerRankListState extends State<GenericPlayerRankList> with AutomaticKeepAliveClientMixin {
-  final int _pageSize = 20;
-  final List<DocumentSnapshot> _players = [];
-  bool _isLoading = false;
-  bool _hasMore = true;
-  DocumentSnapshot? _lastDocument;
-  bool _hasError = false;
-
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-    Future<void> _showClearSuspensionDialog(BuildContext context, DocumentSnapshot player) async {
-    final playerName = player['name'] ?? 'Jogador desconhecido';
-    final data = player.data() as Map<String, dynamic>? ?? {};
-    final int currentYellows = data['yellow_cards'] ?? 0;
-    final int currentReds = data['red_cards'] ?? 0;
+  Future<void> _showClearSuspensionDialog(BuildContext context, Player player) async {
+    final playerName = player.name;
+    final int currentYellows = player.yellowCards;
+    final int currentReds = player.redCards;
 
     bool suspendedByRed = (currentReds > 0 && AdminService.suspensionOnRed);
     bool suspendedByYellow = (currentYellows >= AdminService.suspensionYellowCards);
     
-    if (!suspendedByRed && data['is_suspended'] == true) {
+    if (!suspendedByRed && player.isSuspended) {
        suspendedByYellow = true;
     }
     
@@ -102,7 +81,8 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
                   if(dialogContext.mounted) Navigator.of(dialogContext).pop();
                   if (context.mounted) { 
                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$playerName liberado da suspensão.')));
-                     _loadData();
+                     // Força recarga do cache
+                     Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
                   }
                 } catch (e) {
                    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
@@ -115,185 +95,132 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> with Auto
     );
   }
 
-  Future<void> _loadData() async {
-    if (_isLoading || !_hasMore) return;
-    if (mounted) setState(() { _isLoading = true; _hasError = false; });
-
-    try {
-      Query query = widget.baseQuery.limit(_pageSize);
-      if (_lastDocument != null) query = query.startAfterDocument(_lastDocument!);
-
-      final snapshot = await query.get();
-
-      if (snapshot.docs.isNotEmpty) {
-        if (mounted) {
-          setState(() {
-            _lastDocument = snapshot.docs.last;
-            _players.addAll(snapshot.docs);
-            if (snapshot.docs.length < _pageSize) _hasMore = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _hasMore = false);
-      }
-    } catch (e) {
-      if (mounted) setState(() => _hasError = true);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    super.build(context);
+    if (players.isEmpty) return Center(child: Text(emptyMessage));
 
-    if (_players.isEmpty && _isLoading) return const Center(child: CircularProgressIndicator());
-    if (_players.isEmpty && !_hasError) return Center(child: Text(widget.emptyMessage));
-    if (_hasError && _players.isEmpty) return Center(child: TextButton(onPressed: _loadData, child: const Text("Erro. Tentar novamente")));
+    // Limitamos a exibição a 50 itens para não pesar a UI (o resto não importa muito)
+    final int displayCount = players.length > 50 ? 50 : players.length;
 
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 20, top: 8),
-      itemCount: _players.length + (_hasMore ? 1 : 0),
+      itemCount: displayCount,
       itemBuilder: (context, index) {
-        if (index == _players.length) {
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Center(child: _isLoading ? const CircularProgressIndicator() : ElevatedButton(onPressed: _loadData, child: const Text("Carregar mais"))),
-          );
-        }
-
-        final doc = _players[index];
+        final player = players[index];
         final rank = index + 1;
 
-        // --- DESTAQUE TOP 3 ---
-        // Exibe o Card Grande com Foto
-        if (index < 3 && !widget.isStatusList) {
-          return _buildTopRankItem(doc, rank);
+        // --- DESTAQUE TOP 3 (Apenas se não for lista de status) ---
+        if (index < 3 && !isStatusList) {
+          return _buildTopRankItem(context, player, rank);
         }
 
-        // --- LISTA PADRÃO (4º em diante) ---
-        // Sem foto, apenas Nome, Time e Estatística
+        // --- LISTA PADRÃO ---
         return Column(
           children: [
-            _buildCompactPlayerItem(doc, rank),
-            const Divider(height: 1, indent: 60), // Indent ajustado
+            _buildCompactPlayerItem(context, player, rank),
+            const Divider(height: 1, indent: 60),
           ],
         );
       },
     );
   }
 
-  Widget _buildTopRankItem(DocumentSnapshot doc, int rank) {
-    final data = doc.data() as Map<String, dynamic>;
-    final val = data[widget.statField] ?? 0;
-    
+  Widget _buildTopRankItem(BuildContext context, Player player, int rank) {
+    // Determina valor do campo dinamicamente
+    String val = '';
+    if (statField == 'goals') val = '${player.goals}';
+    else if (statField == 'assists') val = '${player.assists}';
+    else if (statField == 'goalsConceded') val = '${player.goalsConceded}';
+    else if (statField == 'motmAwards') val = '${player.motmAwards}';
+    else if (statField == 'totalYellowCards') val = '${player.totalYellowCards}';
+    else if (statField == 'totalRedCards') val = '${player.totalRedCards}';
+
     IconData icon = Icons.star;
-    if (widget.statLabel == 'Gols') icon = Icons.sports_soccer;
-    else if (widget.statLabel == 'Ass') icon = Icons.assistant;
-    else if (widget.statLabel == 'GS') icon = Icons.pan_tool_outlined;
-    else if (widget.statLabel == 'CA') icon = Icons.style;
-    else if (widget.statLabel == 'CV') icon = Icons.style;
+    if (statLabel == 'Gols') icon = Icons.sports_soccer;
+    else if (statLabel == 'Ass') icon = Icons.assistant;
+    else if (statLabel == 'GS') icon = Icons.pan_tool_outlined;
+    else if (statLabel == 'CA' || statLabel == 'CV') icon = Icons.style;
 
     Color? customColor;
-    if (widget.statLabel == 'CA') customColor = Colors.amber[800];
-    if (widget.statLabel == 'CV') customColor = Colors.red;
+    if (statLabel == 'CA') customColor = Colors.amber[800];
+    if (statLabel == 'CV') customColor = Colors.red;
 
     return RankHighlightCard(
       rank: rank,
-      title: data['name'] ?? 'Desconhecido',
-      subtitle: data['team_name'] ?? '',
-      imageUrl: data['photo_url'] ?? '',
-      statValue: '$val',
-      statLabel: widget.statLabel ?? '',
+      title: player.name,
+      subtitle: player.teamName,
+      imageUrl: player.photoUrl,
+      statValue: val,
+      statLabel: statLabel ?? '',
       statIcon: icon,
       customColor: customColor,
-      isPlayer: true, // Garante o recorte circular na foto
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id))),
+      isPlayer: true,
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: player.id))),
     );
   }
 
-  Widget _buildCompactPlayerItem(DocumentSnapshot doc, int rank) {
-    final data = doc.data() as Map<String, dynamic>;
-    final bool isStaff = data['is_staff'] ?? false;
-    final String name = data['name'] ?? 'Desconhecido';
-    final String teamName = data['team_name'] ?? '';
-    final String shieldUrl = data['team_shield_url'] ?? '';
+  Widget _buildCompactPlayerItem(BuildContext context, Player player, int rank) {
     final isAdmin = Provider.of<AuthService>(context).isAuthenticated;
 
-    // Definição do valor (Trailing)
     Widget trailing;
-    if (widget.isStatusList) {
-      // Lógica de ícones para cartões (mantida)
-      int y = (data['yellow_cards'] as num?)?.toInt() ?? 0;
-      int r = (data['red_cards'] as num?)?.toInt() ?? 0;
+    if (isStatusList) {
       List<Widget> icons = [];
-      
-      if (widget.isSuspendedTab) {
-        if (r > 0) icons.add(const Icon(Icons.style, color: Colors.red, size: 18));
-        if (y >= (AdminService.suspensionYellowCards > 0 ? AdminService.suspensionYellowCards : 3)) {
+      if (isSuspendedTab) {
+        if (player.redCards > 0) icons.add(const Icon(Icons.style, color: Colors.red, size: 18));
+        if (player.yellowCards >= (AdminService.suspensionYellowCards > 0 ? AdminService.suspensionYellowCards : 3)) {
            if (icons.isNotEmpty) icons.add(const SizedBox(width: 4));
            icons.add(Icon(Icons.style, color: Colors.amber[700], size: 18));
         }
       } else {
-        for(int i=0; i<y; i++) icons.add(Icon(Icons.style, color: Colors.amber[700], size: 18));
+        for(int i=0; i<player.yellowCards; i++) icons.add(Icon(Icons.style, color: Colors.amber[700], size: 18));
       }
       trailing = Row(mainAxisSize: MainAxisSize.min, children: icons);
     } else {
-      final val = data[widget.statField] ?? 0;
+      String val = '';
+      if (statField == 'goals') val = '${player.goals}';
+      else if (statField == 'assists') val = '${player.assists}';
+      else if (statField == 'goalsConceded') val = '${player.goalsConceded}';
+      else if (statField == 'motmAwards') val = '${player.motmAwards}';
+      else if (statField == 'totalYellowCards') val = '${player.totalYellowCards}';
+      else if (statField == 'totalRedCards') val = '${player.totalRedCards}';
+
       trailing = Text(
-        "$val ${widget.statLabel ?? ''}", 
+        "$val ${statLabel ?? ''}", 
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)
       );
     }
 
     return ListTile(
-      visualDensity: VisualDensity.compact, // Lista mais densa
+      visualDensity: VisualDensity.compact,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-      
-      // 1. LEADING: Apenas o Rank (Sem foto do jogador)
       leading: RankIndicator(rank: rank, size: 28, fontSize: 12),
-
-      // 2. TÍTULO: Nome do Jogador
       title: Text(
-        name,
+        player.name,
         style: TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: 14,
-          fontStyle: isStaff ? FontStyle.italic : FontStyle.normal
+          fontStyle: player.isStaff ? FontStyle.italic : FontStyle.normal
         ),
       ),
-
-      // 3. SUBTÍTULO: Escudo + Nome do Time
       subtitle: Row(
         children: [
-          if (shieldUrl.isNotEmpty) ...[
+          if (player.teamShieldUrl.isNotEmpty) ...[
             CachedNetworkImage(
-              imageUrl: shieldUrl, 
-              width: 14, 
-              height: 14, 
-              fit: BoxFit.contain,
+              imageUrl: player.teamShieldUrl, width: 14, height: 14, fit: BoxFit.contain,
               memCacheWidth: 42,
               errorWidget: (_,__,___)=>const Icon(Icons.shield, size: 14, color: Colors.grey),
             ),
             const SizedBox(width: 4),
           ],
-          Flexible(
-            child: Text(
-              teamName,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ),
+          Flexible(child: Text(player.teamName, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey[600]))),
         ],
       ),
-
-      // 4. TRAILING: Estatística
       trailing: trailing,
       onTap: () {
-        if (widget.isSuspendedTab && isAdmin) {
-          _showClearSuspensionDialog(context, doc);
+        if (isSuspendedTab && isAdmin) {
+          _showClearSuspensionDialog(context, player);
         } else {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: doc.id)));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: player.id)));
         }
       },
     );

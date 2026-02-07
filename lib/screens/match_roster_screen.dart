@@ -50,11 +50,9 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
   late TabController _tabController;
   bool _isLoading = true;
   
-  // Listas Completas (Cache Local)
   List<Player> _team1Players = [];
   List<Player> _team2Players = [];
   
-  // Titulares Time 1
   Player? _team1TitularGoalkeeper;
   Player? _team1Fixo;
   Player? _team1Ala1;
@@ -62,7 +60,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
   Player? _team1Pivo;
   List<Player> _team1Reserves = [];
   
-  // Titulares Time 2
   Player? _team2TitularGoalkeeper;
   Player? _team2Fixo;
   Player? _team2Ala1;
@@ -89,24 +86,21 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
     final seasonId = service.currentSeasonId;
 
     try {
-      // 1. Busca Jogadores (Com Cache do Service para economia)
-      if (service.hasRosterCached(widget.team1Id)) {
-        _team1Players = service.getCachedRoster(widget.team1Id);
-      } else {
-        final t1 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team1Id).first;
-        _team1Players = t1.where((p) => !p.isStaff).toList();
-        service.cacheRoster(widget.team1Id, _team1Players);
+      // 1. Busca Jogadores (OTIMIZADO: Usa Cache Central)
+      // O getCachedRoster filtra da memória, custo ZERO.
+      _team1Players = service.getCachedRoster(widget.team1Id).where((p) => !p.isStaff).toList();
+      _team2Players = service.getCachedRoster(widget.team2Id).where((p) => !p.isStaff).toList();
+
+      // Se por algum motivo o cache estiver vazio (ex: deep link direto pra tela), força refresh
+      if (_team1Players.isEmpty || _team2Players.isEmpty) {
+         await service.fetchStaticData(forceRefresh: true);
+         _team1Players = service.getCachedRoster(widget.team1Id).where((p) => !p.isStaff).toList();
+         _team2Players = service.getCachedRoster(widget.team2Id).where((p) => !p.isStaff).toList();
       }
 
-      if (service.hasRosterCached(widget.team2Id)) {
-        _team2Players = service.getCachedRoster(widget.team2Id);
-      } else {
-        final t2 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team2Id).first;
-        _team2Players = t2.where((p) => !p.isStaff).toList();
-        service.cacheRoster(widget.team2Id, _team2Players);
-      }
-
-      // 2. Busca Titulares Salvos
+      // 2. Busca Titulares Salvos (Ainda precisa de leitura no doc do time)
+      // Poderíamos otimizar isso cacheando o 'defaultStarters' no objeto Team do ChampionshipService
+      // mas como é uma operação administrativa de baixa frequência, deixamos assim por segurança.
       final t1Doc = await _firestoreService.getTeam(widget.team1Id, seasonId);
       final t2Doc = await _firestoreService.getTeam(widget.team2Id, seasonId);
 
@@ -124,15 +118,12 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
   }
 
   void _calculateLineups(List<Player> allPlayers, List<String> savedStarterIds, bool isTeam1) {
-    // Clona para não afetar cache
     List<Player> pool = List.from(allPlayers);
-    
     List<Player> starters = pool.where((p) => savedStarterIds.contains(p.id)).toList();
     List<Player> reserves = pool.where((p) => !savedStarterIds.contains(p.id)).toList();
 
     Player? gk, fixo, ala1, ala2, pivo;
 
-    // Seleção de Goleiro
     gk = starters.firstWhere((p) => p.isGoalkeeper, orElse: () => 
          reserves.firstWhere((p) => p.isGoalkeeper, orElse: () => 
          pool.firstWhere((p) => p.isGoalkeeper, orElse: () => pool.first)));
@@ -140,7 +131,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
     if (starters.contains(gk)) starters.remove(gk);
     if (reserves.contains(gk)) reserves.remove(gk);
 
-    // Função auxiliar
     Player? pickNext(String? preferredPos) {
       Player? p;
       try { p = starters.firstWhere((x) => x.position == preferredPos); } catch (_) {}
@@ -161,7 +151,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
     ala2 = pickNext('Ala');
     pivo = pickNext('Pivô');
 
-    // Junta o que sobrou na reserva
     reserves.addAll(starters); 
     reserves.sort((a, b) => (a.jerseyNumber ?? 99).compareTo(b.jerseyNumber ?? 99));
 
@@ -267,7 +256,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
 
     return Scaffold(
       backgroundColor: Colors.white,
-      // --- HEADER PADRÃO (Conforme solicitado) ---
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -282,10 +270,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // --- INFORMAÇÕES DO JOGO (Card Moderno) ---
                 _buildMatchInfoCard(),
-                
-                // --- ABAS ---
                 Container(
                   color: Theme.of(context).primaryColor.withOpacity(0.05),
                   child: TabBar(
@@ -301,8 +286,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
                     ],
                   ),
                 ),
-
-                // --- CONTEÚDO TÁTICO ---
                 Expanded(
                   child: TabBarView(
                     controller: _tabController,
@@ -317,8 +300,6 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
       bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
-
-  // --- WIDGETS VISUAIS ---
 
   Widget _buildMatchInfoCard() {
     String dateStr = widget.datetime != null 
@@ -402,12 +383,11 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
       padding: const EdgeInsets.only(top: 10),
       child: Column(
         children: [
-          // --- QUADRA TÁTICA ---
           Container(
-            height: 480, // Altura da quadra
+            height: 480, 
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.green[800], // Fallback
+              color: Colors.green[800], 
               borderRadius: BorderRadius.circular(16),
               boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: const Offset(0, 4))],
               image: const DecorationImage(
@@ -418,23 +398,15 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
             ),
             child: Stack(
               children: [
-                // Pivô (Topo Centro)
                 if (p != null) _buildPositionedPlayer(p, isTeam1, "Pivo", 0.05, 0.5),
-                
-                // Alas (Meio Esquerda/Direita)
                 if (a1 != null) _buildPositionedPlayer(a1, isTeam1, "Ala", 0.4, 0.15),
                 if (a2 != null) _buildPositionedPlayer(a2, isTeam1, "Ala", 0.4, 0.85),
-                
-                // Fixo (Baixo Centro - Acima do Goleiro)
                 if (f != null) _buildPositionedPlayer(f, isTeam1, "Fixo", 0.65, 0.5),
-                
-                // Goleiro (Base Centro)
                 if (gk != null) _buildPositionedPlayer(gk, isTeam1, "GK", 0.85, 0.5),
               ],
             ),
           ),
 
-          // --- LISTA DE RESERVAS ---
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: Row(
@@ -494,7 +466,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
                   border: Border.all(color: Colors.white, width: 2),
                 ),
                 child: PlayerDisplayCard(
-                  playerName: "", // Nome vai fora para melhor leitura
+                  playerName: "", 
                   jerseyNumber: p.jerseyNumber ?? 0,
                   yellowCards: p.yellowCards,
                   redCards: p.redCards,

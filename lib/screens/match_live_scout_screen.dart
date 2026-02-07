@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
 import '../models/match_event.dart';
+import '../models/player_model.dart'; // Model
 
 // Widgets Refatorados
 import '../widgets/scout_goal_dialog.dart';
@@ -18,6 +19,8 @@ class MatchLiveScoutScreen extends StatefulWidget {
 }
 
 class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
+  // Convertemos para DocumentSnapshot apenas para manter compatibilidade com os dialogs antigos
+  // O ideal seria refatorar os dialogs para aceitar Player, mas isso funciona e economiza leituras.
   List<DocumentSnapshot> _homePlayers = [];
   List<DocumentSnapshot> _awayPlayers = [];
   bool _isLoadingPlayers = true;
@@ -25,59 +28,49 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchPlayers();
+    _loadPlayersFromCache();
   }
 
-  Future<void> _fetchPlayers() async {
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+  void _loadPlayersFromCache() {
+    final service = Provider.of<ChampionshipService>(context, listen: false);
     final homeId = widget.match['team_home_id'];
     final awayId = widget.match['team_away_id'];
+
+    // Pega do cache e converte para uma lista que os Dialogs aceitam
+    // (Ainda precisamos simular DocumentSnapshot para não quebrar os widgets filhos agora)
+    // Mas a leitura é ZERO.
     
-    // CORREÇÃO: Busca sempre na subcoleção da temporada
-    final playersQuery = FirebaseFirestore.instance
-        .collection('championships')
-        .doc(seasonId)
-        .collection('player_stats');
-
-    // Busca jogadores ativos de ambos os times
-    try {
-      final results = await Future.wait([
-        playersQuery.where('team_id', isEqualTo: homeId).where('isActive', isEqualTo: true).get(),
-        playersQuery.where('team_id', isEqualTo: awayId).where('isActive', isEqualTo: true).get(),
-      ]);
-
-      if (mounted) {
-        setState(() {
-          _homePlayers = _sortPlayers(results[0].docs);
-          _awayPlayers = _sortPlayers(results[1].docs);
-          _isLoadingPlayers = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Erro ao buscar jogadores: $e");
-      if (mounted) setState(() => _isLoadingPlayers = false);
+    final all = service.allPlayers;
+    
+    // Função auxiliar de ordenação
+    int sortFunc(Player a, Player b) {
+      if (!a.isStaff && b.isStaff) return -1;
+      if (a.isStaff && !b.isStaff) return 1;
+      int nA = a.jerseyNumber ?? 999;
+      int nB = b.jerseyNumber ?? 999;
+      if (nA != nB) return nA.compareTo(nB);
+      return a.name.compareTo(b.name);
     }
+
+    final homeList = all.where((p) => p.teamId == homeId).toList()..sort(sortFunc);
+    final awayList = all.where((p) => p.teamId == awayId).toList()..sort(sortFunc);
+
+    setState(() {
+      _homePlayers = homeList.map((p) => _mockSnapshot(p)).toList();
+      _awayPlayers = awayList.map((p) => _mockSnapshot(p)).toList();
+      _isLoadingPlayers = false;
+    });
   }
 
-  // Ordenação: Staff no fim, depois por número, depois nome
-  List<DocumentSnapshot> _sortPlayers(List<DocumentSnapshot> list) {
-    list.sort((a, b) {
-      final da = a.data() as Map<String, dynamic>;
-      final db = b.data() as Map<String, dynamic>;
-
-      final bool isStaffA = da['is_staff'] ?? false;
-      final bool isStaffB = db['is_staff'] ?? false;
-      if (!isStaffA && isStaffB) return -1;
-      if (isStaffA && !isStaffB) return 1;
-
-      final int numA = da['jersey_number'] ?? 999;
-      final int numB = db['jersey_number'] ?? 999;
-      int numComp = numA.compareTo(numB);
-      if (numComp != 0) return numComp;
-
-      return (da['name'] ?? '').toString().compareTo((db['name'] ?? '').toString());
+  // Cria um Mock para compatibilidade com os widgets existentes
+  DocumentSnapshot _mockSnapshot(Player p) {
+    return MockDocumentSnapshot(p.id, {
+      'name': p.name,
+      'jersey_number': p.jerseyNumber,
+      'is_staff': p.isStaff,
+      'is_goalkeeper': p.isGoalkeeper,
+      'team_id': p.teamId,
     });
-    return list;
   }
 
   void _openGoalDialog() {
@@ -109,7 +102,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   Widget build(BuildContext context) {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
     
-    // CORREÇÃO: Referência padronizada para a partida
     final matchRef = FirebaseFirestore.instance
         .collection('championships')
         .doc(seasonId)
@@ -122,7 +114,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
           ? const Center(child: CircularProgressIndicator()) 
           : Column(
               children: [
-                // 1. PLACAR EM TEMPO REAL
                 StreamBuilder<DocumentSnapshot>(
                   stream: matchRef.snapshots(),
                   builder: (context, snapshot) {
@@ -147,7 +138,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
                   }
                 ),
 
-                // 2. BOTÕES DE AÇÃO
                 Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
@@ -178,7 +168,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
                   child: Text("TIMELINE DO JOGO", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
                 ),
 
-                // 3. TIMELINE (Widget Isolado)
                 ScoutTimelineWidget(match: widget.match),
               ],
             ),
@@ -189,15 +178,31 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
     return SizedBox(
       height: 50,
       child: ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color, 
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
+        style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
         icon: Icon(icon, size: 20),
         label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         onPressed: onPressed,
       ),
     );
   }
+}
+
+// Classe Mock para compatibilidade imediata
+class MockDocumentSnapshot implements DocumentSnapshot {
+  @override
+  final String id;
+  final Map<String, dynamic> _data;
+  MockDocumentSnapshot(this.id, this._data);
+  @override
+  Map<String, dynamic> data() => _data;
+  @override
+  dynamic get(Object field) => _data[field as String];
+  @override
+  dynamic operator [](Object field) => _data[field as String];
+  @override
+  bool get exists => true;
+  @override
+  DocumentReference get reference => throw UnimplementedError();
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
 }

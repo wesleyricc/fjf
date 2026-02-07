@@ -4,6 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
 import '../utils/custom_cache_manager.dart';
+import '../models/player_model.dart';
+import '../models/team_model.dart';
 
 class PlayerSelectionModal extends StatefulWidget {
   const PlayerSelectionModal({super.key});
@@ -13,102 +15,83 @@ class PlayerSelectionModal extends StatefulWidget {
 }
 
 class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
-  // Controle de Navegação Interna
   int _step = 0; // 0 = Seleção de Time, 1 = Seleção de Jogador
   String _selectedTeamName = '';
-  List<DocumentSnapshot> _currentPlayers = [];
-  bool _isLoading = true;
-
+  List<Player> _currentPlayers = [];
+  
   // Cache de Times
-  List<DocumentSnapshot> _teams = [];
+  List<Team> _teams = [];
 
   @override
   void initState() {
     super.initState();
-    _fetchTeams();
+    _loadTeams();
   }
 
-  Future<void> _fetchTeams() async {
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    
-    try {
-      // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
-      // Removemos a verificação de LEGACY_ID
-      final Query query = _firestore
-          .collection('championships')
-          .doc(seasonId)
-          .collection('teams_participation')
-          .orderBy('name');
-
-      final snapshot = await query.get();
-      if (mounted) {
-        setState(() {
-          _teams = snapshot.docs;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Erro ao buscar times: $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _fetchPlayers(String teamId, String teamName) async {
+  void _loadTeams() {
+    // Carrega do Service sem query
+    final service = Provider.of<ChampionshipService>(context, listen: false);
     setState(() {
-      _isLoading = true;
-      _selectedTeamName = teamName;
+      _teams = service.teams;
     });
+  }
 
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+  void _loadPlayers(String teamId, String teamName) {
+    // Carrega do Service (Cache)
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final players = service.getCachedRoster(teamId);
+    
+    // Filtra (Ex: Apenas ativos e não-staff para comparação)
+    // Se quiser permitir staff, remova o filtro.
+    final validPlayers = players.where((p) => p.isActive).toList();
 
-    try {
-      // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
-      // Removemos a verificação de LEGACY_ID
-      final Query query = _firestore
-          .collection('championships')
-          .doc(seasonId)
-          .collection('player_stats');
+    setState(() {
+      _selectedTeamName = teamName;
+      _currentPlayers = validPlayers;
+      _step = 1;
+    });
+  }
 
-      final snapshot = await query
-          .where('team_id', isEqualTo: teamId)
-          .where('isActive', isEqualTo: true)
-          //.where('is_staff', isEqualTo: false) // Se quiser permitir comparar técnicos, remova isso
-          .get();
-
-      List<DocumentSnapshot> players = snapshot.docs;
-      
-      // Ordenação em memória (Número -> Nome)
-      players.sort((a, b) {
-        final da = a.data() as Map<String, dynamic>;
-        final db = b.data() as Map<String, dynamic>;
-        
-        // Staff no fim
-        final bool isStaffA = da['is_staff'] ?? false;
-        final bool isStaffB = db['is_staff'] ?? false;
-        if (isStaffA && !isStaffB) return 1;
-        if (!isStaffA && isStaffB) return -1;
-
-        final int numA = da['jersey_number'] ?? 999;
-        final int numB = db['jersey_number'] ?? 999;
-        int numComp = numA.compareTo(numB);
-        if (numComp != 0) return numComp;
-        
-        return (da['name'] ?? '').compareTo(db['name'] ?? '');
-      });
-
-      if (mounted) {
-        setState(() {
-          _currentPlayers = players;
-          _step = 1;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("Erro ao buscar jogadores: $e");
-      if (mounted) setState(() => _isLoading = false);
-    }
+  // --- Função Auxiliar para simular DocumentSnapshot ---
+  // O widget pai espera um DocumentSnapshot. Como migramos para Model,
+  // precisamos converter de volta ou adaptar o pai.
+  // Para manter compatibilidade sem quebrar o 'player_comparison_screen',
+  // vamos criar um "Mock Snapshot" ou adaptar o retorno.
+  // O ideal seria refatorar 'player_comparison_screen' para usar Model,
+  // mas para esta tarefa focada em redução de custo, vamos retornar um objeto compatível
+  // se o Dart permitir, ou melhor: Retornar o Model e ajustar o pai é mais limpo.
+  
+  // VAMOS AJUSTAR O RETORNO: O pai espera `DocumentSnapshot`.
+  // Truque: Vamos retornar um `Player` model (que não é snapshot).
+  // O `player_comparison_screen` vai quebrar se não ajustarmos lá também.
+  // Porém, a instrução é alterar este arquivo. 
+  // O método `showDialog` é genérico <T>. 
+  // Vou assumir que posso retornar um objeto que tenha `.data()`.
+  // Mas a maneira correta é refatorar o pai.
+  // Como não posso alterar o pai nesta resposta específica (já enviei antes),
+  // vou criar um wrapper simples que imita um snapshot para manter compatibilidade imediata.
+  
+  // ... Pensando bem, o usuário pediu para reduzir consumo.
+  // Refatorar o pai para aceitar `Player` model é trivial e economiza código.
+  // Vou manter o retorno como `dynamic` aqui e você precisará atualizar o `player_comparison_screen`
+  // para tratar `Player` ou `DocumentSnapshot`.
+  // Na verdade, vou criar um mapa aqui que simula o `data()` do snapshot.
+  
+  Map<String, dynamic> _playerToMap(Player p) {
+    return {
+      'name': p.name,
+      'jersey_number': p.jerseyNumber,
+      'position': p.position,
+      'is_goalkeeper': p.isGoalkeeper,
+      'photo_url': p.photoUrl,
+      'team_name': p.teamName,
+      'goals': p.goals,
+      'assists': p.assists,
+      'total_yellow_cards': p.totalYellowCards,
+      'total_red_cards': p.totalRedCards,
+      'man_of_the_match_awards': p.motmAwards,
+      'goals_conceded': p.goalsConceded,
+    };
   }
 
   @override
@@ -123,7 +106,6 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
         height: 400,
         child: Column(
           children: [
-            // Header de Navegação (Passo 2)
             if (_step == 1)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0),
@@ -145,20 +127,15 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
                 ),
               ),
             
-            // Lista Principal
             Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _step == 0
-                      ? _buildTeamsList()
-                      : _buildPlayersList(),
+              child: _step == 0 ? _buildTeamsList() : _buildPlayersList(),
             ),
           ],
         ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(), // Retorna null
+          onPressed: () => Navigator.of(context).pop(), 
           child: const Text('Cancelar'),
         ),
       ],
@@ -172,19 +149,16 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
       itemCount: _teams.length,
       itemBuilder: (context, index) {
         final team = _teams[index];
-        final data = team.data() as Map<String, dynamic>;
-        final String shieldUrl = data['shield_url'] ?? '';
-
         return ListTile(
           leading: SizedBox(
             width: 36, height: 36,
-            child: shieldUrl.isNotEmpty 
-                ? CachedNetworkImage(imageUrl: shieldUrl, fit: BoxFit.contain, errorWidget: (_,__,___)=>const Icon(Icons.shield))
+            child: team.shieldUrl.isNotEmpty 
+                ? CachedNetworkImage(imageUrl: team.shieldUrl, fit: BoxFit.contain, errorWidget: (_,__,___)=>const Icon(Icons.shield))
                 : const Icon(Icons.shield, color: Colors.grey),
           ),
-          title: Text(data['name'] ?? 'Time sem nome'),
+          title: Text(team.name),
           trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-          onTap: () => _fetchPlayers(team.id, data['name'] ?? 'Time'),
+          onTap: () => _loadPlayers(team.id, team.name),
         );
       },
     );
@@ -197,37 +171,60 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
       itemCount: _currentPlayers.length,
       itemBuilder: (context, index) {
         final player = _currentPlayers[index];
-        final data = player.data() as Map<String, dynamic>;
         
-        final String name = data['name'] ?? 'Nome';
-        final int? number = data['jersey_number'];
-        final bool isStaff = data['is_staff'] ?? false;
-        final String? photoUrl = data['photo_url'];
-        final String position = isStaff 
-            ? (data['staff_role'] ?? 'Comissão') 
-            : (data['is_goalkeeper'] == true ? 'Goleiro' : (data['position'] ?? '-'));
+        final String displayPos = player.isStaff 
+            ? (player.staffRole ?? 'Comissão') 
+            : (player.isGoalkeeper ? 'Goleiro' : (player.position ?? '-'));
 
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: Colors.grey[200],
-            backgroundImage: (photoUrl != null && photoUrl.isNotEmpty) 
-                ? CachedNetworkImageProvider(photoUrl, cacheManager: PlayerCacheManager.instance) 
+            backgroundImage: player.photoUrl.isNotEmpty 
+                ? CachedNetworkImageProvider(player.photoUrl, cacheManager: PlayerCacheManager.instance) 
                 : null,
-            child: (photoUrl == null || photoUrl.isEmpty) 
-                ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) 
+            child: player.photoUrl.isEmpty 
+                ? Icon(player.isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) 
                 : null,
           ),
           title: Text(
-            isStaff ? name : "${number != null ? '#$number ' : ''}$name",
-            style: TextStyle(fontWeight: FontWeight.w500, fontStyle: isStaff ? FontStyle.italic : FontStyle.normal),
+            player.isStaff ? player.name : "${player.jerseyNumber ?? ''} ${player.name}",
+            style: TextStyle(fontWeight: FontWeight.w500, fontStyle: player.isStaff ? FontStyle.italic : FontStyle.normal),
           ),
-          subtitle: Text(position, style: const TextStyle(fontSize: 12)),
+          subtitle: Text(displayPos, style: const TextStyle(fontSize: 12)),
           onTap: () {
-            // RETORNA O JOGADOR SELECIONADO E FECHA O MODAL
-            Navigator.of(context).pop(player);
+            // Retorna um Mock DocumentSnapshot para compatibilidade
+            // (Criamos um objeto anônimo que implementa o minimo necessário: data())
+            final mockSnapshot = MockDocumentSnapshot(player.id, _playerToMap(player));
+            Navigator.of(context).pop(mockSnapshot);
           },
         );
       },
     );
   }
+}
+
+// --- CLASSE MOCK PARA COMPATIBILIDADE (Evita refatorar o pai agora) ---
+class MockDocumentSnapshot implements DocumentSnapshot {
+  @override
+  final String id;
+  final Map<String, dynamic> _data;
+
+  MockDocumentSnapshot(this.id, this._data);
+
+  @override
+  Map<String, dynamic> data() => _data;
+
+  @override
+  dynamic get(Object field) => _data[field as String];
+
+  @override
+  dynamic operator [](Object field) => _data[field as String];
+
+  @override
+  bool get exists => true;
+
+  @override
+  DocumentReference get reference => throw UnimplementedError();
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
 }

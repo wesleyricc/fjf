@@ -14,6 +14,7 @@ import 'admin_media_screen.dart';
 import 'manage_seasons_screen.dart';
 import '../services/migration_service.dart';
 import 'admin_upload_photo_screen.dart';
+import 'tournament_format_screen.dart'; // <-- NOVO IMPORT
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -183,6 +184,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
     
     final List<DropdownMenuItem<String>> playoffOptions = [
+      const DropdownMenuItem(value: 'quarter_final', child: Text('Playoff / Quartas')), // NOVO
       const DropdownMenuItem(value: 'semifinal', child: Text('Semifinais')),
       const DropdownMenuItem(value: 'third_place', child: Text('Disputa de 3º Lugar')),
       const DropdownMenuItem(value: 'final_game', child: Text('Final')),
@@ -353,12 +355,21 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: Column(
                     children: [
+                      // --- NOVO BOTÃO DE MODELO ---
                       _buildActionTile(
                         icon: Icons.looks_one_outlined,
                         color: Colors.teal,
                         title: "Padrão de Visualização",
                         subtitle: "Tela inicial da Tabela",
                         onTap: _showSetDefaultViewDialog,
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      _buildActionTile(
+                        icon: Icons.account_tree_outlined,
+                        color: Colors.deepPurple,
+                        title: "Forma de Disputa",
+                        subtitle: "Modelo do Campeonato",
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const TournamentFormatScreen())),
                       ),
                       const Divider(height: 1, indent: 56),
                       _buildActionTile(
