@@ -76,13 +76,14 @@ class AppDrawer extends StatelessWidget {
                     _buildDrawerItem(context, Icons.group, 'Equipes', '/teams'),
 
                     _buildSectionHeader(context, "DADOS & ESTATÍSTICAS"),
-                    _buildDrawerItem(context, Icons.query_stats, 'Números das Equipes', '/team-stats'),
-                    _buildDrawerItem(context, Icons.person_search, 'Top Jogadores', '/player-stats'),
+                    _buildDrawerItem(context, Icons.query_stats, 'Estatísticas de Equipes', '/team-stats'),
+                    _buildDrawerItem(context, Icons.person_search, 'Estatísticas de Atletas', '/player-stats'),
                     _buildDrawerItem(context, Icons.history_toggle_off, 'Suspensões', '/suspension-history'),
-                    _buildDrawerItem(context, Icons.compare_arrows, 'Comparador', '/player-comparison'),
-
+                    _buildDrawerItem(context, Icons.compare_arrows, 'Comparador de Atletas', '/player-comparison'),
+                    _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
+                    
                     const Divider(height: 30),
-
+                    
                     // --- ADMINISTRAÇÃO ---
                     ListTile(
                       leading: Icon(
@@ -98,7 +99,7 @@ class AppDrawer extends StatelessWidget {
                       ),
                       onTap: () => _handleAdminAction(context, authService),
                     ),
-                    _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
+                    
 
                     if (authService.isAuthenticated)
                       ListTile(
@@ -149,14 +150,14 @@ class AppDrawer extends StatelessWidget {
       horizontalTitleGap: 8, // Aproxima ícone do texto
       leading: Icon(
         icon, 
-        color: highlight ? Colors.purple : Colors.grey[700],
+        color: highlight ? Colors.blueAccent : Colors.grey[700],
         size: 22,
       ),
       title: Text(
         title,
         style: TextStyle(
           fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
-          color: highlight ? Colors.purple : Colors.black87,
+          color: highlight ? Colors.blueAccent : Colors.black87,
         ),
       ),
       onTap: () {

@@ -8,13 +8,17 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 class SponsorBannerRotator extends StatefulWidget {
   final String location;
   final bool isStatic;
-  final double? height; // NOVO: Permite altura dinâmica
+  final double? height; // Altura dinâmica
+  final int? round; // Filtro por rodada (Fase de Grupos)
+  final String? playoffStage; // NOVO: Filtro por etapa (Mata-mata)
 
   const SponsorBannerRotator({
     super.key, 
     this.location = 'footer_home', 
     this.isStatic = false,
-    this.height, // Se null, usa o padrão 100 ou ajusta ao pai
+    this.height, 
+    this.round,
+    this.playoffStage,
   });
 
   @override
@@ -37,11 +41,37 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     _initSponsorStream();
   }
 
+  @override
+  void didUpdateWidget(covariant SponsorBannerRotator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Se a localização, a rodada ou a etapa mudar, reinicia o stream
+    if (widget.location != oldWidget.location || 
+        widget.round != oldWidget.round ||
+        widget.playoffStage != oldWidget.playoffStage) {
+      _subscription?.cancel();
+      _timer?.cancel();
+      setState(() => _isLoading = true);
+      _initSponsorStream();
+    }
+  }
+
   void _initSponsorStream() {
-    _subscription = _firestore
+    Query query = _firestore
         .collection('sponsors')
         .where('isActive', isEqualTo: true)
-        .where('location', isEqualTo: widget.location)
+        .where('location', isEqualTo: widget.location);
+
+    // Aplica o filtro de rodada (Fase 1)
+    if (widget.round != null) {
+      query = query.where('round', isEqualTo: widget.round);
+    }
+
+    // Aplica o filtro de etapa (Fase 2)
+    if (widget.playoffStage != null) {
+      query = query.where('playoffStage', isEqualTo: widget.playoffStage);
+    }
+
+    _subscription = query
         .orderBy('order')
         .snapshots()
         .listen((snapshot) {
@@ -112,8 +142,6 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
 
   @override
   Widget build(BuildContext context) {
-    // Se altura for fornecida, usa. Se não, 100 (padrão rodapé).
-    // Se for double.infinity, o pai deve limitar.
     final double effectiveHeight = widget.height ?? 100;
 
     if (_isLoading) {
@@ -147,7 +175,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
               ? _buildHouseAd(title: data['name'], height: effectiveHeight)
               : CachedNetworkImage(
                   imageUrl: imageUrl,
-                  fit: BoxFit.cover, // Preenche todo o card
+                  fit: BoxFit.cover,
                   width: double.infinity,
                   height: effectiveHeight,
                   errorWidget: (c, u, e) => _buildHouseAd(height: effectiveHeight),
@@ -171,7 +199,6 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Ícone compactado
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -181,8 +208,6 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
               child: const Icon(FontAwesomeIcons.handshake, color: Colors.amber, size: 24),
             ),
             const SizedBox(width: 12),
-            
-            // CORREÇÃO: Expanded evita o overflow no texto
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -192,7 +217,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                     title ?? "SEJA PARCEIRO",
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
-                      fontSize: 14, // Fonte levemente reduzida para caber
+                      fontSize: 14,
                       color: Color(0xFFC25F22),
                       letterSpacing: 0.5,
                     ),

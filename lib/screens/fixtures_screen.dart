@@ -15,7 +15,7 @@ import '../models/match_model.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/modern_fixtures_nav.dart';
-import '../widgets/palpitometro_widget.dart'; // <--- 1. IMPORT NOVO
+import '../widgets/palpitometro_widget.dart'; 
 import 'admin_match_screen.dart';
 import 'match_stats_screen.dart';
 import 'edit_match_screen.dart';
@@ -169,6 +169,33 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
        if (_selectedPlayoffStage == PlayoffStage.final_game) phaseFilter = 'final';
     }
 
+    // --- LÓGICA DO TÍTULO E PARÂMETROS DO BANNER ---
+    String sponsorTitle = "Patrocinador Oficial";
+    int? roundForBanner;
+    String? playoffStageForBanner;
+
+    if (_selectedPhase == TournamentPhase.first) {
+      sponsorTitle = "Patrocinador da Rodada $_selectedRound";
+      roundForBanner = _selectedRound;
+    } else {
+      // Fase 2: Mata-mata
+      switch (_selectedPlayoffStage) {
+        case PlayoffStage.semifinal:
+          sponsorTitle = "Patrocinador das Semifinais";
+          playoffStageForBanner = 'semifinal';
+          break;
+        case PlayoffStage.third_place:
+          sponsorTitle = "Patrocinador do 3º Lugar";
+          playoffStageForBanner = 'third_place';
+          break;
+        case PlayoffStage.final_game:
+          sponsorTitle = "Patrocinador da Grande Final";
+          playoffStageForBanner = 'final';
+          break;
+      }
+    }
+    // -----------------------------------------------
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -216,6 +243,50 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
           
           const Divider(height: 1),
 
+          // --- BANNER PATROCINADOR (DINÂMICO) ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.star, size: 14, color: Theme.of(context).primaryColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        sponsorTitle,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                       BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SponsorBannerRotator(
+                      location: 'header_fixtures',
+                      round: roundForBanner,
+                      playoffStage: playoffStageForBanner,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // ------------------------------------------------
+
           Expanded(
             child: StreamBuilder<List<MatchModel>>(
               stream: firestoreService.streamMatches(seasonId, phase: phaseFilter),
@@ -253,7 +324,7 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
           ),
         ],
       ),
-      bottomNavigationBar: const SponsorBannerRotator(),
+      //bottomNavigationBar: const SponsorBannerRotator(),
       floatingActionButton: (authService.isAuthenticated && _selectedPhase == TournamentPhase.first)
           ? FloatingActionButton(
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditMatchScreen(match: null))),
@@ -343,8 +414,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
             ),
             
             // --- PALPITÔMETRO ---
-            // REMOVI O: && !match.isFinished
-            // Agora aparece sempre que seasonId existir
             if (seasonId.isNotEmpty) ...[
               const Divider(height: 1),
               Padding(

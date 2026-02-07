@@ -1,12 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'dart:html' as html; // Para PWA
+import 'dart:html' as html; 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-// ADICIONADO: Para usar o ícone de handshake igual ao do rodapé
 import 'package:font_awesome_flutter/font_awesome_flutter.dart'; 
-import 'package:url_launcher/url_launcher.dart'; // Import necessário para o launchUrl do Grid
+import 'package:url_launcher/url_launcher.dart'; 
 
 // Services & Models
 import '../services/championship_service.dart';
@@ -15,7 +14,7 @@ import '../models/team_model.dart';
 
 // Widgets
 import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+import '../widgets/sponsor_banner_rotator.dart'; 
 import '../widgets/home_live_video_card.dart';
 import '../widgets/home_news_feed.dart';
 import '../widgets/home_footer.dart';
@@ -26,7 +25,12 @@ class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   static const routeName = '/splash';
   
-  static const String appVersion = '1.0.2';
+  static const String appVersion = '2.1.0';
+
+  // --- NOVA FLAG ESTÁTICA ---
+  // Mantém o estado true enquanto o app estiver rodando na memória.
+  // Só volta a ser false se o usuário fechar totalmente o app e abrir de novo.
+  static bool hasShownOpenAd = false;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -51,7 +55,88 @@ class _SplashScreenState extends State<SplashScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeData();
+      _checkAndShowStartupAds(); 
     });
+  }
+
+  Future<void> _checkAndShowStartupAds() async {
+    // 1. VERIFICAÇÃO DE SEGURANÇA
+    // Se o anúncio já foi mostrado nesta sessão, não faz nada.
+    if (SplashScreen.hasShownOpenAd) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('sponsors')
+          .where('isActive', isEqualTo: true)
+          .where('location', isEqualTo: 'app_open')
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty && mounted) {
+         // Marca como exibido ANTES de mostrar, para garantir
+         SplashScreen.hasShownOpenAd = true;
+         
+         await Future.delayed(const Duration(milliseconds: 500));
+         if (mounted) _showAdDialog();
+      }
+    } catch (e) {
+      debugPrint("Erro ao buscar ads de abertura: $e");
+    }
+  }
+
+  void _showAdDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, 
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent, 
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: Stack(
+          alignment: Alignment.topRight,
+          children: [
+             Container(
+               width: double.maxFinite,
+               margin: const EdgeInsets.only(top: 20, right: 10), 
+               decoration: BoxDecoration(
+                 borderRadius: BorderRadius.circular(16),
+                 boxShadow: [
+                   BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, offset: const Offset(0, 10))
+                 ]
+               ),
+               child: ClipRRect(
+                 borderRadius: BorderRadius.circular(16),
+                 child: const SponsorBannerRotator(
+                   location: 'app_open', 
+                   height: 750, 
+                   isStatic: false, 
+                 ),
+               ),
+             ),
+             
+             Positioned(
+               top: 0,
+               right: 0,
+               child: Material(
+                 color: Colors.transparent,
+                 child: InkWell(
+                   onTap: () => Navigator.pop(ctx),
+                   borderRadius: BorderRadius.circular(30),
+                   child: Container(
+                     padding: const EdgeInsets.all(8),
+                     decoration: const BoxDecoration(
+                       color: Colors.white,
+                       shape: BoxShape.circle,
+                       boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)]
+                     ),
+                     child: const Icon(Icons.close, size: 24, color: Colors.black87),
+                   ),
+                 ),
+               ),
+             ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _initializeData() async {
@@ -331,8 +416,6 @@ class _SplashScreenState extends State<SplashScreen> {
                       const SizedBox(height: 10),
                       HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
                       const SizedBox(height: 10),
-                      const HomeNewsFeed(),
-                      const SizedBox(height: 24),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Card(
@@ -348,6 +431,8 @@ class _SplashScreenState extends State<SplashScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      const HomeNewsFeed(),
                       const SizedBox(height: 24),
                       _buildSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
                       const Padding(
@@ -409,7 +494,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// --- WIDGET ATUALIZADO: _SponsorGridCard ---
 class _SponsorGridCard extends StatelessWidget {
   const _SponsorGridCard();
 
@@ -440,14 +524,13 @@ class _SponsorGridCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200), // Borda padrão do banner
+                border: Border.all(color: Colors.grey.shade200),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: CachedNetworkImage(
                   imageUrl: data['imageUrl'],
                   fit: BoxFit.contain,
-                  // Se a imagem falhar, mostra o card padrão
                   errorWidget: (_,__,___) => _buildDefaultCard(),
                 ),
               ),
@@ -460,22 +543,19 @@ class _SponsorGridCard extends StatelessWidget {
     );
   }
 
-  // PADRONIZAÇÃO DO LAYOUT (HOUSE AD)
-  // Agora usa o mesmo ícone, cores e estilo do SponsorBannerRotator
   Widget _buildDefaultCard() {
     return InkWell(
       onTap: () => launchUrl(Uri.parse(_partnerContactUrl), mode: LaunchMode.externalApplication),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white, // Fundo Branco
+          color: Colors.white, 
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200), // Borda Cinza
+          border: Border.all(color: Colors.grey.shade200), 
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Ícone Handshake em círculo âmbar
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -485,18 +565,16 @@ class _SponsorGridCard extends StatelessWidget {
               child: const Icon(FontAwesomeIcons.handshake, color: Colors.amber, size: 28),
             ),
             const SizedBox(height: 8),
-            // Texto Principal
             const Text(
               "SEJA PARCEIRO",
               style: TextStyle(
                 fontWeight: FontWeight.w900, 
-                fontSize: 11, // Fonte ajustada para o tamanho do grid
-                color: Color(0xFFC25F22), // Cor exata do banner
+                fontSize: 11, 
+                color: Color(0xFFC25F22), 
                 letterSpacing: 0.5
               ),
             ),
             const SizedBox(height: 4),
-            // Subtítulo
             const Text(
               "Anuncie aqui",
               textAlign: TextAlign.center,
