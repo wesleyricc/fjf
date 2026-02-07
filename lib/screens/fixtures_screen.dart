@@ -37,13 +37,10 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
   late PlayoffStage _selectedPlayoffStage;
   
   final int TOTAL_RODADAS = 7; 
-  late AnimationController _blinkAnimationController;
 
   @override
   void initState() {
     super.initState();
-    _blinkAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat(reverse: true);
-
     _selectedPhase = AdminService.defaultPhase == 'second' ? TournamentPhase.second : TournamentPhase.first;
     
     if (_selectedPhase == TournamentPhase.first) {
@@ -55,12 +52,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
     }
   }
 
-  @override
-  void dispose() {
-    _blinkAnimationController.dispose();
-    super.dispose();
-  }
-
   PlayoffStage _getPlayoffStageFromString(String stage) {
     if (stage.contains('semifinal')) return PlayoffStage.semifinal;
     if (stage.contains('third')) return PlayoffStage.third_place;
@@ -69,16 +60,11 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
   }
 
   Future<void> _handleMatchTap(MatchModel match, bool isAdmin) async {
+    // Lógica de navegação mantida...
     if (isAdmin || !match.isFinished) {
        try {
          final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-         
-         final docRef = FirebaseFirestore.instance
-             .collection('championships')
-             .doc(seasonId)
-             .collection('matches')
-             .doc(match.id);
-         
+         final docRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(match.id);
          final docSnap = await docRef.get();
          if (!docSnap.exists || !mounted) return;
 
@@ -97,13 +83,7 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
     } else {
        try {
          final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-         
-         final docRef = FirebaseFirestore.instance
-             .collection('championships')
-             .doc(seasonId)
-             .collection('matches')
-             .doc(match.id);
-             
+         final docRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(match.id);
          final docSnap = await docRef.get();
          if(mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => MatchStatsScreen(match: docSnap)));
        } catch (_) {}
@@ -111,7 +91,8 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
   }
 
   void _showAdminOptions(DocumentSnapshot matchSnap, MatchModel match) {
-    showDialog(
+    // Dialog mantido...
+     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Opções Admin'),
@@ -162,14 +143,19 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
     final seasonName = championshipService.currentSeasonName;
     final firestoreService = FirestoreService();
 
+    // Filtros de Fase e Rodada
     String? phaseFilter = (_selectedPhase == TournamentPhase.first) ? 'first' : null;
-    if (_selectedPhase == TournamentPhase.second) {
+    int? roundFilter; // Variável para o filtro de servidor
+
+    if (_selectedPhase == TournamentPhase.first) {
+      roundFilter = _selectedRound; // Define a rodada para filtrar no Firebase
+    } else {
        if (_selectedPlayoffStage == PlayoffStage.semifinal) phaseFilter = 'semifinal';
        if (_selectedPlayoffStage == PlayoffStage.third_place) phaseFilter = 'third_place';
        if (_selectedPlayoffStage == PlayoffStage.final_game) phaseFilter = 'final';
     }
 
-    // --- LÓGICA DO TÍTULO E PARÂMETROS DO BANNER ---
+    // Configuração do Banner
     String sponsorTitle = "Patrocinador Oficial";
     int? roundForBanner;
     String? playoffStageForBanner;
@@ -178,7 +164,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
       sponsorTitle = "Patrocinador da Rodada $_selectedRound";
       roundForBanner = _selectedRound;
     } else {
-      // Fase 2: Mata-mata
       switch (_selectedPlayoffStage) {
         case PlayoffStage.semifinal:
           sponsorTitle = "Patrocinador das Semifinais";
@@ -194,7 +179,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
           break;
       }
     }
-    // -----------------------------------------------
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -243,7 +227,7 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
           
           const Divider(height: 1),
 
-          // --- BANNER PATROCINADOR (DINÂMICO) ---
+          // BANNER OTIMIZADO (Lê do Cache)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Column(
@@ -255,23 +239,14 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
                     children: [
                       Icon(Icons.star, size: 14, color: Theme.of(context).primaryColor),
                       const SizedBox(width: 6),
-                      Text(
-                        sponsorTitle,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[700],
-                        ),
-                      ),
+                      Text(sponsorTitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey[700])),
                     ],
                   ),
                 ),
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                       BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))
-                    ],
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))],
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
@@ -285,19 +260,18 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
               ],
             ),
           ),
-          // ------------------------------------------------
 
           Expanded(
             child: StreamBuilder<List<MatchModel>>(
-              stream: firestoreService.streamMatches(seasonId, phase: phaseFilter),
+              // --- AQUI ESTÁ A GRANDE MUDANÇA ---
+              // Passamos 'round: roundFilter'. Isso faz o Firebase baixar APENAS os jogos daquela rodada.
+              stream: firestoreService.streamMatches(seasonId, phase: phaseFilter, round: roundFilter),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 
                 var matches = snapshot.data ?? [];
                 
-                if (_selectedPhase == TournamentPhase.first) {
-                  matches = matches.where((m) => m.round == _selectedRound).toList();
-                }
+                // O filtro manual de rodada (.where) foi REMOVIDO pois o Firebase já entrega filtrado.
 
                 if (matches.isEmpty) {
                   return Center(
@@ -324,7 +298,7 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
           ),
         ],
       ),
-      //bottomNavigationBar: const SponsorBannerRotator(),
+      bottomNavigationBar: const SponsorBannerRotator(),
       floatingActionButton: (authService.isAuthenticated && _selectedPhase == TournamentPhase.first)
           ? FloatingActionButton(
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditMatchScreen(match: null))),
@@ -336,7 +310,7 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
   }
 
   Widget _buildMatchCard(MatchModel match, bool isAdmin, String seasonId) {
-    // Cores e Status
+    // Card mantido idêntico...
     Color statusColor = Colors.grey;
     String statusText = '';
     String dateText = 'DATA A DEFINIR';
@@ -362,12 +336,10 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
         borderRadius: BorderRadius.circular(12),
         child: Column(
           children: [
-            // CONTEÚDO PRINCIPAL DO CARD (Data, Local, Placar, Times)
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  // Data e Hora
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]),
                     const SizedBox(width: 4),
@@ -377,32 +349,23 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
                     const SizedBox(width: 4),
                     Text(timeText, style: TextStyle(fontSize: 12, color: Colors.grey[800], fontWeight: FontWeight.bold)),
                   ]),
-                  
                   const SizedBox(height: 6),
-                  
-                  // Local
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
                     const SizedBox(width: 4),
                     Flexible(child: Text(match.location.toUpperCase(), style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
                   ]),
-                  
                   const Divider(height: 24),
-                  
-                  // Times e Placar
                   Row(children: [
-                    // Time Casa
                     Expanded(flex: 4, child: Column(children: [
                       if(match.homeTeamShield.isNotEmpty) CachedNetworkImage(imageUrl: match.homeTeamShield, width: 45, height: 45, fit: BoxFit.contain),
                       const SizedBox(height: 6),
                       Text(match.homeTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     ])),
-                    // Placar
                     Expanded(flex: 3, child: Column(children: [
                       Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)), child: Text(match.formattedScore, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 1))),
                       if (statusText.isNotEmpty) ...[const SizedBox(height: 6), Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold))]
                     ])),
-                    // Time Fora
                     Expanded(flex: 4, child: Column(children: [
                       if(match.awayTeamShield.isNotEmpty) CachedNetworkImage(imageUrl: match.awayTeamShield, width: 45, height: 45, fit: BoxFit.contain),
                       const SizedBox(height: 6),
@@ -412,8 +375,6 @@ class _FixturesScreenState extends State<FixturesScreen> with SingleTickerProvid
                 ],
               ),
             ),
-            
-            // --- PALPITÔMETRO ---
             if (seasonId.isNotEmpty) ...[
               const Divider(height: 1),
               Padding(

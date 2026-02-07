@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 // Services & Models
 import '../services/championship_service.dart';
 import '../services/firestore_service.dart';
+import '../services/fantasy_service.dart'; 
 import '../models/team_model.dart'; 
 
 // Widgets
@@ -27,9 +28,7 @@ class SplashScreen extends StatefulWidget {
   
   static const String appVersion = '2.1.0';
 
-  // --- NOVA FLAG ESTÁTICA ---
   // Mantém o estado true enquanto o app estiver rodando na memória.
-  // Só volta a ser false se o usuário fechar totalmente o app e abrir de novo.
   static bool hasShownOpenAd = false;
 
   @override
@@ -60,8 +59,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkAndShowStartupAds() async {
-    // 1. VERIFICAÇÃO DE SEGURANÇA
-    // Se o anúncio já foi mostrado nesta sessão, não faz nada.
     if (SplashScreen.hasShownOpenAd) return;
 
     try {
@@ -73,7 +70,6 @@ class _SplashScreenState extends State<SplashScreen> {
           .get();
 
       if (snapshot.docs.isNotEmpty && mounted) {
-         // Marca como exibido ANTES de mostrar, para garantir
          SplashScreen.hasShownOpenAd = true;
          
          await Future.delayed(const Duration(milliseconds: 500));
@@ -107,7 +103,7 @@ class _SplashScreenState extends State<SplashScreen> {
                  borderRadius: BorderRadius.circular(16),
                  child: const SponsorBannerRotator(
                    location: 'app_open', 
-                   height: 750, 
+                   height: 650, 
                    isStatic: false, 
                  ),
                ),
@@ -415,31 +411,82 @@ class _SplashScreenState extends State<SplashScreen> {
 
                       const SizedBox(height: 10),
                       HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 10),      
+                      // --- CARD FANTASY COM STATUS AO LADO ---
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Card(
-                          elevation: 3,
-                          color: Colors.blue[900],
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: ListTile(
-                            leading: const Icon(Icons.sports_soccer, color: Colors.white, size: 32),
-                            title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                            subtitle: const Text("Escale seu time agora!", style: TextStyle(color: Colors.white70)),
-                            trailing: const Icon(Icons.arrow_forward, color: Colors.white),
-                            onTap: () => Navigator.pushNamed(context, '/fantasy-home'),
-                          ),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: StreamBuilder<Map<String, dynamic>>(
+                          stream: FantasyService().streamMarketStatus(),
+                          builder: (context, snapshot) {
+                            String statusText = "";
+                            Color statusColor = Colors.transparent;
+                            IconData statusIcon = Icons.hourglass_empty;
+                            bool isDataLoaded = false;
+
+                            if (snapshot.hasData) {
+                              isDataLoaded = true;
+                              final bool isOpen = snapshot.data!['is_open'] ?? true;
+                              if (isOpen) {
+                                statusText = "ABERTO";
+                                statusColor = Colors.greenAccent;
+                                statusIcon = Icons.check_circle;
+                              } else {
+                                statusText = "FECHADO";
+                                statusColor = Colors.redAccent;
+                                statusIcon = Icons.lock;
+                              }
+                            }
+
+                            return Card(
+                              elevation: 3,
+                              color: Colors.blue[900],
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              child: ListTile(
+                                leading: const Icon(Icons.sports_soccer, color: Colors.white, size: 32),
+                                title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                subtitle: const Text("Escale seu time agora!", style: TextStyle(color: Colors.white70)),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (isDataLoaded)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: statusColor.withOpacity(0.5))
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(statusIcon, color: statusColor, size: 12),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              statusText, 
+                                              style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11)
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.arrow_forward, color: Colors.white),
+                                  ],
+                                ),
+                                onTap: () => Navigator.pushNamed(context, '/fantasy-home'),
+                              ),
+                            );
+                          }
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      // ----------------------------------------
                       const HomeNewsFeed(),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 10),
                       _buildSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
                       const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        padding: EdgeInsets.symmetric(horizontal: 10.0),
                         child: PhotoStoreBanner(),
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 10),
                       _buildSectionHeader(context, "Equipes Participantes", Icons.groups),
                     ],
                   ),
@@ -472,7 +519,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 1.0),
       child: Row(
         children: [
           Container(

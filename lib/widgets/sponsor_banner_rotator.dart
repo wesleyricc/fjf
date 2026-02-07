@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../services/championship_service.dart';
 
 class SponsorBannerRotator extends StatefulWidget {
   final String location;
   final bool isStatic;
-  final double? height; // Altura dinâmica
-  final int? round; // Filtro por rodada (Fase de Grupos)
-  final String? playoffStage; // NOVO: Filtro por etapa (Mata-mata)
+  final double? height; 
+  final int? round; 
+  final String? playoffStage; 
 
   const SponsorBannerRotator({
     super.key, 
@@ -26,110 +28,97 @@ class SponsorBannerRotator extends StatefulWidget {
 }
 
 class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  List<DocumentSnapshot> _sponsors = [];
+  // Lista filtrada localmente
+  List<DocumentSnapshot> _filteredSponsors = [];
   int _currentIndex = 0;
   Timer? _timer;
-  StreamSubscription? _subscription;
-  bool _isLoading = true;
 
   static const String _partnerContactUrl = "https://wa.me/5548999999999?text=Quero%20anunciar%20no%20App%20FJF";
 
   @override
   void initState() {
     super.initState();
-    _initSponsorStream();
+    // Inicia o timer logo de cara. A filtragem acontece no didChangeDependencies
+    _startTimer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _filterSponsorsFromCache();
   }
 
   @override
   void didUpdateWidget(covariant SponsorBannerRotator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Se a localização, a rodada ou a etapa mudar, reinicia o stream
     if (widget.location != oldWidget.location || 
-        widget.round != oldWidget.round ||
+        widget.round != oldWidget.round || 
         widget.playoffStage != oldWidget.playoffStage) {
-      _subscription?.cancel();
-      _timer?.cancel();
-      setState(() => _isLoading = true);
-      _initSponsorStream();
+      _filterSponsorsFromCache();
     }
   }
 
-  void _initSponsorStream() {
-    Query query = _firestore
-        .collection('sponsors')
-        .where('isActive', isEqualTo: true)
-        .where('location', isEqualTo: widget.location);
+  // --- NOVA LÓGICA: Filtra da memória, CUSTO ZERO de leitura ---
+  void _filterSponsorsFromCache() {
+    final service = Provider.of<ChampionshipService>(context, listen: true);
+    final allSponsors = service.sponsors;
 
-    // Aplica o filtro de rodada (Fase 1)
-    if (widget.round != null) {
-      query = query.where('round', isEqualTo: widget.round);
-    }
+    final filtered = allSponsors.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      
+      // 1. Filtra Localização
+      if (data['location'] != widget.location) return false;
 
-    // Aplica o filtro de etapa (Fase 2)
-    if (widget.playoffStage != null) {
-      query = query.where('playoffStage', isEqualTo: widget.playoffStage);
-    }
+      // 2. Filtra Rodada (se especificado no widget e no doc)
+      if (widget.round != null) {
+        // Se o banner tem rodada especifica, tem que bater. Se não tem, aparece em todas?
+        // Regra atual: Se o widget pede rodada X, o banner tem que ser da rodada X.
+        if (data['round'] != null && data['round'] != widget.round) return false;
+      }
 
-    _subscription = query
-        .orderBy('order')
-        .snapshots()
-        .listen((snapshot) {
-          if (mounted) {
-            setState(() {
-              _sponsors = snapshot.docs;
-              _isLoading = false;
-              if (_sponsors.isNotEmpty) {
-                _currentIndex = 0;
-              }
-            });
-            if (_sponsors.length > 1 && !widget.isStatic) {
-              _resetTimer();
-            } else {
-              _timer?.cancel();
-            }
-          }
-        }, onError: (e) {
-          debugPrint("Erro Sponsors: $e");
-          if (mounted) setState(() => _isLoading = false);
-        });
+      // 3. Filtra Playoff
+      if (widget.playoffStage != null) {
+         if (data['playoffStage'] != null && data['playoffStage'] != widget.playoffStage) return false;
+      }
+
+      return true;
+    }).toList();
+
+    setState(() {
+      _filteredSponsors = filtered;
+      _currentIndex = 0; // Reseta índice ao mudar lista
+    });
   }
 
-  @override
-  void dispose() {
+  void _startTimer() {
     _timer?.cancel();
-    _subscription?.cancel();
-    super.dispose();
-  }
-
-  void _resetTimer() {
-    _timer?.cancel();
-    if (_sponsors.isEmpty) return;
-
-    final currentData = _sponsors[_currentIndex].data() as Map<String, dynamic>;
-    final int durationSec = (currentData['displayTimeSeconds'] as num? ?? 5).toInt();
-
-    _timer = Timer(Duration(seconds: durationSec), () {
-      if (mounted) {
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted) return;
+      if (_filteredSponsors.length > 1 && !widget.isStatic) {
         setState(() {
-          _currentIndex = (_currentIndex + 1) % _sponsors.length;
+          _currentIndex = (_currentIndex + 1) % _filteredSponsors.length;
         });
-        _resetTimer();
         _precacheNextImage();
       }
     });
   }
 
   void _precacheNextImage() {
-    if (_sponsors.isEmpty) return;
+    if (_filteredSponsors.isEmpty) return;
     try {
-      final int nextIndex = (_currentIndex + 1) % _sponsors.length;
-      final nextData = _sponsors[nextIndex].data() as Map<String, dynamic>;
+      final int nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
+      final nextData = _filteredSponsors[nextIndex].data() as Map<String, dynamic>;
       final String? url = nextData['imageUrl'];
       if (url != null && url.isNotEmpty) {
         precacheImage(CachedNetworkImageProvider(url), context);
       }
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _launchURL(String? urlString) async {
@@ -144,20 +133,12 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   Widget build(BuildContext context) {
     final double effectiveHeight = widget.height ?? 100;
 
-    if (_isLoading) {
-      return SizedBox(
-        height: effectiveHeight == double.infinity ? 100 : effectiveHeight, 
-        child: const Center(child: CircularProgressIndicator(strokeWidth: 2))
-      );
-    }
-
-    // --- HOUSE AD (SEM PATROCINADOR) ---
-    if (_sponsors.isEmpty) {
+    // Se não tiver patrocinadores filtrados, mostra House Ad
+    if (_filteredSponsors.isEmpty) {
       return _buildHouseAd(height: effectiveHeight);
     }
 
-    // --- COM PATROCINADOR ---
-    final sponsorDoc = _sponsors[_currentIndex];
+    final sponsorDoc = _filteredSponsors[_currentIndex];
     final data = sponsorDoc.data() as Map<String, dynamic>;
     final imageUrl = data['imageUrl'] ?? '';
     final targetUrl = data['targetUrl'] ?? '';

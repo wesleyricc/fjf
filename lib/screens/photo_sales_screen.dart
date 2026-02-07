@@ -44,7 +44,7 @@ class _WatermarkOverlay extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 20.0),
                     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (__) => const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 20.0),
-                      child: Text("PROIBIDO REPRODUÇÃO", style: TextStyle(color: Colors.white38, fontWeight: FontWeight.w900, fontSize: 14, decoration: TextDecoration.none)),
+                      child: Text("PROIBIDO REPRODUÇÃO", style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w900, fontSize: 14, decoration: TextDecoration.none)),
                     ))),
                   )),
                 ),

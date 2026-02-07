@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart'; // Necessário
+import '../services/championship_service.dart'; // Necessário
 
 class HomeFooter extends StatelessWidget {
-  // Parâmetro opcional para a versão
   final String? appVersion;
 
   const HomeFooter({
@@ -28,16 +29,40 @@ class HomeFooter extends StatelessWidget {
 
   Future<void> _openRegulation(BuildContext context) async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('config').doc('app_settings').get();
-      final url = doc.data()?['regulation_pdf_url'] as String?;
+      // 1. Obtém o ID da temporada atual do Provider
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      
+      if (seasonId.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhuma temporada selecionada.')));
+        }
+        return;
+      }
+
+      // 2. Busca na subcoleção 'settings' da temporada específica
+      // Caminho: championships > {seasonId} > settings > {primeiro_doc} > regulation_pdf_url
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('championships')
+          .doc(seasonId)
+          .collection('settings')
+          .limit(1) 
+          .get();
+
+      String? url;
+      if (querySnapshot.docs.isNotEmpty) {
+        url = querySnapshot.docs.first.data()['regulation_pdf_url'] as String?;
+      }
+
       if (url != null && url.isNotEmpty) {
         _launchURL(url);
       } else {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Regulamento não disponível.')));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Regulamento não disponível para esta temporada.')));
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint("Erro ao buscar regulamento: $e");
+    }
   }
 
   @override
@@ -95,7 +120,7 @@ class HomeFooter extends StatelessWidget {
             style: TextStyle(color: Colors.white24, fontSize: 10),
           ),
 
-          // --- VERSÃO DO APP (Agora integrada) ---
+          // --- VERSÃO DO APP ---
           if (appVersion != null) ...[
             const SizedBox(height: 8),
             Container(

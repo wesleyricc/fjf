@@ -319,6 +319,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
         return Scaffold(
           body: CustomScrollView(
+            cacheExtent: 1000,
             slivers: [
               // 1. App Bar
               SliverAppBar(
@@ -427,7 +428,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
               // 4. Rodapé
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
               const SliverToBoxAdapter(child: SponsorBannerRotator()),
-              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+              //const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
           ),
         );

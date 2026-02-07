@@ -178,7 +178,9 @@ class _MemberCard extends StatelessWidget {
     final bool isGoalkeeper = member.isGoalkeeper;
     final bool isStaff = member.isStaff;
 
-    return Card(
+    
+    return RepaintBoundary(
+    child: Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.antiAlias,
@@ -211,8 +213,8 @@ class _MemberCard extends StatelessWidget {
                           alignment: Alignment.topCenter,
                           cacheManager: PlayerCacheManager.instance,
                           // OTIMIZAÇÃO: MemCache + FadeIn
-                          memCacheWidth: 250, 
-                          fadeInDuration: const Duration(milliseconds: 300),
+                          memCacheWidth: 200, 
+                          fadeInDuration: const Duration(milliseconds: 200),
                           placeholder: (c, u) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 50, color: Colors.grey.shade400)),
                           errorWidget: (c, u, e) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 50, color: Colors.grey.shade400)),
                         )
@@ -311,6 +313,7 @@ class _MemberCard extends StatelessWidget {
           ],
         ),
       ),
+    )
     );
   }
 }

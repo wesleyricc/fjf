@@ -54,7 +54,7 @@ class AppDrawer extends StatelessWidget {
                   backgroundColor: Colors.white,
                   child: Padding(
                     padding: const EdgeInsets.all(4.0),
-                    child: Image.asset('assets/logo2_fjf.png', errorBuilder: (c, o, s) => const Icon(Icons.sports_soccer, color: Colors.orange)),
+                    child: Image.asset('assets/logo3_fjf.png', errorBuilder: (c, o, s) => const Icon(Icons.sports_soccer, color: Colors.orange)),
                   ),
                 ),
               ),

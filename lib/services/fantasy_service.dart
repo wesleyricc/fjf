@@ -8,7 +8,7 @@ class FantasyService {
   CollectionReference get _fantasyTeamsRef => _firestore.collection('fantasy_teams');
   CollectionReference get _fantasyMarketRef => _firestore.collection('fantasy_market_players');
   
-  // --- CONFIGURAÇÃO DO JOGO (NOVO) ---
+  // --- CONFIGURAÇÃO DO JOGO ---
 
   Future<FantasyGameConfig> getGameConfig() async {
     try {
@@ -62,7 +62,7 @@ class FantasyService {
     
     return _fantasyTeamsRef
         .orderBy(orderByField, descending: true)
-        .limit(50) // Limita a 50 para não pesar a leitura no MVP
+        .limit(50) 
         .snapshots()
         .map((snap) => snap.docs.map((doc) => FantasyTeam.fromFirestore(doc)).toList());
   }
@@ -74,13 +74,23 @@ class FantasyService {
     });
   }
 
+  // --- MERCADO OTIMIZADO ---
   Stream<List<FantasyPlayer>> streamMarket({String? positionFilter, String? searchTerm}) {
     Query query = _fantasyMarketRef.orderBy('current_price', descending: true);
+    
+    // Agora o filtro é mandatório para garantir economia (remover "Todos" da UI garante isso)
     if (positionFilter != null && positionFilter != 'Todos') {
       query = query.where('position', isEqualTo: positionFilter);
     }
+
+    // Limitamos a 100 jogadores por posição para evitar leitura excessiva
+    // Isso garante que mesmo buscando "Goleiro", se houver 200, só paga 100 leituras
+    query = query.limit(100);
+
     return query.snapshots().map((snap) {
       var list = snap.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
+      
+      // Filtro de texto continua na memória (client-side)
       if (searchTerm != null && searchTerm.isNotEmpty) {
         final term = searchTerm.toLowerCase();
         list = list.where((p) => p.name.toLowerCase().contains(term) || 
@@ -114,7 +124,7 @@ class FantasyService {
     final docSnap = await _fantasyTeamsRef.doc(userId).get();
     
     if (!docSnap.exists) {
-      // NOVA REGRA: INÍCIO COM 50 MOEDAS (Isso também poderia virar config no futuro)
+      // Início com 50 moedas
       final newTeam = FantasyTeam(
         id: userId,
         ownerId: userId,
@@ -123,8 +133,8 @@ class FantasyService {
         ownerName: userName,
         teamName: teamName,
         totalPoints: 0,
-        teamValue: 50,      // Patrimônio inicial 50
-        currentBalance: 50, // Saldo inicial 50
+        teamValue: 50,      
+        currentBalance: 50, 
         lastScore: 0,
         lineupPlayerIds: [],
         captainId: null,
@@ -148,7 +158,6 @@ class FantasyService {
         'lineup_player_ids': playerIds, 
         'captain_id': captainId,
         'current_balance': safeBalance,
-        // Limpeza de campo legado se existir
         'lineup': FieldValue.delete(), 
       });
       return "Sucesso";
@@ -201,7 +210,6 @@ class FantasyService {
         final bool isTechnician = staffRole == 'Técnico';
         final String position = isTechnician ? 'Técnico' : (data['position'] ?? 'Desconhecido');
         
-        // NOVA REGRA: Valor inicial de mercado fixo em 10.0
         final double initialPrice = 10.0;
 
         await _addToBatchIfNew(batch, doc.id, data, position, initialPrice);

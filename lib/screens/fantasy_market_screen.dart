@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/fantasy_service.dart';
-import '../services/championship_service.dart'; // Import necessário para pegar a temporada ativa
+import '../services/championship_service.dart'; 
 import '../models/fantasy_models.dart';
 import '../widgets/fantasy_player_card.dart';
 
@@ -22,14 +22,19 @@ class FantasyMarketScreen extends StatefulWidget {
 }
 
 class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
-  String _selectedPosition = 'Todos';
+  // Padrão inicia como Goleiro, já que "Todos" foi removido
+  String _selectedPosition = 'Goleiro'; 
   String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
-  final List<String> _positions = ['Todos', 'Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
+  
+  // Lista de posições sem a opção "Todos"
+  final List<String> _positions = ['Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
 
   @override
   void initState() {
     super.initState();
+    // Se vier uma posição obrigatória (ex: clicou no slot de Ala), seleciona ela.
+    // Caso contrário, mantém o padrão (Goleiro).
     if (widget.requiredPosition != null) {
       _selectedPosition = widget.requiredPosition!;
     }
@@ -45,7 +50,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     final fantasyService = context.read<FantasyService>();
     final championshipService = context.read<ChampionshipService>();
     
-    // Obtém o ID da temporada ativa dinamicamente
     final seasonId = championshipService.currentSeasonId;
 
     if (seasonId.isEmpty) {
@@ -64,7 +68,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
       SnackBar(content: Text("Sincronizando mercado com a temporada $seasonId..."))
     );
     
-    // Passa o ID dinâmico em vez de chumbado
     final result = await fantasyService.populateMarketFromSeason(seasonId); 
     
     if (mounted) {
@@ -102,6 +105,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
       ),
       body: Column(
         children: [
+          // Barra de Filtros (Chips)
           SizedBox(
             height: 50,
             child: ListView.builder(
@@ -111,7 +115,10 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               itemBuilder: (ctx, i) {
                 final pos = _positions[i];
                 final isSelected = _selectedPosition == pos;
-                final bool isDisabled = widget.requiredPosition != null && widget.requiredPosition != pos && pos != 'Todos'; 
+                
+                // Desabilita troca de filtro se estiver em modo de seleção restrita
+                // (Ex: Clicou para trocar um Ala, só pode ver Ala)
+                final bool isDisabled = widget.requiredPosition != null && widget.requiredPosition != pos; 
 
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -135,8 +142,9 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
           
           Expanded(
             child: StreamBuilder<List<FantasyPlayer>>(
+              // Passamos diretamente a _selectedPosition, pois ela nunca será "Todos" ou null
               stream: fantasyService.streamMarket(
-                positionFilter: _selectedPosition == 'Todos' ? null : _selectedPosition,
+                positionFilter: _selectedPosition,
                 searchTerm: _searchTerm,
               ),
               builder: (context, snapshot) {
@@ -146,7 +154,8 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                 
                 var players = snapshot.data ?? [];
                 
-                if (_selectedPosition != 'Todos') {
+                // Filtro de segurança no cliente (caso o delay do stream traga dados antigos)
+                if (_selectedPosition.isNotEmpty) {
                   players = players.where((p) => p.position == _selectedPosition).toList();
                 }
 
@@ -159,7 +168,9 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                         const SizedBox(height: 16),
                         Text("Nenhum ${_selectedPosition} encontrado."),
                         const SizedBox(height: 24),
-                        // Botão para corrigir/importar
+                        
+                        // Botão Admin para sincronizar se estiver vazio
+                        // (Idealmente mostrar só para admin, mas deixamos acessível por enquanto para facilitar testes)
                         ElevatedButton.icon(
                           onPressed: () => _populateMarket(context),
                           icon: const Icon(Icons.cloud_download),

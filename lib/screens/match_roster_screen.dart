@@ -43,13 +43,14 @@ class MatchRosterScreen extends StatefulWidget {
   State<MatchRosterScreen> createState() => _MatchRosterScreenState();
 }
 
-class _MatchRosterScreenState extends State<MatchRosterScreen> {
+class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTickerProviderStateMixin {
   final FirestoreService _firestoreService = FirestoreService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance; 
 
+  late TabController _tabController;
   bool _isLoading = true;
   
-  // Listas Completas
+  // Listas Completas (Cache Local)
   List<Player> _team1Players = [];
   List<Player> _team2Players = [];
   
@@ -72,25 +73,40 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final seasonId = service.currentSeasonId;
 
     try {
-      // 1. Busca Jogadores
-      // O streamPlayers do FirestoreService refatorado já aponta para a subcoleção correta
-      final t1 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team1Id).first;
-      final t2 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team2Id).first;
+      // 1. Busca Jogadores (Com Cache do Service para economia)
+      if (service.hasRosterCached(widget.team1Id)) {
+        _team1Players = service.getCachedRoster(widget.team1Id);
+      } else {
+        final t1 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team1Id).first;
+        _team1Players = t1.where((p) => !p.isStaff).toList();
+        service.cacheRoster(widget.team1Id, _team1Players);
+      }
 
-      // Filtra apenas jogadores (sem staff) para a quadra
-      _team1Players = t1.where((p) => !p.isStaff).toList();
-      _team2Players = t2.where((p) => !p.isStaff).toList();
+      if (service.hasRosterCached(widget.team2Id)) {
+        _team2Players = service.getCachedRoster(widget.team2Id);
+      } else {
+        final t2 = await _firestoreService.streamPlayers(seasonId, teamId: widget.team2Id).first;
+        _team2Players = t2.where((p) => !p.isStaff).toList();
+        service.cacheRoster(widget.team2Id, _team2Players);
+      }
 
-      // 2. Busca Titulares Salvos dos Times
-      // O getTeam do FirestoreService refatorado já aponta para a subcoleção correta
+      // 2. Busca Titulares Salvos
       final t1Doc = await _firestoreService.getTeam(widget.team1Id, seasonId);
       final t2Doc = await _firestoreService.getTeam(widget.team2Id, seasonId);
 
@@ -108,40 +124,34 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
   }
 
   void _calculateLineups(List<Player> allPlayers, List<String> savedStarterIds, bool isTeam1) {
-    // Separa quem está salvo como titular
-    List<Player> starters = allPlayers.where((p) => savedStarterIds.contains(p.id)).toList();
-    List<Player> reserves = allPlayers.where((p) => !savedStarterIds.contains(p.id)).toList();
+    // Clona para não afetar cache
+    List<Player> pool = List.from(allPlayers);
+    
+    List<Player> starters = pool.where((p) => savedStarterIds.contains(p.id)).toList();
+    List<Player> reserves = pool.where((p) => !savedStarterIds.contains(p.id)).toList();
 
     Player? gk, fixo, ala1, ala2, pivo;
 
-    // Lógica de Atribuição Inteligente
-    // 1. Goleiro
+    // Seleção de Goleiro
     gk = starters.firstWhere((p) => p.isGoalkeeper, orElse: () => 
          reserves.firstWhere((p) => p.isGoalkeeper, orElse: () => 
-         allPlayers.firstWhere((p) => p.isGoalkeeper, orElse: () => allPlayers.first))); // Fallback seguro
+         pool.firstWhere((p) => p.isGoalkeeper, orElse: () => pool.first)));
     
-    // Remove o escolhido das listas para não duplicar
-    starters.remove(gk);
-    reserves.remove(gk); // Caso tenha vindo da reserva no fallback
+    if (starters.contains(gk)) starters.remove(gk);
+    if (reserves.contains(gk)) reserves.remove(gk);
 
-    // Função auxiliar para pegar próximo disponível (prioriza starters salvos)
+    // Função auxiliar
     Player? pickNext(String? preferredPos) {
       Player? p;
-      // Tenta achar titular com a posição
       try { p = starters.firstWhere((x) => x.position == preferredPos); } catch (_) {}
-      
-      // Se não, pega qualquer titular sobrando
       if (p == null && starters.isNotEmpty) p = starters.first;
-      
-      // Se não tem titulares salvos, pega da reserva
       if (p == null) {
          try { p = reserves.firstWhere((x) => x.position == preferredPos); } catch (_) {}
          if (p == null && reserves.isNotEmpty) p = reserves.first;
       }
-      
       if (p != null) {
-        starters.remove(p);
-        reserves.remove(p);
+        if (starters.contains(p)) starters.remove(p);
+        if (reserves.contains(p)) reserves.remove(p);
       }
       return p;
     }
@@ -151,10 +161,8 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     ala2 = pickNext('Ala');
     pivo = pickNext('Pivô');
 
-    // Reconstrói a reserva com quem sobrou
+    // Junta o que sobrou na reserva
     reserves.addAll(starters); 
-    
-    // Ordena reserva por número
     reserves.sort((a, b) => (a.jerseyNumber ?? 99).compareTo(b.jerseyNumber ?? 99));
 
     setState(() {
@@ -193,78 +201,115 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
       }
     });
 
-    // Salva no banco (apenas IDs)
     final teamId = isTeam1 ? widget.team1Id : widget.team2Id;
     final List<Player?> currentStarters = isTeam1 
         ? [_team1TitularGoalkeeper, _team1Fixo, _team1Ala1, _team1Ala2, _team1Pivo]
         : [_team2TitularGoalkeeper, _team2Fixo, _team2Ala1, _team2Ala2, _team2Pivo];
     
     final List<String> ids = currentStarters.where((p) => p != null).map((p) => p!.id).toList();
-    
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
     
     try {
-      // ALTERAÇÃO: Referência padronizada para a subcoleção
       final ref = _firestore
           .collection('championships')
           .doc(seasonId)
           .collection('teams_participation')
           .doc(teamId);
-      
       await ref.update({'default_starters': ids});
     } catch (e) {
-      debugPrint("Erro ao salvar escalação: $e");
+      debugPrint("Erro ao salvar: $e");
     }
   }
 
   void _showSubstituteDialog(bool isTeam1, Player currentPlayer, String posKey) {
     final reserves = isTeam1 ? _team1Reserves : _team2Reserves;
-    
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Substituir ${currentPlayer.name}'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: reserves.length,
-            itemBuilder: (ctx, idx) {
-              final p = reserves[idx];
-              return ListTile(
-                leading: Icon(p.isGoalkeeper ? Icons.pan_tool : Icons.person),
-                title: Text(p.name),
-                subtitle: Text("#${p.jerseyNumber ?? '-'}"),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _swapPlayer(isTeam1, currentPlayer, p, posKey);
-                },
-              );
-            },
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text('Substituir ${currentPlayer.name}'),
+            subtitle: const Text("Escolha quem entra em campo"),
+            trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
           ),
-        ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              itemCount: reserves.length,
+              itemBuilder: (ctx, idx) {
+                final p = reserves[idx];
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.grey[200],
+                    child: Text("${p.jerseyNumber ?? '?'}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  title: Text(p.name),
+                  subtitle: Text(p.position ?? 'Jogador'),
+                  trailing: const Icon(Icons.swap_vert_circle, color: Colors.green),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _swapPlayer(isTeam1, currentPlayer, p, posKey);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final seasonName = Provider.of<ChampionshipService>(context).currentSeasonName;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Escalação')),
+      backgroundColor: Colors.white,
+      // --- HEADER PADRÃO (Conforme solicitado) ---
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Escalação', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
+          ],
+        ),
+        elevation: 0,
+      ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                _buildMatchHeader(),
+                // --- INFORMAÇÕES DO JOGO (Card Moderno) ---
+                _buildMatchInfoCard(),
+                
+                // --- ABAS ---
+                Container(
+                  color: Theme.of(context).primaryColor.withOpacity(0.05),
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorColor: Theme.of(context).primaryColor,
+                    indicatorWeight: 3,
+                    labelColor: Theme.of(context).primaryColor,
+                    unselectedLabelColor: Colors.grey,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    tabs: [
+                      Tab(text: widget.team1Name.toUpperCase()),
+                      Tab(text: widget.team2Name.toUpperCase()),
+                    ],
+                  ),
+                ),
+
+                // --- CONTEÚDO TÁTICO ---
                 Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        _buildTeamSection(true),
-                        const Divider(thickness: 2),
-                        _buildTeamSection(false),
-                      ],
-                    ),
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildTeamTacticalView(true),
+                      _buildTeamTacticalView(false),
+                    ],
                   ),
                 ),
               ],
@@ -273,35 +318,78 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     );
   }
 
-  Widget _buildMatchHeader() {
-    String dateStr = widget.datetime != null ? DateFormat('dd/MM HH:mm').format(widget.datetime!.toDate()) : '-';
+  // --- WIDGETS VISUAIS ---
+
+  Widget _buildMatchInfoCard() {
+    String dateStr = widget.datetime != null 
+        ? DateFormat('dd/MM • HH:mm').format(widget.datetime!.toDate()) 
+        : 'Data a definir';
+        
     return Container(
-      padding: const EdgeInsets.all(16),
-      color: Colors.grey[200],
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Expanded(child: Text(widget.team1Name, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.bold))),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Column(
-              children: [
-                const Text("VS", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                Text(dateStr, style: const TextStyle(fontSize: 10)),
-              ],
-            ),
+          _buildTeamLogo(widget.team1ShieldUrl, widget.team1Name),
+          Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300)
+                ),
+                child: const Text("VS", style: TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.w900)),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                dateStr, 
+                style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)
+              ),
+              if (widget.location != null)
+                Text(
+                  widget.location!,
+                  style: const TextStyle(color: Colors.grey, fontSize: 10),
+                )
+            ],
           ),
-          Expanded(child: Text(widget.team2Name, textAlign: TextAlign.left, style: const TextStyle(fontWeight: FontWeight.bold))),
+          _buildTeamLogo(widget.team2ShieldUrl, widget.team2Name),
         ],
       ),
     );
   }
 
-  Widget _buildTeamSection(bool isTeam1) {
-    final name = isTeam1 ? widget.team1Name : widget.team2Name;
-    final shield = isTeam1 ? widget.team1ShieldUrl : widget.team2ShieldUrl;
-    
-    // Titulares
+  Widget _buildTeamLogo(String url, String name) {
+    return Column(
+      children: [
+        SizedBox(
+          width: 50,
+          height: 50,
+          child: url.isNotEmpty 
+              ? CachedNetworkImage(imageUrl: url, fit: BoxFit.contain)
+              : const Icon(Icons.shield, color: Colors.grey, size: 40),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          width: 80,
+          child: Text(
+            name, 
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87)
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTeamTacticalView(bool isTeam1) {
     final gk = isTeam1 ? _team1TitularGoalkeeper : _team2TitularGoalkeeper;
     final f = isTeam1 ? _team1Fixo : _team2Fixo;
     final a1 = isTeam1 ? _team1Ala1 : _team2Ala1;
@@ -310,78 +398,155 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> {
     
     final reserves = isTeam1 ? _team1Reserves : _team2Reserves;
 
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(top: 10),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if(shield.isNotEmpty) CachedNetworkImage(imageUrl: shield, height: 30, width: 30),
-              const SizedBox(width: 8),
-              Text(name, style: Theme.of(context).textTheme.titleLarge),
-            ],
+          // --- QUADRA TÁTICA ---
+          Container(
+            height: 480, // Altura da quadra
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.green[800], // Fallback
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: const Offset(0, 4))],
+              image: const DecorationImage(
+                image: AssetImage('assets/futsal_court.png'),
+                fit: BoxFit.cover,
+                opacity: 0.9,
+              ),
+            ),
+            child: Stack(
+              children: [
+                // Pivô (Topo Centro)
+                if (p != null) _buildPositionedPlayer(p, isTeam1, "Pivo", 0.05, 0.5),
+                
+                // Alas (Meio Esquerda/Direita)
+                if (a1 != null) _buildPositionedPlayer(a1, isTeam1, "Ala", 0.4, 0.15),
+                if (a2 != null) _buildPositionedPlayer(a2, isTeam1, "Ala", 0.4, 0.85),
+                
+                // Fixo (Baixo Centro - Acima do Goleiro)
+                if (f != null) _buildPositionedPlayer(f, isTeam1, "Fixo", 0.65, 0.5),
+                
+                // Goleiro (Base Centro)
+                if (gk != null) _buildPositionedPlayer(gk, isTeam1, "GK", 0.85, 0.5),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
+
+          // --- LISTA DE RESERVAS ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              children: [
+                Icon(Icons.people_outline, color: Colors.grey[700]),
+                const SizedBox(width: 8),
+                Text("Banco de Reservas", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+                const Spacer(),
+                Text("${reserves.length} jogadores", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
           
-          // Quadra Visual
-          Wrap(
-            spacing: 8, runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              if(gk!=null) _buildPlayerCard(gk, "Goleiro", isTeam1, "GK"),
-              if(f!=null) _buildPlayerCard(f, "Fixo", isTeam1, "Fixo"),
-              if(a1!=null) _buildPlayerCard(a1, "Ala", isTeam1, "Ala1"),
-              if(a2!=null) _buildPlayerCard(a2, "Ala", isTeam1, "Ala2"),
-              if(p!=null) _buildPlayerCard(p, "Pivô", isTeam1, "Pivo"),
-            ],
-          ),
-          
-          const SizedBox(height: 16),
-          const Text("Reservas", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 8, runSpacing: 8,
-            children: reserves.map((r) => _buildReservaCard(r)).toList(),
-          ),
+          if (reserves.isEmpty)
+            const Padding(padding: EdgeInsets.all(20), child: Text("Sem reservas cadastrados."))
+          else
+            SizedBox(
+              height: 110,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                itemCount: reserves.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (ctx, idx) {
+                  final r = reserves[idx];
+                  return _buildReserveCard(r);
+                },
+              ),
+            ),
+          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  Widget _buildPlayerCard(Player p, String posLabel, bool isTeam1, String posKey) {
-    final isAuthenticated = Provider.of<AuthService>(context).isAuthenticated;
-    
-    return GestureDetector(
-      onTap: isAuthenticated 
-          ? () => _showSubstituteDialog(isTeam1, p, posKey)
-          : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: p.id))),
-      child: Column(
-        children: [
-          PlayerDisplayCard(
-            playerName: p.name,
-            jerseyNumber: p.jerseyNumber ?? 0,
-            yellowCards: p.yellowCards,
-            redCards: p.redCards,
-            isSuspended: p.isSuspended,
-            teamShieldUrl: p.teamShieldUrl,
+  Widget _buildPositionedPlayer(Player p, bool isTeam1, String posKey, double topPct, double leftPct) {
+    return Align(
+      alignment: FractionalOffset(leftPct, topPct),
+      child: GestureDetector(
+        onTap: () {
+          final auth = Provider.of<AuthService>(context, listen: false);
+          if (auth.isAuthenticated) {
+            _showSubstituteDialog(isTeam1, p, posKey);
+          } else {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: p.id)));
+          }
+        },
+        child: FractionallySizedBox(
+          widthFactor: 0.25, 
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 4, offset: const Offset(0, 2))],
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: PlayerDisplayCard(
+                  playerName: "", // Nome vai fora para melhor leitura
+                  jerseyNumber: p.jerseyNumber ?? 0,
+                  yellowCards: p.yellowCards,
+                  redCards: p.redCards,
+                  isSuspended: p.isSuspended,
+                  compactMode: true, 
+                  teamShieldUrl: null, 
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  p.name.split(' ').first, 
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ),
-          Text(posLabel, style: const TextStyle(fontSize: 10, color: Colors.blueGrey)),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildReservaCard(Player p) {
+  Widget _buildReserveCard(Player p) {
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: p.id))),
-      child: PlayerDisplayCard(
-        playerName: p.name,
-        jerseyNumber: p.jerseyNumber ?? 0,
-        yellowCards: p.yellowCards,
-        redCards: p.redCards,
-        isSuspended: p.isSuspended,
-        compactMode: true,
+      child: Container(
+        width: 70,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            PlayerDisplayCard(
+              playerName: p.name,
+              jerseyNumber: p.jerseyNumber ?? 0,
+              yellowCards: p.yellowCards,
+              redCards: p.redCards,
+              isSuspended: p.isSuspended,
+              compactMode: true,
+            ),
+          ],
+        ),
       ),
     );
   }

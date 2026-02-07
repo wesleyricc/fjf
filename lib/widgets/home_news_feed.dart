@@ -4,10 +4,36 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/championship_service.dart';
-import 'sponsor_banner_rotator.dart'; // Import corrigido
+import 'sponsor_banner_rotator.dart'; 
 
-class HomeNewsFeed extends StatelessWidget {
+class HomeNewsFeed extends StatefulWidget {
   const HomeNewsFeed({super.key});
+
+  @override
+  State<HomeNewsFeed> createState() => _HomeNewsFeedState();
+}
+
+class _HomeNewsFeedState extends State<HomeNewsFeed> {
+  late Future<QuerySnapshot> _newsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _newsFuture = _fetchNews();
+  }
+
+  // Busca apenas uma vez na inicialização do widget
+  Future<QuerySnapshot> _fetchNews() {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    return FirebaseFirestore.instance
+        .collection('championships')
+        .doc(seasonId)
+        .collection('news')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order', descending: true)
+        .limit(10) // Limitamos a 10 para não pesar
+        .get();    // .get() em vez de .snapshots()
+  }
 
   Future<void> _launchURL(String? urlString) async {
     if (urlString == null || urlString.isEmpty) return;
@@ -19,14 +45,6 @@ class HomeNewsFeed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
-    final FirebaseFirestore firestore = FirebaseFirestore.instance;
-
-    final Query mediaQuery = firestore
-        .collection('championships')
-        .doc(seasonId)
-        .collection('news');
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -46,18 +64,13 @@ class HomeNewsFeed extends StatelessWidget {
         
         SizedBox(
           height: 210, 
-          child: StreamBuilder<QuerySnapshot>(
-            stream: mediaQuery
-                .where('isActive', isEqualTo: true)
-                .orderBy('order', descending: true)
-                .limit(10)
-                .snapshots(),
+          child: FutureBuilder<QuerySnapshot>(
+            future: _newsFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
               
-              // Se não tiver dados, mostra mensagem vazia
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return Center(
                   child: Column(
@@ -161,7 +174,7 @@ class HomeNewsFeed extends StatelessWidget {
 
   Widget _buildAdCard() {
     return Container(
-      width: 240, // Largura igual à do card de notícia
+      width: 240, 
       margin: const EdgeInsets.only(right: 12.0, bottom: 8.0),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -176,7 +189,6 @@ class HomeNewsFeed extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Passamos height: double.infinity para ele preencher o card verticalmente
             const SponsorBannerRotator(
               location: 'news_feed',
               isStatic: false,

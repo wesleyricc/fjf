@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/championship_service.dart';
 
 class HomeLiveVideoCard extends StatefulWidget {
-  final bool hidePlayer; // <-- Controle externo para evitar sobreposição
+  final bool hidePlayer;
 
   const HomeLiveVideoCard({super.key, this.hidePlayer = false});
 
@@ -13,11 +15,11 @@ class HomeLiveVideoCard extends StatefulWidget {
 
 class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTickerProviderStateMixin {
   late YoutubePlayerController _ytController;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   bool _isPlayerExpanded = false;
   final String _defaultVideoId = 'ByBvdFS1jko'; 
   late AnimationController _blinkController;
+  bool _hasActiveLive = false;
 
   @override
   void initState() {
@@ -39,7 +41,29 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
 
-    _fetchCurrentLiveId();
+    // Carrega do Cache em vez de chamar Firebase
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkLiveFromCache());
+  }
+
+  void _checkLiveFromCache() {
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final data = service.appSettings; // Dados cacheados
+
+    if (data != null) {
+      final String? remoteId = data['live_video_id'];
+      final Timestamp? timestamp = data['live_video_timestamp'];
+
+      if (remoteId != null && remoteId.isNotEmpty && timestamp != null) {
+        final diff = DateTime.now().difference(timestamp.toDate());
+        // Regra: Mostra a live se foi iniciada nas últimas 24h
+        if (diff.inHours < 24) {
+          _ytController.loadVideoById(videoId: remoteId);
+          setState(() {
+            _hasActiveLive = true;
+          });
+        }
+      }
+    }
   }
 
   @override
@@ -47,24 +71,6 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
     _ytController.close();
     _blinkController.dispose();
     super.dispose();
-  }
-
-  Future<void> _fetchCurrentLiveId() async {
-    try {
-      final docSnap = await _firestore.collection('config').doc('app_settings').get();
-      if (docSnap.exists) {
-        final data = docSnap.data();
-        final String? remoteId = data?['live_video_id'];
-        final Timestamp? timestamp = data?['live_video_timestamp'];
-
-        if (remoteId != null && remoteId.isNotEmpty && timestamp != null) {
-          final diff = DateTime.now().difference(timestamp.toDate());
-          if (diff.inHours < 24) {
-            _ytController.loadVideoById(videoId: remoteId);
-          }
-        }
-      }
-    } catch (_) {}
   }
 
   void _togglePlayer() {
@@ -80,14 +86,11 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    // Se o Drawer estiver aberto, ou o player estiver fechado, mostra o botão
-    if (widget.hidePlayer || !_isPlayerExpanded) {
-      // Se o drawer abrir enquanto o vídeo toca, pausamos visualmente
-      if (widget.hidePlayer && _isPlayerExpanded) {
-         // Opcional: _ytController.pauseVideo(); 
-         // Mas apenas esconder a view já resolve o erro visual
-      }
+    // Se não tiver live ativa detectada no cache, nem mostra o widget
+    // (Ou você pode remover essa verificação se quiser mostrar o botão padrão sempre)
+    // if (!_hasActiveLive) return const SizedBox.shrink(); 
 
+    if (widget.hidePlayer || !_isPlayerExpanded) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 15.0),
         child: SizedBox(
@@ -97,11 +100,10 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
               backgroundColor: Colors.red[700],
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14.0),
-              //shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 4,
               shadowColor: Colors.redAccent.withOpacity(0.4),
             ),
-            onPressed: widget.hidePlayer ? null : _togglePlayer, // Desabilita clique se menu aberto
+            onPressed: widget.hidePlayer ? null : _togglePlayer,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -118,7 +120,6 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
       );
     }
 
-    // Player Expandido (Só renderiza se hidePlayer for false)
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Card(

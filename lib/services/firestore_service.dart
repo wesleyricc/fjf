@@ -73,13 +73,27 @@ class FirestoreService {
     return Player.fromFirestore(doc);
   }
 
-  Stream<List<MatchModel>> streamMatches(String seasonId, {String? phase}) {
-    Query query = _getMatchesRef(seasonId).orderBy('datetime');
-    if (phase != null) query = query.where('phase', isEqualTo: phase);
-    return query.snapshots().map((snapshot) => 
-      snapshot.docs.map((doc) => MatchModel.fromFirestore(doc)).toList()
-    );
+  Stream<List<MatchModel>> streamMatches(String seasonId, {String? phase, int? round}) {
+    Query query = _getMatchesRef(seasonId);
+
+    if (phase != null) {
+      query = query.where('phase', isEqualTo: phase);
+    }
+
+    // AQUI ESTÁ A ECONOMIA: Se vier a rodada, filtra no servidor!
+    if (round != null) {
+      query = query.where('round', isEqualTo: round);
+    }
+
+    return query
+        .orderBy('datetime') // Ordena por data
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => MatchModel.fromFirestore(doc))
+            .toList());
   }
+
+
 
  
   // ===========================================================================
