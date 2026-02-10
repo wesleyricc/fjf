@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Para conversão de data se necessário
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
@@ -107,12 +107,35 @@ class _FixturesScreenState extends State<FixturesScreen> {
           return true;
         }).toList();
 
-        // Config Banner
+        // --- CONFIGURAÇÃO DO BANNER (UNIFICADO) ---
         String sponsorTitle = "Patrocinador Oficial";
-        int? roundForBanner;
-        String? playoffStageForBanner;
-        if (_selectedPhase == TournamentPhase.first) { sponsorTitle = "Patrocinador da Rodada $_selectedRound"; roundForBanner = _selectedRound; }
-        else { playoffStageForBanner = phaseFilter; sponsorTitle = "Patrocinador da Fase"; }
+        String? bannerFilterTag;
+
+        if (_selectedPhase == TournamentPhase.first) {
+          sponsorTitle = "Patrocinador da Rodada $_selectedRound";
+          // Passa o número da rodada como string (ex: "1", "7")
+          bannerFilterTag = _selectedRound.toString();
+        } else {
+          // Passa a string identificadora da fase (ex: "semifinal", "final")
+          switch (_selectedPlayoffStage) {
+            case PlayoffStage.quarter_final:
+              sponsorTitle = "Patrocinador dos Playoffs";
+              bannerFilterTag = "quarter_final"; 
+              break;
+            case PlayoffStage.semifinal:
+              sponsorTitle = "Patrocinador das Semifinais";
+              bannerFilterTag = "semifinal";
+              break;
+            case PlayoffStage.third_place:
+              sponsorTitle = "Patrocinador do 3º Lugar";
+              bannerFilterTag = "third_place";
+              break;
+            case PlayoffStage.final_game:
+              sponsorTitle = "Patrocinador da Grande Final";
+              bannerFilterTag = "final";
+              break;
+          }
+        }
 
         final isModel2 = AdminService.tournamentFormat == 'model_2';
         final Map<PlayoffStage, String> playoffStagesMap = {
@@ -132,7 +155,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
               if (_selectedPhase == TournamentPhase.first) HorizontalRoundSelector(currentRound: _selectedRound, totalRounds: TOTAL_RODADAS, onRoundChanged: (r) => setState(() => _selectedRound = r))
               else PlayoffStageSelector<PlayoffStage>(selectedStage: _selectedPlayoffStage, stages: playoffStagesMap, onChanged: (val) => setState(() => _selectedPlayoffStage = val)),
               const Divider(height: 1),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Row(children: [Icon(Icons.star, size: 14, color: Theme.of(context).primaryColor), const SizedBox(width: 6), Text(sponsorTitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey[700]))])), Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))]), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: SponsorBannerRotator(location: 'header_fixtures', round: roundForBanner, playoffStage: playoffStageForBanner)))])),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Row(children: [Icon(Icons.star, size: 14, color: Theme.of(context).primaryColor), const SizedBox(width: 6), Text(sponsorTitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey[700]))])), Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))]), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: SponsorBannerRotator(location: 'header_fixtures', filterTag: bannerFilterTag)))])),
               
               Expanded(
                 child: matches.isEmpty 

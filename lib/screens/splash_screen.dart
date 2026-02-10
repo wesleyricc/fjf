@@ -288,7 +288,7 @@ class _SplashScreenState extends State<SplashScreen> {
                                    backgroundColor: Colors.white,
                                    backgroundImage: const AssetImage('assets/logo3_fjf.png'),
                                    onBackgroundImageError: (_, __) {},
-                                   child: Image.asset('assets/logo3_fjf.png', height: 70, errorBuilder: (_,__,___) => const SizedBox()), 
+                                   //child: Image.asset('assets/logo3_fjf.png', height: 70, errorBuilder: (_,__,___) => const SizedBox()), 
                                  ),
                                ),
                              ),
@@ -439,7 +439,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
 class _SponsorGridCard extends StatelessWidget {
   const _SponsorGridCard();
-  static const String _partnerContactUrl = "https://wa.me/5548999999999?text=Quero%20anunciar%20no%20Grid";
+  static const String _partnerContactUrl = "https://wa.me/5548996381626?text=Quero%20anunciar%20no%20Grid";
 
   @override
   Widget build(BuildContext context) {

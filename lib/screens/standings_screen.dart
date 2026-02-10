@@ -242,12 +242,33 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
           child: Padding(padding: const EdgeInsets.all(10.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Legenda', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-            Wrap(spacing: 16.0, runSpacing: 4.0, children: [_legendItem('P','Pontos'), _legendItem('V','Vitórias'), _legendItem('SG','Saldo Gols'), _legendItem('PD','Pts Disciplinares')]),
+            Wrap(
+              spacing: 16.0, 
+              runSpacing: 4.0, 
+              children: [
+                _legendItem('P', 'Pontos'),
+                _legendItem('J', 'Jogos'),
+                _legendItem('V', 'Vitórias'),
+                _legendItem('E', 'Empates'),
+                _legendItem('D', 'Derrotas'),
+                _legendItem('GP', 'Gols Pró'),
+                _legendItem('GC', 'Gols Contra'),
+                _legendItem('SG', 'Saldo Gols'),
+                _legendItem('PD', 'Pts Disciplinares'),
+                _legendItem('PE', 'Pts Extras'),
+                _legendItem('APR %', 'Aproveitamento'),
+              ]
+            ),
             const Divider(),
             const Text('Zona de Classificação:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
             const SizedBox(height: 4),
-            if (isModel2) ...[_colorLegendItem(Colors.green.withOpacity(0.3), '1º e 2º: Semifinal'), const SizedBox(height: 2), _colorLegendItem(Colors.blue.withOpacity(0.3), '3º ao 6º: Playoff')]
-            else ...[_colorLegendItem(Colors.green.withOpacity(0.3), '1º ao 4º: Semifinal')],
+            if (isModel2) ...[
+              _colorLegendItem(Colors.green.withOpacity(0.3), '1º e 2º: Semifinal'),
+              const SizedBox(height: 2), 
+              _colorLegendItem(Colors.blue.withOpacity(0.3), '3º ao 6º: Playoff')
+            ] else ...[
+              _colorLegendItem(Colors.green.withOpacity(0.3), '1º ao 4º: Semifinal')
+            ],
           ])),
         ),
         if (!hideCriteria) ...[

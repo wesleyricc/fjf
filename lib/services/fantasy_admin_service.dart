@@ -1,13 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/fantasy_models.dart';
-import 'fantasy_service.dart'; // Importar para buscar config
+import 'fantasy_service.dart'; 
 
 class FantasyAdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FantasyService _fantasyService = FantasyService();
 
-  // --- 0. LEITURA DOS SCOUTS (Agora recebe a Config) ---
+  // --- 0. LEITURA DOS SCOUTS ---
   Future<Map<String, double>> _fetchSeasonScores(String seasonId, int round, FantasyGameConfig config) async {
     final Map<String, double> scoresMap = {};
     debugPrint("--- LENDO SCOUTS R$round (Temporada $seasonId) ---");
@@ -63,7 +63,60 @@ class FantasyAdminService {
     return rawMap.map((key, value) => MapEntry(key.toString(), (value is num) ? value.toInt() : 0));
   }
 
-  // --- 1. LÓGICA DE CÁLCULO DE PREÇO (Agora usa Config) ---
+  // --- NOVO: CÁLCULO DA MÉDIA DO TÉCNICO ---
+  Future<void> _calculateCoachesAverages(Map<String, double> scoresMap) async {
+    try {
+      debugPrint("--- CALCULANDO PONTUAÇÃO DOS TÉCNICOS ---");
+      
+      // 1. Busca todos os jogadores do mercado para mapear Time e Posição
+      final marketSnap = await _firestore.collection('fantasy_market_players').get();
+      final List<FantasyPlayer> allPlayers = marketSnap.docs.map((d) => FantasyPlayer.fromFirestore(d)).toList();
+
+      // Mapas auxiliares
+      final Map<String, List<double>> teamScores = {}; // TeamID -> Lista de pontuações
+      final Map<String, String> teamCoaches = {};      // TeamID -> CoachID
+
+      // 2. Popula os mapas
+      for (var player in allPlayers) {
+        if (player.position == 'Técnico') {
+          // Registra quem é o técnico do time
+          if (player.teamId.isNotEmpty) {
+            teamCoaches[player.teamId] = player.playerId;
+          }
+        } else {
+          // Se o jogador pontuou, adiciona à lista do time
+          if (scoresMap.containsKey(player.playerId)) {
+            final score = scoresMap[player.playerId]!;
+            if (player.teamId.isNotEmpty) {
+              teamScores.putIfAbsent(player.teamId, () => []).add(score);
+            }
+          }
+        }
+      }
+
+      // 3. Calcula a média e atribui ao técnico
+      teamCoaches.forEach((teamId, coachId) {
+        final scores = teamScores[teamId] ?? [];
+        double average = 0.0;
+        
+        if (scores.isNotEmpty) {
+          final double total = scores.reduce((a, b) => a + b);
+          average = total / scores.length;
+        }
+
+        // Insere a pontuação do técnico no mapa principal de scores
+        // Isso garante que ele será processado nas rotinas de valorização e pontuação dos times
+        scoresMap[coachId] = double.parse(average.toStringAsFixed(2));
+        
+        debugPrint("Técnico do time $teamId recebeu $average pts (Baseado em ${scores.length} atletas).");
+      });
+
+    } catch (e) {
+      debugPrint("Erro ao calcular média dos técnicos: $e");
+    }
+  }
+
+  // --- 1. LÓGICA DE CÁLCULO DE PREÇO ---
   
   Map<String, dynamic> _calculateNewPriceState(
     double currentPrice, 
@@ -72,7 +125,6 @@ class FantasyAdminService {
     int round,
     FantasyGameConfig config,
   ) {
-    // 1. VALORIZAÇÃO
     double expectation = currentPrice * config.factorExpectation;
     double performance = score - expectation;
     double rawVariation = performance * config.factorVariation;
@@ -88,7 +140,6 @@ class FantasyAdminService {
     finalVariation = double.parse(finalVariation.toStringAsFixed(1));
     newPrice = double.parse(newPrice.toStringAsFixed(1));
 
-    // 2. CRIAÇÃO DO ITEM DE HISTÓRICO
     return {
       'new_price': newPrice,
       'variation': finalVariation,
@@ -122,17 +173,13 @@ class FantasyAdminService {
       
       double score = actualScores[player.playerId] ?? 0.0;
       double currentPrice = player.currentPrice;
-
-      // --- played é sempre TRUE no MVP ---
       bool played = true; 
       
-      // Chama a lógica centralizada de cálculo PASSANDO A CONFIG
       final result = _calculateNewPriceState(currentPrice, score, played, roundForHistory ?? 0, config);
       
       double newPrice = result['new_price'];
       newPricesMap[player.playerId] = newPrice;
 
-      // ATUALIZAÇÃO DO HISTÓRICO
       List<Map<String, dynamic>> updatedHistory = List.from(player.history);
       
       if (roundForHistory != null) {
@@ -140,7 +187,6 @@ class FantasyAdminService {
         updatedHistory.add(result['history_entry']);
       }
 
-      // --- CÁLCULO DA MÉDIA ---
       double sumScores = 0.0;
       int countMatches = 0;
 
@@ -167,7 +213,7 @@ class FantasyAdminService {
     return newPricesMap;
   }
 
-  // --- 3. PROCESSAMENTO DE TIMES (Mantido, mas recebe apenas os preços novos) ---
+  // --- 3. PROCESSAMENTO DE TIMES ---
 
   Future<String> processUserTeams(Map<String, double> newPricesMap, Map<String, double> actualScores, int round) async {
     try {
@@ -223,19 +269,20 @@ class FantasyAdminService {
 
   Future<String> closeRoundFullRoutine(String seasonId, int round) async {
     try {
-      // 1. CARREGA CONFIG
       final config = await _fantasyService.getGameConfig();
 
-      // 2. USA CONFIG NA LEITURA DE PONTOS
       final Map<String, double> scores = await _fetchSeasonScores(seasonId, round, config);
+      
+      // INJETADO: Cálculo dos técnicos antes de processar valores
+      await _calculateCoachesAverages(scores);
+
       if (scores.isEmpty) return "AVISO: Nenhum scout encontrado na Rodada $round.";
 
-      // 3. USA CONFIG NO CÁLCULO DO MERCADO
       final newPrices = await processMarketValuation(seasonId, scores, config, roundForHistory: round);
       
       final resultTeams = await processUserTeams(newPrices, scores, round);
       
-      return "Rodada $round fechada com Config Dinâmica.\nJogadores: ${scores.length}\nTimes: $resultTeams";
+      return "Rodada $round fechada com Config Dinâmica.\nJogadores + Técnicos: ${scores.length}\nTimes: $resultTeams";
     } catch (e) {
       return "Erro crítico: $e";
     }
@@ -247,7 +294,6 @@ class FantasyAdminService {
     try {
       debugPrint("=== INICIANDO RECONSTRUÇÃO DA TEMPORADA (1 a $maxRound) ===");
       
-      // 1. CARREGA CONFIG
       final config = await _fantasyService.getGameConfig();
 
       final playersSnap = await _firestore.collection('fantasy_market_players').get();
@@ -258,7 +304,6 @@ class FantasyAdminService {
         final p = FantasyPlayer.fromFirestore(doc);
         double startPrice = p.currentPrice;
         
-        // Tenta achar o preço inicial (antes da R1) no histórico existente
         if (p.history.isNotEmpty) {
            var r1 = p.history.where((h) => h['round'] == 1);
            if (r1.isNotEmpty) startPrice = (r1.first['price_before'] as num).toDouble();
@@ -281,16 +326,16 @@ class FantasyAdminService {
       for (int r = 1; r <= maxRound; r++) {
         debugPrint("> Processando Rodada $r...");
 
-        // Usa Config nos Scores
         final Map<String, double> roundScores = await _fetchSeasonScores(seasonId, r, config);
+        
+        // INJETADO: Cálculo dos técnicos no reprocessamento
+        await _calculateCoachesAverages(roundScores);
 
-        // Atualizar Mercado (Simulação)
         playerSimulationState.forEach((pid, state) {
           double priceBefore = state['current_price'];
           double score = roundScores[pid] ?? 0.0;
           bool played = true; 
 
-          // Usa Config no cálculo de preço
           final result = _calculateNewPriceState(priceBefore, score, played, r, config);
 
           state['current_price'] = result['new_price'];
@@ -304,7 +349,6 @@ class FantasyAdminService {
           }
         });
 
-        // Atualizar Times (código mantido igual)
         final WriteBatch roundBatch = _firestore.batch();
         for (var teamDoc in teamsSnap.docs) {
           final historyDocRef = teamDoc.reference.collection('history').doc(r.toString());
@@ -341,7 +385,7 @@ class FantasyAdminService {
         await roundBatch.commit();
       }
 
-      // SALVAMENTO FINAL (Código mantido igual)
+      // SALVAMENTO FINAL
       debugPrint("Salvando estado final...");
       List<QueryDocumentSnapshot> allPlayerDocs = playersSnap.docs;
       int chunkSize = 400;

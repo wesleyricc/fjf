@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // Import necessário
 
 import '../services/fantasy_auth_service.dart';
 import '../services/championship_service.dart';
@@ -18,36 +19,26 @@ class FantasyHomeScreen extends StatefulWidget {
 
 class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   
-  // Removemos o initState problemático.
-  // A inicialização agora é reativa no build.
-
   @override
   Widget build(BuildContext context) {
     return Consumer<FantasyAuthService>(
       builder: (context, authService, _) {
-        // 1. Estado de Auth Loading
         if (authService.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
         
-        // 2. Não Logado -> Mostra Tela de Login
         if (!authService.isAuthenticated) return _buildLoginView(context, authService);
 
-        // 3. Logado -> Garante que o ViewModel do Fantasy está inicializado
-        // Usamos addPostFrameCallback para não chamar setState durante o build
         WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             final champService = Provider.of<ChampionshipService>(context, listen: false);
-            // O método init agora é seguro (idempotente), podemos chamar sem medo
             Provider.of<FantasyHomeViewModel>(context, listen: false)
                 .init(authService.user!.uid, champService.currentSeasonId);
         });
 
-        // 4. Exibe o Dashboard consumindo o ViewModel
         return Consumer<FantasyHomeViewModel>(
           builder: (context, vm, child) {
             if (vm.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
             if (vm.errorMessage != null) return Scaffold(body: Center(child: Text(vm.errorMessage!)));
-            // Se carregou mas não tem time (caso raro de erro no backend ou delay do create), trata aqui
-            if (vm.team == null) return const Scaffold(body: Center(child: CircularProgressIndicator())); // Ainda carregando ou criando time
+            if (vm.team == null) return const Scaffold(body: Center(child: CircularProgressIndicator())); 
 
             return _buildDashboardView(context, authService, vm);
           },
@@ -56,7 +47,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  // --- LOGIN VIEW (Mantida igual) ---
+  // --- LOGIN VIEW ---
   Widget _buildLoginView(BuildContext context, FantasyAuthService authService) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -92,7 +83,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  // --- DASHBOARD VIEW (Mantida igual) ---
+  // --- DASHBOARD VIEW ---
   Widget _buildDashboardView(BuildContext context, FantasyAuthService authService, FantasyHomeViewModel vm) {
     final team = vm.team!;
 
@@ -105,8 +96,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
             icon: const Icon(Icons.logout), 
             tooltip: "Sair", 
             onPressed: () async {
-               // Reseta o viewmodel ao sair para forçar recarga no próximo login
-               // (Opcional, mas boa prática se o VM for singleton)
                await authService.signOut();
             }
           )
@@ -163,7 +152,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  // --- PREVIEW ESCALAÇÃO (Mantido igual) ---
+  // --- PREVIEW ESCALAÇÃO ---
   Widget _buildLineupPreview(BuildContext context, FantasyHomeViewModel vm) {
     if (vm.team!.lineupPlayerIds.isEmpty) {
       return Container(
@@ -255,11 +244,22 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   int _rankingPos(String pos) {
     switch (pos) { case 'Goleiro': return 1; case 'Fixo': return 2; case 'Ala': return 3; case 'Pivô': return 4; case 'Técnico': return 5; default: return 99; }
   }
+  
   Color _getShieldColor(String type) {
     switch (type) { case '1': return Colors.blue; case '2': return Colors.red; case '3': return Colors.green; case '4': return Colors.orange; case '5': return Colors.purple; case '6': return Colors.black; case '7': return Colors.teal; case '8': return Colors.amber; case '9': return Colors.indigo; case '10': return Colors.deepOrange; default: return Colors.blue; }
   }
+  
   IconData _getShieldIcon(String type) {
-    int id = int.tryParse(type) ?? 1; if (id >= 9) return Icons.verified_user; if (id >= 7) return Icons.security; return Icons.shield;
+    switch (type) {
+      case '6': return Icons.sports_soccer;
+      case '7': return FontAwesomeIcons.shieldHalved;
+      case '8': return FontAwesomeIcons.shieldCat;
+      case '9': return FontAwesomeIcons.futbol;
+      case '10': return FontAwesomeIcons.userShield;
+      case '11': return FontAwesomeIcons.shirt;
+      case '12': return FontAwesomeIcons.trophy;
+      default: return Icons.shield;
+    }
   }
 
   Widget _buildTeamHeader(BuildContext context, FantasyTeam team, bool isMarketOpen, int round) {
@@ -280,7 +280,22 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
             ]),
           ),
           Row(children: [
-              Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: CircleAvatar(radius: 32, backgroundColor: _getShieldColor(team.shieldType), child: Icon(_getShieldIcon(team.shieldType), color: Colors.white, size: 34))),
+              // --- CORREÇÃO AQUI: Verifica customLogoUrl ---
+              Container(
+                padding: const EdgeInsets.all(4), 
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), 
+                child: (team.customLogoUrl != null && team.customLogoUrl!.isNotEmpty)
+                    ? CircleAvatar(
+                        radius: 32, 
+                        backgroundColor: Colors.transparent, 
+                        backgroundImage: CachedNetworkImageProvider(team.customLogoUrl!),
+                      )
+                    : CircleAvatar(
+                        radius: 32, 
+                        backgroundColor: _getShieldColor(team.shieldType), 
+                        child: Icon(_getShieldIcon(team.shieldType), color: Colors.white, size: 34),
+                      ),
+              ),
               const SizedBox(width: 16),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(team.teamName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis),

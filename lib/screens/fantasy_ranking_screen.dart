@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // Para os ícones padrão
 import '../services/fantasy_service.dart';
 import '../models/fantasy_models.dart';
 import '../services/fantasy_auth_service.dart';
@@ -25,8 +27,6 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen> with Single
     return Scaffold(
       appBar: AppBar(
         title: const Text("Classificação"),
-        //backgroundColor: Colors.green[800],
-        //foregroundColor: Colors.white,
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
@@ -41,8 +41,8 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen> with Single
       body: TabBarView(
         controller: _tabController,
         children: const [
-          _RankingList(isGlobal: false), // Aba Rodada
-          _RankingList(isGlobal: true),  // Aba Geral
+          _RankingList(isGlobal: false), 
+          _RankingList(isGlobal: true),  
         ],
       ),
     );
@@ -98,47 +98,51 @@ class _RankingList extends StatelessWidget {
   }
 
   Widget _buildRankingCard(BuildContext context, int rank, FantasyTeam team, bool isMe, bool isGlobal) {
-    // Definição de Cores/Ícones para TOP 3
     Color? rankColor;
-    IconData? rankIcon;
+    IconData? rankIcon; // Ícone de troféu para TOP 3
     double elevation = 1;
 
+    // Cores para Top 3
     if (rank == 1) {
-      rankColor = const Color(0xFFFFD700); // Dourado
+      rankColor = const Color(0xFFFFD700); 
       rankIcon = Icons.emoji_events;
       elevation = 4;
     } else if (rank == 2) {
-      rankColor = const Color(0xFFC0C0C0); // Prata
+      rankColor = const Color(0xFFC0C0C0); 
       rankIcon = Icons.looks_two;
     } else if (rank == 3) {
-      rankColor = const Color(0xFFCD7F32); // Bronze
+      rankColor = const Color(0xFFCD7F32); 
       rankIcon = Icons.looks_3;
     }
 
-    // Valor a exibir (Pontos da Rodada ou Total)
     final double displayPoints = isGlobal ? team.totalPoints : team.lastScore;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       elevation: elevation,
-      color: isMe ? Colors.green[50] : Colors.white, // Destaca se for o usuário
+      color: isMe ? Colors.green[50] : Colors.white, 
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: isMe ? const BorderSide(color: Colors.green, width: 2) : BorderSide.none,
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        // 1. Posição (Rank)
-        leading: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        
+        // 1. Posição (Rank) e Logo
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (rankIcon != null)
-              Icon(rankIcon, color: rankColor, size: 28)
-            else
-              Text(
-                "$rankº",
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.grey),
-              ),
+            // Posição
+            SizedBox(
+              width: 30,
+              child: rankIcon != null 
+                  ? Icon(rankIcon, color: rankColor, size: 24)
+                  : Text("$rankº", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey), textAlign: TextAlign.center),
+            ),
+            const SizedBox(width: 8),
+            
+            // LOGO DO TIME (Customizada ou Padrão)
+            _buildTeamLogo(team),
           ],
         ),
         
@@ -167,20 +171,54 @@ class _RankingList extends StatelessWidget {
             children: [
               Text(
                 displayPoints.toStringAsFixed(2),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold, 
-                  fontSize: 16,
-                  color: Colors.blue[800],
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue[800]),
               ),
-              Text(
-                "pts",
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-              ),
+              Text("pts", style: TextStyle(fontSize: 10, color: Colors.grey[600])),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // Helper para desenhar a logo
+  Widget _buildTeamLogo(FantasyTeam team) {
+    if (team.customLogoUrl != null && team.customLogoUrl!.isNotEmpty) {
+      return CircleAvatar(
+        radius: 20,
+        backgroundColor: Colors.transparent,
+        backgroundImage: CachedNetworkImageProvider(team.customLogoUrl!),
+      );
+    } else {
+      return CircleAvatar(
+        radius: 20,
+        backgroundColor: _getShieldColor(team.shieldType),
+        child: Icon(_getShieldIcon(team.shieldType), color: Colors.white, size: 20),
+      );
+    }
+  }
+
+  // Helpers de Iconografia (Copiados para manter consistência com a tela de edição)
+  Color _getShieldColor(String type) {
+    switch (type) {
+      case '1': return Colors.blue; case '2': return Colors.red; case '3': return Colors.green;
+      case '4': return Colors.orange; case '5': return Colors.purple; case '6': return Colors.black;
+      case '7': return Colors.teal; case '8': return Colors.amber; case '9': return Colors.indigo;
+      case '10': return Colors.deepOrange; case '11': return Colors.blueGrey; case '12': return Colors.brown;
+      default: return Colors.blue;
+    }
+  }
+
+  IconData _getShieldIcon(String type) {
+    switch (type) {
+      case '6': return Icons.sports_soccer;
+      case '7': return FontAwesomeIcons.shieldHalved;
+      case '8': return FontAwesomeIcons.shieldCat;
+      case '9': return FontAwesomeIcons.futbol;
+      case '10': return FontAwesomeIcons.userShield;
+      case '11': return FontAwesomeIcons.shirt;
+      case '12': return FontAwesomeIcons.trophy;
+      default: return Icons.shield;
+    }
   }
 }

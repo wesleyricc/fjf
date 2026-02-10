@@ -79,7 +79,7 @@ class SliverTeamPlayersGrid extends StatelessWidget {
   }
 }
 
-// --- SLIVER LIST: STAFF ---
+// --- SLIVER GRID: STAFF (DINÂMICO) ---
 class SliverTeamStaffList extends StatelessWidget {
   final List<Player> staff;
   final String teamId;
@@ -98,23 +98,32 @@ class SliverTeamStaffList extends StatelessWidget {
   Widget build(BuildContext context) {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
+    // --- LÓGICA DE LAYOUT DINÂMICO ---
+    // Se tiver exatamente 2 membros, usa o layout de 2 colunas (Igual aos atletas).
+    // Caso contrário (3 membros, 4, etc.), mantém o layout de 3 colunas.
+    final bool usePlayerLayout = staff.length == 2;
+    
+    final int crossAxisCount = usePlayerLayout ? 2 : 3;
+    // O aspecto 0.70 é o dos atletas (cards maiores). 0.65 é o compacto (cards menores).
+    final double childAspectRatio = usePlayerLayout ? 0.70 : 0.65;
+
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      sliver: SliverList(
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          childAspectRatio: childAspectRatio,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: SizedBox(
-                height: 260, 
-                child: _MemberCard(
-                  member: staff[index],
-                  teamId: teamId,
-                  teamName: teamName,
-                  isAdmin: isAdmin,
-                  onDelete: () => _deletePlayer(context, staff[index], seasonId),
-                ),
-              ),
+            return _MemberCard(
+              member: staff[index],
+              teamId: teamId,
+              teamName: teamName,
+              isAdmin: isAdmin,
+              onDelete: () => _deletePlayer(context, staff[index], seasonId),
             );
           },
           childCount: staff.length,
@@ -178,142 +187,141 @@ class _MemberCard extends StatelessWidget {
     final bool isGoalkeeper = member.isGoalkeeper;
     final bool isStaff = member.isStaff;
 
-    
     return RepaintBoundary(
-    child: Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: member.id))),
-        child: Stack(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 1. FOTO
-                Expanded(
-                  flex: 5,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.grey.shade300, Colors.white],
+      child: Card(
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: member.id))),
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. FOTO
+                  Expanded(
+                    flex: 5,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.grey.shade300, Colors.white],
+                            ),
                           ),
                         ),
-                      ),
-                      if (member.photoUrl.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl: member.photoUrl,
-                          fit: BoxFit.cover,
-                          alignment: Alignment.topCenter,
-                          cacheManager: PlayerCacheManager.instance,
-                          // OTIMIZAÇÃO: MemCache + FadeIn
-                          memCacheWidth: 200, 
-                          fadeInDuration: const Duration(milliseconds: 200),
-                          placeholder: (c, u) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 50, color: Colors.grey.shade400)),
-                          errorWidget: (c, u, e) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 50, color: Colors.grey.shade400)),
-                        )
-                      else
-                        Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 80, color: Colors.grey.shade400)),
+                        if (member.photoUrl.isNotEmpty)
+                          CachedNetworkImage(
+                            imageUrl: member.photoUrl,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
+                            cacheManager: PlayerCacheManager.instance,
+                            memCacheWidth: 200, 
+                            fadeInDuration: const Duration(milliseconds: 200),
+                            placeholder: (c, u) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 40, color: Colors.grey.shade400)),
+                            errorWidget: (c, u, e) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 40, color: Colors.grey.shade400)),
+                          )
+                        else
+                          Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 60, color: Colors.grey.shade400)),
 
-                      if (!isStaff && member.jerseyNumber != null)
-                        Positioned(
-                          top: 6,
-                          left: 6,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: isGoalkeeper ? Colors.black87 : primaryColor,
-                              shape: BoxShape.circle,
-                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
-                            ),
-                            child: Text(
-                              '${member.jerseyNumber}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12),
+                        if (!isStaff && member.jerseyNumber != null)
+                          Positioned(
+                            top: 4,
+                            left: 4,
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                color: isGoalkeeper ? Colors.black87 : primaryColor,
+                                shape: BoxShape.circle,
+                                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
+                              ),
+                              child: Text(
+                                '${member.jerseyNumber}',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11),
+                              ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
-                // 2. DADOS
-                Container(
-                  padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
-                  color: Colors.white,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        member.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.1),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        isStaff 
-                            ? (member.staffRole ?? 'Comissão')
-                            : (isGoalkeeper ? 'Goleiro' : (member.position ?? 'Atleta')),
-                        style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w500),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      
-                      FittedBox( 
-                        fit: BoxFit.scaleDown,
-                        child: Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 3,
-                          runSpacing: 2,
-                          children: [
-                            if (!isStaff) ...[
-                              _StatIcon(Icons.sports_soccer, member.goals, Colors.black, "Gols"),
-                              _StatIcon(Icons.assistant, member.assists, Colors.blue, "Assistências"),
-                              if (isGoalkeeper)
-                                _StatIcon(Icons.pan_tool_outlined, member.goalsConceded, Colors.blueGrey, "Gols Sofridos"),
+                  // 2. DADOS
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
+                    color: Colors.white,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          member.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, height: 1.1),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          isStaff 
+                              ? (member.staffRole ?? 'Comissão')
+                              : (isGoalkeeper ? 'Goleiro' : (member.position ?? 'Atleta')),
+                          style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.w500),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        
+                        FittedBox( 
+                          fit: BoxFit.scaleDown,
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 3,
+                            runSpacing: 2,
+                            children: [
+                              if (!isStaff) ...[
+                                _StatIcon(Icons.sports_soccer, member.goals, Colors.black, "Gols"),
+                                _StatIcon(Icons.assistant, member.assists, Colors.blue, "Assistências"),
+                                if (isGoalkeeper)
+                                  _StatIcon(Icons.pan_tool_outlined, member.goalsConceded, Colors.blueGrey, "Gols Sofridos"),
+                              ],
+                              _StatIcon(Icons.style, member.totalYellowCards, Colors.amber.shade700, "Amarelos"),
+                              _StatIcon(Icons.style, member.totalRedCards, Colors.red, "Vermelhos"),
                             ],
-                            _StatIcon(Icons.style, member.totalYellowCards, Colors.amber.shade700, "Amarelos"),
-                            _StatIcon(Icons.style, member.totalRedCards, Colors.red, "Vermelhos"),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              if (isAdmin)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: PopupMenuButton<String>(
+                    icon: const CircleAvatar(backgroundColor: Colors.white70, radius: 10, child: Icon(Icons.more_vert, size: 14, color: Colors.black)),
+                    padding: EdgeInsets.zero,
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => EditPlayerScreen(teamId: teamId, teamName: teamName, player: member)));
+                      } else if (value == 'delete') {
+                        onDelete();
+                      }
+                    },
+                    itemBuilder: (BuildContext context) => [
+                      const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),
+                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('Excluir')])),
                     ],
                   ),
                 ),
-              ],
-            ),
-
-            if (isAdmin)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: PopupMenuButton<String>(
-                  icon: const CircleAvatar(backgroundColor: Colors.white70, radius: 12, child: Icon(Icons.more_vert, size: 16, color: Colors.black)),
-                  onSelected: (value) {
-                    if (value == 'edit') {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => EditPlayerScreen(teamId: teamId, teamName: teamName, player: member)));
-                    } else if (value == 'delete') {
-                      onDelete();
-                    }
-                  },
-                  itemBuilder: (BuildContext context) => [
-                    const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),
-                    const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('Excluir')])),
-                  ],
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
-    )
     );
   }
 }
@@ -334,18 +342,18 @@ class _StatIcon extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(3),
           border: Border.all(color: borderColor, width: 0.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 10, color: color), 
+            Icon(icon, size: 9, color: color), 
             const SizedBox(width: 2),
-            Text('$value', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: color)),
+            Text('$value', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
       ),

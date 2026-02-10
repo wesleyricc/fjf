@@ -313,7 +313,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           body: RefreshIndicator(
             onRefresh: () => service.fetchStaticData(forceRefresh: true),
             child: CustomScrollView(
-              cacheExtent: 1000,
+              //cacheExtent: 1000,
               slivers: [
                 // 1. App Bar
                 SliverAppBar(

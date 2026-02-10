@@ -11,16 +11,16 @@ class SponsorBannerRotator extends StatefulWidget {
   final String location;
   final bool isStatic;
   final double? height; 
-  final int? round; 
-  final String? playoffStage; 
+  
+  // NOVO: Parâmetro único de filtro (ex: "1", "5", "semifinal", "final")
+  final String? filterTag; 
 
   const SponsorBannerRotator({
     super.key, 
     this.location = 'footer_home', 
     this.isStatic = false,
     this.height, 
-    this.round,
-    this.playoffStage,
+    this.filterTag, 
   });
 
   @override
@@ -28,17 +28,15 @@ class SponsorBannerRotator extends StatefulWidget {
 }
 
 class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
-  // Lista filtrada localmente
   List<DocumentSnapshot> _filteredSponsors = [];
   int _currentIndex = 0;
   Timer? _timer;
 
-  static const String _partnerContactUrl = "https://wa.me/5548999999999?text=Quero%20anunciar%20no%20App%20FJF";
+  static const String _partnerContactUrl = "https://wa.me/5548996381626?text=Quero%20anunciar%20no%20App%20FJF";
 
   @override
   void initState() {
     super.initState();
-    // Inicia o timer logo de cara. A filtragem acontece no didChangeDependencies
     _startTimer();
   }
 
@@ -52,13 +50,12 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   void didUpdateWidget(covariant SponsorBannerRotator oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.location != oldWidget.location || 
-        widget.round != oldWidget.round || 
-        widget.playoffStage != oldWidget.playoffStage) {
+        widget.filterTag != oldWidget.filterTag) {
       _filterSponsorsFromCache();
     }
   }
 
-  // --- NOVA LÓGICA: Filtra da memória, CUSTO ZERO de leitura ---
+  // --- LÓGICA UNIFICADA ---
   void _filterSponsorsFromCache() {
     final service = Provider.of<ChampionshipService>(context, listen: true);
     final allSponsors = service.sponsors;
@@ -66,27 +63,37 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     final filtered = allSponsors.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
       
-      // 1. Filtra Localização
+      // 1. Filtra Localização (Obrigatório)
       if (data['location'] != widget.location) return false;
 
-      // 2. Filtra Rodada (se especificado no widget e no doc)
-      if (widget.round != null) {
-        // Se o banner tem rodada especifica, tem que bater. Se não tem, aparece em todas?
-        // Regra atual: Se o widget pede rodada X, o banner tem que ser da rodada X.
-        if (data['round'] != null && data['round'] != widget.round) return false;
-      }
+      // 2. Filtra pela Tag Unificada (Campo 'round' no Firestore)
+      // Se o widget pede um filtro específico (ex: "1" ou "semifinal")
+      if (widget.filterTag != null) {
+        final docRound = data['round']; // Pode ser int ou String no banco
 
-      // 3. Filtra Playoff
-      if (widget.playoffStage != null) {
-         if (data['playoffStage'] != null && data['playoffStage'] != widget.playoffStage) return false;
-      }
+        // Se o patrocinador tem um round definido (específico)
+        if (docRound != null && docRound.toString().isNotEmpty) {
+          // Se não bater exatamente com o filtro atual, esconde.
+          // Ex: docRound="2" vs filter="1" -> False
+          // Ex: docRound="semifinal" vs filter="1" -> False
+          if (docRound.toString() != widget.filterTag) {
+            return false;
+          }
+        }
+        // Se docRound for null, é genérico, então passa (return true).
+      } 
+      // Se o widget NÃO tem filtro (ex: Home), mostra apenas os genéricos ou todos?
+      // Pela lógica anterior, a Home mostrava tudo ou genéricos. 
+      // Vamos assumir: Se a tela não filtra (filterTag null), mostra genéricos (round null)
+      // OU mostra todos? Geralmente 'footer_home' não tem filtro de rodada.
+      // Se for 'footer_home', mostra todos daquela location.
 
       return true;
     }).toList();
 
     setState(() {
       _filteredSponsors = filtered;
-      _currentIndex = 0; // Reseta índice ao mudar lista
+      _currentIndex = 0; 
     });
   }
 
@@ -133,7 +140,6 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   Widget build(BuildContext context) {
     final double effectiveHeight = widget.height ?? 100;
 
-    // Se não tiver patrocinadores filtrados, mostra House Ad
     if (_filteredSponsors.isEmpty) {
       return _buildHouseAd(height: effectiveHeight);
     }

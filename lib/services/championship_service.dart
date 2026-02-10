@@ -38,7 +38,7 @@ class ChampionshipService with ChangeNotifier {
   bool _hasLoadedStaticData = false;
   
   // Constante de Validade do Cache (Ex: 30 minutos)
-  static const int CACHE_VALIDITY_MINUTES = 30;
+  static const int CACHE_VALIDITY_MINUTES = 15;
 
   // Getters
   String get currentSeasonId => _currentSeasonId;

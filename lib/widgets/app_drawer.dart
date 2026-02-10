@@ -40,7 +40,7 @@ class AppDrawer extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor,
                   image: const DecorationImage(
-                    image: AssetImage('assets/logo3_fjf.png'), // Fundo sutil se quiser
+                    image: AssetImage('assets/logo3_fjf.png'),
                     opacity: 0.1,
                     fit: BoxFit.cover,
                   ),
@@ -73,7 +73,7 @@ class AppDrawer extends StatelessWidget {
                     _buildSectionHeader(context, "COMPETIÇÃO"),
                     _buildDrawerItem(context, Icons.calendar_month, 'Tabela de Jogos', '/fixtures'),
                     _buildDrawerItem(context, Icons.leaderboard, 'Classificação', '/standings'),
-                    _buildDrawerItem(context, Icons.group, 'Equipes', '/teams'),
+                    // ITEM "Equipes" REMOVIDO DAQUI
 
                     _buildSectionHeader(context, "DADOS & ESTATÍSTICAS"),
                     _buildDrawerItem(context, Icons.query_stats, 'Estatísticas de Equipes', '/team-stats'),
@@ -81,7 +81,6 @@ class AppDrawer extends StatelessWidget {
                     _buildDrawerItem(context, Icons.history_toggle_off, 'Suspensões', '/suspension-history'),
                     _buildDrawerItem(context, Icons.compare_arrows, 'Comparador de Atletas', '/player-comparison'),
                     
-                    // --- NOVA SEÇÃO SOBRE A FJF ---
                     _buildSectionHeader(context, "SOBRE A FJF"),
                     _buildDrawerItem(context, Icons.history_edu, 'Nossa História', '/about-history'),
                     _buildDrawerItem(context, Icons.groups_2, 'Diretoria', '/about-board'),
@@ -123,7 +122,7 @@ class AppDrawer extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'FJF App v2.1.0',
+                  'FJF App v2.1.1',
                   style: TextStyle(color: Colors.grey[400], fontSize: 10),
                 ),
               ),
@@ -152,7 +151,7 @@ class AppDrawer extends StatelessWidget {
   Widget _buildDrawerItem(BuildContext context, IconData icon, String title, String route, {bool highlight = false}) {
     return ListTile(
       dense: true,
-      horizontalTitleGap: 8, // Aproxima ícone do texto
+      horizontalTitleGap: 8,
       leading: Icon(
         icon, 
         color: highlight ? Colors.blueAccent : Colors.grey[700],

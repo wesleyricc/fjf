@@ -14,7 +14,7 @@ class FantasyPlayer {
   final int matchesPlayed;
   final String status;
   
-  // --- NOVO: Histórico para auditoria e recálculo exato da média ---
+  // Histórico
   final List<Map<String, dynamic>> history; 
 
   FantasyPlayer({
@@ -30,7 +30,7 @@ class FantasyPlayer {
     required this.averageScore,
     required this.matchesPlayed,
     required this.status,
-    required this.history, // Obrigatório
+    required this.history, 
   });
 
   factory FantasyPlayer.fromFirestore(DocumentSnapshot doc) {
@@ -48,7 +48,6 @@ class FantasyPlayer {
       averageScore: (data['average_score'] ?? 0).toDouble(),
       matchesPlayed: (data['matches_played'] ?? 0).toInt(),
       status: data['status'] ?? 'probable',
-      // Carrega o histórico (ou lista vazia se não existir)
       history: List<Map<String, dynamic>>.from(data['history'] ?? []),
     );
   }
@@ -66,7 +65,7 @@ class FantasyPlayer {
       'average_score': averageScore,
       'matches_played': matchesPlayed,
       'status': status,
-      'history': history, // Salva o histórico
+      'history': history, 
     };
   }
 }
@@ -84,6 +83,7 @@ class FantasyTeam {
   final List<String> lineupPlayerIds;
   final String? captainId;
   final String shieldType; 
+  final String? customLogoUrl; // <-- NOVO CAMPO
 
   FantasyTeam({
     required this.id,
@@ -98,6 +98,7 @@ class FantasyTeam {
     required this.lineupPlayerIds,
     this.captainId,
     required this.shieldType,
+    this.customLogoUrl, // <-- NOVO
   });
 
   factory FantasyTeam.fromFirestore(DocumentSnapshot doc) {
@@ -117,7 +118,8 @@ class FantasyTeam {
           data['lineup_player_ids'] ?? data['lineup'] ?? []
       ),
       captainId: data['captain_id'],
-      shieldType: data['shield_type'] ?? '1', 
+      shieldType: data['shield_type'] ?? '1',
+      customLogoUrl: data['custom_logo_url'], // <-- NOVO
     );
   }
 
@@ -133,21 +135,18 @@ class FantasyTeam {
       'current_balance': currentBalance,
       'lineup_player_ids': lineupPlayerIds,
       'captain_id': captainId,
-      'shield_type': shieldType, 
+      'shield_type': shieldType,
+      'custom_logo_url': customLogoUrl, // <-- NOVO
     };
   }
 }
 
-/// --- CLASSE NOVA DE CONFIGURAÇÃO ---
 class FantasyGameConfig {
-  // Pontuação
   final double ptsGoal;
   final double ptsAssist;
   final double ptsYellowCard;
   final double ptsRedCard;
   final double ptsGoalConceded;
-
-  // Economia
   final double factorExpectation;
   final double factorVariation;
   final double capLimitPercent;
@@ -165,7 +164,6 @@ class FantasyGameConfig {
     required this.minPrice,
   });
 
-  // Valores padrão (caso não exista no banco)
   factory FantasyGameConfig.defaults() {
     return FantasyGameConfig(
       ptsGoal: 5.0,

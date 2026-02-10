@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import necessário
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -22,19 +22,19 @@ import 'services/championship_service.dart';
 import 'services/fantasy_service.dart';      
 import 'services/fantasy_auth_service.dart'; 
 
-//Viewmodels
+// Viewmodels
 import 'viewmodels/photo_sales_viewmodel.dart';
 import 'viewmodels/fantasy_home_viewmodel.dart';
 import 'viewmodels/fantasy_lineup_viewmodel.dart';
 
-//Repositories
+// Repositories
 import 'repositories/fantasy_repository.dart';
 
 // Screens
 import 'screens/splash_screen.dart';
 import 'screens/fixtures_screen.dart';
 import 'screens/standings_screen.dart';
-import 'screens/teams_list_screen.dart';
+// import 'screens/teams_list_screen.dart'; // REMOVIDO
 import 'screens/team_stats_screen.dart';
 import 'screens/player_stats_screen.dart';
 import 'screens/suspension_history_screen.dart';
@@ -45,7 +45,6 @@ import 'screens/photo_sales_screen.dart';
 import 'screens/fantasy_home_screen.dart';
 import 'screens/fantasy_market_screen.dart';
 import 'screens/fantasy_lineup_screen.dart';
-// --- NOVAS TELAS IMPORTADAS ---
 import 'screens/about_history_screen.dart';
 import 'screens/about_board_screen.dart';
 
@@ -74,7 +73,6 @@ void main() async {
     await Firebase.initializeApp(options: firebaseOptions);
     
     // --- OTIMIZAÇÃO: CONFIGURAÇÃO DE PERSISTÊNCIA ---
-    // Garante que o cache offline funcione
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
@@ -153,7 +151,7 @@ class FjfApp extends StatelessWidget {
           '/': (ctx) => const SplashScreen(),
           '/fixtures': (ctx) => const FixturesScreen(),
           '/standings': (ctx) => const StandingsScreen(),
-          '/teams': (ctx) => const TeamsListScreen(),
+          // '/teams': (ctx) => const TeamsListScreen(), // REMOVIDO
           '/team-stats': (ctx) => const TeamStatsScreen(),
           '/player-stats': (ctx) => const PlayerStatsScreen(),
           '/suspension-history': (ctx) => const SuspensionHistoryScreen(),
@@ -168,7 +166,6 @@ class FjfApp extends StatelessWidget {
           '/fantasy-admin': (ctx) => const FantasyAdminControlScreen(),
           '/fantasy-rules': (ctx) => const FantasyRulesScreen(),
           '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
-          // --- NOVAS ROTAS ---
           '/about-history': (ctx) => const AboutHistoryScreen(),
           '/about-board': (ctx) => const AboutBoardScreen(),
         },

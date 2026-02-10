@@ -56,7 +56,6 @@ class FantasyService {
     }
   }
 
-  /// Retorna o TOP 50 ordenado pelo critério escolhido
   Stream<List<FantasyTeam>> streamRanking({bool isGlobal = true}) {
     String orderByField = isGlobal ? 'total_points' : 'last_score';
     
@@ -78,19 +77,15 @@ class FantasyService {
   Stream<List<FantasyPlayer>> streamMarket({String? positionFilter, String? searchTerm}) {
     Query query = _fantasyMarketRef.orderBy('current_price', descending: true);
     
-    // Agora o filtro é mandatório para garantir economia (remover "Todos" da UI garante isso)
     if (positionFilter != null && positionFilter != 'Todos') {
       query = query.where('position', isEqualTo: positionFilter);
     }
 
-    // Limitamos a 100 jogadores por posição para evitar leitura excessiva
-    // Isso garante que mesmo buscando "Goleiro", se houver 200, só paga 100 leituras
     query = query.limit(100);
 
     return query.snapshots().map((snap) {
       var list = snap.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
       
-      // Filtro de texto continua na memória (client-side)
       if (searchTerm != null && searchTerm.isNotEmpty) {
         final term = searchTerm.toLowerCase();
         list = list.where((p) => p.name.toLowerCase().contains(term) || 
@@ -107,12 +102,14 @@ class FantasyService {
     required String teamName,
     required String ownerName,
     required String shieldType,
+    String? customLogoUrl, // <-- NOVO PARAMETRO
   }) async {
     try {
       await _fantasyTeamsRef.doc(userId).update({
         'team_name': teamName,
         'owner_name': ownerName,
         'shield_type': shieldType,
+        'custom_logo_url': customLogoUrl, // <-- SALVA NO BANCO
       });
       return "Sucesso";
     } catch (e) {
@@ -124,7 +121,6 @@ class FantasyService {
     final docSnap = await _fantasyTeamsRef.doc(userId).get();
     
     if (!docSnap.exists) {
-      // Início com 50 moedas
       final newTeam = FantasyTeam(
         id: userId,
         ownerId: userId,
@@ -138,6 +134,7 @@ class FantasyService {
         lastScore: 0,
         lineupPlayerIds: [],
         captainId: null,
+        customLogoUrl: null, // <-- INICIALIZA NULL
       );
       
       await _fantasyTeamsRef.doc(userId).set(newTeam.toMap());
@@ -181,15 +178,7 @@ class FantasyService {
     await _firestore.collection('fantasy_config').doc('status').set(data, SetOptions(merge: true));
   }
 
-  Stream<List<FantasyTeam>> streamGlobalRanking() {
-    return _fantasyTeamsRef
-        .orderBy('total_points', descending: true)
-        .limit(50)
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) => FantasyTeam.fromFirestore(doc)).toList());
-  }
-
-  // --- ADMINISTRAÇÃO (POPULAÇÃO INICIAL) ---
+  // --- ADMINISTRAÇÃO ---
 
   Future<String> populateMarketFromSeason(String seasonId) async {
     try {
