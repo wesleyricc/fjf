@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter/foundation.dart'; // Necessário para kIsWeb e kReleaseMode
 
 // Configurações
 import 'firebase_options.dart'; 
@@ -21,6 +22,12 @@ import 'services/notification_service.dart';
 import 'services/championship_service.dart';
 import 'services/fantasy_service.dart';      
 import 'services/fantasy_auth_service.dart'; 
+import 'services/team_service.dart';
+import 'services/player_service.dart';
+import 'services/match_service.dart';
+import 'services/media_service.dart';
+import 'services/disciplinary_service.dart';
+import 'services/award_service.dart';
 
 // Viewmodels
 import 'viewmodels/photo_sales_viewmodel.dart';
@@ -34,7 +41,6 @@ import 'repositories/fantasy_repository.dart';
 import 'screens/splash_screen.dart';
 import 'screens/fixtures_screen.dart';
 import 'screens/standings_screen.dart';
-// import 'screens/teams_list_screen.dart'; // REMOVIDO
 import 'screens/team_stats_screen.dart';
 import 'screens/player_stats_screen.dart';
 import 'screens/suspension_history_screen.dart';
@@ -45,8 +51,13 @@ import 'screens/photo_sales_screen.dart';
 import 'screens/fantasy_home_screen.dart';
 import 'screens/fantasy_market_screen.dart';
 import 'screens/fantasy_lineup_screen.dart';
+import 'screens/fantasy_ranking_screen.dart';
+import 'screens/fantasy_admin_control_screen.dart';
+import 'screens/fantasy_rules_screen.dart';
+import 'screens/fantasy_history_screen.dart';
 import 'screens/about_history_screen.dart';
 import 'screens/about_board_screen.dart';
+import 'screens/season_summary_screen.dart';
 
 void _logFirestoreIndexError(Object error) {
   final e = error.toString();
@@ -72,12 +83,21 @@ void main() async {
 
     await Firebase.initializeApp(options: firebaseOptions);
     
-    // --- OTIMIZAÇÃO: CONFIGURAÇÃO DE PERSISTÊNCIA ---
+    // --- LÓGICA DE PERSISTÊNCIA INTELIGENTE ---
+    // Mobile: Sempre ATIVADA (!kIsWeb é true).
+    // Web Produção (Release): ATIVADA (kReleaseMode é true).
+    // Web Desenvolvimento (Debug): DESATIVADA (evita o erro "Unexpected state").
+    const bool enablePersistence = !kIsWeb || kReleaseMode;
+
     FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
+      persistenceEnabled: enablePersistence, 
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
-    // -----------------------------------------------
+    
+    if (kIsWeb && !kReleaseMode) {
+      debugPrint("⚠️ Web Debug: Persistência do Firestore DESATIVADA para evitar conflitos.");
+    }
+    // ------------------------------------------
 
     await NotificationService().init();
     await initializeDateFormatting('pt_BR', null);
@@ -111,6 +131,13 @@ class FjfApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PhotoSalesViewModel()),
 
         Provider<FantasyRepository>(create: (_) => FantasyRepository()),
+
+        Provider(create: (_) => TeamService()),
+        Provider(create: (_) => PlayerService()),
+        Provider(create: (_) => MatchService()),
+        Provider(create: (_) => MediaService()),
+        Provider(create: (_) => DisciplinaryService()),
+        Provider(create: (_) => AwardService()),
 
         ChangeNotifierProvider(create: (_) => FantasyHomeViewModel()),
         ChangeNotifierProvider(create: (_) => FantasyLineupViewModel()),
@@ -151,7 +178,6 @@ class FjfApp extends StatelessWidget {
           '/': (ctx) => const SplashScreen(),
           '/fixtures': (ctx) => const FixturesScreen(),
           '/standings': (ctx) => const StandingsScreen(),
-          // '/teams': (ctx) => const TeamsListScreen(), // REMOVIDO
           '/team-stats': (ctx) => const TeamStatsScreen(),
           '/player-stats': (ctx) => const PlayerStatsScreen(),
           '/suspension-history': (ctx) => const SuspensionHistoryScreen(),
@@ -168,6 +194,7 @@ class FjfApp extends StatelessWidget {
           '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
           '/about-history': (ctx) => const AboutHistoryScreen(),
           '/about-board': (ctx) => const AboutBoardScreen(),
+          '/season-summary': (ctx) => const SeasonSummaryScreen(),
         },
       ),
     );

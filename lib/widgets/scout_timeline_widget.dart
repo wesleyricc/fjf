@@ -2,27 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
+import '../services/match_service.dart';
 import '../models/match_event.dart';
+
+import 'scout_goal_dialog.dart';
+import 'scout_card_dialog.dart';
 
 class ScoutTimelineWidget extends StatelessWidget {
   final DocumentSnapshot match;
+  final List<DocumentSnapshot> homePlayers; 
+  final List<DocumentSnapshot> awayPlayers;
 
-  const ScoutTimelineWidget({super.key, required this.match});
+  const ScoutTimelineWidget({
+    super.key, 
+    required this.match,
+    required this.homePlayers,
+    required this.awayPlayers,
+  });
 
   @override
   Widget build(BuildContext context) {
     final seasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
     final matchId = match.id;
     
-    // Dados para exibição
     final data = match.data() as Map<String, dynamic>;
     final homeId = data['team_home_id'];
     final homeName = data['team_home_name'];
     final awayName = data['team_away_name'];
 
-    // ALTERAÇÃO: Define a referência da timeline sempre na subcoleção da temporada atual
-    // Removemos a verificação de LEGACY_ID
     final Query timelineQuery = FirebaseFirestore.instance
         .collection('championships')
         .doc(seasonId)
@@ -32,47 +39,52 @@ class ScoutTimelineWidget extends StatelessWidget {
 
     return Expanded(
       child: StreamBuilder<QuerySnapshot>(
-        stream: timelineQuery.orderBy('timestamp', descending: true).snapshots(),
+        // Removemos o orderBy do Firestore para ordenar no cliente com mais precisão
+        stream: timelineQuery.snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           
-          final events = snapshot.data!.docs;
-          if (events.isEmpty) return const Center(child: Text("Nenhum evento registrado.", style: TextStyle(color: Colors.grey)));
+          final docs = snapshot.data!.docs;
+          if (docs.isEmpty) return const Center(child: Text("Nenhum evento registrado.", style: TextStyle(color: Colors.grey)));
+
+          // 1. Converte para Objetos
+          List<MatchEvent> events = docs.map((d) => MatchEvent.fromMap(d.id, d.data() as Map<String, dynamic>)).toList();
+
+          // 2. ORDENAÇÃO LÓGICA (CORREÇÃO)
+          // Queremos o evento mais recente do jogo no topo (Ordem Decrescente de Tempo de Jogo)
+          events.sort((a, b) {
+            // A. Compara Períodos (2T > 1T)
+            // Lógica simples: Se strings forem iguais, passa. Se b > a (ex: '2T' > '1T'), b vem primeiro.
+            int periodCompare = b.period.compareTo(a.period);
+            if (periodCompare != 0) return periodCompare;
+
+            // B. Compara Minutos (10' > 5')
+            int minuteCompare = b.minute.compareTo(a.minute);
+            if (minuteCompare != 0) return minuteCompare;
+
+            // C. Desempate: Timestamp de criação (último inserido fica em cima se for mesmo minuto)
+            return b.timestamp.compareTo(a.timestamp);
+          });
 
           return ListView.builder(
             itemCount: events.length,
             padding: const EdgeInsets.only(bottom: 20),
             itemBuilder: (ctx, index) {
-              final doc = events[index];
-              // Usa o model para parse seguro
-              final evt = MatchEvent.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+              final evt = events[index];
               
-              // Configura Ícone e Cor
               IconData icon; 
               Color color;
               String typeLabel;
 
               switch(evt.type) {
                 case MatchEventType.goal: 
-                  icon = Icons.sports_soccer; 
-                  color = Colors.green; 
-                  typeLabel = "GOL"; 
-                  break;
+                  icon = Icons.sports_soccer; color = Colors.green; typeLabel = "GOL"; break;
                 case MatchEventType.yellowCard: 
-                  icon = Icons.style; 
-                  color = Colors.amber; 
-                  typeLabel = "AMARELO"; 
-                  break;
+                  icon = Icons.style; color = Colors.amber; typeLabel = "AMARELO"; break;
                 case MatchEventType.redCard: 
-                  icon = Icons.style; 
-                  color = Colors.red; 
-                  typeLabel = "VERMELHO"; 
-                  break;
+                  icon = Icons.style; color = Colors.red; typeLabel = "VERMELHO"; break;
                 case MatchEventType.assist:
-                  icon = Icons.assistant;
-                  color = Colors.blue;
-                  typeLabel = "ASSISTÊNCIA";
-                  break;
+                  icon = Icons.assistant; color = Colors.blue; typeLabel = "ASSISTÊNCIA"; break;
               }
 
               if (evt.type == MatchEventType.goal && evt.concededByPlayerId != null) {
@@ -90,10 +102,20 @@ class ScoutTimelineWidget extends StatelessWidget {
                 ),
                 title: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text("${evt.playerName} ($teamName)"),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  tooltip: 'Desfazer Evento',
-                  onPressed: () => _confirmDelete(context, seasonId, matchId, evt),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.grey),
+                      tooltip: 'Editar Evento',
+                      onPressed: () => _openEditDialog(context, evt, events),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      tooltip: 'Desfazer Evento',
+                      onPressed: () => _confirmDelete(context, seasonId, matchId, evt),
+                    ),
+                  ],
                 ),
               );
             },
@@ -101,6 +123,48 @@ class ScoutTimelineWidget extends StatelessWidget {
         },
       ),
     );
+  }
+
+  void _openEditDialog(BuildContext context, MatchEvent evt, List<MatchEvent> allEvents) {
+    if (evt.type == MatchEventType.goal) {
+      
+      // Busca Assistência Vinculada
+      MatchEvent? linkedAssist;
+      try {
+        linkedAssist = allEvents.firstWhere((e) => 
+          e.type == MatchEventType.assist &&
+          e.teamId == evt.teamId &&
+          e.minute == evt.minute &&
+          (e.timestamp.difference(evt.timestamp).inSeconds.abs() <= 2)
+        );
+      } catch (_) {}
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ScoutGoalDialog(
+          match: match,
+          homePlayers: homePlayers,
+          awayPlayers: awayPlayers,
+          eventToEdit: evt,
+          linkedAssistEvent: linkedAssist,
+        ),
+      );
+    } else if (evt.type == MatchEventType.yellowCard || evt.type == MatchEventType.redCard) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ScoutCardDialog(
+          match: match,
+          homePlayers: homePlayers,
+          awayPlayers: awayPlayers,
+          cardType: evt.type,
+          eventToEdit: evt,
+        ),
+      );
+    } else if (evt.type == MatchEventType.assist) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Edite o GOL correspondente para alterar esta assistência.')));
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context, String seasonId, String matchId, MatchEvent evt) async {
@@ -117,8 +181,8 @@ class ScoutTimelineWidget extends StatelessWidget {
     );
 
     if (confirm == true && context.mounted) {
-      // Chama o serviço refatorado (agora não precisa passar snapshot, pois o serviço busca internamente na transação)
-      final result = await FirestoreService().deleteMatchEvent(
+      final matchService = Provider.of<MatchService>(context, listen: false);
+      final result = await matchService.deleteMatchEvent(
         seasonId: seasonId, 
         matchId: matchId, 
         event: evt

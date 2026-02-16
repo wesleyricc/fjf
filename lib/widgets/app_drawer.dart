@@ -35,7 +35,6 @@ class AppDrawer extends StatelessWidget {
         return Drawer(
           child: Column(
             children: [
-              // --- HEADER ---
               UserAccountsDrawerHeader(
                 decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor,
@@ -59,7 +58,6 @@ class AppDrawer extends StatelessWidget {
                 ),
               ),
 
-              // --- LISTA ROLÁVEL ---
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.zero,
@@ -67,13 +65,13 @@ class AppDrawer extends StatelessWidget {
                     _buildDrawerItem(context, Icons.dashboard, 'Início', '/'),
                     
                     _buildSectionHeader(context, "DESTAQUES"),
+                    _buildDrawerItem(context, Icons.emoji_events, 'Resumo da Temporada', '/season-summary', highlight: true), // <-- NOVO
                     _buildDrawerItem(context, Icons.sports_soccer, 'Fantasy FJF', '/fantasy-home', highlight: true),
                     _buildDrawerItem(context, Icons.collections, 'Loja de Fotos', '/photo-sales', highlight: true),
-
+                    
                     _buildSectionHeader(context, "COMPETIÇÃO"),
                     _buildDrawerItem(context, Icons.calendar_month, 'Tabela de Jogos', '/fixtures'),
                     _buildDrawerItem(context, Icons.leaderboard, 'Classificação', '/standings'),
-                    // ITEM "Equipes" REMOVIDO DAQUI
 
                     _buildSectionHeader(context, "DADOS & ESTATÍSTICAS"),
                     _buildDrawerItem(context, Icons.query_stats, 'Estatísticas de Equipes', '/team-stats'),
@@ -88,7 +86,6 @@ class AppDrawer extends StatelessWidget {
                     const Divider(height: 30),
                     _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
                     
-                    // --- ADMINISTRAÇÃO ---
                     ListTile(
                       leading: Icon(
                         authService.isAuthenticated ? Icons.admin_panel_settings : Icons.settings_outlined,
@@ -104,7 +101,6 @@ class AppDrawer extends StatelessWidget {
                       onTap: () => _handleAdminAction(context, authService),
                     ),
                     
-
                     if (authService.isAuthenticated)
                       ListTile(
                         leading: const Icon(Icons.logout, color: Colors.red),
@@ -118,11 +114,10 @@ class AppDrawer extends StatelessWidget {
                 ),
               ),
               
-              // --- FOOTER ---
               Container(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'FJF App v2.1.1',
+                  'FJF App v2.2.0',
                   style: TextStyle(color: Colors.grey[400], fontSize: 10),
                 ),
               ),

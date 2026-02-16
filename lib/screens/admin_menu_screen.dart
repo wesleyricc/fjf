@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/admin_service.dart';
+import '../services/championship_service.dart'; // Import necessário para o seasonId
 import 'fantasy_admin_control_screen.dart'; 
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
@@ -14,7 +15,7 @@ import 'admin_media_screen.dart';
 import 'manage_seasons_screen.dart';
 import '../services/migration_service.dart';
 import 'admin_upload_photo_screen.dart';
-import 'tournament_format_screen.dart'; // <-- NOVO IMPORT
+import 'tournament_format_screen.dart'; 
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -27,7 +28,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isSaving = false;
 
-  // --- LÓGICA DE NEGÓCIO (Mantida) ---
+  // --- LÓGICA DE NEGÓCIO ---
 
   String _hashPassword(String password) {
     final bytes = utf8.encode(password); 
@@ -36,6 +37,8 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
 
   Future<void> _showChangeVideoIdDialog() async {
+    // (Mantido igual - Lógica de Config Global pode ficar no /config se for para todos os campeonatos,
+    // mas se for específico, deveria mudar também. Vou manter global por enquanto conforme seu pedido focado na Default View)
     final urlOrIdController = TextEditingController();
     bool isLoading = false;
 
@@ -103,6 +106,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
 
   Future<void> _showChangePasswordDialog() async {
+    // (Mantido igual)
     final authService = Provider.of<AuthService>(context, listen: false);
     final String? currentAdminUsername = authService.adminUsername;
 
@@ -173,9 +177,13 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
+  // --- CORREÇÃO AQUI: Salvar na Temporada Atual ---
   Future<void> _showSetDefaultViewDialog() async {
     bool isDialogSaving = false;
     
+    // Obtém o ID da temporada atual do Provider
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
     String selectedPhase = AdminService.defaultPhase;
     String selectedStage = AdminService.defaultStage;
 
@@ -184,7 +192,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
     
     final List<DropdownMenuItem<String>> playoffOptions = [
-      const DropdownMenuItem(value: 'quarter_final', child: Text('Playoff / Quartas')), // NOVO
+      const DropdownMenuItem(value: 'quarter_final', child: Text('Playoff / Quartas')), 
       const DropdownMenuItem(value: 'semifinal', child: Text('Semifinais')),
       const DropdownMenuItem(value: 'third_place', child: Text('Disputa de 3º Lugar')),
       const DropdownMenuItem(value: 'final_game', child: Text('Final')),
@@ -234,17 +242,24 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   onPressed: () async {
                     setDialogState(() => isDialogSaving = true);
                     try {
-                      await _firestore.collection('config').doc('app_settings').set(
-                        { 'default_phase': selectedPhase, 'default_stage': selectedStage },
-                        SetOptions(merge: true)
-                      );
+                      // --- CORREÇÃO: Caminho aninhado da temporada ---
+                      await _firestore
+                          .collection('championships')
+                          .doc(seasonId)
+                          .collection('settings')
+                          .doc('app_settings')
+                          .set(
+                            { 'default_phase': selectedPhase, 'default_stage': selectedStage },
+                            SetOptions(merge: true)
+                          );
+                      
                       // Atualiza cache local
                       AdminService.defaultPhase = selectedPhase;
                       AdminService.defaultStage = selectedStage;
                       
                       if (mounted) {
                         Navigator.of(dialogContext).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Padrão atualizado.')));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Padrão atualizado para esta temporada.')));
                       }
                     } catch (e) {
                        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
@@ -260,12 +275,12 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  // --- NOVA CONSTRUÇÃO DE UI ---
+  // --- BUILD UI (Mantido igual) ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100], // Fundo leve para destacar os cards
+      backgroundColor: Colors.grey[100], 
       appBar: AppBar(
         title: const Text('Menu Administrativo', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
@@ -355,7 +370,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: Column(
                     children: [
-                      // --- NOVO BOTÃO DE MODELO ---
                       _buildActionTile(
                         icon: Icons.looks_one_outlined,
                         color: Colors.teal,
@@ -463,7 +477,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                 const SizedBox(height: 40),
                 const Center(
                   child: Text(
-                    "FJF Admin v2.1",
+                    "FJF Admin v2.2.0",
                     style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                 ),
@@ -473,8 +487,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
           ),
     );
   }
-
-  // --- WIDGETS AUXILIARES PARA UI LIMPA ---
 
   Widget _buildSectionHeader(String title) {
     return Padding(

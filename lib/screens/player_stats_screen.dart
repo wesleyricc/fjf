@@ -119,7 +119,7 @@ class PlayerStatsScreen extends StatelessWidget {
                 GenericPlayerRankList(players: suspended, isStatusList: true, isSuspendedTab: true, emptyMessage: 'Ninguém suspenso.'),
                 GenericPlayerRankList(players: yellows, statField: 'totalYellowCards', statLabel: 'CA', emptyMessage: 'Sem cartões.'),
                 GenericPlayerRankList(players: reds, statField: 'totalRedCards', statLabel: 'CV', emptyMessage: 'Sem cartões.'),
-                //TotalCardsRankList(allPlayers: allPlayers), // Passa todos
+                TotalCardsRankList(allPlayers: allPlayers),
               ],
             ),
             bottomNavigationBar: const SponsorBannerRotator(),

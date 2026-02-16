@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
+import '../services/match_service.dart';
 import '../models/match_event.dart';
 
 class ScoutCardDialog extends StatefulWidget {
   final DocumentSnapshot match;
   final List<DocumentSnapshot> homePlayers;
   final List<DocumentSnapshot> awayPlayers;
-  final MatchEventType cardType; // yellowCard ou redCard
+  final MatchEventType cardType; 
+  final MatchEvent? eventToEdit;
 
   const ScoutCardDialog({
     super.key,
@@ -17,6 +18,7 @@ class ScoutCardDialog extends StatefulWidget {
     required this.homePlayers,
     required this.awayPlayers,
     required this.cardType,
+    this.eventToEdit,
   });
 
   @override
@@ -24,14 +26,26 @@ class ScoutCardDialog extends StatefulWidget {
 }
 
 class _ScoutCardDialogState extends State<ScoutCardDialog> {
-  final FirestoreService _firestoreService = FirestoreService();
-  
   String? _selectedTeamId;
-  String? _selectedPlayerId;
+  String? _selectedPlayerId; // Único ID
   String? _selectedPlayerName;
+  
   final _minuteController = TextEditingController();
   String _selectedPeriod = '1T';
   bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.eventToEdit != null) {
+      final e = widget.eventToEdit!;
+      _selectedTeamId = e.teamId;
+      _selectedPlayerId = e.playerId;
+      _selectedPlayerName = e.playerName;
+      _minuteController.text = e.minute.toString();
+      _selectedPeriod = e.period;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,22 +54,29 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
     final homeName = widget.match['team_home_name'];
     final awayName = widget.match['team_away_name'];
     
-    final bool isRed = widget.cardType == MatchEventType.redCard;
+    final currentType = widget.eventToEdit?.type ?? widget.cardType;
+    final bool isRed = currentType == MatchEventType.redCard;
     final Color color = isRed ? Colors.red : Colors.amber[800]!;
     final String title = isRed ? "CARTÃO VERMELHO" : "CARTÃO AMARELO";
+    final bool isEditing = widget.eventToEdit != null;
 
-    // Lista de jogadores (aqui INCLUI Staff, pois técnico toma cartão)
     List<DocumentSnapshot> activePlayers = [];
     if (_selectedTeamId == homeId) activePlayers = widget.homePlayers;
     else if (_selectedTeamId == awayId) activePlayers = widget.awayPlayers;
 
+    // Ordenação alfabética ou por número
+    activePlayers.sort((a,b) {
+      final dA = a.data() as Map; final dB = b.data() as Map;
+      return (dA['jersey_number']??99).compareTo(dB['jersey_number']??99);
+    });
+
     return AlertDialog(
-      title: Text('Novo: $title', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+      title: Text(isEditing ? 'Editar $title' : 'Registrar $title', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 18)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 1. Time
+            // 1. SELEÇÃO DE TIME
             DropdownButtonFormField<String>(
               value: _selectedTeamId,
               isExpanded: true,
@@ -67,16 +88,19 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
               ],
               onChanged: _isSaving ? null : (v) => setState(() { 
                 _selectedTeamId = v; 
-                _selectedPlayerId = null; 
+                if (!isEditing || v != widget.eventToEdit?.teamId) {
+                  _selectedPlayerId = null;
+                  _selectedPlayerName = null;
+                }
               }),
             ),
             const SizedBox(height: 16),
             
-            // 2. Jogador/Staff
+            // 2. SELEÇÃO DE JOGADOR (ÚNICO)
             DropdownButtonFormField<String>(
               value: _selectedPlayerId,
               isExpanded: true,
-              hint: const Text('Selecione o Atleta/Membro'),
+              hint: const Text('Selecione o Atleta'),
               decoration: const InputDecoration(labelText: 'Quem recebeu?', border: OutlineInputBorder()),
               items: activePlayers.map((p) {
                 final d = p.data() as Map<String, dynamic>;
@@ -102,7 +126,7 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
             ),
             const SizedBox(height: 16),
             
-            // 3. Tempo
+            // 3. TEMPO DE JOGO
             Row(
               children: [
                 Expanded(
@@ -131,16 +155,13 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: _isSaving ? null : () => Navigator.of(context).pop(), 
-          child: const Text('Cancelar')
-        ),
+        TextButton(onPressed: _isSaving ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
           onPressed: _isSaving ? null : _saveCard,
           child: _isSaving 
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-              : const Text('Confirmar'),
+              : Text(isEditing ? 'Atualizar' : 'Confirmar'),
         ),
       ],
     );
@@ -148,33 +169,46 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
 
   Future<void> _saveCard() async {
     if (_selectedPlayerId == null || _minuteController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os dados.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha todos os campos.')));
       return;
     }
 
     setState(() => _isSaving = true);
 
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    final matchService = Provider.of<MatchService>(context, listen: false);
+    
+    final int minute = int.tryParse(_minuteController.text) ?? 0;
+    final DateTime now = DateTime.now();
+
+    final event = MatchEvent(
+      id: widget.eventToEdit?.id ?? '', 
+      type: widget.eventToEdit?.type ?? widget.cardType, 
+      playerId: _selectedPlayerId!, 
+      playerName: _selectedPlayerName ?? 'Atleta', 
+      teamId: _selectedTeamId!, 
+      minute: minute, 
+      period: _selectedPeriod, 
+      timestamp: widget.eventToEdit?.timestamp ?? now
+    );
+
     try {
-      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-      final int minute = int.tryParse(_minuteController.text) ?? 0;
-
-      final event = MatchEvent(
-        id: '', 
-        type: widget.cardType, 
-        playerId: _selectedPlayerId!, 
-        playerName: _selectedPlayerName ?? 'Atleta', 
-        teamId: _selectedTeamId!, 
-        minute: minute, 
-        period: _selectedPeriod, 
-        timestamp: DateTime.now()
-      );
-
-      await _firestoreService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: event);
-
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cartão registrado!')));
+      if (widget.eventToEdit == null) {
+        // CREATE
+        await matchService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: event);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cartão registrado!')));
+      } else {
+        // UPDATE
+        await matchService.updateMatchEvent(
+          seasonId: seasonId, 
+          matchId: widget.match.id, 
+          oldEvent: widget.eventToEdit!, 
+          newEvent: event
+        );
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cartão atualizado!')));
       }
+
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);

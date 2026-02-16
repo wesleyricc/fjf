@@ -55,7 +55,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
     return PlayoffStage.semifinal;
   }
 
-  // --- MANTÉM LÓGICA DE NAVEGAÇÃO ---
   Future<void> _handleMatchTap(MatchModel match, bool isAdmin, String seasonId) async {
     final matchRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(match.id);
     if (isAdmin || !match.isFinished) {
@@ -90,7 +89,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
         final seasonName = service.currentSeasonName;
         final seasonId = service.currentSeasonId;
 
-        // Filtro Local
         String? phaseFilter = (_selectedPhase == TournamentPhase.first) ? 'first' : null;
         if (_selectedPhase == TournamentPhase.second) {
            switch (_selectedPlayoffStage) {
@@ -107,33 +105,18 @@ class _FixturesScreenState extends State<FixturesScreen> {
           return true;
         }).toList();
 
-        // --- CONFIGURAÇÃO DO BANNER (UNIFICADO) ---
         String sponsorTitle = "Patrocinador Oficial";
         String? bannerFilterTag;
 
         if (_selectedPhase == TournamentPhase.first) {
           sponsorTitle = "Patrocinador da Rodada $_selectedRound";
-          // Passa o número da rodada como string (ex: "1", "7")
           bannerFilterTag = _selectedRound.toString();
         } else {
-          // Passa a string identificadora da fase (ex: "semifinal", "final")
           switch (_selectedPlayoffStage) {
-            case PlayoffStage.quarter_final:
-              sponsorTitle = "Patrocinador dos Playoffs";
-              bannerFilterTag = "quarter_final"; 
-              break;
-            case PlayoffStage.semifinal:
-              sponsorTitle = "Patrocinador das Semifinais";
-              bannerFilterTag = "semifinal";
-              break;
-            case PlayoffStage.third_place:
-              sponsorTitle = "Patrocinador do 3º Lugar";
-              bannerFilterTag = "third_place";
-              break;
-            case PlayoffStage.final_game:
-              sponsorTitle = "Patrocinador da Grande Final";
-              bannerFilterTag = "final";
-              break;
+            case PlayoffStage.quarter_final: sponsorTitle = "Patrocinador dos Playoffs"; bannerFilterTag = "quarter_final"; break;
+            case PlayoffStage.semifinal: sponsorTitle = "Patrocinador das Semifinais"; bannerFilterTag = "semifinal"; break;
+            case PlayoffStage.third_place: sponsorTitle = "Patrocinador do 3º Lugar"; bannerFilterTag = "third_place"; break;
+            case PlayoffStage.final_game: sponsorTitle = "Patrocinador da Grande Final"; bannerFilterTag = "final"; break;
           }
         }
 
@@ -146,58 +129,257 @@ class _FixturesScreenState extends State<FixturesScreen> {
         };
 
         return Scaffold(
-          backgroundColor: Colors.grey[50],
-          appBar: AppBar(title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Tabela de Jogos', style: TextStyle(fontWeight: FontWeight.bold)), Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300))]), actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: () => service.fetchStaticData(forceRefresh: true))]),
+          backgroundColor: const Color(0xFFF5F5F5),
+          appBar: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [
+                const Text('Tabela de Jogos', style: TextStyle(fontWeight: FontWeight.bold)), 
+                Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300))
+              ]
+            ), 
+            actions: [
+              IconButton(icon: const Icon(Icons.refresh), onPressed: () => service.fetchStaticData(forceRefresh: true))
+            ]
+          ),
           drawer: const AppDrawer(),
           body: Column(
             children: [
-              ModernPhaseSelector<TournamentPhase>(selectedValue: _selectedPhase, options: const {TournamentPhase.first: '1ª FASE', TournamentPhase.second: 'MATA-MATA'}, onChanged: (val) { setState(() { _selectedPhase = val; if(val == TournamentPhase.second) _selectedPlayoffStage = isModel2 ? PlayoffStage.quarter_final : PlayoffStage.semifinal; }); }),
-              if (_selectedPhase == TournamentPhase.first) HorizontalRoundSelector(currentRound: _selectedRound, totalRounds: TOTAL_RODADAS, onRoundChanged: (r) => setState(() => _selectedRound = r))
-              else PlayoffStageSelector<PlayoffStage>(selectedStage: _selectedPlayoffStage, stages: playoffStagesMap, onChanged: (val) => setState(() => _selectedPlayoffStage = val)),
-              const Divider(height: 1),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Row(children: [Icon(Icons.star, size: 14, color: Theme.of(context).primaryColor), const SizedBox(width: 6), Text(sponsorTitle, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey[700]))])), Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4, offset: const Offset(0, 2))]), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: SponsorBannerRotator(location: 'header_fixtures', filterTag: bannerFilterTag)))])),
+              Container(
+                color: Colors.white,
+                child: Column(
+                  children: [
+                    ModernPhaseSelector<TournamentPhase>(
+                      selectedValue: _selectedPhase, 
+                      options: const {TournamentPhase.first: '1ª FASE', TournamentPhase.second: 'MATA-MATA'}, 
+                      onChanged: (val) { 
+                        setState(() { 
+                          _selectedPhase = val; 
+                          if(val == TournamentPhase.second) _selectedPlayoffStage = isModel2 ? PlayoffStage.quarter_final : PlayoffStage.semifinal; 
+                        }); 
+                      }
+                    ),
+                    if (_selectedPhase == TournamentPhase.first) 
+                      HorizontalRoundSelector(currentRound: _selectedRound, totalRounds: TOTAL_RODADAS, onRoundChanged: (r) => setState(() => _selectedRound = r))
+                    else 
+                      PlayoffStageSelector<PlayoffStage>(selectedStage: _selectedPlayoffStage, stages: playoffStagesMap, onChanged: (val) => setState(() => _selectedPlayoffStage = val)),
+                  ],
+                ),
+              ),
+              
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, bottom: 4), 
+                      child: Row(children: [
+                        Icon(Icons.star, size: 12, color: Theme.of(context).primaryColor), 
+                        const SizedBox(width: 6), 
+                        Text(sponsorTitle, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey[600]))
+                      ])
+                    ), 
+                    Container(
+                      height: 80, 
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]), 
+                      child: ClipRRect(borderRadius: BorderRadius.circular(8), child: SponsorBannerRotator(location: 'header_fixtures', filterTag: bannerFilterTag, height: 80))
+                    )
+                  ]
+                )
+              ),
               
               Expanded(
                 child: matches.isEmpty 
-                  ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 50, color: Colors.grey[300]), const SizedBox(height: 10), Text('Nenhum jogo nesta etapa.', style: TextStyle(color: Colors.grey[600]))]))
+                  ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 40, color: Colors.grey[300]), const SizedBox(height: 10), Text('Nenhum jogo agendado.', style: TextStyle(color: Colors.grey[600]))]))
                   : RefreshIndicator(
                       onRefresh: () => service.fetchStaticData(forceRefresh: true),
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(0, 8, 0, 80),
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
                         itemCount: matches.length,
-                        itemBuilder: (context, index) => _buildMatchCard(matches[index], authService.isAuthenticated, seasonId),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) => _buildCleanMatchCard(matches[index], authService.isAuthenticated, seasonId),
                       ),
                     ),
               ),
             ],
           ),
-          bottomNavigationBar: const SponsorBannerRotator(),
+          bottomNavigationBar: const SponsorBannerRotator(height: 120, location: 'footer_home'), 
           floatingActionButton: (authService.isAuthenticated) ? FloatingActionButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditMatchScreen(match: null))), backgroundColor: Theme.of(context).primaryColor, child: const Icon(Icons.add, color: Colors.white)) : null,
         );
       }
     );
   }
 
-  Widget _buildMatchCard(MatchModel match, bool isAdmin, String seasonId) {
-    Color statusColor = Colors.grey; String statusText = ''; String dateText = 'DATA A DEFINIR'; String timeText = '--:--';
-    if (match.datetime != null) { dateText = DateFormat('dd/MM (EEE)', 'pt_BR').format(match.datetime!).toUpperCase(); timeText = DateFormat('HH:mm').format(match.datetime!); }
-    if (match.isFinished) { statusColor = Colors.green; statusText = 'FINALIZADO'; } else if (match.isInProgress) { statusColor = Colors.orange; statusText = 'EM ANDAMENTO'; }
+  Widget _buildCleanMatchCard(MatchModel match, bool isAdmin, String seasonId) {
+    Color statusColor = Colors.grey;
+    String statusText = 'AGENDADO';
+    
+    String datePart = 'A definir';
+    String timePart = '--:--';
+    
+    if (match.datetime != null) {
+      datePart = DateFormat('dd/MM', 'pt_BR').format(match.datetime!);
+      timePart = DateFormat('HH:mm').format(match.datetime!);
+    }
 
-    return Card(
-      elevation: 2, margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(onTap: () => _handleMatchTap(match, isAdmin, seasonId), borderRadius: BorderRadius.circular(12), child: Column(children: [
-        Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.calendar_today, size: 12, color: Colors.grey[600]), const SizedBox(width: 4), Text(dateText, style: TextStyle(fontSize: 12, color: Colors.grey[800], fontWeight: FontWeight.bold)), Padding(padding: const EdgeInsets.symmetric(horizontal: 8.0), child: Text("|", style: TextStyle(color: Colors.grey[400], fontSize: 12))), Icon(Icons.access_time, size: 12, color: Colors.grey[600]), const SizedBox(width: 4), Text(timeText, style: TextStyle(fontSize: 12, color: Colors.grey[800], fontWeight: FontWeight.bold))]),
-          const SizedBox(height: 6), Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.location_on, size: 12, color: Colors.grey[600]), const SizedBox(width: 4), Flexible(child: Text(match.location.toUpperCase(), style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis))]),
-          const Divider(height: 24),
-          Row(children: [
-            Expanded(flex: 4, child: Column(children: [if(match.homeTeamShield.isNotEmpty) CachedNetworkImage(imageUrl: match.homeTeamShield, width: 45, height: 45, fit: BoxFit.contain), const SizedBox(height: 6), Text(match.homeTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))])),
-            Expanded(flex: 3, child: Column(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)), child: Text(match.formattedScore, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22, letterSpacing: 1))), if (statusText.isNotEmpty) ...[const SizedBox(height: 6), Text(statusText, style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold))]])),
-            Expanded(flex: 4, child: Column(children: [if(match.awayTeamShield.isNotEmpty) CachedNetworkImage(imageUrl: match.awayTeamShield, width: 45, height: 45, fit: BoxFit.contain), const SizedBox(height: 6), Text(match.awayTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))])),
-          ]),
-        ])),
-        if (seasonId.isNotEmpty) ...[const Divider(height: 1), Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), child: PalpitometroWidget(seasonId: seasonId, matchId: match.id, homeTeamName: match.homeTeamName, awayTeamName: match.awayTeamName, homeVotes: match.votesHome, awayVotes: match.votesAway, homeColor: Colors.blue.shade700, awayColor: Colors.red.shade700, isClosed: !match.isPending))]
-      ])),
+    if (match.isFinished) {
+      statusColor = Colors.black87;
+      statusText = 'FIM DE JOGO';
+    } else if (match.isInProgress) {
+      statusColor = Colors.green[600]!;
+      statusText = 'AO VIVO';
+    } else if (match.isPending) {
+      statusColor = Colors.blue[600]!;
+      statusText = timePart; 
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () => _handleMatchTap(match, isAdmin, seasonId),
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Cabeçalho
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 12, color: Colors.grey[500]),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      "$datePart  •  ${match.location}",
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: statusColor.withOpacity(0.3), width: 0.5)
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
+                    ),
+                  )
+                ],
+              ),
+            ),
+
+            const Divider(height: 1, thickness: 0.5),
+
+            // Times
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _buildShield(match.homeTeamShield),
+                        const SizedBox(height: 6),
+                        Text(
+                          match.homeTeamName,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  SizedBox(
+                    width: 80,
+                    child: Column(
+                      children: [
+                        Text(
+                          match.isPending ? "vs" : "${match.scoreHome ?? 0} - ${match.scoreAway ?? 0}",
+                          style: TextStyle(
+                            fontSize: match.isPending ? 16 : 28,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.black87,
+                            fontFamily: 'Roboto', 
+                          ),
+                        ),
+                        if (match.penaltyScoreHome != null)
+                          Text(
+                            "(${match.penaltyScoreHome} - ${match.penaltyScoreAway}) pen",
+                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  Expanded(
+                    child: Column(
+                      children: [
+                        _buildShield(match.awayTeamShield),
+                        const SizedBox(height: 6),
+                        Text(
+                          match.awayTeamName,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Palpitômetro (Com nomes e porcentagens)
+            if (seasonId.isNotEmpty) 
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: PalpitometroWidget(
+                  seasonId: seasonId,
+                  matchId: match.id,
+                  homeTeamName: match.homeTeamName,
+                  awayTeamName: match.awayTeamName,
+                  homeVotes: match.votesHome,
+                  awayVotes: match.votesAway,
+                  homeColor: Colors.blueAccent,
+                  awayColor: Colors.redAccent,
+                  isClosed: !match.isPending, // Se não é pendente (andamento ou finalizado), é fechado (mostra % da votação final)
+                  barHeight: 24.0, // Altura ajustada para caber texto
+                  compactView: false, // Permite mostrar nomes e %
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShield(String url) {
+    if (url.isEmpty) return const Icon(Icons.shield, size: 40, color: Colors.grey);
+    return SizedBox(
+      height: 45, width: 45,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.contain,
+        placeholder: (_,__) => Container(color: Colors.grey[100]),
+        errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
+      ),
     );
   }
 }

@@ -4,13 +4,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
-// Services & Models
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
+import '../services/team_service.dart'; // <-- NOVO SERVICE
 import '../models/player_model.dart'; 
 
-// Widgets
 import '../widgets/player_display_card.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'player_profile_screen.dart';
@@ -44,7 +42,6 @@ class MatchRosterScreen extends StatefulWidget {
 }
 
 class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTickerProviderStateMixin {
-  final FirestoreService _firestoreService = FirestoreService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance; 
 
   late TabController _tabController;
@@ -83,26 +80,21 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final service = Provider.of<ChampionshipService>(context, listen: false);
+    final teamService = Provider.of<TeamService>(context, listen: false);
     final seasonId = service.currentSeasonId;
 
     try {
-      // 1. Busca Jogadores (OTIMIZADO: Usa Cache Central)
-      // O getCachedRoster filtra da memória, custo ZERO.
       _team1Players = service.getCachedRoster(widget.team1Id).where((p) => !p.isStaff).toList();
       _team2Players = service.getCachedRoster(widget.team2Id).where((p) => !p.isStaff).toList();
 
-      // Se por algum motivo o cache estiver vazio (ex: deep link direto pra tela), força refresh
       if (_team1Players.isEmpty || _team2Players.isEmpty) {
          await service.fetchStaticData(forceRefresh: true);
          _team1Players = service.getCachedRoster(widget.team1Id).where((p) => !p.isStaff).toList();
          _team2Players = service.getCachedRoster(widget.team2Id).where((p) => !p.isStaff).toList();
       }
 
-      // 2. Busca Titulares Salvos (Ainda precisa de leitura no doc do time)
-      // Poderíamos otimizar isso cacheando o 'defaultStarters' no objeto Team do ChampionshipService
-      // mas como é uma operação administrativa de baixa frequência, deixamos assim por segurança.
-      final t1Doc = await _firestoreService.getTeam(widget.team1Id, seasonId);
-      final t2Doc = await _firestoreService.getTeam(widget.team2Id, seasonId);
+      final t1Doc = await teamService.getTeam(widget.team1Id, seasonId);
+      final t2Doc = await teamService.getTeam(widget.team2Id, seasonId);
 
       final starters1 = t1Doc?.defaultStarters ?? [];
       final starters2 = t2Doc?.defaultStarters ?? [];

@@ -22,7 +22,7 @@ import 'team_detail_screen.dart';
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   static const routeName = '/splash';
-  static const String appVersion = '2.1.0';
+  static const String appVersion = '2.2.0';
   static bool hasShownOpenAd = false;
 
   @override

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'admin_service.dart';
-import 'firestore_service.dart'; 
 import '../models/team_model.dart'; 
 import '../models/player_model.dart'; 
 import '../models/photo_product_model.dart'; 
@@ -37,7 +36,7 @@ class ChampionshipService with ChangeNotifier {
 
   bool _hasLoadedStaticData = false;
   
-  // Constante de Validade do Cache (Ex: 30 minutos)
+  // Constante de Validade do Cache
   static const int CACHE_VALIDITY_MINUTES = 15;
 
   // Getters
@@ -68,7 +67,6 @@ class ChampionshipService with ChangeNotifier {
     notifyListeners(); 
 
     try {
-      // Temporadas sempre buscamos do servidor (são poucos docs e vitais)
       final snapshot = await _firestore.collection('championships').get();
 
       _availableSeasons = snapshot.docs.map((doc) {
@@ -118,15 +116,11 @@ class ChampionshipService with ChangeNotifier {
     }
   }
 
-  // --- OTIMIZAÇÃO: Cache Inteligente (Server vs Cache) ---
   Future<void> fetchStaticData({bool forceRefresh = false}) async {
     if (_currentSeasonId.isEmpty) return;
-    
-    // Se já carregamos e não foi pedido refresh forçado, aborta
     if (_hasLoadedStaticData && !forceRefresh) return;
 
     try {
-      // 1. Decide a Fonte (Server ou Cache)
       Source source = Source.server;
       
       if (!forceRefresh) {
@@ -145,9 +139,6 @@ class ChampionshipService with ChangeNotifier {
         debugPrint("🔄 [REFRESH] Forçando atualização do servidor...");
       }
 
-      // 2. Executa Queries com a Fonte decidida
-      // Se source for cache e falhar (cache vazio), o Firestore lança exceção em alguns casos,
-      // então envolvemos em try-catch para fallback.
       try {
         await _performFetch(source);
       } catch (e) {
@@ -159,7 +150,6 @@ class ChampionshipService with ChangeNotifier {
         }
       }
       
-      // 3. Atualiza Timestamp se veio do servidor com sucesso
       if (source == Source.server) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('last_static_fetch_${_currentSeasonId}', DateTime.now().millisecondsSinceEpoch);
@@ -177,25 +167,16 @@ class ChampionshipService with ChangeNotifier {
     final options = GetOptions(source: source);
 
     final results = await Future.wait([
-      // 0: Times
       _firestore.collection('championships').doc(_currentSeasonId).collection('teams_participation').get(options),
-      // 1: Patrocinadores
       _firestore.collection('sponsors').where('isActive', isEqualTo: true).orderBy('order').get(options),
-      // 2: Foto Capa Loja
       _firestore.collection('photo_sales').orderBy('taken_at', descending: true).limit(1).get(options),
-      // 3: Config App
       _firestore.collection('config').doc('app_settings').get(options),
-      // 4: Jogadores
       _firestore.collection('championships').doc(_currentSeasonId).collection('player_stats').where('isActive', isEqualTo: true).get(options),
-      // 5: Notícias
       _firestore.collection('championships').doc(_currentSeasonId).collection('news').where('isActive', isEqualTo: true).orderBy('order', descending: true).limit(10).get(options),
-      // 6: Partidas
       _firestore.collection('championships').doc(_currentSeasonId).collection('matches').orderBy('datetime').get(options),
-      // 7: Suspensões
       _firestore.collection('championships').doc(_currentSeasonId).collection('disciplinary_log').orderBy('return_date', descending: true).get(options),
     ]);
     
-    // Processamento (Idêntico ao anterior)
     final teamsSnap = results[0] as QuerySnapshot;
     _cachedTeams = teamsSnap.docs.map((doc) => Team.fromFirestore(doc)).toList();
     _cachedTeams.sort((a, b) => a.name.compareTo(b.name));
@@ -282,13 +263,12 @@ class ChampionshipService with ChangeNotifier {
       _cachedAppSettings = null;
       _hasLoadedStaticData = false;
       
-      // Tenta usar cache primeiro se disponível para a nova temporada
       fetchStaticData();
     }
     notifyListeners();
   }
 
-  // Métodos Admin mantidos (sem alterações na escrita)...
+  // Métodos Admin
   Future<String> setGlobalActiveSeason(String seasonId) async {
     try {
       final batch = _firestore.batch();
@@ -317,7 +297,8 @@ class ChampionshipService with ChangeNotifier {
       });
       
       if (copyTeams && _currentSeasonId.isNotEmpty) {
-        await FirestoreService().copySeasonData(
+        // Implementação interna da cópia
+        await _copySeasonData(
           sourceSeasonId: _currentSeasonId, targetSeasonId: docId, includeRoster: copyPlayers,
         );
       }
@@ -333,5 +314,56 @@ class ChampionshipService with ChangeNotifier {
       if (_currentSeasonId == seasonId) _setSeasonInternal(seasonId);
       return "Sucesso";
     } catch (e) { return "Erro: $e"; }
+  }
+
+  // --- LÓGICA DE MIGRAÇÃO INTERNA ---
+  Future<void> _copySeasonData({required String sourceSeasonId, required String targetSeasonId, required bool includeRoster}) async {
+    final batch = _firestore.batch();
+    
+    // Configurações
+    for (String docId in ['app_settings', 'disciplinary_rules', 'playoff_rules', 'tiebreaker_rules']) { 
+      final docSnap = await _firestore.collection('championships').doc(sourceSeasonId).collection('settings').doc(docId).get(); 
+      if (docSnap.exists) {
+        batch.set(_firestore.collection('championships').doc(targetSeasonId).collection('settings').doc(docId), docSnap.data()!); 
+      }
+    }
+    
+    // Times
+    final sourceTeamsSnapshot = await _firestore.collection('championships').doc(sourceSeasonId).collection('teams_participation').get();
+    for (var teamDoc in sourceTeamsSnapshot.docs) {
+      final teamData = teamDoc.data(); 
+      final String teamId = teamDoc.id;
+      
+      batch.set(_firestore.collection('championships').doc(targetSeasonId).collection('teams_participation').doc(teamId), {
+        'name': teamData['name'], 
+        'short_name': teamData['short_name'], 
+        'shield_url': teamData['shield_url'], 
+        'championship_history': teamData['championship_history'] ?? [], 
+        'points': 0, 'match_points': 0, 'extra_points': 0, 
+        'games_played': 0, 'wins': 0, 'draws': 0, 'losses': 0, 
+        'goals_for': 0, 'goals_against': 0, 'goal_difference': 0, 
+        'phase1_rank': null, 'disciplinary_points': 0, 
+        'total_yellow_cards': 0, 'total_red_cards': 0, 
+        'default_starters': includeRoster ? (teamData['default_starters'] ?? []) : []
+      });
+
+      if (includeRoster) {
+        final playersInTeamSnap = await _firestore.collection('championships').doc(sourceSeasonId).collection('player_stats').where('team_id', isEqualTo: teamId).get();
+        for (var pDoc in playersInTeamSnap.docs) { 
+          final pData = pDoc.data(); 
+          batch.set(_firestore.collection('championships').doc(targetSeasonId).collection('player_stats').doc(pDoc.id), {
+            'name': pData['name'], 'photo_url': pData['photo_url'], 
+            'position': pData['position'], 'is_goalkeeper': pData['is_goalkeeper'] ?? false, 
+            'is_staff': pData['is_staff'] ?? false, 'jersey_number': pData['jersey_number'], 
+            'team_id': teamId, 'team_name': teamData['name'], 'team_shield_url': teamData['shield_url'], 
+            'goals': 0, 'assists': 0, 'goals_conceded': 0, 
+            'yellow_cards': 0, 'red_cards': 0, 
+            'total_yellow_cards': 0, 'total_red_cards': 0, 
+            'man_of_the_match_awards': 0, 'is_suspended': false, 'isActive': true
+          }); 
+        }
+      }
+    }
+    await batch.commit();
   }
 }

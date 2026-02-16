@@ -23,6 +23,9 @@ class MatchModel {
   final String awayTeamShield;
   final int? scoreAway;
   final int? penaltyScoreAway;
+
+  final int disciplinaryHome; // NOVO
+  final int disciplinaryAway; // NOVO
   
   final String? winnerTeamId;
   final String? sumulaUrl;
@@ -48,6 +51,8 @@ class MatchModel {
     this.sumulaUrl,
     this.votesHome = 0,
     this.votesAway = 0,
+    this.disciplinaryHome = 0,
+    this.disciplinaryAway = 0,
   });
 
   factory MatchModel.fromFirestore(DocumentSnapshot doc) {
@@ -86,6 +91,9 @@ class MatchModel {
         // Agora usamos a função toInt() que aceita null e retorna 0
         votesHome: toInt(data['votes_home']),
         votesAway: toInt(data['votes_away']),
+
+        disciplinaryHome: data['disciplinary_home'] ?? 0,
+        disciplinaryAway: data['disciplinary_away'] ?? 0,
         
         winnerTeamId: data['winner_team_id']?.toString(),
         sumulaUrl: data['sumula_url']?.toString(),

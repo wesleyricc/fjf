@@ -3,13 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// Services & Models
-import '../services/firestore_service.dart';
+import '../services/team_service.dart'; // <-- NOVO SERVICE
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
 import '../models/team_model.dart'; 
 
-// Screens & Widgets
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import 'team_detail_screen.dart';
@@ -32,7 +30,7 @@ class TeamsListScreen extends StatelessWidget {
     );
 
     if (confirm == true && context.mounted) {
-      final firestoreService = FirestoreService();
+      final teamService = Provider.of<TeamService>(context, listen: false);
       
       try {
         final docRef = FirebaseFirestore.instance
@@ -43,10 +41,9 @@ class TeamsListScreen extends StatelessWidget {
         
         final docSnap = await docRef.get();
         if (docSnap.exists) {
-          final res = await firestoreService.deleteTeam(docSnap, seasonId);
+          final res = await teamService.deleteTeam(docSnap, seasonId);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res)));
-            // Força recarga do cache após exclusão
             Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
           }
         }
@@ -72,7 +69,6 @@ class TeamsListScreen extends StatelessWidget {
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (ctx) => EditTeamScreen(team: teamModel))
         );
-        // Atualiza cache ao voltar da edição
         if (context.mounted) {
           Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
         }
@@ -84,12 +80,11 @@ class TeamsListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
     
-    // Consumindo dados do Cache para evitar leituras
     return Consumer<ChampionshipService>(
       builder: (context, champService, child) {
         final seasonName = champService.currentSeasonName;
         final seasonId = champService.currentSeasonId;
-        final teams = champService.teams; // Pega da memória
+        final teams = champService.teams;
 
         return Scaffold(
           appBar: AppBar(

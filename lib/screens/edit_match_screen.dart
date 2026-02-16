@@ -5,8 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// Services & Models
-import '../services/firestore_service.dart';
+import '../services/team_service.dart';
+import '../services/match_service.dart';
 import '../services/championship_service.dart';
 import '../models/match_model.dart'; 
 import '../models/team_model.dart';  
@@ -22,11 +22,9 @@ class EditMatchScreen extends StatefulWidget {
 
 class _EditMatchScreenState extends State<EditMatchScreen> {
   final _formKey = GlobalKey<FormState>();
-  final FirestoreService _firestoreService = FirestoreService();
 
   bool _isSaving = false;
   
-  // Seleções
   String? _selectedHomeTeamId;
   String? _selectedAwayTeamId;
   
@@ -49,9 +47,6 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
   }
 
   void _loadInitialData() {
-    // 1. Dados iniciais dos times já estão no ChampionshipService, não precisa carregar.
-    
-    // 2. Preenche dados se for Edição
     if (widget.match != null) {
       final m = widget.match!;
       _selectedHomeTeamId = m.homeTeamId;
@@ -61,7 +56,6 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
       _selectedPhase = m.phase;
       _selectedDateTime = m.datetime ?? DateTime.now();
     } else {
-       // Valores Padrão para Criação
        _selectedPhase = 'first';
        _selectedDateTime = DateTime.now();
        _locationController.text = 'Ginásio Principal'; 
@@ -105,21 +99,21 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
 
     setState(() => _isSaving = true);
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    final teamService = Provider.of<TeamService>(context, listen: false);
+    final matchService = Provider.of<MatchService>(context, listen: false);
 
     try {
       final location = _locationController.text;
       final round = int.tryParse(_roundController.text) ?? 0;
       
-      // Busca snapshots atualizados (Leitura necessária aqui para consistência de dados na hora de salvar)
-      final homeSnap = await _firestoreService.getTeamSnapshot(_selectedHomeTeamId!, seasonId);
-      final awaySnap = await _firestoreService.getTeamSnapshot(_selectedAwayTeamId!, seasonId);
+      final homeSnap = await teamService.getTeamSnapshot(_selectedHomeTeamId!, seasonId);
+      final awaySnap = await teamService.getTeamSnapshot(_selectedAwayTeamId!, seasonId);
 
       if (homeSnap == null || awaySnap == null) throw Exception("Times não encontrados no banco.");
 
       String result;
       if (widget.match == null) {
-        // --- CRIAÇÃO ---
-        result = await _firestoreService.createMatch(
+        result = await matchService.createMatch(
           seasonId: seasonId,
           homeTeam: homeSnap,
           awayTeam: awaySnap,
@@ -128,7 +122,6 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
           dateTime: _selectedDateTime,
         );
       } else {
-        // --- EDIÇÃO ---
         final matchRef = FirebaseFirestore.instance
             .collection('championships')
             .doc(seasonId)
@@ -138,7 +131,7 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
         final matchSnap = await matchRef.get();
 
         if (matchSnap.exists) {
-          result = await _firestoreService.updateMatchDetails(
+          result = await matchService.updateMatchDetails(
             match: matchSnap,
             homeTeam: homeSnap,
             awayTeam: awaySnap,
@@ -165,16 +158,16 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
     }
   }
 
-  // Widget Helper para Dropdown
   Widget _buildTeamDropdown({
     required String label,
     required String? value,
     required ValueChanged<String?> onChanged,
-    required List<Team> teamsList, // Recebe lista
+    required List<Team> teamsList, 
   }) {
     return DropdownButtonFormField<String>(
       value: value,
       decoration: InputDecoration(labelText: label),
+      isExpanded: true, // <--- CORREÇÃO AQUI: Impede o erro de layout infinito
       items: teamsList.map((team) {
         return DropdownMenuItem<String>(
           value: team.id,
@@ -185,6 +178,7 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
               else 
                 const Icon(Icons.shield, size: 24, color: Colors.grey),
               const SizedBox(width: 10),
+              // Expanded precisa de um pai com largura definida (garantida pelo isExpanded: true acima)
               Expanded(child: Text(team.name, overflow: TextOverflow.ellipsis)),
             ],
           ),
@@ -197,7 +191,6 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Consome times do cache
     final teams = Provider.of<ChampionshipService>(context).teams;
 
     return Scaffold(

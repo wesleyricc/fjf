@@ -3,17 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// Services & Models
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
+import '../services/player_service.dart'; // <-- NOVO SERVICE
 import '../models/player_model.dart'; 
 
-// Screens
 import '../screens/player_profile_screen.dart';
 import '../screens/edit_player_screen.dart';
 import '../utils/custom_cache_manager.dart';
 
-// --- HELPER PARA TÍTULOS ---
 class RosterSectionHeader extends StatelessWidget {
   final String title;
   const RosterSectionHeader({super.key, required this.title});
@@ -33,7 +30,6 @@ class RosterSectionHeader extends StatelessWidget {
   }
 }
 
-// --- SLIVER GRID: JOGADORES (LAZY LOADING) ---
 class SliverTeamPlayersGrid extends StatelessWidget {
   final List<Player> players;
   final String teamId;
@@ -79,7 +75,6 @@ class SliverTeamPlayersGrid extends StatelessWidget {
   }
 }
 
-// --- SLIVER GRID: STAFF (DINÂMICO) ---
 class SliverTeamStaffList extends StatelessWidget {
   final List<Player> staff;
   final String teamId;
@@ -98,13 +93,9 @@ class SliverTeamStaffList extends StatelessWidget {
   Widget build(BuildContext context) {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
-    // --- LÓGICA DE LAYOUT DINÂMICO ---
-    // Se tiver exatamente 2 membros, usa o layout de 2 colunas (Igual aos atletas).
-    // Caso contrário (3 membros, 4, etc.), mantém o layout de 3 colunas.
     final bool usePlayerLayout = staff.length == 2;
     
     final int crossAxisCount = usePlayerLayout ? 2 : 3;
-    // O aspecto 0.70 é o dos atletas (cards maiores). 0.65 é o compacto (cards menores).
     final double childAspectRatio = usePlayerLayout ? 0.70 : 0.65;
 
     return SliverPadding(
@@ -148,6 +139,7 @@ Future<void> _deletePlayer(BuildContext context, Player player, String seasonId)
 
   if (confirm == true && context.mounted) {
     try {
+      final playerService = Provider.of<PlayerService>(context, listen: false);
       final ref = FirebaseFirestore.instance
           .collection('championships')
           .doc(seasonId)
@@ -156,7 +148,7 @@ Future<void> _deletePlayer(BuildContext context, Player player, String seasonId)
       
       final snap = await ref.get();
       if (snap.exists) {
-        final result = await FirestoreService().deletePlayer(snap, seasonId);
+        final result = await playerService.deletePlayer(snap, seasonId);
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
       }
     } catch (e) {
@@ -165,7 +157,6 @@ Future<void> _deletePlayer(BuildContext context, Player player, String seasonId)
   }
 }
 
-// --- CARD DE MEMBRO OTIMIZADO ---
 class _MemberCard extends StatelessWidget {
   final Player member;
   final String teamId;
@@ -199,7 +190,6 @@ class _MemberCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. FOTO
                   Expanded(
                     flex: 5,
                     child: Stack(
@@ -249,7 +239,6 @@ class _MemberCard extends StatelessWidget {
                     ),
                   ),
 
-                  // 2. DADOS
                   Container(
                     padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
                     color: Colors.white,

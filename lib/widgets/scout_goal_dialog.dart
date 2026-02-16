@@ -2,19 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
+import '../services/match_service.dart'; 
 import '../models/match_event.dart';
 
 class ScoutGoalDialog extends StatefulWidget {
   final DocumentSnapshot match;
   final List<DocumentSnapshot> homePlayers;
   final List<DocumentSnapshot> awayPlayers;
+  final MatchEvent? eventToEdit;
+  final MatchEvent? linkedAssistEvent; // Assistência vinculada (vinda da Timeline)
 
   const ScoutGoalDialog({
     super.key,
     required this.match,
     required this.homePlayers,
     required this.awayPlayers,
+    this.eventToEdit,
+    this.linkedAssistEvent,
   });
 
   @override
@@ -22,8 +26,6 @@ class ScoutGoalDialog extends StatefulWidget {
 }
 
 class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
-  final FirestoreService _firestoreService = FirestoreService();
-  
   String? _selectedTeamId;
   String? _scorerId;
   String? _scorerName;
@@ -36,13 +38,33 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
   bool _isSaving = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Preenchimento se for edição
+    if (widget.eventToEdit != null) {
+      final e = widget.eventToEdit!;
+      _selectedTeamId = e.teamId;
+      _scorerId = e.playerId;
+      _scorerName = e.playerName;
+      _concededById = e.concededByPlayerId;
+      _minuteController.text = e.minute.toString();
+      _selectedPeriod = e.period;
+      
+      // Se tivermos encontrado uma assistência vinculada na timeline
+      if (widget.linkedAssistEvent != null) {
+        _assistId = widget.linkedAssistEvent!.playerId;
+        _assistName = widget.linkedAssistEvent!.playerName;
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final homeId = widget.match['team_home_id'];
     final awayId = widget.match['team_away_id'];
     final homeName = widget.match['team_home_name'];
     final awayName = widget.match['team_away_name'];
 
-    // Define as listas baseadas no time selecionado
     List<DocumentSnapshot> scoringTeamPlayers = [];
     List<DocumentSnapshot> opposingTeamPlayers = [];
 
@@ -54,24 +76,30 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
       opposingTeamPlayers = widget.homePlayers;
     }
 
-    // Filtra quem pode fazer gol (remove Staff)
+    // Filtra apenas jogadores de linha/goleiros (remove Staff)
     final scoringCandidates = scoringTeamPlayers.where((doc) {
        final data = doc.data() as Map<String, dynamic>;
        return data['is_staff'] != true;
     }).toList();
 
-    // Filtra possíveis assistentes (remove quem fez o gol)
+    // Ordena por número da camisa
+    scoringCandidates.sort((a,b) {
+      final dA = a.data() as Map; final dB = b.data() as Map;
+      return (dA['jersey_number']??99).compareTo(dB['jersey_number']??99);
+    });
+
+    // Lista de candidatos a assistência (exclui o autor do gol)
     final assistCandidates = (_scorerId != null) 
         ? scoringCandidates.where((doc) => doc.id != _scorerId).toList()
         : [];
 
     return AlertDialog(
-      title: const Text('Registrar Gol'),
+      title: Text(widget.eventToEdit == null ? 'Registrar Gol' : 'Editar Gol'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 1. SELEÇÃO DE TIME
+            // 1. TIME
             DropdownButtonFormField<String>(
               value: _selectedTeamId,
               isExpanded: true,
@@ -84,16 +112,19 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
               onChanged: _isSaving ? null : (v) {
                 setState(() {
                   _selectedTeamId = v;
-                  _scorerId = null;
-                  _assistId = null;
-                  _concededById = null;
-                  
-                  // Tenta pré-selecionar goleiro adversário (para facilitar)
-                  final opponents = (v == homeId) ? widget.awayPlayers : widget.homePlayers;
-                  try {
-                    final gk = opponents.firstWhere((p) => (p.data() as Map)['is_goalkeeper'] == true);
-                    _concededById = gk.id;
-                  } catch (_) {}
+                  // Se mudou o time e não é o mesmo da edição original, reseta campos
+                  if (v != widget.eventToEdit?.teamId) {
+                    _scorerId = null;
+                    _assistId = null;
+                    _concededById = null;
+                    
+                    // Tenta auto-selecionar o goleiro adversário
+                    final opponents = (v == homeId) ? widget.awayPlayers : widget.homePlayers;
+                    try {
+                      final gk = opponents.firstWhere((p) => (p.data() as Map)['is_goalkeeper'] == true);
+                      _concededById = gk.id;
+                    } catch (_) {}
+                  }
                 });
               },
             ),
@@ -118,7 +149,8 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
                  setState(() {
                    _scorerId = v;
                    _scorerName = d['name'];
-                   _assistId = null; // Reseta assistência se mudar o autor
+                   // Se o autor do gol for o mesmo da assistência selecionada, limpa a assistência
+                   if (_assistId == v) _assistId = null;
                  });
               },
             ),
@@ -150,7 +182,7 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
             ),
             const SizedBox(height: 16),
 
-            // 4. GOLEIRO (GOL SOFRIDO)
+            // 4. GOL SOFRIDO (GOLEIRO)
             DropdownButtonFormField<String>(
               value: _concededById,
               isExpanded: true,
@@ -214,7 +246,7 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
           onPressed: _isSaving ? null : _saveGoal,
           child: _isSaving 
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-              : const Text('CONFIRMAR'),
+              : Text(widget.eventToEdit == null ? 'CONFIRMAR' : 'ATUALIZAR'),
         ),
       ],
     );
@@ -230,43 +262,95 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
 
     try {
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      final matchService = Provider.of<MatchService>(context, listen: false);
+      
       final int minute = int.tryParse(_minuteController.text) ?? 0;
       final DateTime now = DateTime.now();
 
-      // 1. Evento GOL
-      final goalEvent = MatchEvent(
-        id: '', 
+      // --- 1. OBJETO DO GOL ---
+      final newGoalEvent = MatchEvent(
+        id: widget.eventToEdit?.id ?? '', // Se ID vazio, o service cria um novo
         type: MatchEventType.goal,
         playerId: _scorerId!,
         playerName: _scorerName ?? 'Atleta',
         teamId: _selectedTeamId!,
         minute: minute,
         period: _selectedPeriod,
-        timestamp: now,
+        timestamp: widget.eventToEdit?.timestamp ?? now,
         concededByPlayerId: _concededById, 
       );
 
-      await _firestoreService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: goalEvent);
-
-      // 2. Evento ASSISTÊNCIA (se houver)
+      // --- 2. OBJETO DA ASSISTÊNCIA (SE HOUVER) ---
+      MatchEvent? newAssistEvent;
       if (_assistId != null) {
-        final assistEvent = MatchEvent(
-          id: '',
+        newAssistEvent = MatchEvent(
+          id: widget.linkedAssistEvent?.id ?? '', // Se ID vazio, cria novo
           type: MatchEventType.assist,
           playerId: _assistId!,
           playerName: _assistName ?? 'Atleta',
           teamId: _selectedTeamId!,
           minute: minute,
           period: _selectedPeriod,
-          timestamp: now.add(const Duration(milliseconds: 100)), // Leve delay para ordenação
+          // Pequeno ajuste no timestamp para garantir ordem correta se criado junto
+          timestamp: widget.linkedAssistEvent?.timestamp ?? now.add(const Duration(milliseconds: 50)),
         );
-        await _firestoreService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: assistEvent);
       }
 
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gol registrado!')));
+      // --- 3. EXECUÇÃO NO SERVIÇO ---
+      
+      // Cenário A: Novo Registro
+      if (widget.eventToEdit == null) {
+        // Salva o Gol
+        await matchService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: newGoalEvent);
+        
+        // Salva a Assistência (se existir)
+        if (newAssistEvent != null) {
+          await matchService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: newAssistEvent);
+        }
+        
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gol registrado!')));
+      } 
+      
+      // Cenário B: Edição
+      else {
+        // Atualiza o Gol
+        await matchService.updateMatchEvent(
+          seasonId: seasonId, 
+          matchId: widget.match.id, 
+          oldEvent: widget.eventToEdit!, 
+          newEvent: newGoalEvent
+        );
+
+        // Gerencia Assistência
+        if (newAssistEvent != null) {
+          if (widget.linkedAssistEvent != null) {
+            // Caso 1: Já tinha e continua tendo (Update)
+            await matchService.updateMatchEvent(
+              seasonId: seasonId, 
+              matchId: widget.match.id, 
+              oldEvent: widget.linkedAssistEvent!, 
+              newEvent: newAssistEvent
+            );
+          } else {
+            // Caso 2: Não tinha e agora tem (Add)
+            await matchService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: newAssistEvent);
+          }
+        } else {
+          // Caso 3: Tinha e removeu (Delete)
+          if (widget.linkedAssistEvent != null) {
+            await matchService.deleteMatchEvent(
+              seasonId: seasonId, 
+              matchId: widget.match.id, 
+              event: widget.linkedAssistEvent!
+            );
+          }
+        }
+        
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lance atualizado!')));
       }
+
+      if (mounted) Navigator.of(context).pop();
+      
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);

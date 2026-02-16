@@ -3,13 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 
-// Services & Models
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
+import '../services/player_service.dart'; // <-- NOVO SERVICE
 import '../models/player_model.dart';
 
-// Widgets & Screens
 import '../widgets/sponsor_banner_rotator.dart';
 import 'edit_player_screen.dart';
 import '../utils/custom_cache_manager.dart';
@@ -24,7 +22,7 @@ class PlayerProfileScreen extends StatefulWidget {
 }
 
 class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
-  final FirestoreService _firestoreService = FirestoreService();
+  // Para históricos antigos, mantemos acesso direto ao Firestore pois é algo muito específico
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   late Future<Player?> _playerFuture;
@@ -43,7 +41,9 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
 
   void _loadData() {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    _playerFuture = _firestoreService.getPlayer(widget.playerId, seasonId);
+    final playerService = Provider.of<PlayerService>(context, listen: false);
+    
+    _playerFuture = playerService.getPlayer(widget.playerId, seasonId);
     _historicalStatsFuture = _fetchHistoricalStats(seasonId);
   }
 
@@ -121,7 +121,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                     ),
                 ],
                 flexibleSpace: FlexibleSpaceBar(
-                  centerTitle: false, // <-- ALTERADO PARA FALSE (Esquerda)
+                  centerTitle: false, 
                   titlePadding: const EdgeInsets.only(left: 16, bottom: 16),
                   title: Text(
                     player.name,

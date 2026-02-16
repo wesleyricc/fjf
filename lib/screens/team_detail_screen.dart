@@ -5,18 +5,15 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Models & Services
 import '../models/team_model.dart';
 import '../models/player_model.dart'; 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
+import '../services/team_service.dart'; // <-- NOVO SERVICE
 
-// Screens
 import 'extra_points_log_screen.dart';
 import 'edit_player_screen.dart';
 
-// Widgets
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/team_stats_summary.dart';
 import '../widgets/trophy_room_widget.dart';
@@ -35,7 +32,6 @@ class TeamDetailScreen extends StatefulWidget {
 
 class _TeamDetailScreenState extends State<TeamDetailScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirestoreService _firestoreService = FirestoreService();
   
   @override
   void initState() {
@@ -47,10 +43,11 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
   // --- LÓGICA: DEFINIR TITULARES ---
   Future<void> _showDefineStartersDialog() async {
-    // Busca do cache local
-    final service = Provider.of<ChampionshipService>(context, listen: false);
-    final players = service.getCachedRoster(widget.team.id);
-    final seasonId = service.currentSeasonId;
+    final champService = Provider.of<ChampionshipService>(context, listen: false);
+    final teamService = Provider.of<TeamService>(context, listen: false);
+    
+    final players = champService.getCachedRoster(widget.team.id);
+    final seasonId = champService.currentSeasonId;
     
     List<String> selectedIds = [];
     bool isLoading = true;
@@ -62,9 +59,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            // Busca dados atuais do time para saber quem já é titular
             if (isLoading) {
-              _firestoreService.getTeam(widget.team.id, seasonId).then((teamDoc) {
+              teamService.getTeam(widget.team.id, seasonId).then((teamDoc) {
                 if (ctx.mounted) {
                   setDialogState(() {
                     final currentStarters = teamDoc?.defaultStarters ?? widget.team.defaultStarters;
@@ -263,7 +259,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       batch.set(logRef, {'timestamp': Timestamp.fromDate(selectedDate), 'reason': selectedReason, 'points': finalPoints});
 
                       await batch.commit();
-                      // Atualiza cache global após mudar pontos
+                      
                       if (mounted) Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
                       
                       if (mounted) Navigator.of(dialogContext).pop();
@@ -289,7 +285,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final authService = Provider.of<AuthService>(context);
     final primaryColor = Theme.of(context).primaryColor;
 
-    // --- USO DO CACHE AQUI ---
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
         final all = service.getCachedRoster(widget.team.id);
@@ -297,14 +292,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         final players = all.where((p) => !p.isStaff).toList();
         final staff = all.where((p) => p.isStaff).toList();
 
-        // Ordenação
         players.sort((a, b) {
           if (a.isGoalkeeper && !b.isGoalkeeper) return -1;
           if (!a.isGoalkeeper && b.isGoalkeeper) return 1;
           return (a.jerseyNumber ?? 999).compareTo(b.jerseyNumber ?? 999);
         });
 
-        // Caso o cache esteja vazio, tenta forçar um refresh (se não estiver carregando)
         if (all.isEmpty && !service.isLoading) {
            WidgetsBinding.instance.addPostFrameCallback((_) => service.fetchStaticData(forceRefresh: true));
         }
@@ -313,9 +306,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           body: RefreshIndicator(
             onRefresh: () => service.fetchStaticData(forceRefresh: true),
             child: CustomScrollView(
-              //cacheExtent: 1000,
               slivers: [
-                // 1. App Bar
                 SliverAppBar(
                   expandedHeight: 200.0,
                   floating: false,
@@ -372,7 +363,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   ),
                 ),
 
-                // 2. Estatísticas e Info
                 SliverList(
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 10),
@@ -391,7 +381,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   ]),
                 ),
 
-                // 3. SLIVERS DO ELENCO
                 SliverToBoxAdapter(child: RosterSectionHeader(title: 'Elenco (${players.length})')),
                 
                 if (service.isLoading && players.isEmpty)
@@ -406,7 +395,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                      isAdmin: authService.isAuthenticated
                    ),
 
-                // Staff
                 if (staff.isNotEmpty) ...[
                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
                    SliverToBoxAdapter(child: RosterSectionHeader(title: 'Comissão Técnica')),
@@ -418,7 +406,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                    ),
                 ],
 
-                // 4. Rodapé
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
                 const SliverToBoxAdapter(child: SponsorBannerRotator()),
               ],

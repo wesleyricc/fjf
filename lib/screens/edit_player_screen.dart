@@ -11,19 +11,15 @@ import 'package:intl/intl.dart';
 import 'package:flutter/services.dart'; 
 import 'package:provider/provider.dart';
 
-// Services & Models
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart';
-import '../models/player_model.dart'; // <-- Model
+import '../services/player_service.dart'; // <-- NOVO SERVICE
+import '../models/player_model.dart';
 
 class EditPlayerScreen extends StatefulWidget {
   final String teamId;
   final String teamName;
-  final Player? player; // <-- Recebe Model
-
-  // Mantemos compatibilidade com chamadas antigas se necessário (mas playerDoc foi removido)
-  // Se player for null, é criação.
+  final Player? player;
 
   const EditPlayerScreen({
     super.key,
@@ -76,7 +72,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
     _heightController = TextEditingController(text: widget.player?.heightCm?.toString() ?? '');
     _weightController = TextEditingController(text: widget.player?.weightKg?.toString() ?? '');
-    // Campos opcionais que não estavam no model, mantemos vazios ou adicionamos ao model futuramente
     _instagramController = TextEditingController();
     _phoneController = TextEditingController();
 
@@ -110,14 +105,13 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
     super.dispose();
   }
 
-  // --- LÓGICA DE IMAGEM ---
   Future<void> _pickImage() async {
     if (kIsWeb) {
       final result = await FilePicker.platform.pickFiles(type: FileType.image);
       if (result != null && result.files.single.bytes != null) {
         setState(() {
           _webImageBytes = result.files.single.bytes;
-          _photoUrl = null; // Invalida URL antiga para mostrar a nova local
+          _photoUrl = null; 
         });
       }
     } else {
@@ -135,7 +129,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
   Future<String?> _uploadImage() async {
     if (_imageFile == null && _webImageBytes == null) return _photoUrl;
     
-    // Nome do arquivo: ID do jogador (se existir) ou Timestamp
     final String fileId = widget.player?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
     String fileName = 'players/$fileId.jpg';
     
@@ -160,7 +153,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
     }
   }
 
-  // --- SALVAR ---
   Future<void> _savePlayer() async {
     if (!_formKey.currentState!.validate()) return;
     if (_isStaff && _selectedStaffRole == null) {
@@ -204,13 +196,13 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       };
 
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-      final FirestoreService service = FirestoreService();
+      final playerService = Provider.of<PlayerService>(context, listen: false);
 
       String result;
       if (widget.player == null) {
-        result = await service.createPlayer(seasonId: seasonId, data: playerData);
+        result = await playerService.createPlayer(seasonId: seasonId, data: playerData);
       } else {
-        result = await service.updatePlayer(seasonId: seasonId, playerId: widget.player!.id, data: playerData);
+        result = await playerService.updatePlayer(seasonId: seasonId, playerId: widget.player!.id, data: playerData);
       }
 
       if (mounted) {
@@ -256,7 +248,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // Foto
             Center(
               child: GestureDetector(
                 onTap: _pickImage,
@@ -315,7 +306,6 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Tipo de Membro
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),

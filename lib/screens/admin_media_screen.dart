@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart'; 
-import '../services/firestore_service.dart';
+import '../services/media_service.dart'; // <-- NOVO SERVICE
 import '../services/championship_service.dart'; 
 import 'edit_media_screen.dart';
 
@@ -15,9 +15,7 @@ class AdminMediaScreen extends StatefulWidget {
 
 class _AdminMediaScreenState extends State<AdminMediaScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirestoreService _firestoreService = FirestoreService();
 
-  // Diálogo de confirmação para exclusão
   Future<void> _showDeleteMediaDialog(DocumentSnapshot doc, String seasonId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -32,8 +30,8 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
     );
 
     if (confirm == true && mounted) {
-      // Chama o serviço para deletar (agora passando o seasonId para localizar corretamente)
-      final result = await _firestoreService.deleteMediaItem(doc, seasonId);
+      final mediaService = Provider.of<MediaService>(context, listen: false);
+      final result = await mediaService.deleteMediaItem(doc, seasonId);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
     }
   }
@@ -44,8 +42,6 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
     final seasonId = championshipService.currentSeasonId;
     final seasonName = championshipService.currentSeasonName;
 
-    // ALTERAÇÃO: Define a query sempre para a subcoleção da temporada atual
-    // Removemos a lógica de legado ('media_feed' na raiz)
     final Query mediaQuery = _firestore
         .collection('championships')
         .doc(seasonId)
@@ -121,7 +117,6 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Navega para a tela de edição em modo 'Criar' (doc = null)
           Navigator.of(context).push(MaterialPageRoute(
             builder: (ctx) => const EditMediaScreen(mediaDoc: null),
           ));

@@ -4,12 +4,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/firestore_service.dart'; // Para limpar suspensão
+// FirestoreService removido pois não é mais necessário
 import '../screens/player_profile_screen.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/rank_indicator.dart'; 
 import '../models/player_model.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Para acesso ao Firestore direto na suspensão
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 class GenericPlayerRankList extends StatelessWidget {
   final List<Player> players; // Recebe lista já pronta

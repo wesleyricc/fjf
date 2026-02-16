@@ -3,9 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
 import '../models/match_event.dart';
-import '../models/player_model.dart'; // Model
+import '../models/player_model.dart'; 
 
-// Widgets Refatorados
 import '../widgets/scout_goal_dialog.dart';
 import '../widgets/scout_card_dialog.dart';
 import '../widgets/scout_timeline_widget.dart';
@@ -19,8 +18,6 @@ class MatchLiveScoutScreen extends StatefulWidget {
 }
 
 class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
-  // Convertemos para DocumentSnapshot apenas para manter compatibilidade com os dialogs antigos
-  // O ideal seria refatorar os dialogs para aceitar Player, mas isso funciona e economiza leituras.
   List<DocumentSnapshot> _homePlayers = [];
   List<DocumentSnapshot> _awayPlayers = [];
   bool _isLoadingPlayers = true;
@@ -36,13 +33,8 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
     final homeId = widget.match['team_home_id'];
     final awayId = widget.match['team_away_id'];
 
-    // Pega do cache e converte para uma lista que os Dialogs aceitam
-    // (Ainda precisamos simular DocumentSnapshot para não quebrar os widgets filhos agora)
-    // Mas a leitura é ZERO.
-    
     final all = service.allPlayers;
     
-    // Função auxiliar de ordenação
     int sortFunc(Player a, Player b) {
       if (!a.isStaff && b.isStaff) return -1;
       if (a.isStaff && !b.isStaff) return 1;
@@ -62,7 +54,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
     });
   }
 
-  // Cria um Mock para compatibilidade com os widgets existentes
   DocumentSnapshot _mockSnapshot(Player p) {
     return MockDocumentSnapshot(p.id, {
       'name': p.name,
@@ -168,7 +159,11 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
                   child: Text("TIMELINE DO JOGO", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
                 ),
 
-                ScoutTimelineWidget(match: widget.match),
+                ScoutTimelineWidget(
+                  match: widget.match,
+                  homePlayers: _homePlayers, // <-- Passando lista
+                  awayPlayers: _awayPlayers, // <-- Passando lista
+                ),
               ],
             ),
     );
@@ -187,22 +182,14 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   }
 }
 
-// Classe Mock para compatibilidade imediata
 class MockDocumentSnapshot implements DocumentSnapshot {
-  @override
-  final String id;
+  @override final String id;
   final Map<String, dynamic> _data;
   MockDocumentSnapshot(this.id, this._data);
-  @override
-  Map<String, dynamic> data() => _data;
-  @override
-  dynamic get(Object field) => _data[field as String];
-  @override
-  dynamic operator [](Object field) => _data[field as String];
-  @override
-  bool get exists => true;
-  @override
-  DocumentReference get reference => throw UnimplementedError();
-  @override
-  SnapshotMetadata get metadata => throw UnimplementedError();
+  @override Map<String, dynamic> data() => _data;
+  @override dynamic get(Object field) => _data[field as String];
+  @override dynamic operator [](Object field) => _data[field as String];
+  @override bool get exists => true;
+  @override DocumentReference get reference => throw UnimplementedError();
+  @override SnapshotMetadata get metadata => throw UnimplementedError();
 }

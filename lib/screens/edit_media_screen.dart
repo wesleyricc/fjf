@@ -1,17 +1,16 @@
-// lib/screens/edit_media_screen.dart
-import 'dart:typed_data'; // Para PWA
+import 'dart:typed_data'; 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
-import '../services/firestore_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:provider/provider.dart'; // <-- Importante
-import '../services/championship_service.dart'; // <-- Importante
+import 'package:provider/provider.dart'; 
+import '../services/championship_service.dart';
+import '../services/media_service.dart'; // <-- NOVO SERVICE
 
 class EditMediaScreen extends StatefulWidget {
-  final DocumentSnapshot? mediaDoc; // Null se for 'Criar', preenchido se for 'Editar'
+  final DocumentSnapshot? mediaDoc; 
 
   const EditMediaScreen({super.key, this.mediaDoc});
 
@@ -21,7 +20,6 @@ class EditMediaScreen extends StatefulWidget {
 
 class _EditMediaScreenState extends State<EditMediaScreen> {
   final _formKey = GlobalKey<FormState>();
-  final FirestoreService _firestoreService = FirestoreService();
   final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.firebasestorage.app");
 
   // Controladores
@@ -48,7 +46,6 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
     _authorController = TextEditingController(text: data?['author'] ?? '');
     _existingImageUrl = data?['imageUrl'];
 
-    // Se for 'Criar' (mediaDoc == null), busca a próxima ordem
     if (widget.mediaDoc == null) {
       _fetchNextOrderNumber();
     }
@@ -64,11 +61,11 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
   }
 
   Future<void> _fetchNextOrderNumber() async {
-    // Pega o seasonId sem ouvir mudanças (listen: false)
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    final mediaService = Provider.of<MediaService>(context, listen: false);
     
     setState(() { _isLoadingNextOrder = true; });
-    final nextOrder = await _firestoreService.getNextMediaOrder(seasonId); // <-- Passa SeasonId
+    final nextOrder = await mediaService.getNextMediaOrder(seasonId); 
     _orderController.text = nextOrder.toString();
     setState(() { _isLoadingNextOrder = false; });
   }
@@ -78,13 +75,13 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.image,
-        withData: true, // Força PWA a ler bytes
+        withData: true, 
       );
       if (result != null && result.files.single.bytes != null) {
         setState(() {
           _pickedImageBytes = result.files.single.bytes;
           _pickedImageName = result.files.single.name;
-          _existingImageUrl = null; // Remove a imagem antiga da pré-visualização
+          _existingImageUrl = null; 
         });
       }
     } catch (e) {
@@ -101,16 +98,13 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
 
     setState(() { _isUploading = true; });
 
-    // Obtém a temporada atual
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-
+    final mediaService = Provider.of<MediaService>(context, listen: false);
 
     String finalImageUrl = _existingImageUrl ?? '';
 
     try {
-      // 1. Se uma nova imagem foi selecionada, faça o upload dela
       if (_pickedImageBytes != null) {
-        debugPrint("Iniciando upload de imagem da mídia...");
         final String fileName = '${DateTime.now().millisecondsSinceEpoch}_$_pickedImageName';
         final String storagePath = 'news_media/$fileName';
         final ref = _storage.ref().child(storagePath);
@@ -118,11 +112,9 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
         final metadata = SettableMetadata(contentType: 'image/${fileName.split('.').last}');
         UploadTask uploadTask = ref.putData(_pickedImageBytes!, metadata);
         TaskSnapshot snapshot = await uploadTask;
-        finalImageUrl = await snapshot.ref.getDownloadURL(); // Pega a nova URL
-        debugPrint("Upload de mídia concluído: $finalImageUrl");
+        finalImageUrl = await snapshot.ref.getDownloadURL(); 
       }
 
-      // 2. Prepara os dados para o Firestore
       final String title = _titleController.text;
       final String targetUrl = _targetUrlController.text;
       final String author = _authorController.text;
@@ -130,9 +122,8 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
 
       String result;
       if (widget.mediaDoc == null) {
-        // --- MODO CRIAÇÃO ---
-        result = await _firestoreService.createMediaItem(
-          seasonId: seasonId, // <-- NOVO
+        result = await mediaService.createMediaItem(
+          seasonId: seasonId,
           title: title,
           targetUrl: targetUrl,
           imageUrl: finalImageUrl,
@@ -140,8 +131,6 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
           author: author,
         );
       } else {
-        // --- MODO ATUALIZAÇÃO ---
-        // Se uma nova imagem foi upada E existia uma antiga, delete a antiga
         if (_pickedImageBytes != null && _existingImageUrl != null && _existingImageUrl!.isNotEmpty) {
            try {
              await _storage.refFromURL(_existingImageUrl!).delete();
@@ -150,8 +139,8 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
            }
         }
         
-        result = await _firestoreService.updateMediaItem(
-          seasonId: seasonId, // <-- NOVO
+        result = await mediaService.updateMediaItem(
+          seasonId: seasonId,
           docId: widget.mediaDoc!.id,
           title: title,
           targetUrl: targetUrl,
@@ -177,14 +166,12 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
 
   Widget _buildImagePreview() {
     if (_pickedImageBytes != null) {
-      // 1. Preview da Nova Imagem (em bytes)
       return Image.memory(
         _pickedImageBytes!,
         width: double.infinity, height: 150, fit: BoxFit.cover,
       );
     }
     if (_existingImageUrl != null) {
-      // 2. Preview da Imagem Antiga (da URL)
       return CachedNetworkImage(
         imageUrl: _existingImageUrl!,
         width: double.infinity, height: 150, fit: BoxFit.cover,
@@ -192,7 +179,6 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
         errorWidget: (c,u,e) => const SizedBox(height: 150, child: Center(child: Icon(Icons.broken_image, color: Colors.red))),
       );
     }
-    // 3. Placeholder
     return Container(
       height: 150,
       width: double.infinity,
@@ -220,17 +206,14 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // Preview da Imagem
             _buildImagePreview(),
             const SizedBox(height: 8),
-            // Botão Selecionar Imagem
             ElevatedButton.icon(
               icon: const Icon(Icons.image),
               label: Text(_existingImageUrl != null ? 'Trocar Imagem' : 'Selecionar Imagem'),
               onPressed: _isUploading ? null : _pickImage,
             ),
             const Divider(height: 24),
-            // Título
             TextFormField(
               controller: _titleController,
               decoration: const InputDecoration(labelText: 'Título da Mídia', border: OutlineInputBorder()),
@@ -238,18 +221,12 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
               enabled: !_isUploading,
             ),
             const SizedBox(height: 16),
-
-            // --- NOVO CAMPO DE AUTOR ---
             TextFormField(
               controller: _authorController,
               decoration: const InputDecoration(labelText: 'Autor da Notícia', hintText: 'Ex: Agora na Cidade', border: OutlineInputBorder()),
-              // Não é obrigatório, então não há validador
               enabled: !_isUploading,
             ),
             const SizedBox(height: 16),
-            // --- FIM DO NOVO CAMPO ---
-            
-            // URL de Destino
             TextFormField(
               controller: _targetUrlController,
               decoration: const InputDecoration(labelText: 'URL de Destino (link)', hintText: 'https://youtube.com/...', border: OutlineInputBorder()),
@@ -258,7 +235,6 @@ class _EditMediaScreenState extends State<EditMediaScreen> {
               enabled: !_isUploading,
             ),
             const SizedBox(height: 16),
-            // Ordem
             TextFormField(
               controller: _orderController,
               decoration: InputDecoration(

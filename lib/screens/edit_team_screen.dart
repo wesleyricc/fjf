@@ -3,13 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// Services & Models
-import '../services/firestore_service.dart';
+import '../services/team_service.dart'; // <-- NOVO SERVICE
 import '../services/championship_service.dart';
 import '../models/team_model.dart'; 
 
 class EditTeamScreen extends StatefulWidget {
-  final Team? team; // Recebe o Objeto Team (null se for criação)
+  final Team? team; 
 
   const EditTeamScreen({super.key, this.team});
 
@@ -19,7 +18,6 @@ class EditTeamScreen extends StatefulWidget {
 
 class _EditTeamScreenState extends State<EditTeamScreen> {
   final _formKey = GlobalKey<FormState>();
-  final FirestoreService _firestoreService = FirestoreService();
 
   late TextEditingController _nameController;
   late TextEditingController _shortNameController;
@@ -32,15 +30,12 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
   @override
   void initState() {
     super.initState();
-    
-    // Inicializa com dados do Model (se existir)
     _nameController = TextEditingController(text: widget.team?.name ?? '');
     _shortNameController = TextEditingController(text: widget.team?.shortName ?? '');
     _shieldUrlController = TextEditingController(text: widget.team?.shieldUrl ?? '');
     _currentShieldUrl = widget.team?.shieldUrl ?? '';
 
     if (widget.team != null) {
-      // Clona a lista para não alterar o objeto original antes de salvar
       _championshipHistory = List<Map<String, dynamic>>.from(widget.team!.championshipHistory);
       _championshipHistory.sort((a, b) => (b['year'] as int).compareTo(a['year'] as int));
     }
@@ -67,8 +62,8 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
 
     setState(() => _isSaving = true);
 
-    // Obtém o ID da Temporada Atual
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    final teamService = Provider.of<TeamService>(context, listen: false);
 
     String result;
     try {
@@ -80,7 +75,7 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
 
       if (widget.team == null) {
         // --- CRIAÇÃO ---
-        result = await _firestoreService.createTeam(
+        result = await teamService.createTeam(
           seasonId: seasonId,
           name: name,
           shortName: shortName,
@@ -89,12 +84,10 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
         );
       } else {
         // --- ATUALIZAÇÃO ---
-        // Obtém o snapshot atualizado usando o método helper do serviço
-        // Isso garante que estamos pegando a referência correta na temporada atual
-        final docSnap = await _firestoreService.getTeamSnapshot(widget.team!.id, seasonId);
+        final docSnap = await teamService.getTeamSnapshot(widget.team!.id, seasonId);
         
         if (docSnap != null && docSnap.exists) {
-           result = await _firestoreService.updateTeam(
+           result = await teamService.updateTeam(
             teamDoc: docSnap,
             name: name,
             shortName: shortName,
