@@ -102,16 +102,24 @@ class FantasyService {
     required String teamName,
     required String ownerName,
     required String shieldType,
-    String? customLogoUrl, // <-- NOVO PARAMETRO
+    String? customLogoUrl,
   }) async {
     try {
-      await _fantasyTeamsRef.doc(userId).update({
-        'team_name': teamName,
-        'owner_name': ownerName,
-        'shield_type': shieldType,
-        'custom_logo_url': customLogoUrl, // <-- SALVA NO BANCO
+      return await _firestore.runTransaction((transaction) async {
+        final docRef = _fantasyTeamsRef.doc(userId);
+        final snapshot = await transaction.get(docRef);
+        
+        if (!snapshot.exists) return "Erro: Time não encontrado.";
+
+        transaction.update(docRef, {
+          'team_name': teamName,
+          'owner_name': ownerName,
+          'shield_type': shieldType,
+          'custom_logo_url': customLogoUrl,
+        });
+        
+        return "Sucesso";
       });
-      return "Sucesso";
     } catch (e) {
       return "Erro ao atualizar perfil: $e";
     }
@@ -134,32 +142,67 @@ class FantasyService {
         lastScore: 0,
         lineupPlayerIds: [],
         captainId: null,
-        customLogoUrl: null, // <-- INICIALIZA NULL
+        customLogoUrl: null,
       );
       
       await _fantasyTeamsRef.doc(userId).set(newTeam.toMap());
     }
   }
 
+  // CORREÇÃO DE CONCORRÊNCIA APLICADA AQUI
   Future<String> saveLineup({
     required String userId,
     required List<String> playerIds,
     required String? captainId,
-    required double totalCost,      
-    required double currentBalance, 
+    required double expectedOldTeamCost, 
+    required double newTeamCost,
   }) async {
     try {
-      final double safeBalance = double.parse(currentBalance.toStringAsFixed(2));
+      return await _firestore.runTransaction((transaction) async {
+        // 1. SEGURANÇA: Verifica Status do Mercado DENTRO da transação
+        // Isso impede que alguém salve enquanto o admin processa a rodada
+        final statusRef = _firestore.collection('fantasy_config').doc('status');
+        final statusSnap = await transaction.get(statusRef);
+        
+        if (statusSnap.exists) {
+          final bool isOpen = statusSnap.data()?['is_open'] ?? true;
+          if (!isOpen) {
+            return "O Mercado está FECHADO. Não é possível salvar.";
+          }
+        }
 
-      await _fantasyTeamsRef.doc(userId).update({
-        'lineup_player_ids': playerIds, 
-        'captain_id': captainId,
-        'current_balance': safeBalance,
-        'lineup': FieldValue.delete(), 
+        // 2. Busca Dados do Time
+        final teamRef = _fantasyTeamsRef.doc(userId);
+        final teamSnap = await transaction.get(teamRef);
+        
+        if (!teamSnap.exists) return "Erro: Time inexistente.";
+        
+        final double serverPatrimony = (teamSnap.data() as Map<String, dynamic>)['team_value'] ?? 0.0;
+        
+        // 3. VALIDAÇÃO FINANCEIRA ROBUSTA
+        // O saldo é recalculado baseado no Patrimônio Total (Source of Truth) menos o Custo do Novo Time.
+        // Isso elimina bugs onde o 'current_balance' ficava dessincronizado.
+        final double actualNewBalance = serverPatrimony - newTeamCost;
+        
+        if (actualNewBalance < -0.01) { // Tolerância para ponto flutuante
+          return "Saldo insuficiente! Você tem C\$${serverPatrimony.toStringAsFixed(2)} e o time custa C\$${newTeamCost.toStringAsFixed(2)}.";
+        }
+
+        final double safeBalance = double.parse(actualNewBalance.toStringAsFixed(2));
+
+        // 4. Executa a atualização
+        transaction.update(teamRef, {
+          'lineup_player_ids': playerIds, 
+          'captain_id': captainId,
+          'current_balance': safeBalance,
+          // Remove campo legado se existir
+          'lineup': FieldValue.delete(), 
+        });
+        
+        return "Sucesso";
       });
-      return "Sucesso";
     } catch (e) {
-      return "Erro ao salvar: $e";
+      return "Erro ao salvar transação: $e";
     }
   }
 
@@ -197,6 +240,9 @@ class FantasyService {
         
         final String staffRole = data['staff_role'] ?? '';
         final bool isTechnician = staffRole == 'Técnico';
+        
+        // Regra de Negócio: No Fantasy, geralmente apenas Técnicos da comissão participam
+        // Ajuste conforme necessidade do seu regulamento
         final String position = isTechnician ? 'Técnico' : (data['position'] ?? 'Desconhecido');
         
         final double initialPrice = 10.0;
@@ -231,9 +277,11 @@ class FantasyService {
         'average_score': 0.0,
         'matches_played': 0,
         'status': 'probable',
+        'history': [],
       };
       batch.set(marketDocRef, playerData);
     } else {
+      // Mantém dados cadastrais atualizados (foto, time), mas NÃO toca no preço/pontos
       batch.update(marketDocRef, {
         'name': data['name'],
         'photo_url': data['photo_url'],

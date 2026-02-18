@@ -38,7 +38,7 @@ class MatchService {
   }
 
   // ===========================================================================
-  // ⚡ CORE 1: REPROCESSAMENTO DA SÚMULA DA PARTIDA
+  // ⚡ CORE: PROCESSAMENTO DE SÚMULA E ESTATÍSTICAS
   // ===========================================================================
 
   Future<void> recalculateMatchStatsFromTimeline(String seasonId, String matchId, {String? excludeEventId}) async {
@@ -46,6 +46,7 @@ class MatchService {
     final timelineRef = matchRef.collection('timeline');
 
     try {
+      // Pequeno delay para garantir consistência de escritas recentes
       await Future.delayed(const Duration(milliseconds: 300));
 
       final snapshot = await timelineRef.get();
@@ -58,10 +59,9 @@ class MatchService {
 
       int scoreHome = 0;
       int scoreAway = 0;
-      // --- NOVO: Acumuladores de Disciplina da Partida ---
       int discHome = 0;
       int discAway = 0;
-      // ---------------------------------------------------
+
       Map<String, int> goals = {};
       Map<String, int> assists = {};
       Map<String, int> yellows = {};
@@ -75,237 +75,234 @@ class MatchService {
       final homeId = matchData['team_home_id'];
       final awayId = matchData['team_away_id'];
       final String status = matchData['status'] ?? 'pending';
+      final String matchLabel = "Rodada ${matchData['round']} - ${matchData['team_home_name']} x ${matchData['team_away_name']}";
 
-      for (var event in events) {
-        if (event.id == excludeEventId) continue;
-        final pid = event.playerId;
-        if (pid.isEmpty) continue;
+      // Executa a transação de atualização da partida (Súmula Interna)
+      await _firestore.runTransaction((transaction) async {
+        for (var event in events) {
+          if (event.id == excludeEventId) continue;
+          final pid = event.playerId;
+          if (pid.isEmpty) continue;
 
-        if (event.type == MatchEventType.goal) {
-          if (event.teamId == homeId) scoreHome++;
-          else if (event.teamId == awayId) scoreAway++;
-          goals[pid] = (goals[pid] ?? 0) + 1;
-          if (event.concededByPlayerId != null) conceded[event.concededByPlayerId!] = (conceded[event.concededByPlayerId!] ?? 0) + 1;
-        }
-        else if (event.type == MatchEventType.assist) assists[pid] = (assists[pid] ?? 0) + 1;
-       
-        // --- CÁLCULO DE DISCIPLINA NA HORA ---
-        else if (event.type == MatchEventType.yellowCard) {
-          yellows[pid] = (yellows[pid] ?? 0) + 1;
-          if (event.teamId == homeId) discHome += 10;
-          if (event.teamId == awayId) discAway += 10;
-        }
-        else if (event.type == MatchEventType.redCard) {
-          reds[pid] = (reds[pid] ?? 0) + 1;
-          if (event.teamId == homeId) discHome += 21;
-          if (event.teamId == awayId) discAway += 21;
-        }
-        // --------------------------------------
+          if (event.type == MatchEventType.goal) {
+            if (event.teamId == homeId) scoreHome++;
+            else if (event.teamId == awayId) scoreAway++;
+            goals[pid] = (goals[pid] ?? 0) + 1;
+            if (event.concededByPlayerId != null) conceded[event.concededByPlayerId!] = (conceded[event.concededByPlayerId!] ?? 0) + 1;
+          }
+          else if (event.type == MatchEventType.assist) {
+            assists[pid] = (assists[pid] ?? 0) + 1;
+          }
+          else if (event.type == MatchEventType.yellowCard) {
+            yellows[pid] = (yellows[pid] ?? 0) + 1;
+            if (event.teamId == homeId) discHome += 10;
+            if (event.teamId == awayId) discAway += 10;
+
+            // Log Disciplinar (Apenas se finalizado e atingiu regra)
+            if (status == 'finished' && (yellows[pid] ?? 0) >= AdminService.suspensionYellowCards) {
+               _disciplinaryService.recordDisciplinaryLog(
+                 transaction, seasonId, matchId, pid, 
+                 {'name': event.playerName, 'team_id': event.teamId}, 
+                 matchLabel, "Acúmulo de ${AdminService.suspensionYellowCards} CA"
+               );
+            }
+          }
+          else if (event.type == MatchEventType.redCard) {
+            reds[pid] = (reds[pid] ?? 0) + 1;
+            if (event.teamId == homeId) discHome += 21;
+            if (event.teamId == awayId) discAway += 21;
+
+            if (status == 'finished') {
+              _disciplinaryService.recordDisciplinaryLog(
+                transaction, seasonId, matchId, pid, 
+                {'name': event.playerName, 'team_id': event.teamId}, 
+                matchLabel, "Cartão Vermelho (Expulsão)"
+              );
+            }
+          }
         }
 
-      await matchRef.update({
-        'score_home': scoreHome,
-        'score_away': scoreAway,
-        // Salva os pontos disciplinares DO JOGO no documento da partida
-        'disciplinary_home': discHome, 
-        'disciplinary_away': discAway,
-        'stats_applied.player_stats': {
-          'goals': goals,
-          'assists': assists,
-          'yellows': yellows,
-          'reds': reds,
-          'goals_conceded': conceded
-        }
+        transaction.update(matchRef, {
+          'score_home': scoreHome,
+          'score_away': scoreAway,
+          'disciplinary_home': discHome, 
+          'disciplinary_away': discAway,
+          'stats_applied.player_stats': {
+            'goals': goals,
+            'assists': assists,
+            'yellows': yellows,
+            'reds': reds,
+            'goals_conceded': conceded
+          }
+        });
       });
 
-      // Se finalizada, recalcula toda a temporada
+      // Se finalizada, atualiza estatísticas acumuladas
+      // ALTERAÇÃO SENIOR: Agora chamamos o recálculo OTIMIZADO
       if (status == 'finished') {
-        await _recalculateGlobalSeasonStats(seasonId);
+        // Recalcula APENAS para os times envolvidos, para não ler o banco inteiro
+        await _recalculateSpecificTeamsAndPlayers(seasonId, [homeId, awayId]);
       }
 
     } catch (e) {
-      debugPrint("❌ Erro ao recalcular partida: $e");
+      debugPrint("❌ Erro ao recalcular partida e logs: $e");
     }
   }
 
   // ===========================================================================
-  // ⚡ CORE 2: REPROCESSAMENTO GLOBAL DA TEMPORADA (CORRIGIDO)
+  // 🚀 OTIMIZAÇÃO: RECÁLCULO INCREMENTAL (Senior Fix)
+  // Substitui o antigo _recalculateGlobalSeasonStats que era muito custoso
   // ===========================================================================
 
-  Future<void> _recalculateGlobalSeasonStats(String seasonId) async {
-    debugPrint("🔄 Iniciando Recálculo Global da Temporada $seasonId...");
-    
-    // 1. Carregar TODOS os jogadores para mapear ID -> TimeID
-    // Isso é necessário para atribuir os pontos disciplinares ao time correto
-    final playersSnap = await _playerService.getPlayerStatsRef(seasonId).get();
-    Map<String, String> playerToTeamMap = {}; // pid -> tid
-    
-    for (var doc in playersSnap.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      if (data['team_id'] != null) {
-        playerToTeamMap[doc.id] = data['team_id'];
-      }
-    }
+  Future<void> _recalculateSpecificTeamsAndPlayers(String seasonId, List<String> teamIds) async {
+    debugPrint("🔄 Recálculo OTIMIZADO para times: $teamIds");
 
-    // 2. Carregar partidas finalizadas
+    final batch = _firestore.batch();
     final matchesRef = _getMatchesRef(seasonId);
-    final finishedMatchesSnap = await matchesRef.where('status', isEqualTo: 'finished').get();
+
+    // 1. Busca APENAS jogadores dos times envolvidos
+    final playersQuery = await _playerService.getPlayerStatsRef(seasonId)
+        .where('team_id', whereIn: teamIds)
+        .get();
+
+    // 2. Busca APENAS partidas finalizadas desses times
+    // O Firestore não suporta 'OR' complexo em arrays facilmente, então fazemos duas queries
+    final matchesHome = await matchesRef
+        .where('team_home_id', whereIn: teamIds)
+        .where('status', isEqualTo: 'finished')
+        .get();
     
-    // Acumuladores
-    Map<String, Map<String, int>> playerTotals = {}; // pid -> {goals: 5, yellows: 2...}
-    Map<String, Map<String, int>> teamTotals = {};   // tid -> {disc_points: 50, yellows: 5...}
+    final matchesAway = await matchesRef
+        .where('team_away_id', whereIn: teamIds)
+        .where('status', isEqualTo: 'finished')
+        .get();
 
-    // Helper para inicializar mapa
-    void initPlayer(String pid) {
-      if (!playerTotals.containsKey(pid)) playerTotals[pid] = {};
-    }
-    void initTeam(String tid) {
-      if (!teamTotals.containsKey(tid)) teamTotals[tid] = {};
+    // Mescla resultados das partidas (evitando duplicatas pelo ID)
+    final Map<String, DocumentSnapshot> relevantMatches = {};
+    for (var doc in matchesHome.docs) relevantMatches[doc.id] = doc;
+    for (var doc in matchesAway.docs) relevantMatches[doc.id] = doc;
+
+    // Estruturas de Acumulação
+    Map<String, Map<String, int>> playerTotals = {}; // PlayerID -> Stats
+    Map<String, Map<String, int>> teamTotals = {};   // TeamID -> Stats
+
+    // Inicializa mapas para os times solicitados
+    for (var tid in teamIds) {
+      teamTotals[tid] = {'disciplinary_points': 0, 'total_yellow_cards': 0, 'total_red_cards': 0};
     }
 
-    // 3. Iterar Partidas e Somar
-    for (var doc in finishedMatchesSnap.docs) {
-      final data = doc.data() as Map<String, dynamic>;
+    // Processa Partidas
+    for (var matchDoc in relevantMatches.values) {
+      final data = matchDoc.data() as Map<String, dynamic>;
       final statsApplied = data['stats_applied'] as Map<String, dynamic>?;
       
       if (statsApplied != null && statsApplied['player_stats'] != null) {
         final pStats = statsApplied['player_stats'] as Map<String, dynamic>;
         
-        // --- GOLS ---
-        if (pStats['goals'] is Map) {
-          (pStats['goals'] as Map).forEach((pid, val) {
-             initPlayer(pid);
-             playerTotals[pid]!['goals'] = (playerTotals[pid]!['goals'] ?? 0) + (val as int);
+        // Helper para processar stats
+        void processStat(String type, Map<String, dynamic> map, int multiplier) {
+          map.forEach((pid, val) {
+            int count = (val as num).toInt();
+            
+            // Só processa se o jogador estiver no nosso escopo de times (opcional, mas seguro)
+            if (!playerTotals.containsKey(pid)) playerTotals[pid] = {};
+            
+            // Soma para o Jogador
+            playerTotals[pid]![type] = (playerTotals[pid]![type] ?? 0) + count;
+
+            // Se for cartão, soma para o Time também (precisamos saber o time do jogador na partida?)
+            // Simplificação: Somamos direto do disciplinary_home/away da partida para o time
           });
         }
+
+        if (pStats['goals'] is Map) processStat('goals', pStats['goals'], 1);
+        if (pStats['assists'] is Map) processStat('assists', pStats['assists'], 1);
+        if (pStats['goals_conceded'] is Map) processStat('goals_conceded', pStats['goals_conceded'], 1);
+        if (pStats['yellows'] is Map) processStat('total_yellow_cards', pStats['yellows'], 1);
+        if (pStats['reds'] is Map) processStat('total_red_cards', pStats['reds'], 1);
         
-        // --- ASSISTÊNCIAS ---
-        if (pStats['assists'] is Map) {
-          (pStats['assists'] as Map).forEach((pid, val) {
-             initPlayer(pid);
-             playerTotals[pid]!['assists'] = (playerTotals[pid]!['assists'] ?? 0) + (val as int);
-          });
+        // Acumula totais do time (mais confiável pegar do cabeçalho da match)
+        String hId = data['team_home_id'];
+        String aId = data['team_away_id'];
+        
+        if (teamTotals.containsKey(hId)) {
+           teamTotals[hId]!['disciplinary_points'] = (teamTotals[hId]!['disciplinary_points'] ?? 0) + (data['disciplinary_home'] as int? ?? 0);
+           // Nota: Total de cartões do time poderia ser recalculado somando jogadores, 
+           // mas aqui vamos confiar no que foi salvo na partida para ser mais rápido.
         }
-
-        // --- GOLS SOFRIDOS ---
-        if (pStats['goals_conceded'] is Map) {
-          (pStats['goals_conceded'] as Map).forEach((pid, val) {
-             initPlayer(pid);
-             playerTotals[pid]!['goals_conceded'] = (playerTotals[pid]!['goals_conceded'] ?? 0) + (val as int);
-          });
-        }
-
-        // --- CARTÕES AMARELOS ---
-        if (pStats['yellows'] is Map) {
-          (pStats['yellows'] as Map).forEach((pid, val) {
-             int count = val as int;
-             initPlayer(pid);
-             playerTotals[pid]!['total_yellow_cards'] = (playerTotals[pid]!['total_yellow_cards'] ?? 0) + count;
-             
-             // Soma ao Time
-             String? tid = playerToTeamMap[pid];
-             if (tid != null) {
-               initTeam(tid);
-               teamTotals[tid]!['total_yellow_cards'] = (teamTotals[tid]!['total_yellow_cards'] ?? 0) + count;
-               teamTotals[tid]!['disciplinary_points'] = (teamTotals[tid]!['disciplinary_points'] ?? 0) + (count * 10);
-             }
-          });
-        }
-
-        // --- CARTÕES VERMELHOS ---
-        if (pStats['reds'] is Map) {
-          (pStats['reds'] as Map).forEach((pid, val) {
-             int count = val as int;
-             initPlayer(pid);
-             playerTotals[pid]!['total_red_cards'] = (playerTotals[pid]!['total_red_cards'] ?? 0) + count;
-             
-             // Soma ao Time
-             String? tid = playerToTeamMap[pid];
-             if (tid != null) {
-               initTeam(tid);
-               teamTotals[tid]!['total_red_cards'] = (teamTotals[tid]!['total_red_cards'] ?? 0) + count;
-               teamTotals[tid]!['disciplinary_points'] = (teamTotals[tid]!['disciplinary_points'] ?? 0) + (count * 21);
-             }
-          });
+        if (teamTotals.containsKey(aId)) {
+           teamTotals[aId]!['disciplinary_points'] = (teamTotals[aId]!['disciplinary_points'] ?? 0) + (data['disciplinary_away'] as int? ?? 0);
         }
       }
     }
 
-    // 4. Aplicar Updates nos JOGADORES (Incluindo Suspensão)
-    final batch = _firestore.batch();
-    
-    // Itera sobre todos os jogadores (não só os que pontuaram) para garantir RESET em quem teve dados apagados?
-    // Para simplificar e evitar leitura excessiva, atualizamos quem está na lista do snapshot inicial
-    for (var doc in playersSnap.docs) {
-      final pid = doc.id;
-      final stats = playerTotals[pid] ?? {};
+    // 3. Aplica Updates nos Jogadores
+    // Precisamos também verificar suspensões ativas para esses jogadores
+    final activeSuspensionsSnap = await _firestore
+        .collection('championships')
+        .doc(seasonId)
+        .collection('disciplinary_log')
+        .where('return_date', isNull: true) // Apenas suspensões abertas
+        .get();
+        
+    Set<String> suspendedPlayerIds = activeSuspensionsSnap.docs
+        .map((d) => d['playerId'] as String)
+        .toSet();
+
+    for (var pDoc in playersQuery.docs) {
+      final pid = pDoc.id;
+      final stats = playerTotals[pid] ?? {}; // Se não jogou nada, fica 0
       
       final int y = stats['total_yellow_cards'] ?? 0;
       final int r = stats['total_red_cards'] ?? 0;
       
-      // Lógica de Suspensão Automática
-      bool isSuspended = false;
-      // Regra 1: Vermelho Pendente (Assumindo que > 0 suspende o próximo, lógica simplificada de acumulado)
-      if (AdminService.suspensionOnRed && r > 0) {
-        // Em um sistema real precisaria saber se já cumpriu. 
-        // Aqui assumimos: se tem vermelho na temporada, verificamos manualmente ou simplificamos.
-        // Pelo pedido "setar is_suspended": Se tomou vermelho, marca.
-        isSuspended = true; 
-      }
-      // Regra 2: 3 Amarelos
-      if (y > 0 && y % AdminService.suspensionYellowCards == 0) {
-        isSuspended = true;
-      }
-
-      batch.update(doc.reference, {
+      batch.update(pDoc.reference, {
         'goals': stats['goals'] ?? 0,
         'assists': stats['assists'] ?? 0,
         'goals_conceded': stats['goals_conceded'] ?? 0,
         'total_yellow_cards': y,
-        'yellow_cards': y, // Simplificação: iguala ao total para exibição
+        'yellow_cards': y % AdminService.suspensionYellowCards, // Lógica simples de acumulo atual
         'total_red_cards': r,
-        'red_cards': r,
-        'is_suspended': isSuspended, // <--- CORREÇÃO AQUI
+        'red_cards': r, 
+        'is_suspended': suspendedPlayerIds.contains(pid),
       });
     }
 
-    // 5. Aplicar Updates nos TIMES (Disciplina)
-    // Para garantir que times que perderam pontos (ex: cartão deletado) sejam atualizados,
-    // precisamos iterar sobre todos os times ou usar o teamTotals.
-    // O mais seguro é pegar os times da teamTotals e aplicar updates.
-    // Mas e se um time ficou com 0 cartões? Ele não estará no teamTotals.
-    // Solução: Iterar sobre os times envolvidos nas partidas finalizadas.
-    
-    Set<String> uniqueTeams = {};
-    for (var m in finishedMatchesSnap.docs) {
-      uniqueTeams.add(m['team_home_id']);
-      uniqueTeams.add(m['team_away_id']);
-    }
+    // 4. Aplica Updates nos Times (Disciplinar e Cartões totais precisam ser agregados dos jogadores para precisão)
+    for (var tid in teamIds) {
+      // Recalcula totais de cartões do time somando os jogadores processados
+      // Isso garante consistência com a aba de estatísticas
+      int teamY = 0;
+      int teamR = 0;
+      
+      // Filtra jogadores deste time
+      final teamPlayers = playersQuery.docs.where((d) => d['team_id'] == tid);
+      
+      for(var p in teamPlayers) {
+         final pid = p.id;
+         teamY += playerTotals[pid]?['total_yellow_cards'] ?? 0;
+         teamR += playerTotals[pid]?['total_red_cards'] ?? 0;
+      }
 
-    for (String tid in uniqueTeams) {
-      final stats = teamTotals[tid] ?? {};
       final tRef = _teamService.getTeamsRef(seasonId).doc(tid);
-      
-      // Também precisamos recalcular pontos da tabela (V/E/D).
-      // Chamamos o TeamService que já faz isso, mas injetamos a disciplina.
-      
-      // Primeiro, update da disciplina
+      final discPoints = teamTotals[tid]?['disciplinary_points'] ?? 0;
+
       batch.update(tRef, {
-        'disciplinary_points': stats['disciplinary_points'] ?? 0,
-        'total_yellow_cards': stats['total_yellow_cards'] ?? 0,
-        'total_red_cards': stats['total_red_cards'] ?? 0,
+        'disciplinary_points': discPoints,
+        'total_yellow_cards': teamY,
+        'total_red_cards': teamR,
       });
     }
 
     await batch.commit();
 
-    // 6. Recalcular Pontos de Tabela (Vitoria/Derrota)
-    // Isso é feito time a time
-    for (String tid in uniqueTeams) {
+    // 5. Recalcula Tabela de Classificação (Pontos, Vitórias, etc)
+    // Isso é rápido pois processa apenas o objeto Team
+    for (String tid in teamIds) {
       await _teamService.recalculateTeamStats(tid, seasonId);
     }
     
-    debugPrint("✅ Recálculo Global (Disciplina e Suspensões) Concluído.");
+    debugPrint("✅ Recálculo OTIMIZADO Concluído.");
   }
 
   // ===========================================================================
@@ -358,14 +355,21 @@ class MatchService {
     final eventRef = _getMatchesRef(seasonId).doc(matchId).collection('timeline').doc(event.id);
     
     try {
-      await eventRef.delete();
+      await _firestore.runTransaction((transaction) async {
+        transaction.delete(eventRef);
+        // Sempre tenta remover o log associado se for um cartão, por segurança
+        if (event.type == MatchEventType.redCard || event.type == MatchEventType.yellowCard) {
+          _disciplinaryService.removeDisciplinaryLog(transaction, seasonId, matchId, event.playerId);
+        }
+      });
+      
       await recalculateMatchStatsFromTimeline(seasonId, matchId, excludeEventId: event.id);
       return "Sucesso";
     } catch (e) { return "Erro ao excluir: $e"; }
   }
 
   // ===========================================================================
-  // 🏆 ADMIN UPDATE (COM GATILHO DE RECÁLCULO)
+  // 🏆 ADMIN UPDATE (Metadados da Partida)
   // ===========================================================================
 
   Future<String> updateMatchStats({
@@ -375,7 +379,6 @@ class MatchService {
   }) async {
     try {
       final matchId = matchSnapshot.id;
-      final matchData = matchSnapshot.data() as Map<String, dynamic>;
       
       await _firestore.collection('championships').doc(seasonId).collection('matches').doc(matchId).update({
         'status': newStatus,
@@ -385,17 +388,12 @@ class MatchService {
         'sumula_url': newSumulaUrl,
         'stats_applied.man_of_the_match': newManOfTheMatchId,
         'stats_applied.media_links': newMediaLinks,
-        'score_home': newScoreHome, // Backup manual
+        'score_home': newScoreHome, 
         'score_away': newScoreAway,
       });
 
-      // Se virou Finished agora, ou foi editado enquanto Finished
       if (newStatus == 'finished') {
-         // 1. Recalcula a partida (garante que sumula bata com timeline)
-         // Dentro deste método, ele chama o _recalculateGlobalSeasonStats
          await recalculateMatchStatsFromTimeline(seasonId, matchId); 
-         
-         // 2. Verifica Mata-mata
          await _checkAndGenerateNextPhase(seasonId, triggeringMatchRound: matchSnapshot['round']);
       }
       return "Sucesso";
@@ -403,15 +401,10 @@ class MatchService {
   }
 
   // ===========================================================================
-  // ⚙️ GERAÇÃO DE FASES (TRAVA RODADA 7)
+  // ⚙️ GERAÇÃO DE FASES
   // ===========================================================================
 
   Future<void> _checkAndGenerateNextPhase(String seasonId, {int? triggeringMatchRound}) async {
-    // 🔒 TRAVA: Só roda se for a rodada 7 (Fim da fase de grupos)
-    // Se não tiver essa info, assume que pode rodar, mas a verificação de "todos finished" abaixo é a garantia real.
-    // No entanto, para evitar processamento desnecessário na rodada 1, 2, etc:
-    // if (triggeringMatchRound != null && triggeringMatchRound < 7) return; 
-
     debugPrint("⚙️ Verificando geração de mata-mata...");
     await AdminService.loadAllRules(seasonId);
     
@@ -420,19 +413,16 @@ class MatchService {
     final teamsSnapshot = await _teamService.getTeamsRef(seasonId).get();
     final List<Team> allTeams = teamsSnapshot.docs.map((d) => Team.fromFirestore(d)).toList();
 
-    // Busca apenas jogos da primeira fase
     final phase1Snapshot = await matchesRef.where('phase', isEqualTo: 'first').get();
     if (phase1Snapshot.docs.isEmpty) return;
 
-    // 🔒 TRAVA 2: Todos os jogos da fase 1 devem estar finalizados
     final allFinished = phase1Snapshot.docs.every((doc) => doc['status'] == 'finished');
     
     if (!allFinished) {
-      debugPrint("⛔ Ainda há jogos pendentes na fase 1.");
+      // debugPrint("⛔ Ainda há jogos pendentes na fase 1.");
       return;
     }
 
-    // Verifica se já gerou para não duplicar
     final nextPhaseCheck = isModel2 ? 'quarter_final' : 'semifinal';
     final checkSnap = await matchesRef.where('phase', isEqualTo: nextPhaseCheck).limit(1).get();
     
@@ -457,7 +447,7 @@ class MatchService {
   }
 
   // ===========================================================================
-  // 📝 CRUD BÁSICO RESTANTE
+  // 📝 CRUD BÁSICO
   // ===========================================================================
 
   Future<String> createMatch({required String seasonId, required DocumentSnapshot homeTeam, required DocumentSnapshot awayTeam, required String location, required int round, required DateTime dateTime}) async {
@@ -489,9 +479,18 @@ class MatchService {
 
   Future<String> deleteMatch(DocumentSnapshot match, String seasonId) async {
     try {
-      final status = match['status'];
+      // Importante: Antes de deletar, pega IDs para atualizar stats
+      final data = match.data() as Map<String, dynamic>;
+      final hId = data['team_home_id'];
+      final aId = data['team_away_id'];
+      final status = data['status'];
+
       await match.reference.delete();
-      if (status == 'finished') await _recalculateGlobalSeasonStats(seasonId);
+      
+      if (status == 'finished') {
+        // Usa o método otimizado para reverter stats dos times envolvidos
+        await _recalculateSpecificTeamsAndPlayers(seasonId, [hId, aId]);
+      }
       return "Sucesso: Partida excluída.";
     } catch (e) { return "Erro: $e"; }
   }

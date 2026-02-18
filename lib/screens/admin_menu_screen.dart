@@ -37,13 +37,21 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
 
   Future<void> _showChangeVideoIdDialog() async {
-    // (Mantido igual - Lógica de Config Global pode ficar no /config se for para todos os campeonatos,
-    // mas se for específico, deveria mudar também. Vou manter global por enquanto conforme seu pedido focado na Default View)
     final urlOrIdController = TextEditingController();
     bool isLoading = false;
+    
+    // Obtém ID da temporada
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
     try {
-      final docSnap = await _firestore.collection('config').doc('app_settings').get();
+      // LEITURA: Agora busca da temporada específica
+      final docSnap = await _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('settings')
+          .doc('app_settings')
+          .get();
+
       if (docSnap.exists && docSnap.data() != null && docSnap.data()!.containsKey('live_video_id')) {
         urlOrIdController.text = docSnap.get('live_video_id') ?? '';
       }
@@ -80,14 +88,20 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                       final extractedId = YoutubePlayerController.convertUrlToId(input);
                       if (extractedId == null) throw Exception('ID inválido');
 
-                      await _firestore.collection('config').doc('app_settings').set({
-                        'live_video_id': extractedId,
-                        'live_video_timestamp': FieldValue.serverTimestamp(),
-                      }, SetOptions(merge: true));
+                      // ESCRITA: Salva na temporada específica
+                      await _firestore
+                          .collection('championships')
+                          .doc(seasonId)
+                          .collection('settings')
+                          .doc('app_settings')
+                          .set({
+                            'live_video_id': extractedId,
+                            'live_video_timestamp': FieldValue.serverTimestamp(),
+                          }, SetOptions(merge: true));
 
                       if (mounted) {
                         Navigator.of(dialogContext).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vídeo atualizado!')));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vídeo atualizado para esta temporada!')));
                       }
                     } catch (e) {
                         if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));

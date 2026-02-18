@@ -42,7 +42,7 @@ class PhotoSalesViewModel extends ChangeNotifier {
   Future<void> loadPhotos() async {
     _isLoadingPhotos = true;
     _errorMessage = null;
-    notifyListeners(); // Avisa a View para mostrar loading
+    notifyListeners(); 
 
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -87,31 +87,40 @@ class PhotoSalesViewModel extends ChangeNotifier {
 
   void setEmail(String email) {
     _customerEmail = email;
-    notifyListeners(); // Opcional, se quiser validar em tempo real
+    notifyListeners(); 
   }
 
-  // 4. Checkout - Gerar Pix
+  // 4. Checkout - Gerar Pix (CORRIGIDO)
   Future<void> generatePix() async {
     if (_customerEmail.isEmpty || !_customerEmail.contains('@')) {
-      _errorMessage = "E-mail inválido";
+      _errorMessage = "Por favor, informe um e-mail válido para entrega.";
       notifyListeners();
       return;
     }
 
     _checkoutStep = CheckoutStep.loading;
+    _errorMessage = null;
     notifyListeners();
 
     try {
-      // Salva preferência
+      // Salva preferência local
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_email_delivery', _customerEmail);
 
       final photoIds = _cart.map((e) => e.id).toList();
 
-      final result = await FirebaseFunctions.instance.httpsCallable('createPixPayment').call({
-        'photoIds': photoIds,
-        'customerContact': _customerEmail,
-      });
+      // Chamada Segura às Cloud Functions
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('createPixPayment')
+          .call({
+            'photoIds': photoIds,
+            'customerContact': _customerEmail,
+          });
+
+      // Validação de Integridade do Retorno
+      if (result.data == null || result.data is! Map) {
+        throw "O servidor retornou um formato de dados inválido.";
+      }
 
       final data = Map<String, dynamic>.from(result.data as Map);
       _pixCode = data['pix_code']?.toString() ?? '';
@@ -119,13 +128,15 @@ class PhotoSalesViewModel extends ChangeNotifier {
 
       if (_paymentId.isNotEmpty && _pixCode.isNotEmpty) {
         _checkoutStep = CheckoutStep.pix;
-        // Inicia monitoramento do pagamento
         _listenToPaymentStatus();
       } else {
-        throw "Erro no servidor ao gerar pagamento.";
+        throw "Não foi possível gerar o código Pix. Tente novamente mais tarde.";
       }
+    } on FirebaseFunctionsException catch (e) {
+      _errorMessage = "Erro no servidor (${e.code}): ${e.message}";
+      _checkoutStep = CheckoutStep.form;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = "Ocorreu um erro inesperado: $e";
       _checkoutStep = CheckoutStep.form;
     }
     notifyListeners();
@@ -147,15 +158,16 @@ class PhotoSalesViewModel extends ChangeNotifier {
       if ((status == 'approved' || status == 'paid') && _checkoutStep == CheckoutStep.pix) {
         _finalizeSuccess();
       }
+    }, onError: (err) {
+      debugPrint("Erro ao monitorar pagamento: $err");
     });
   }
 
   Future<void> _finalizeSuccess() async {
-    // Dispara e-mail (Trigger)
     try {
       String linksHtml = "";
       for (var photo in _cart) {
-         linksHtml += '<li><a href="${photo.highResUrl}">Baixar Foto (Alta Resolução)</a></li>';
+         linksHtml += '<li><a href="${photo.highResUrl}">Baixar Foto</a></li>';
       }
 
       await FirebaseFirestore.instance.collection('mail').add({
@@ -165,21 +177,19 @@ class PhotoSalesViewModel extends ChangeNotifier {
           'html': '''
             <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
               <h2 style="color: #4CAF50;">Pagamento Confirmado!</h2>
-              <p>Obrigado pela compra. Aqui estão suas fotos em alta resolução:</p>
+              <p>Aqui estão os links para as suas fotos em alta resolução:</p>
               <ul>$linksHtml</ul>
-              <hr>
-              <p>Equipe FJF</p>
+              <hr><p>Equipe FJF</p>
             </div>
           ''',
         },
       });
     } catch (e) {
-      debugPrint("Erro silenciado no envio de e-mail: $e");
+      debugPrint("Erro ao registrar disparo de e-mail: $e");
     }
 
-    // Atualiza estado final
     _purchasedItems = List.from(_cart);
-    _cart.clear(); // Limpa carrinho pois já comprou
+    _cart.clear(); 
     _checkoutStep = CheckoutStep.success;
     notifyListeners();
   }

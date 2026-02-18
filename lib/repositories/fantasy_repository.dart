@@ -47,12 +47,7 @@ class FantasyRepository {
   }
 
   // 2. Buscar Time do Usuário (Específico)
-  // Times mudam com frequência quando o próprio usuário edita.
-  // Estratégia: Cache first, mas atualiza em background se for velho, 
-  // OU forceRefresh quando o usuário salva a escalação.
   Stream<FantasyTeam?> streamUserTeam(String userId) {
-    // Para dados realtime críticos como "Meu Time", mantemos o Stream direto do Service
-    // Mas poderíamos fazer cache do "último estado conhecido" para exibir instantaneamente enquanto conecta.
     return _api.streamMyTeam(userId);
   }
 
@@ -71,36 +66,34 @@ class FantasyRepository {
 
   // 3. Status do Mercado
   Stream<Map<String, dynamic>> streamMarketStatus() {
-    // Mantemos stream para mudanças em tempo real (fechamento de mercado)
     return _api.streamMarketStatus();
   }
 
   // Método auxiliar para buscar IDs específicos (usando o cache local se possível)
   Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids) async {
-    // Se temos todos os jogadores em cache, filtramos localmente (Zero custo de leitura)
     if (_cachedPlayers != null) {
       return _cachedPlayers!.where((p) => ids.contains(p.playerId)).toList();
     }
     
-    // Se não, busca no banco (Custa leitura)
     return _api.getPlayersByIds(ids);
   }
 
   // --- MÉTODOS DE AÇÃO (Pass-through + Invalidação de Cache) ---
 
+  // CORREÇÃO: Parâmetros atualizados para suportar a transação atômica do FantasyService
   Future<String> saveLineup({
     required String userId,
     required List<String> playerIds,
     required String? captainId,
-    required double totalCost,
-    required double currentBalance,
+    required double expectedOldTeamCost,
+    required double totalCost, // Representa o novo custo (newTeamCost)
   }) async {
     final result = await _api.saveLineup(
       userId: userId,
       playerIds: playerIds,
       captainId: captainId,
-      totalCost: totalCost,
-      currentBalance: currentBalance,
+      expectedOldTeamCost: expectedOldTeamCost,
+      newTeamCost: totalCost,
     );
 
     if (result == "Sucesso") {

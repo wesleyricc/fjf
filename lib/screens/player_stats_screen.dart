@@ -6,10 +6,26 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/generic_player_rank_list.dart'; 
 import '../widgets/total_cards_rank_list.dart';    
-import '../models/player_model.dart'; // Import Model
+import '../models/player_model.dart'; 
 
-class PlayerStatsScreen extends StatelessWidget {
+class PlayerStatsScreen extends StatefulWidget {
   const PlayerStatsScreen({super.key});
+
+  @override
+  State<PlayerStatsScreen> createState() => _PlayerStatsScreenState();
+}
+
+class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
+  
+  @override
+  void initState() {
+    super.initState();
+    // Como os jogadores agora são lazy-loaded, precisamos forçar o download de todos
+    // para montar o ranking global corretamente.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<ChampionshipService>(context, listen: false).fetchAllPlayers();
+    });
+  }
 
   Future<void> _showHelp(BuildContext context) async {
     showDialog(
@@ -41,9 +57,15 @@ class PlayerStatsScreen extends StatelessWidget {
         // Clona a lista para não afetar o cache original durante a ordenação
         final List<Player> allPlayers = List.from(service.allPlayers);
 
-        // Prepara as listas filtradas (Custo de processamento local, não de leitura)
-        // Isso é extremamente rápido e gratuito.
-        
+        // Se a lista estiver vazia e estiver carregando, mostra loading
+        if (allPlayers.isEmpty && service.isLoading) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Estatísticas")),
+            drawer: const AppDrawer(),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
         // Artilheiros
         final scorers = allPlayers.where((p) => !p.isStaff && p.goals > 0).toList()
           ..sort((a, b) => b.goals.compareTo(a.goals));
@@ -87,7 +109,11 @@ class PlayerStatsScreen extends StatelessWidget {
               ),
               actions: [
                 IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
-                IconButton(icon: const Icon(Icons.refresh), onPressed: () => service.fetchStaticData(forceRefresh: true)),
+                IconButton(
+                  icon: const Icon(Icons.refresh), 
+                  // Recarrega tudo forçado
+                  onPressed: () => service.fetchAllPlayers(force: true)
+                ),
               ],
               bottom: const TabBar(
                 isScrollable: true,
@@ -108,7 +134,6 @@ class PlayerStatsScreen extends StatelessWidget {
               ),
             ),
             drawer: const AppDrawer(),
-            // Passamos as listas JÁ FILTRADAS para os widgets
             body: TabBarView(
               children: [
                 GenericPlayerRankList(players: scorers, statField: 'goals', statLabel: 'Gols', emptyMessage: 'Nenhum gol marcado.'),

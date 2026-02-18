@@ -21,7 +21,6 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
   void initState() {
     super.initState();
     if (widget.mediaLinks.isNotEmpty) {
-      // Carrega o primeiro vídeo automaticamente, mas sem autoplay
       _changeMediaVideo(
         widget.mediaLinks.first['videoUrl'],
         widget.mediaLinks.first['title'],
@@ -40,10 +39,9 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
   Future<void> _changeMediaVideo(String videoUrl, String title, {bool autoPlay = true}) async {
     if (_currentVideoUrl == videoUrl) return;
 
-    // 1. Limpa controladores anteriores
     _activeChewieController?.dispose();
-    _activeVideoPlayerController?.dispose(); // Importante descartar o anterior
-    _activeChewieController = null; // Evita uso após dispose
+    _activeVideoPlayerController?.dispose(); 
+    _activeChewieController = null; 
 
     if (!mounted) return;
 
@@ -53,10 +51,7 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
     });
 
     try {
-      // 2. Cria novos controladores
       final newVideoController = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
-      
-      // Aguarda inicialização básica para evitar erros no Chewie
       await newVideoController.initialize();
 
       if (!mounted) {
@@ -76,16 +71,11 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
         allowFullScreen: true,
         placeholder: Container(color: Colors.black, child: const Center(child: CircularProgressIndicator())),
         errorBuilder: (context, errorMessage) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text('Erro: $errorMessage', style: const TextStyle(color: Colors.white)),
-            ),
-          );
+          return Center(child: Padding(padding: const EdgeInsets.all(8.0), child: Text('Erro: $errorMessage', style: const TextStyle(color: Colors.white))));
         },
       );
 
-      setState(() {}); // Reconstrói para mostrar o player
+      setState(() {}); 
     } catch (e) {
       debugPrint("Erro ao carregar vídeo: $e");
       if (mounted) {
@@ -100,51 +90,56 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
       return const Center(child: Text('Nenhuma mídia disponível.'));
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Área do Player
-          Card(
-            elevation: 3,
-            clipBehavior: Clip.antiAlias,
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_activeMediaTitle.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
-                    child: Text(
-                      _activeMediaTitle,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
+                // Área do Player
+                Card(
+                  elevation: 3,
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_activeMediaTitle.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 8.0),
+                          child: Text(
+                            _activeMediaTitle,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: Container(
+                          color: Colors.black,
+                          child: _activeChewieController != null && _activeVideoPlayerController!.value.isInitialized
+                              ? Chewie(controller: _activeChewieController!)
+                              : const Center(child: CircularProgressIndicator(color: Colors.white)),
+                        ),
+                      ),
+                    ],
                   ),
-                AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: Container(
-                    color: Colors.black,
-                    child: _activeChewieController != null && _activeVideoPlayerController!.value.isInitialized
-                        ? Chewie(controller: _activeChewieController!)
-                        : const Center(child: CircularProgressIndicator(color: Colors.white)),
-                  ),
+                ),
+                const Divider(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
+                  child: Text('Lista de Reprodução', style: Theme.of(context).textTheme.titleSmall),
                 ),
               ],
             ),
           ),
-          const Divider(),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4.0),
-            child: Text('Lista de Reprodução', style: Theme.of(context).textTheme.titleSmall),
-          ),
-          
-          // Lista de Vídeos
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: widget.mediaLinks.length,
-            itemBuilder: (context, index) {
+        ),
+        
+        // Lista de Vídeos Otimizada
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
               final media = widget.mediaLinks[index];
               final String title = media['title'] ?? 'Vídeo';
               final String videoUrl = media['videoUrl'];
@@ -162,9 +157,12 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
                 onTap: () => _changeMediaVideo(videoUrl, title),
               );
             },
+            childCount: widget.mediaLinks.length,
           ),
-        ],
-      ),
+        ),
+        
+        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+      ],
     );
   }
 }

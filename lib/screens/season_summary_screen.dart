@@ -8,7 +8,6 @@ import '../services/championship_service.dart';
 import '../services/award_service.dart';
 import '../services/auth_service.dart';
 import '../models/team_model.dart';
-import '../models/player_model.dart';
 import '../models/match_model.dart';
 import '../models/award_model.dart';
 import '../utils/standings_calculator.dart';
@@ -45,61 +44,95 @@ class SeasonSummaryScreen extends StatelessWidget {
             ],
           ),
           drawer: const AppDrawer(),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 1. HEADER
-                Center(
+          body: CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              // 1. HEADER
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Text(seasonName.toUpperCase(), style: const TextStyle(fontSize: 12, letterSpacing: 2.0, color: Colors.grey)),
+                        const SizedBox(height: 4),
+                        Text("HALL DA FAMA", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Theme.of(context).primaryColor)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // 2. O GRANDE CAMPEÃO
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: _buildChampionSection(context, champService),
+                ),
+              ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+              
+              // 3. ESTATÍSTICAS DE EQUIPES (GRID)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(seasonName.toUpperCase(), style: const TextStyle(fontSize: 12, letterSpacing: 2.0, color: Colors.grey)),
-                      const SizedBox(height: 4),
-                      Text("HALL DA FAMA", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Theme.of(context).primaryColor)),
+                      _buildSectionTitle("Destaques das Equipes"),
+                      const SizedBox(height: 12),
+                      _buildTeamStatsGrid(context, champService),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+              ),
 
-                // 2. O GRANDE CAMPEÃO
-                _buildChampionSection(context, champService),
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
-                const SizedBox(height: 32),
-                
-                // 3. ESTATÍSTICAS DE EQUIPES (GRID)
-                _buildSectionTitle("Destaques das Equipes"),
-                const SizedBox(height: 12),
-                _buildTeamStatsGrid(context, champService),
-
-                const SizedBox(height: 32),
-
-                // 4. ESTATÍSTICAS DE JOGADORES (GRID)
-                _buildSectionTitle("Destaques Individuais"),
-                const SizedBox(height: 12),
-                _buildPlayerStatsGrid(context, champService),
-
-                const SizedBox(height: 32),
-                
-                // 5. PREMIAÇÕES INDIVIDUAIS (CRUD)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildSectionTitle("Premiações Oficiais"),
-                    if (isAdmin)
-                      IconButton(
-                        icon: const Icon(Icons.add_circle, color: Colors.green),
-                        tooltip: "Adicionar Prêmio",
-                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditAwardScreen())),
-                      ),
-                  ],
+              // 4. ESTATÍSTICAS DE JOGADORES (GRID)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionTitle("Destaques Individuais"),
+                      const SizedBox(height: 12),
+                      _buildPlayerStatsGrid(context, champService),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                _buildAwardsGrid(context, champService.currentSeasonId, isAdmin),
+              ),
 
-                const SizedBox(height: 40),
-              ],
-            ),
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+              
+              // 5. PREMIAÇÕES HEADER
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildSectionTitle("Premiações Oficiais"),
+                      if (isAdmin)
+                        IconButton(
+                          icon: const Icon(Icons.add_circle, color: Colors.green),
+                          tooltip: "Adicionar Prêmio",
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditAwardScreen())),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+              // 6. PREMIAÇÕES GRID (SLIVER)
+              _buildAwardsSliverGrid(context, champService.currentSeasonId, isAdmin),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+            ],
           ),
           bottomNavigationBar: const SponsorBannerRotator(),
         );
@@ -178,7 +211,8 @@ class SeasonSummaryScreen extends StatelessWidget {
     );
   }
 
-  // --- ESTATÍSTICAS DE EQUIPES (GRID) ---
+  // --- ESTATÍSTICAS DE EQUIPES (WRAP) ---
+  // Mantemos Wrap pois são poucos itens e não justifica SliverGrid
   Widget _buildTeamStatsGrid(BuildContext context, ChampionshipService service) {
     final teams = service.teams;
     final matches = service.matches;
@@ -197,7 +231,7 @@ class SeasonSummaryScreen extends StatelessWidget {
     final sortedFairplay = [...teams]..sort((a, b) => a.disciplinaryPoints.compareTo(b.disciplinaryPoints));
     final bestFairplay = sortedFairplay.first;
 
-    // 4. Troféu Abacaxi (Pior Colocado)
+    // 4. Troféu Abacaxi
     final standings = StandingsCalculator.calculate(teams: teams, matches: matches);
     final lastPlace = standings.isNotEmpty ? standings.last.team : null;
 
@@ -216,46 +250,12 @@ class SeasonSummaryScreen extends StatelessWidget {
 
     final List<Widget> cards = [];
 
-    cards.add(_buildStatCard(
-      title: "MELHOR ATAQUE",
-      name: bestAttack.name,
-      subtitle: "${bestAttack.goalsFor} Gols",
-      imageUrl: bestAttack.shieldUrl,
-      icon: Icons.add_circle_outline,
-      color: Colors.blue,
-      isTeam: true,
-    ));
-
-    cards.add(_buildStatCard(
-      title: "MELHOR DEFESA",
-      name: bestDefense.name,
-      subtitle: "${bestDefense.goalsAgainst} Gols Sofridos",
-      imageUrl: bestDefense.shieldUrl,
-      icon: Icons.shield,
-      color: Colors.green,
-      isTeam: true,
-    ));
-
-    cards.add(_buildStatCard(
-      title: "FAIRPLAY",
-      name: bestFairplay.name,
-      subtitle: "${bestFairplay.disciplinaryPoints} Pts",
-      imageUrl: bestFairplay.shieldUrl,
-      icon: Icons.handshake,
-      color: Colors.teal,
-      isTeam: true,
-    ));
+    cards.add(_buildStatCard(context, title: "MELHOR ATAQUE", name: bestAttack.name, subtitle: "${bestAttack.goalsFor} Gols", imageUrl: bestAttack.shieldUrl, icon: Icons.add_circle_outline, color: Colors.blue, isTeam: true));
+    cards.add(_buildStatCard(context, title: "MELHOR DEFESA", name: bestDefense.name, subtitle: "${bestDefense.goalsAgainst} Gols Sofridos", imageUrl: bestDefense.shieldUrl, icon: Icons.shield, color: Colors.green, isTeam: true));
+    cards.add(_buildStatCard(context, title: "FAIRPLAY", name: bestFairplay.name, subtitle: "${bestFairplay.disciplinaryPoints} Pts", imageUrl: bestFairplay.shieldUrl, icon: Icons.handshake, color: Colors.teal, isTeam: true));
 
     if (lastPlace != null) {
-      cards.add(_buildStatCard(
-        title: "TROFÉU ABACAXI",
-        name: lastPlace.name,
-        subtitle: "Último Lugar",
-        imageUrl: lastPlace.shieldUrl,
-        icon: FontAwesomeIcons.faceSadTear,
-        color: Colors.brown,
-        isTeam: true,
-      ));
+      cards.add(_buildStatCard(context, title: "TROFÉU ABACAXI", name: lastPlace.name, subtitle: "Último Lugar", imageUrl: lastPlace.shieldUrl, icon: FontAwesomeIcons.faceSadTear, color: Colors.brown, isTeam: true));
     }
 
     if (biggestWinMatch != null) {
@@ -264,16 +264,7 @@ class SeasonSummaryScreen extends StatelessWidget {
       final loserName = isHomeWinner ? biggestWinMatch.awayTeamName : biggestWinMatch.homeTeamName;
       final score = "${biggestWinMatch.scoreHome} x ${biggestWinMatch.scoreAway}";
       
-      cards.add(_buildStatCard(
-        title: "MAIOR GOLEADA",
-        name: winnerName,
-        subtitle: "$score (vs $loserName)",
-        imageUrl: isHomeWinner ? biggestWinMatch.homeTeamShield : biggestWinMatch.awayTeamShield,
-        icon: Icons.local_fire_department,
-        color: Colors.red,
-        isTeam: true,
-        fullWidth: false, // <-- AGORA É FALSE (PADRÃO)
-      ));
+      cards.add(_buildStatCard(context, title: "MAIOR GOLEADA", name: winnerName, subtitle: "$score (vs $loserName)", imageUrl: isHomeWinner ? biggestWinMatch.homeTeamShield : biggestWinMatch.awayTeamShield, icon: Icons.local_fire_department, color: Colors.red, isTeam: true));
     }
 
     return Wrap(
@@ -284,21 +275,18 @@ class SeasonSummaryScreen extends StatelessWidget {
     );
   }
 
-  // --- ESTATÍSTICAS DE JOGADORES (GRID) ---
+  // --- ESTATÍSTICAS DE JOGADORES (WRAP) ---
   Widget _buildPlayerStatsGrid(BuildContext context, ChampionshipService service) {
     final players = service.allPlayers;
 
     if (players.isEmpty) return const Center(child: Text("Sem dados."));
 
-    // 1. Artilheiro
     final scorers = [...players]..sort((a, b) => b.goals.compareTo(a.goals));
     final topScorer = scorers.isNotEmpty && scorers.first.goals > 0 ? scorers.first : null;
 
-    // 2. Garçom
     final assisters = [...players]..sort((a, b) => b.assists.compareTo(a.assists));
     final topAssist = assisters.isNotEmpty && assisters.first.assists > 0 ? assisters.first : null;
 
-    // 3. Paredão (Goleiro)
     final goalkeepers = players.where((p) => p.isGoalkeeper).toList();
     goalkeepers.sort((a, b) => a.goalsConceded.compareTo(b.goalsConceded));
     final bestGK = goalkeepers.isNotEmpty ? goalkeepers.first : null;
@@ -306,36 +294,13 @@ class SeasonSummaryScreen extends StatelessWidget {
     final List<Widget> cards = [];
 
     if (topScorer != null) {
-      cards.add(_buildStatCard(
-        title: "ARTILHEIRO",
-        name: topScorer.name,
-        subtitle: "${topScorer.goals} Gols",
-        imageUrl: topScorer.photoUrl,
-        icon: Icons.sports_soccer,
-        color: Colors.orange,
-      ));
+      cards.add(_buildStatCard(context, title: "ARTILHEIRO", name: topScorer.name, subtitle: "${topScorer.goals} Gols", imageUrl: topScorer.photoUrl, icon: Icons.sports_soccer, color: Colors.orange));
     }
-
     if (topAssist != null) {
-      cards.add(_buildStatCard(
-        title: "GARÇOM",
-        name: topAssist.name,
-        subtitle: "${topAssist.assists} Assists",
-        imageUrl: topAssist.photoUrl,
-        icon: Icons.assistant,
-        color: Colors.cyan,
-      ));
+      cards.add(_buildStatCard(context, title: "GARÇOM", name: topAssist.name, subtitle: "${topAssist.assists} Assists", imageUrl: topAssist.photoUrl, icon: Icons.assistant, color: Colors.cyan));
     }
-
     if (bestGK != null) {
-      cards.add(_buildStatCard(
-        title: "PAREDÃO",
-        name: bestGK.name,
-        subtitle: "${bestGK.goalsConceded} Gols Sofridos",
-        imageUrl: bestGK.photoUrl,
-        icon: Icons.pan_tool,
-        color: Colors.purple,
-      ));
+      cards.add(_buildStatCard(context, title: "PAREDÃO", name: bestGK.name, subtitle: "${bestGK.goalsConceded} Gols Sofridos", imageUrl: bestGK.photoUrl, icon: Icons.pan_tool, color: Colors.purple));
     }
 
     return Wrap(
@@ -347,7 +312,7 @@ class SeasonSummaryScreen extends StatelessWidget {
   }
 
   // --- CARD DE ESTATÍSTICA ---
-  Widget _buildStatCard({
+  Widget _buildStatCard(BuildContext context, {
     required String title,
     required String name,
     required String subtitle,
@@ -355,116 +320,119 @@ class SeasonSummaryScreen extends StatelessWidget {
     required IconData icon,
     required Color color,
     bool isTeam = false, 
-    bool fullWidth = false,
   }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        double screenWidth = MediaQuery.of(context).size.width - 32;
-        double cardWidth = fullWidth ? screenWidth : (screenWidth - 10) / 2;
+    double screenWidth = MediaQuery.of(context).size.width - 32;
+    double cardWidth = (screenWidth - 10) / 2;
 
-        return Container(
-          width: cardWidth,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
-          ),
-          child: Column(
+    return Container(
+      width: cardWidth,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 14, color: color),
-                  const SizedBox(width: 4),
-                  Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 0.5)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              
-              if (isTeam) 
-                Container(
-                  height: 60, width: 60,
-                  padding: const EdgeInsets.all(4),
-                  child: imageUrl.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.contain, // Escudo inteiro
-                          placeholder: (c, u) => Center(child: CircularProgressIndicator(strokeWidth: 2, color: color.withOpacity(0.5))),
-                          errorWidget: (c, u, e) => Icon(icon, color: color.withOpacity(0.5), size: 30),
-                        )
-                      : Icon(icon, color: color, size: 35),
-                )
-              else
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: color.withOpacity(0.1),
-                  backgroundImage: imageUrl.isNotEmpty ? CachedNetworkImageProvider(imageUrl) : null,
-                  child: imageUrl.isEmpty ? Icon(icon, color: color, size: 28) : null,
-                ),
-
-              const SizedBox(height: 8),
-              Text(
-                name,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.1),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 0.5)),
             ],
           ),
-        );
-      }
+          const SizedBox(height: 10),
+          
+          if (isTeam) 
+            Container(
+              height: 60, width: 60,
+              padding: const EdgeInsets.all(4),
+              child: imageUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.contain,
+                      placeholder: (c, u) => Center(child: CircularProgressIndicator(strokeWidth: 2, color: color.withOpacity(0.5))),
+                      errorWidget: (c, u, e) => Icon(icon, color: color.withOpacity(0.5), size: 30),
+                    )
+                  : Icon(icon, color: color, size: 35),
+            )
+          else
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: color.withOpacity(0.1),
+              backgroundImage: imageUrl.isNotEmpty ? CachedNetworkImageProvider(imageUrl) : null,
+              child: imageUrl.isEmpty ? Icon(icon, color: color, size: 28) : null,
+            ),
+
+          const SizedBox(height: 8),
+          Text(
+            name,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.1),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 
-  // --- GRID DE PREMIAÇÕES MANUAIS ---
-  Widget _buildAwardsGrid(BuildContext context, String seasonId, bool isAdmin) {
+  // --- GRID DE PREMIAÇÕES (OTIMIZADO COM SLIVER) ---
+  Widget _buildAwardsSliverGrid(BuildContext context, String seasonId, bool isAdmin) {
     final awardService = Provider.of<AwardService>(context);
 
     return StreamBuilder<List<Award>>(
       stream: awardService.streamAwards(seasonId),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
+        }
         
         final awards = snapshot.data ?? [];
         if (awards.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
-            child: const Center(child: Text("Nenhuma premiação lançada ainda.", style: TextStyle(color: Colors.grey))),
+          return SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
+              child: const Center(child: Text("Nenhuma premiação lançada ainda.", style: TextStyle(color: Colors.grey))),
+            ),
           );
         }
 
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.85,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final award = awards[index];
+                return AwardCard(
+                  award: award,
+                  isAdmin: isAdmin,
+                  onEdit: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditAwardScreen(award: award))),
+                  onDelete: () => _confirmDelete(context, awardService, seasonId, award.id),
+                );
+              },
+              childCount: awards.length,
+            ),
           ),
-          itemCount: awards.length,
-          itemBuilder: (context, index) {
-            final award = awards[index];
-            return AwardCard(
-              award: award,
-              isAdmin: isAdmin,
-              onEdit: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditAwardScreen(award: award))),
-              onDelete: () => _confirmDelete(context, awardService, seasonId, award.id),
-            );
-          },
         );
       },
     );

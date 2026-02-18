@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/fantasy_models.dart';
-import '../repositories/fantasy_repository.dart'; // <--- Uso do Repository
+import '../repositories/fantasy_repository.dart';
 import '../services/fantasy_scout_service.dart';
 
 class FantasyLineupViewModel extends ChangeNotifier {
-  // Instância do Repository
   final FantasyRepository _repository = FantasyRepository();
   final FantasyScoutService _scoutService = FantasyScoutService();
 
@@ -23,6 +22,9 @@ class FantasyLineupViewModel extends ChangeNotifier {
   double _currentBalance = 0.0;
   double _teamPrice = 0.0;
   double _totalPatrimony = 0.0;
+  
+  // Controle de Integridade (Necessário para a Transação no Servidor)
+  double _expectedOldTeamCost = 0.0;
 
   // Mercado & Scouts
   bool _isMarketOpen = true;
@@ -72,14 +74,13 @@ class FantasyLineupViewModel extends ChangeNotifier {
       notifyListeners();
     });
 
-    // 2. Carrega Time (One-shot via Repository)
+    // 2. Carrega Time
     _loadTeamData(userId, seasonId);
   }
 
   Future<void> _loadTeamData(String userId, String seasonId) async {
     try {
-      // Usa o Repository para buscar o time (pode vir do cache se já foi carregado)
-      final team = await _repository.getUserTeam(userId);
+      final team = await _repository.getUserTeam(userId, forceRefresh: true);
       
       if (team != null) {
         _team = team;
@@ -87,8 +88,6 @@ class FantasyLineupViewModel extends ChangeNotifier {
         _captainId = team.captainId;
         
         if (team.lineupPlayerIds.isNotEmpty) {
-          // AQUI ESTÁ A GRANDE OTIMIZAÇÃO:
-          // O Repository pode retornar esses jogadores do cache em memória!
           final players = await _repository.getPlayersByIds(team.lineupPlayerIds);
           
           _lineup.clear();
@@ -106,13 +105,12 @@ class FantasyLineupViewModel extends ChangeNotifier {
             }
           }
           _teamPrice = calculatedTeamPrice;
+          // Armazena o custo que o time tinha no banco para validação de transação posterior
+          _expectedOldTeamCost = calculatedTeamPrice;
         }
 
-        if (team.teamValue <= 0) {
-          _totalPatrimony = _currentBalance + _teamPrice;
-        } else {
-          _totalPatrimony = team.teamValue;
-        }
+        // Define patrimônio base
+        _totalPatrimony = team.teamValue;
         
         _checkScoutSubscription(seasonId);
       }
@@ -124,7 +122,7 @@ class FantasyLineupViewModel extends ChangeNotifier {
     }
   }
 
-  // --- LÓGICA DE NEGÓCIO (Permanece igual, mas sólida) ---
+  // --- LÓGICA DE ESCALAÇÃO ---
 
   void addPlayer(int slotIndex, FantasyPlayer player) {
     if (!_isMarketOpen) {
@@ -158,7 +156,6 @@ class FantasyLineupViewModel extends ChangeNotifier {
       _captainId = player.playerId;
     }
 
-    _recalcPatrimony();
     notifyListeners();
   }
 
@@ -172,7 +169,6 @@ class FantasyLineupViewModel extends ChangeNotifier {
     if (_captainId == player.playerId) _captainId = null;
     
     _lineup.remove(slotIndex);
-    _recalcPatrimony();
     notifyListeners();
   }
 
@@ -194,7 +190,13 @@ class FantasyLineupViewModel extends ChangeNotifier {
   Future<void> saveLineup(String userId) async {
     if (!_isMarketOpen) return;
     
-    if (_lineup.isNotEmpty && _captainId == null) {
+    if (_lineup.length < 6) {
+      _errorMessage = "Sua equipe deve ter 6 integrantes.";
+      notifyListeners();
+      return;
+    }
+
+    if (_captainId == null) {
       _errorMessage = "Selecione um capitão.";
       notifyListeners();
       return;
@@ -206,18 +208,19 @@ class FantasyLineupViewModel extends ChangeNotifier {
     try {
       final playerIds = _lineup.values.map((p) => p.playerId).toList();
       
-      // Chama o Repository para salvar
-      // O Repository vai invalidar o cache do time automaticamente
+      // CORREÇÃO: Chama o repositório com os parâmetros de validação de custo
       final result = await _repository.saveLineup(
         userId: userId,
         playerIds: playerIds,
         captainId: _captainId,
-        totalCost: _teamPrice,
-        currentBalance: _currentBalance,
+        expectedOldTeamCost: _expectedOldTeamCost,
+        totalCost: _teamPrice, // O novo custo total da equipe escalada
       );
 
       if (result == "Sucesso") {
         _successMessage = "Time escalado com sucesso!";
+        // Atualiza o custo antigo esperado para a próxima edição sem precisar de refresh
+        _expectedOldTeamCost = _teamPrice;
       } else {
         _errorMessage = result;
       }
@@ -227,10 +230,6 @@ class FantasyLineupViewModel extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-  }
-
-  void _recalcPatrimony() {
-    _totalPatrimony = _currentBalance + _teamPrice;
   }
 
   void clearMessages() {

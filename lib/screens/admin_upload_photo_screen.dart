@@ -130,107 +130,128 @@ class _AdminUploadPhotoScreenState extends State<AdminUploadPhotoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Upload em Massa")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // --- 1. CONFIGURAÇÕES DO LOTE ---
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _folderController,
-                      decoration: const InputDecoration(
-                        labelText: "Nome da Pasta / Tag (Obrigatório)",
-                        hintText: "Ex: Rodada 1 - Time A x Time B",
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.folder),
+      // 🚀 PERFORMANCE: Migrado para CustomScrollView para virtualização da grid
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // --- 1. CONFIGURAÇÕES DO LOTE ---
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _folderController,
+                            decoration: const InputDecoration(
+                              labelText: "Nome da Pasta / Tag (Obrigatório)",
+                              hintText: "Ex: Rodada 1 - Time A x Time B",
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.folder),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _priceController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(
+                              labelText: "Preço por foto (R\$)",
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.attach_money),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _priceController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: "Preço por foto (R\$)",
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.attach_money),
-                      ),
-                    ),
-                  ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // --- 2. BOTÃO DE SELEÇÃO ---
+                  OutlinedButton.icon(
+                    onPressed: _isUploading ? null : _pickImages,
+                    icon: const Icon(Icons.add_photo_alternate),
+                    label: Text(_selectedFiles.isEmpty ? "Selecionar Fotos" : "Adicionar Mais Fotos"),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(16)),
+                  ),
+                  
+                  const SizedBox(height: 10),
+                  if (_selectedFiles.isNotEmpty)
+                     Text("${_selectedFiles.length} fotos selecionadas", style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ),
+
+          // --- 3. GRID DE PREVIEW (SLIVER OTIMIZADO) ---
+          if (_selectedFiles.isNotEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3, 
+                  crossAxisSpacing: 4, 
+                  mainAxisSpacing: 4
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _buildThumbnail(index),
+                        Positioned(
+                          top: 0, right: 0,
+                          child: GestureDetector(
+                            onTap: _isUploading ? null : () => _removeImage(index),
+                            child: Container(
+                              color: Colors.red.withOpacity(0.8),
+                              child: const Icon(Icons.close, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        )
+                      ],
+                    );
+                  },
+                  childCount: _selectedFiles.length,
                 ),
               ),
             ),
-            const SizedBox(height: 16),
 
-            // --- 2. BOTÃO DE SELEÇÃO ---
-            OutlinedButton.icon(
-              onPressed: _isUploading ? null : _pickImages,
-              icon: const Icon(Icons.add_photo_alternate),
-              label: Text(_selectedFiles.isEmpty ? "Selecionar Fotos" : "Adicionar Mais Fotos"),
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(16)),
-            ),
-            
-            const SizedBox(height: 10),
+          // --- 4. BARRA DE PROGRESSO E AÇÃO ---
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 20),
+                  if (_isUploading) ...[
+                    LinearProgressIndicator(value: _uploadProgress),
+                    const SizedBox(height: 8),
+                    Text(_uploadStatus, textAlign: TextAlign.center),
+                    const SizedBox(height: 20),
+                  ],
 
-            // --- 3. GRID DE PREVIEW ---
-            if (_selectedFiles.isNotEmpty) ...[
-               Text("${_selectedFiles.length} fotos selecionadas", style: const TextStyle(fontWeight: FontWeight.bold)),
-               const SizedBox(height: 10),
-               GridView.builder(
-                 shrinkWrap: true,
-                 physics: const NeverScrollableScrollPhysics(),
-                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                   crossAxisCount: 3, 
-                   crossAxisSpacing: 4, 
-                   mainAxisSpacing: 4
-                 ),
-                 itemCount: _selectedFiles.length,
-                 itemBuilder: (context, index) {
-                   return Stack(
-                     fit: StackFit.expand,
-                     children: [
-                       _buildThumbnail(index),
-                       Positioned(
-                         top: 0, right: 0,
-                         child: GestureDetector(
-                           onTap: _isUploading ? null : () => _removeImage(index),
-                           child: Container(
-                             color: Colors.red.withOpacity(0.8),
-                             child: const Icon(Icons.close, color: Colors.white, size: 20),
-                           ),
-                         ),
-                       )
-                     ],
-                   );
-                 },
-               ),
-               const SizedBox(height: 20),
-            ],
-
-            // --- 4. BARRA DE PROGRESSO E AÇÃO ---
-            if (_isUploading) ...[
-              LinearProgressIndicator(value: _uploadProgress),
-              const SizedBox(height: 8),
-              Text(_uploadStatus, textAlign: TextAlign.center),
-              const SizedBox(height: 20),
-            ],
-
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: (_isUploading || _selectedFiles.isEmpty) ? null : _uploadAll,
+                    icon: const Icon(Icons.cloud_upload),
+                    label: Text(_isUploading ? "Processando..." : "Enviar Todas"),
+                  ),
+                  // Espaço extra no final para não colar na borda
+                  const SizedBox(height: 40),
+                ],
               ),
-              onPressed: (_isUploading || _selectedFiles.isEmpty) ? null : _uploadAll,
-              icon: const Icon(Icons.cloud_upload),
-              label: Text(_isUploading ? "Processando..." : "Enviar Todas"),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

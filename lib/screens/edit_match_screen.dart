@@ -166,20 +166,39 @@ class _EditMatchScreenState extends State<EditMatchScreen> {
   }) {
     return DropdownButtonFormField<String>(
       value: value,
-      decoration: InputDecoration(labelText: label),
-      isExpanded: true, // <--- CORREÇÃO AQUI: Impede o erro de layout infinito
+      decoration: InputDecoration(
+        labelText: label,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      isExpanded: true, 
+      // Seleção de item com Row e alinhamento seguro
       items: teamsList.map((team) {
         return DropdownMenuItem<String>(
           value: team.id,
           child: Row(
+            mainAxisSize: MainAxisSize.min, // Garante que a Row não tente ocupar espaço infinito
             children: [
-              if (team.shieldUrl.isNotEmpty)
-                CachedNetworkImage(imageUrl: team.shieldUrl, width: 24, height: 24, fit: BoxFit.contain)
-              else 
-                const Icon(Icons.shield, size: 24, color: Colors.grey),
-              const SizedBox(width: 10),
-              // Expanded precisa de um pai com largura definida (garantida pelo isExpanded: true acima)
-              Expanded(child: Text(team.name, overflow: TextOverflow.ellipsis)),
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: (team.shieldUrl.isNotEmpty)
+                    ? CachedNetworkImage(
+                        imageUrl: team.shieldUrl, 
+                        fit: BoxFit.contain,
+                        placeholder: (c, u) => const CircularProgressIndicator(strokeWidth: 2),
+                        errorWidget: (c, u, e) => const Icon(Icons.shield, size: 20, color: Colors.grey),
+                      )
+                    : const Icon(Icons.shield, size: 24, color: Colors.grey),
+              ),
+              const SizedBox(width: 12),
+              // Uso de Flexible em vez de Expanded dentro do DropdownMenuItem para evitar erros de restrição
+              Flexible(
+                child: Text(
+                  team.name, 
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ),
             ],
           ),
         );

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:cloud_firestore/cloud_firestore.dart'; // Removido, não usamos mais Snapshot aqui
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -12,7 +12,7 @@ class SponsorBannerRotator extends StatefulWidget {
   final bool isStatic;
   final double? height; 
   
-  // NOVO: Parâmetro único de filtro (ex: "1", "5", "semifinal", "final")
+  // Parâmetro único de filtro (ex: "1", "5", "semifinal", "final")
   final String? filterTag; 
 
   const SponsorBannerRotator({
@@ -28,7 +28,8 @@ class SponsorBannerRotator extends StatefulWidget {
 }
 
 class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
-  List<DocumentSnapshot> _filteredSponsors = [];
+  // CORREÇÃO: Agora é uma lista de Maps, pois o Service entrega dados puros
+  List<Map<String, dynamic>> _filteredSponsors = [];
   int _currentIndex = 0;
   Timer? _timer;
 
@@ -58,35 +59,24 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   // --- LÓGICA UNIFICADA ---
   void _filterSponsorsFromCache() {
     final service = Provider.of<ChampionshipService>(context, listen: true);
-    final allSponsors = service.sponsors;
+    final allSponsors = service.sponsors; // Retorna List<Map<String, dynamic>>
 
-    final filtered = allSponsors.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
+    final filtered = allSponsors.where((data) {
+      // CORREÇÃO: Acesso direto ao Map, sem .data()
       
       // 1. Filtra Localização (Obrigatório)
       if (data['location'] != widget.location) return false;
 
       // 2. Filtra pela Tag Unificada (Campo 'round' no Firestore)
-      // Se o widget pede um filtro específico (ex: "1" ou "semifinal")
       if (widget.filterTag != null) {
-        final docRound = data['round']; // Pode ser int ou String no banco
+        final docRound = data['round']; 
 
-        // Se o patrocinador tem um round definido (específico)
         if (docRound != null && docRound.toString().isNotEmpty) {
-          // Se não bater exatamente com o filtro atual, esconde.
-          // Ex: docRound="2" vs filter="1" -> False
-          // Ex: docRound="semifinal" vs filter="1" -> False
           if (docRound.toString() != widget.filterTag) {
             return false;
           }
         }
-        // Se docRound for null, é genérico, então passa (return true).
       } 
-      // Se o widget NÃO tem filtro (ex: Home), mostra apenas os genéricos ou todos?
-      // Pela lógica anterior, a Home mostrava tudo ou genéricos. 
-      // Vamos assumir: Se a tela não filtra (filterTag null), mostra genéricos (round null)
-      // OU mostra todos? Geralmente 'footer_home' não tem filtro de rodada.
-      // Se for 'footer_home', mostra todos daquela location.
 
       return true;
     }).toList();
@@ -114,7 +104,8 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     if (_filteredSponsors.isEmpty) return;
     try {
       final int nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
-      final nextData = _filteredSponsors[nextIndex].data() as Map<String, dynamic>;
+      // CORREÇÃO: Acesso direto ao Map
+      final nextData = _filteredSponsors[nextIndex];
       final String? url = nextData['imageUrl'];
       if (url != null && url.isNotEmpty) {
         precacheImage(CachedNetworkImageProvider(url), context);
@@ -144,10 +135,13 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       return _buildHouseAd(height: effectiveHeight);
     }
 
-    final sponsorDoc = _filteredSponsors[_currentIndex];
-    final data = sponsorDoc.data() as Map<String, dynamic>;
+    // CORREÇÃO: Acesso direto ao Map
+    final data = _filteredSponsors[_currentIndex];
     final imageUrl = data['imageUrl'] ?? '';
     final targetUrl = data['targetUrl'] ?? '';
+    
+    // Usamos a URL como chave única, já que o ID do documento pode não estar no Map otimizado
+    final String uniqueKey = imageUrl.isNotEmpty ? imageUrl : (data['name'] ?? 'sponsor_$_currentIndex');
 
     return Container(
       color: Colors.white,
@@ -156,7 +150,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 800),
         child: InkWell(
-          key: ValueKey<String>(sponsorDoc.id),
+          key: ValueKey<String>(uniqueKey),
           onTap: () => _launchURL(targetUrl),
           child: imageUrl.isEmpty
               ? _buildHouseAd(title: data['name'], height: effectiveHeight)

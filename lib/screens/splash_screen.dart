@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:html' as html; 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -9,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
-import '../models/team_model.dart'; 
+// import '../models/team_model.dart'; // Não utilizado explicitamente aqui
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; 
@@ -54,15 +53,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkAndShowStartupAds() async {
     if (SplashScreen.hasShownOpenAd) return;
-    // Note: Usamos o cache de sponsors do ChampionshipService se disponível
-    // Mas para o Ad de abertura, geralmente queremos garantir que apareça, 
-    // então mantemos a lógica ou usamos o cache se já carregado.
-    // Como o fetchStaticData é chamado no init, podemos tentar usar o cache.
-    // Para simplificar e garantir exibição rápida, mantemos a lógica original aqui por enquanto
-    // ou usamos SponsorBannerRotator que já usa cache.
     
-    // Vamos usar o SponsorBannerRotator no Dialog, que já está otimizado.
-    // Apenas marcamos como mostrado.
     SplashScreen.hasShownOpenAd = true;
     
     // Pequeno delay para garantir que a UI montou
@@ -288,7 +279,6 @@ class _SplashScreenState extends State<SplashScreen> {
                                    backgroundColor: Colors.white,
                                    backgroundImage: const AssetImage('assets/logo3_fjf.png'),
                                    onBackgroundImageError: (_, __) {},
-                                   //child: Image.asset('assets/logo3_fjf.png', height: 70, errorBuilder: (_,__,___) => const SizedBox()), 
                                  ),
                                ),
                              ),
@@ -443,22 +433,20 @@ class _SponsorGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // --- OTIMIZAÇÃO: Usa cache do ChampionshipService ---
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
+        // CORREÇÃO: s agora é Map<String, dynamic>, acessamos com []
         final sponsors = service.sponsors.where((s) {
-           final d = s.data() as Map<String, dynamic>;
-           return d['location'] == 'grid_teams' && d['isActive'] == true;
+           return s['location'] == 'grid_teams' && s['isActive'] == true;
         }).toList();
 
         if (sponsors.isNotEmpty) {
-          final doc = sponsors.first;
-          final data = doc.data() as Map<String, dynamic>;
+          final data = sponsors.first;
           
           return InkWell(
             onTap: () async {
               final url = data['targetUrl'];
-              if (url != null) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              if (url != null && url.isNotEmpty) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
@@ -466,7 +454,7 @@ class _SponsorGridCard extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: CachedNetworkImage(
-                  imageUrl: data['imageUrl'],
+                  imageUrl: data['imageUrl'] ?? '',
                   fit: BoxFit.contain,
                   errorWidget: (_,__,___) => _buildDefaultCard(),
                 ),
@@ -509,7 +497,6 @@ class _TeamsSliverGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // --- OTIMIZAÇÃO: Usa cache em vez de StreamBuilder ---
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
         if (service.isLoading && service.teams.isEmpty) {

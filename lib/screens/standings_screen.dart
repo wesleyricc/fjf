@@ -122,18 +122,21 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
 
     return RefreshIndicator(
       onRefresh: () => Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true),
-      child: SingleChildScrollView(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          children: [
-            StandingsTableWidget(
+        slivers: [
+          SliverToBoxAdapter(
+            child: StandingsTableWidget(
               standings: officialStandings,
               allMatches: _cachedMatches,
               liveScores: liveScores,
             ),
-            _buildDetailedLegend(),
-          ],
-        ),
+          ),
+          SliverToBoxAdapter(
+            child: _buildDetailedLegend(),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+        ],
       ),
     );
   }
@@ -153,27 +156,29 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
       simulatedScores: _userSimulations,
     );
 
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          StandingsTableWidget(standings: simulatedStandings),
-          _buildDetailedLegend(hideCriteria: true),
-          const Divider(thickness: 2),
-          
-          if (rounds.isEmpty)
-            const Padding(padding: EdgeInsets.all(20.0), child: Text("Todos os jogos foram finalizados."))
-          else
-            Container(
-              color: Colors.grey[50],
-              child: ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(bottom: 20),
-                itemCount: rounds.length,
-                itemBuilder: (context, index) {
-                  final r = rounds[index];
-                  final matches = groupedMatches[r]!;
-                  return Column(
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            children: [
+              StandingsTableWidget(standings: simulatedStandings),
+              _buildDetailedLegend(hideCriteria: true),
+              const Divider(thickness: 2),
+            ],
+          ),
+        ),
+        
+        if (rounds.isEmpty)
+          const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(20.0), child: Text("Todos os jogos foram finalizados.")))
+        else
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final r = rounds[index];
+                final matches = groupedMatches[r]!;
+                return Container(
+                  color: Colors.grey[50],
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
@@ -182,12 +187,15 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
                       ),
                       ...matches.map((m) => _buildSimulationMatchRow(m)).toList(),
                     ],
-                  );
-                },
-              ),
+                  ),
+                );
+              },
+              childCount: rounds.length,
             ),
-        ],
-      ),
+          ),
+          
+        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+      ],
     );
   }
 

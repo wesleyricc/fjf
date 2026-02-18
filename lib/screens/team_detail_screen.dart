@@ -9,7 +9,7 @@ import '../models/team_model.dart';
 import '../models/player_model.dart'; 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/team_service.dart'; // <-- NOVO SERVICE
+import '../services/team_service.dart'; 
 
 import 'extra_points_log_screen.dart';
 import 'edit_player_screen.dart';
@@ -46,7 +46,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final champService = Provider.of<ChampionshipService>(context, listen: false);
     final teamService = Provider.of<TeamService>(context, listen: false);
     
-    final players = champService.getCachedRoster(widget.team.id);
+    // Garante que temos a lista
+    List<Player> players = champService.getCachedRoster(widget.team.id);
+    if (players.isEmpty) {
+       players = await champService.fetchRoster(widget.team.id);
+    }
+
     final seasonId = champService.currentSeasonId;
     
     List<String> selectedIds = [];
@@ -287,7 +292,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
-        final all = service.getCachedRoster(widget.team.id);
+        // Tenta buscar do cache
+        List<Player> all = service.getCachedRoster(widget.team.id);
+        
+        // Se não tiver em cache, solicita o fetch
+        if (all.isEmpty && !service.isLoading) {
+           WidgetsBinding.instance.addPostFrameCallback((_) {
+              service.fetchRoster(widget.team.id);
+           });
+        }
         
         final players = all.where((p) => !p.isStaff).toList();
         final staff = all.where((p) => p.isStaff).toList();
@@ -298,13 +311,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
           return (a.jerseyNumber ?? 999).compareTo(b.jerseyNumber ?? 999);
         });
 
-        if (all.isEmpty && !service.isLoading) {
-           WidgetsBinding.instance.addPostFrameCallback((_) => service.fetchStaticData(forceRefresh: true));
-        }
-
         return Scaffold(
           body: RefreshIndicator(
-            onRefresh: () => service.fetchStaticData(forceRefresh: true),
+            onRefresh: () async {
+               await service.fetchRoster(widget.team.id, force: true);
+               await service.fetchStaticData(forceRefresh: true);
+            },
             child: CustomScrollView(
               slivers: [
                 SliverAppBar(
@@ -325,7 +337,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   builder: (_) => EditPlayerScreen(teamId: widget.team.id, teamName: widget.team.name, player: null),
                                 ),
                               );
-                              if (context.mounted) service.fetchStaticData(forceRefresh: true);
+                              // Atualiza o elenco após voltar
+                              if (context.mounted) service.fetchRoster(widget.team.id, force: true);
                             },
                           ),
                         ]
@@ -383,7 +396,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                 SliverToBoxAdapter(child: RosterSectionHeader(title: 'Elenco (${players.length})')),
                 
-                if (service.isLoading && players.isEmpty)
+                if (all.isEmpty)
                    const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())))
                 else if (players.isEmpty)
                    const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(16), child: Text('Sem jogadores ativos.')))

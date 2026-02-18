@@ -39,7 +39,6 @@ class ScoutTimelineWidget extends StatelessWidget {
 
     return Expanded(
       child: StreamBuilder<QuerySnapshot>(
-        // Removemos o orderBy do Firestore para ordenar no cliente com mais precisão
         stream: timelineQuery.snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -50,11 +49,10 @@ class ScoutTimelineWidget extends StatelessWidget {
           // 1. Converte para Objetos
           List<MatchEvent> events = docs.map((d) => MatchEvent.fromMap(d.id, d.data() as Map<String, dynamic>)).toList();
 
-          // 2. ORDENAÇÃO LÓGICA (CORREÇÃO)
-          // Queremos o evento mais recente do jogo no topo (Ordem Decrescente de Tempo de Jogo)
+          // 2. ORDENAÇÃO LÓGICA SÉNIOR (CORRIGIDA)
+          // Queremos o evento mais recente do jogo no topo.
           events.sort((a, b) {
             // A. Compara Períodos (2T > 1T)
-            // Lógica simples: Se strings forem iguais, passa. Se b > a (ex: '2T' > '1T'), b vem primeiro.
             int periodCompare = b.period.compareTo(a.period);
             if (periodCompare != 0) return periodCompare;
 
@@ -62,7 +60,22 @@ class ScoutTimelineWidget extends StatelessWidget {
             int minuteCompare = b.minute.compareTo(a.minute);
             if (minuteCompare != 0) return minuteCompare;
 
-            // C. Desempate: Timestamp de criação (último inserido fica em cima se for mesmo minuto)
+            // C. PRIORIDADE POR TIPO (Peso do Evento no mesmo minuto)
+            // Ordem desejada no topo: Vermelho -> Amarelo -> Golo -> Assistência
+            int getWeight(MatchEventType type) {
+              switch (type) {
+                case MatchEventType.redCard: return 4;
+                case MatchEventType.yellowCard: return 3;
+                case MatchEventType.goal: return 2;
+                case MatchEventType.assist: return 1;
+                default: return 0;
+              }
+            }
+
+            int weightCompare = getWeight(b.type).compareTo(getWeight(a.type));
+            if (weightCompare != 0) return weightCompare;
+
+            // D. Desempate final: Timestamp de criação
             return b.timestamp.compareTo(a.timestamp);
           });
 
@@ -127,15 +140,13 @@ class ScoutTimelineWidget extends StatelessWidget {
 
   void _openEditDialog(BuildContext context, MatchEvent evt, List<MatchEvent> allEvents) {
     if (evt.type == MatchEventType.goal) {
-      
-      // Busca Assistência Vinculada
       MatchEvent? linkedAssist;
       try {
         linkedAssist = allEvents.firstWhere((e) => 
           e.type == MatchEventType.assist &&
           e.teamId == evt.teamId &&
           e.minute == evt.minute &&
-          (e.timestamp.difference(evt.timestamp).inSeconds.abs() <= 2)
+          (e.timestamp.difference(evt.timestamp).inSeconds.abs() <= 5) // Janela aumentada para segurança
         );
       } catch (_) {}
 
@@ -172,7 +183,7 @@ class ScoutTimelineWidget extends StatelessWidget {
       context: context, 
       builder: (c) => AlertDialog(
         title: const Text("Desfazer Evento?"), 
-        content: const Text("Isso reverterá o placar e as estatísticas associadas a este lance."), 
+        content: const Text("Isto reverterá o placar e as estatísticas associadas a este lance."), 
         actions: [
           TextButton(onPressed: ()=>Navigator.pop(c, false), child: const Text("Cancelar")),
           TextButton(onPressed: ()=>Navigator.pop(c, true), child: const Text("Sim, Desfazer", style: TextStyle(color: Colors.red))),

@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/team_service.dart'; // <-- NOVO SERVICE
+import '../services/team_service.dart'; 
 import '../models/player_model.dart'; 
 
 import '../widgets/player_display_card.dart';
@@ -84,14 +84,17 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
     final seasonId = service.currentSeasonId;
 
     try {
+      // --- CORREÇÃO DE PERFORMANCE (Lazy Loading) ---
+      // Garante que os jogadores dos dois times estejam carregados
+      // fetchRoster é inteligente e só baixa se não estiver em cache válido
+      await Future.wait([
+        service.fetchRoster(widget.team1Id),
+        service.fetchRoster(widget.team2Id),
+      ]);
+
+      // Agora pega do cache seguro
       _team1Players = service.getCachedRoster(widget.team1Id).where((p) => !p.isStaff).toList();
       _team2Players = service.getCachedRoster(widget.team2Id).where((p) => !p.isStaff).toList();
-
-      if (_team1Players.isEmpty || _team2Players.isEmpty) {
-         await service.fetchStaticData(forceRefresh: true);
-         _team1Players = service.getCachedRoster(widget.team1Id).where((p) => !p.isStaff).toList();
-         _team2Players = service.getCachedRoster(widget.team2Id).where((p) => !p.isStaff).toList();
-      }
 
       final t1Doc = await teamService.getTeam(widget.team1Id, seasonId);
       final t2Doc = await teamService.getTeam(widget.team2Id, seasonId);
