@@ -6,15 +6,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
-import '../services/admin_service.dart';
 import '../models/match_model.dart'; 
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/modern_fixtures_nav.dart';
 import '../widgets/palpitometro_widget.dart'; 
-import '../widgets/ui/shimmer_effect.dart';     // <-- Import
-import '../widgets/ui/custom_empty_state.dart';  // <-- Import
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 import 'admin_match_screen.dart';
 import 'match_stats_screen.dart';
 import 'edit_match_screen.dart';
@@ -31,21 +30,64 @@ class FixturesScreen extends StatefulWidget {
 }
 
 class _FixturesScreenState extends State<FixturesScreen> {
-  late TournamentPhase _selectedPhase;
-  late int _selectedRound;
-  late PlayoffStage _selectedPlayoffStage;
+  TournamentPhase _selectedPhase = TournamentPhase.first;
+  int _selectedRound = 1;
+  PlayoffStage _selectedPlayoffStage = PlayoffStage.semifinal;
+  
   final int TOTAL_RODADAS = 7; 
+  
+  // Controles de Estado
+  String _lastSeasonId = '';
+  bool _isLoadingSettings = true;
+  bool _isModel2 = false; // Formato do torneio
 
   @override
-  void initState() {
-    super.initState();
-    _selectedPhase = AdminService.defaultPhase == 'second' ? TournamentPhase.second : TournamentPhase.first;
-    if (_selectedPhase == TournamentPhase.first) {
-      _selectedRound = int.tryParse(AdminService.defaultStage) ?? 1;
-      _selectedPlayoffStage = PlayoffStage.semifinal; 
-    } else {
-      _selectedRound = 1;
-      _selectedPlayoffStage = _getPlayoffStageFromString(AdminService.defaultStage);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final service = Provider.of<ChampionshipService>(context);
+    
+    // MÁGICA AQUI: Se a temporada mudou, buscamos as configurações exclusivas dela!
+    if (service.currentSeasonId.isNotEmpty && service.currentSeasonId != _lastSeasonId) {
+      _lastSeasonId = service.currentSeasonId;
+      _loadSeasonSettings(service.currentSeasonId);
+    }
+  }
+
+  Future<void> _loadSeasonSettings(String seasonId) async {
+    setState(() => _isLoadingSettings = true);
+    try {
+      // Vai direto na fonte que você mencionou
+      final doc = await FirebaseFirestore.instance
+          .collection('championships')
+          .doc(seasonId)
+          .collection('settings')
+          .doc('app_settings')
+          .get();
+
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+        final phase = data['default_phase'] ?? 'first';
+        final stage = data['default_stage'] ?? '1';
+        final format = data['tournament_format'] ?? 'model_1';
+
+        setState(() {
+          _isModel2 = format == 'model_2';
+          _selectedPhase = phase == 'second' ? TournamentPhase.second : TournamentPhase.first;
+          
+          if (_selectedPhase == TournamentPhase.first) {
+            _selectedRound = int.tryParse(stage) ?? 1;
+            // Se for model_2 começa nas quartas, senão semi
+            _selectedPlayoffStage = _isModel2 ? PlayoffStage.quarter_final : PlayoffStage.semifinal; 
+          } else {
+            _selectedRound = 1;
+            _selectedPlayoffStage = _getPlayoffStageFromString(stage);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Erro ao carregar settings: $e");
+    } finally {
+      if (mounted) setState(() => _isLoadingSettings = false);
     }
   }
 
@@ -57,6 +99,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
     return PlayoffStage.semifinal;
   }
 
+  // ... (Restante dos métodos _handleMatchTap e _showAdminOptions continuam iguais)
   Future<void> _handleMatchTap(MatchModel match, bool isAdmin, String seasonId) async {
     final matchRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(match.id);
     if (isAdmin || !match.isFinished) {
@@ -124,9 +167,8 @@ class _FixturesScreenState extends State<FixturesScreen> {
           }
         }
 
-        final isModel2 = AdminService.tournamentFormat == 'model_2';
         final Map<PlayoffStage, String> playoffStagesMap = {
-          if (isModel2) PlayoffStage.quarter_final: 'Playoff',
+          if (_isModel2) PlayoffStage.quarter_final: 'Playoff',
           PlayoffStage.semifinal: 'Semi',
           PlayoffStage.third_place: '3º Lugar',
           PlayoffStage.final_game: 'Final',
@@ -147,60 +189,62 @@ class _FixturesScreenState extends State<FixturesScreen> {
             ]
           ),
           drawer: const AppDrawer(),
-          body: Column(
-            children: [
-              // HEADER DE NAVEGAÇÃO
-              Container(
-                color: Colors.white,
-                child: Column(
-                  children: [
-                    ModernPhaseSelector<TournamentPhase>(
-                      selectedValue: _selectedPhase, 
-                      options: const {TournamentPhase.first: '1ª FASE', TournamentPhase.second: 'MATA-MATA'}, 
-                      onChanged: (val) { 
-                        setState(() { 
-                          _selectedPhase = val; 
-                          if(val == TournamentPhase.second) _selectedPlayoffStage = isModel2 ? PlayoffStage.quarter_final : PlayoffStage.semifinal; 
-                        }); 
-                      }
+          body: _isLoadingSettings 
+            ? const Center(child: CircularProgressIndicator()) 
+            : Column(
+                children: [
+                  // HEADER DE NAVEGAÇÃO
+                  Container(
+                    color: Colors.white,
+                    child: Column(
+                      children: [
+                        ModernPhaseSelector<TournamentPhase>(
+                          selectedValue: _selectedPhase, 
+                          options: const {TournamentPhase.first: '1ª FASE', TournamentPhase.second: 'MATA-MATA'}, 
+                          onChanged: (val) { 
+                            setState(() { 
+                              _selectedPhase = val; 
+                              if(val == TournamentPhase.second) _selectedPlayoffStage = _isModel2 ? PlayoffStage.quarter_final : PlayoffStage.semifinal; 
+                            }); 
+                          }
+                        ),
+                        if (_selectedPhase == TournamentPhase.first) 
+                          HorizontalRoundSelector(currentRound: _selectedRound, totalRounds: TOTAL_RODADAS, onRoundChanged: (r) => setState(() => _selectedRound = r))
+                        else 
+                          PlayoffStageSelector<PlayoffStage>(selectedStage: _selectedPlayoffStage, stages: playoffStagesMap, onChanged: (val) => setState(() => _selectedPlayoffStage = val)),
+                      ],
                     ),
-                    if (_selectedPhase == TournamentPhase.first) 
-                      HorizontalRoundSelector(currentRound: _selectedRound, totalRounds: TOTAL_RODADAS, onRoundChanged: (r) => setState(() => _selectedRound = r))
-                    else 
-                      PlayoffStageSelector<PlayoffStage>(selectedStage: _selectedPlayoffStage, stages: playoffStagesMap, onChanged: (val) => setState(() => _selectedPlayoffStage = val)),
-                  ],
-                ),
-              ),
-              
-              // BANNER
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, 
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4, bottom: 4), 
-                      child: Row(children: [
-                        Icon(Icons.star, size: 12, color: Theme.of(context).primaryColor), 
-                        const SizedBox(width: 6), 
-                        Text(sponsorTitle, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey[600]))
-                      ])
-                    ), 
-                    Container(
-                      height: 80, 
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]), 
-                      child: ClipRRect(borderRadius: BorderRadius.circular(8), child: SponsorBannerRotator(location: 'header_fixtures', filterTag: bannerFilterTag, height: 80))
+                  ),
+                  
+                  // BANNER
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start, 
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 4), 
+                          child: Row(children: [
+                            Icon(Icons.star, size: 12, color: Theme.of(context).primaryColor), 
+                            const SizedBox(width: 6), 
+                            Text(sponsorTitle, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey[600]))
+                          ])
+                        ), 
+                        Container(
+                          height: 80, 
+                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]), 
+                          child: ClipRRect(borderRadius: BorderRadius.circular(8), child: SponsorBannerRotator(location: 'header_fixtures', filterTag: bannerFilterTag, height: 80))
+                        )
+                      ]
                     )
-                  ]
-                )
+                  ),
+                  
+                  // LISTA DE JOGOS
+                  Expanded(
+                    child: _buildMatchesContent(service.isLoading, matches, service, authService, seasonId),
+                  ),
+                ],
               ),
-              
-              // LISTA DE JOGOS
-              Expanded(
-                child: _buildMatchesContent(service.isLoading, matches, service, authService, seasonId),
-              ),
-            ],
-          ),
           bottomNavigationBar: const SponsorBannerRotator(height: 120, location: 'footer_home'), 
           floatingActionButton: (authService.isAuthenticated) ? FloatingActionButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditMatchScreen(match: null))), backgroundColor: Theme.of(context).primaryColor, child: const Icon(Icons.add, color: Colors.white)) : null,
         );
@@ -208,18 +252,17 @@ class _FixturesScreenState extends State<FixturesScreen> {
     );
   }
 
+  // --- CARDS E SKELETON (MANTIDOS) ---
   Widget _buildMatchesContent(bool isLoading, List<MatchModel> matches, ChampionshipService service, AuthService authService, String seasonId) {
-    // 1. LOADING: Mostra Skeletons
     if (isLoading && matches.isEmpty) {
       return ListView.separated(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
-        itemCount: 4, // 4 Placeholders
+        itemCount: 4,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, __) => _buildMatchSkeleton(),
       );
     }
 
-    // 2. EMPTY: Mostra Mensagem Bonita
     if (matches.isEmpty) {
       return CustomEmptyState(
         icon: Icons.event_busy,
@@ -230,44 +273,42 @@ class _FixturesScreenState extends State<FixturesScreen> {
       );
     }
 
-    // 3. LISTA REAL
     return RefreshIndicator(
       onRefresh: () => service.fetchStaticData(forceRefresh: true),
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
         itemCount: matches.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) => _buildCleanMatchCard(matches[index], authService.isAuthenticated, seasonId),
+        itemBuilder: (context, index) => _buildCleanMatchCard(match: matches[index], isAdmin: authService.isAuthenticated, seasonId: seasonId),
       ),
     );
   }
 
-  // --- SKELETON (SHIMMER) ---
   Widget _buildMatchSkeleton() {
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          const ShimmerEffect.rectangular(height: 12, width: 150), // Data
+          const ShimmerEffect.rectangular(height: 12, width: 150),
           const SizedBox(height: 16),
           Row(
-            children: [
-              const Expanded(child: Center(child: ShimmerEffect.circular(size: 45))), // Logo Casa
-              const SizedBox(width: 16),
-              const ShimmerEffect.rectangular(height: 28, width: 60), // Placar
-              const SizedBox(width: 16),
-              const Expanded(child: Center(child: ShimmerEffect.circular(size: 45))), // Logo Fora
+            children: const [
+              Expanded(child: Center(child: ShimmerEffect.circular(size: 45))),
+              SizedBox(width: 16),
+              ShimmerEffect.rectangular(height: 28, width: 60),
+              SizedBox(width: 16),
+              Expanded(child: Center(child: ShimmerEffect.circular(size: 45))),
             ],
           ),
           const SizedBox(height: 16),
-          const ShimmerEffect.rectangular(height: 24, width: double.infinity), // Palpitômetro
+          const ShimmerEffect.rectangular(height: 24, width: double.infinity),
         ],
       ),
     );
   }
 
-  Widget _buildCleanMatchCard(MatchModel match, bool isAdmin, String seasonId) {
+  Widget _buildCleanMatchCard({required MatchModel match, required bool isAdmin, required String seasonId}) {
     Color statusColor = Colors.grey;
     String statusText = 'AGENDADO';
     
@@ -295,11 +336,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
         ],
       ),
       child: InkWell(
@@ -308,117 +345,36 @@ class _FixturesScreenState extends State<FixturesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Cabeçalho
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
               child: Row(
                 children: [
                   Icon(Icons.calendar_today, size: 12, color: Colors.grey[500]),
                   const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      "$datePart  •  ${match.location}",
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+                  Expanded(child: Text("$datePart  •  ${match.location}", style: TextStyle(fontSize: 11, color: Colors.grey[600], fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: statusColor.withOpacity(0.3), width: 0.5)
-                    ),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
-                    ),
+                    decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: statusColor.withOpacity(0.3), width: 0.5)),
+                    child: Text(statusText, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor)),
                   )
                 ],
               ),
             ),
-
             const Divider(height: 1, thickness: 0.5),
-
-            // Times
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Column(
-                      children: [
-                        _buildShield(match.homeTeamShield),
-                        const SizedBox(height: 6),
-                        Text(
-                          match.homeTeamName,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  SizedBox(
-                    width: 80,
-                    child: Column(
-                      children: [
-                        Text(
-                          match.isPending ? "vs" : "${match.scoreHome ?? 0} - ${match.scoreAway ?? 0}",
-                          style: TextStyle(
-                            fontSize: match.isPending ? 16 : 28,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                            fontFamily: 'Roboto', 
-                          ),
-                        ),
-                        if (match.penaltyScoreHome != null)
-                          Text(
-                            "(${match.penaltyScoreHome} - ${match.penaltyScoreAway}) pen",
-                            style: const TextStyle(fontSize: 10, color: Colors.grey),
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  Expanded(
-                    child: Column(
-                      children: [
-                        _buildShield(match.awayTeamShield),
-                        const SizedBox(height: 6),
-                        Text(
-                          match.awayTeamName,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
+                  Expanded(child: Column(children: [_buildShield(match.homeTeamShield), const SizedBox(height: 6), Text(match.homeTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))])),
+                  SizedBox(width: 80, child: Column(children: [Text(match.isPending ? "vs" : "${match.scoreHome ?? 0} - ${match.scoreAway ?? 0}", style: TextStyle(fontSize: match.isPending ? 16 : 28, fontWeight: FontWeight.w900, color: Colors.black87, fontFamily: 'Roboto')), if (match.penaltyScoreHome != null) Text("(${match.penaltyScoreHome} - ${match.penaltyScoreAway}) pen", style: const TextStyle(fontSize: 10, color: Colors.grey))])),
+                  Expanded(child: Column(children: [_buildShield(match.awayTeamShield), const SizedBox(height: 6), Text(match.awayTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))])),
                 ],
               ),
             ),
-
-            // Palpitômetro
             if (seasonId.isNotEmpty) 
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: PalpitometroWidget(
-                  seasonId: seasonId,
-                  matchId: match.id,
-                  homeTeamName: match.homeTeamName,
-                  awayTeamName: match.awayTeamName,
-                  homeVotes: match.votesHome,
-                  awayVotes: match.votesAway,
-                  homeColor: Colors.blueAccent,
-                  awayColor: Colors.redAccent,
-                  isClosed: !match.isPending, 
-                  barHeight: 24.0, 
-                  compactView: false, 
-                ),
+                child: PalpitometroWidget(seasonId: seasonId, matchId: match.id, homeTeamName: match.homeTeamName, awayTeamName: match.awayTeamName, homeVotes: match.votesHome, awayVotes: match.votesAway, homeColor: Colors.blueAccent, awayColor: Colors.redAccent, isClosed: !match.isPending, barHeight: 24.0, compactView: false),
               ),
           ],
         ),
@@ -431,8 +387,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
     return SizedBox(
       height: 45, width: 45,
       child: CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.contain,
+        imageUrl: url, fit: BoxFit.contain,
         placeholder: (_,__) => Container(color: Colors.grey[100]),
         errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
       ),

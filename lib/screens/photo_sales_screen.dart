@@ -8,11 +8,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/photo_product_model.dart';
 import '../viewmodels/photo_sales_viewmodel.dart';
-import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
-import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 
 // ==========================================
-// WIDGETS AUXILIARES (UI Pura)
+// WIDGETS AUXILIARES (Otimização de RAM)
 // ==========================================
 Widget _buildResponsiveImage({required String url, BoxFit fit = BoxFit.cover}) {
   if (url.isEmpty) return const ShimmerEffect.rectangular(height: double.infinity);
@@ -29,6 +29,8 @@ Widget _buildResponsiveImage({required String url, BoxFit fit = BoxFit.cover}) {
   return CachedNetworkImage(
     imageUrl: url, 
     fit: fit,
+    // O SEGREDO DA PERFORMANCE: Limita o tamanho do cache na RAM
+    memCacheWidth: 300, 
     placeholder: (_, __) => const ShimmerEffect.rectangular(height: double.infinity),
     errorWidget: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
   );
@@ -68,7 +70,7 @@ class _WatermarkOverlay extends StatelessWidget {
 }
 
 // ==========================================
-// TELA 1: TEMPORADAS (Consome ViewModel)
+// TELA 1: EXIBIÇÃO DAS PASTAS (Custo Leve)
 // ==========================================
 class PhotoSalesScreen extends StatefulWidget {
   const PhotoSalesScreen({super.key});
@@ -82,84 +84,106 @@ class _PhotoSalesScreenState extends State<PhotoSalesScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<PhotoSalesViewModel>(context, listen: false).loadPhotos();
+      Provider.of<PhotoSalesViewModel>(context, listen: false).loadAlbums();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Galeria de Fotos'),
-      ),
+      appBar: AppBar(title: const Text('Galeria de Fotos')),
       body: Consumer<PhotoSalesViewModel>(
         builder: (context, vm, _) {
-          // 1. Loading Skeleton
-          if (vm.isLoadingPhotos) {
+          // ESTADO OFFLINE
+          if (vm.isOffline && vm.albums.isEmpty) {
+            return CustomEmptyState.offline(onRetry: () => vm.loadAlbums(isRefresh: true));
+          }
+
+          // LOADING SKELETON
+          if (vm.isLoadingAlbums) {
             return ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: 4,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (_, __) => const ShimmerEffect.rectangular(height: 100, width: double.infinity),
+              padding: const EdgeInsets.all(16), itemCount: 4,
+              separatorBuilder: (_,__) => const SizedBox(height: 12),
+              itemBuilder: (_,__) => const ShimmerEffect.rectangular(height: 140, width: double.infinity),
             );
           }
 
-          // 2. Error State
-          if (vm.errorMessage != null) {
+          // ERRO
+          if (vm.errorMessage != null && vm.albums.isEmpty) {
             return CustomEmptyState(
               icon: Icons.error_outline, 
-              title: "Erro", 
-              message: vm.errorMessage!,
-              buttonText: "Tentar Novamente",
-              onButtonPressed: vm.loadPhotos,
+              title: "Ops!", 
+              message: vm.errorMessage!, 
+              buttonText: "Tentar Novamente", 
+              onButtonPressed: () => vm.loadAlbums(isRefresh: true)
             );
           }
 
-          // 3. Empty State
-          if (vm.allPhotos.isEmpty) {
+          // VAZIO
+          if (vm.albums.isEmpty) {
             return const CustomEmptyState(
               icon: Icons.photo_library_outlined, 
-              title: "Sem Fotos", 
+              title: "Sem Álbuns", 
               message: "Nenhuma galeria disponível no momento."
             );
           }
 
-          final Set<int> yearsSet = {};
-          for (var photo in vm.allPhotos) { yearsSet.add(photo.takenAt.year); }
-          final List<int> sortedYears = yearsSet.toList()..sort((a, b) => b.compareTo(a));
+          // Agrupa os álbuns leves por Ano
+          final Map<int, List<Map<String, dynamic>>> albumsByYear = {};
+          for (var album in vm.albums) {
+            final year = album['year'] ?? 2026;
+            if (!albumsByYear.containsKey(year)) albumsByYear[year] = [];
+            albumsByYear[year]!.add(album);
+          }
+          final sortedYears = albumsByYear.keys.toList()..sort((a, b) => b.compareTo(a));
 
-          // 4. Lista Real
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: sortedYears.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final year = sortedYears[index];
-              final firstPhoto = vm.allPhotos.firstWhere((p) => p.takenAt.year == year, orElse: () => vm.allPhotos.first);
+          return RefreshIndicator(
+            onRefresh: () => vm.loadAlbums(isRefresh: true),
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: sortedYears.length,
+              itemBuilder: (context, index) {
+                final year = sortedYears[index];
+                final yearAlbums = albumsByYear[year]!;
 
-              return Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: () {
-                    final photosInYear = vm.allPhotos.where((p) => p.takenAt.year == year).toList();
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => _SeasonFoldersScreen(year: year, photos: photosInYear)));
-                  },
-                  child: SizedBox(
-                    height: 100,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _buildResponsiveImage(url: firstPhoto.previewUrl),
-                        Container(color: Colors.black.withOpacity(0.4)),
-                        Center(child: Text("Temporada $year", style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 2.0))),
-                      ],
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 12.0, top: index == 0 ? 0.0 : 24.0),
+                      child: Text("Temporada $year", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     ),
-                  ),
-                ),
-              );
-            },
+                    ...yearAlbums.map((album) {
+                      final eventName = album['name'] ?? 'Desconhecido';
+                      final coverUrl = album['coverUrl'] ?? '';
+
+                      return Card(
+                        elevation: 4, margin: const EdgeInsets.only(bottom: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _FolderGalleryScreen(folderName: eventName))),
+                          child: Column(
+                            children: [
+                              SizedBox(height: 140, width: double.infinity, child: _buildResponsiveImage(url: coverUrl)),
+                              Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(children: [
+                                    const Icon(Icons.folder, color: Color(0xFF32BCAD)),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: Text(eventName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                                    const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                                ]),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                );
+              },
+            ),
           );
         },
       ),
@@ -168,74 +192,41 @@ class _PhotoSalesScreenState extends State<PhotoSalesScreen> {
 }
 
 // ==========================================
-// TELA 2: PASTAS (Stateless - Recebe dados puros)
+// TELA 2: FOTOS DO ÁLBUM COM PAGINAÇÃO
 // ==========================================
-class _SeasonFoldersScreen extends StatelessWidget {
-  final int year;
-  final List<PhotoProduct> photos;
+class _FolderGalleryScreen extends StatefulWidget {
+  final String folderName;
 
-  const _SeasonFoldersScreen({required this.year, required this.photos});
+  const _FolderGalleryScreen({required this.folderName});
 
   @override
-  Widget build(BuildContext context) {
-    final Map<String, List<PhotoProduct>> folders = {};
-    for (var photo in photos) {
-      final name = photo.eventName.isNotEmpty ? photo.eventName : 'Geral';
-      if (!folders.containsKey(name)) folders[name] = [];
-      folders[name]!.add(photo);
-    }
-    final folderNames = folders.keys.toList();
-
-    return Scaffold(
-      appBar: AppBar(title: Text('Jogos de $year')),
-      body: folderNames.isEmpty
-          ? const CustomEmptyState(icon: Icons.folder_off, title: "Vazio", message: "Nenhum álbum encontrado.")
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: folderNames.length,
-              itemBuilder: (context, index) {
-                final name = folderNames[index];
-                final folderPhotos = folders[name]!;
-                
-                return Card(
-                  elevation: 4, margin: const EdgeInsets.only(bottom: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _FolderGalleryScreen(folderName: name, photos: folderPhotos))),
-                    child: Column(
-                      children: [
-                        SizedBox(height: 140, width: double.infinity, child: _buildResponsiveImage(url: folderPhotos.first.previewUrl)),
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(children: [
-                              const Icon(Icons.folder, color: Color(0xFF32BCAD)),
-                              const SizedBox(width: 12),
-                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                    Text("${folderPhotos.length} fotos", style: const TextStyle(color: Colors.grey)),
-                              ])),
-                              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                          ]),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-    );
-  }
+  State<_FolderGalleryScreen> createState() => _FolderGalleryScreenState();
 }
 
-// ==========================================
-// TELA 3: GALERIA E CARRINHO (Totalmente MVVM)
-// ==========================================
-class _FolderGalleryScreen extends StatelessWidget {
-  final String folderName;
-  final List<PhotoProduct> photos;
+class _FolderGalleryScreenState extends State<_FolderGalleryScreen> {
+  final ScrollController _scrollController = ScrollController();
 
-  const _FolderGalleryScreen({required this.folderName, required this.photos});
+  @override
+  void initState() {
+    super.initState();
+    // 1. Carrega os primeiros 30 itens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<PhotoSalesViewModel>(context, listen: false).loadPhotosByFolder(widget.folderName, isRefresh: true);
+    });
+
+    // 2. Escuta a rolagem (Infinite Scroll)
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent * 0.85) {
+        Provider.of<PhotoSalesViewModel>(context, listen: false).loadPhotosByFolder(widget.folderName);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   void _showCheckoutModal(BuildContext context) {
     Provider.of<PhotoSalesViewModel>(context, listen: false).initCheckout();
@@ -254,7 +245,7 @@ class _FolderGalleryScreen extends StatelessWidget {
       builder: (context, vm, _) {
         return Scaffold(
           appBar: AppBar(
-            title: Text(folderName),
+            title: Text(widget.folderName),
             actions: [
               if (vm.cartCount > 0)
                 TextButton(
@@ -263,62 +254,7 @@ class _FolderGalleryScreen extends StatelessWidget {
                 )
             ],
           ),
-          body: photos.isEmpty
-              ? const CustomEmptyState(icon: Icons.image_not_supported, title: "Sem Fotos", message: "Este álbum está vazio.")
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 4, mainAxisSpacing: 4),
-                  itemCount: photos.length,
-                  itemBuilder: (ctx, i) {
-                    final photo = photos[i];
-                    final isSelected = vm.cartItems.contains(photo);
-                    
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Positioned.fill(
-                          child: GestureDetector(
-                            onTap: () {
-                               if(photo.previewUrl.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto indisponível")));
-                                  return;
-                               }
-                               vm.toggleCartItem(photo);
-                            },
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  // AQUI: Usa o builder com shimmer
-                                  _buildResponsiveImage(url: photo.previewUrl),
-                                  const _WatermarkOverlay(),
-                                  if (isSelected) Container(
-                                    decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), border: Border.all(color: const Color(0xFF32BCAD), width: 3), borderRadius: BorderRadius.circular(4)),
-                                    child: const Center(child: Icon(Icons.check_circle, color: Colors.white, size: 40))
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (!isSelected) Positioned(bottom: 0, right: 0, child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.only(topLeft: Radius.circular(4))),
-                              child: Text(NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(photo.price), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                        )),
-                        Positioned(top: 4, right: 4, child: Material(color: Colors.transparent, child: InkWell(
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _PhotoDetailView(photo: photo))),
-                              borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                                child: const Icon(Icons.zoom_in, color: Colors.white, size: 18),
-                              ),
-                        ))),
-                      ],
-                    );
-                  },
-                ),
+          body: _buildBody(vm),
           bottomSheet: vm.cartCount > 0 ? Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)]),
@@ -339,10 +275,126 @@ class _FolderGalleryScreen extends StatelessWidget {
       },
     );
   }
+
+  Widget _buildBody(PhotoSalesViewModel vm) {
+    // OFFLINE
+    if (vm.isOffline && vm.folderPhotos.isEmpty) {
+      return CustomEmptyState.offline(
+        onRetry: () => vm.loadPhotosByFolder(widget.folderName, isRefresh: true),
+      );
+    }
+
+    // LOADING SKELETON (Apenas na inicialização da pasta)
+    if (vm.isLoadingPhotos) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 4, mainAxisSpacing: 4),
+        itemCount: 15,
+        itemBuilder: (_, __) => const ShimmerEffect.rectangular(height: double.infinity),
+      );
+    }
+
+    // ERRO
+    if (vm.errorMessage != null && vm.folderPhotos.isEmpty) {
+      return CustomEmptyState(
+        icon: Icons.error_outline,
+        title: "Ops!",
+        message: vm.errorMessage!,
+        buttonText: "Tentar Novamente",
+        onButtonPressed: () => vm.loadPhotosByFolder(widget.folderName, isRefresh: true),
+      );
+    }
+
+    // VAZIO
+    if (vm.folderPhotos.isEmpty) {
+      return const CustomEmptyState(
+        icon: Icons.image_not_supported, 
+        title: "Sem Fotos", 
+        message: "Ainda não subimos as fotos deste álbum."
+      );
+    }
+
+    // LISTA REAL (Paginada)
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => vm.loadPhotosByFolder(widget.folderName, isRefresh: true),
+            child: GridView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 100),
+              physics: const AlwaysScrollableScrollPhysics(), 
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.7, crossAxisSpacing: 4, mainAxisSpacing: 4),
+              itemCount: vm.folderPhotos.length,
+              itemBuilder: (ctx, i) {
+                final photo = vm.folderPhotos[i];
+                final isSelected = vm.cartItems.contains(photo);
+                
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: () {
+                           if(photo.previewUrl.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto indisponível")));
+                              return;
+                           }
+                           vm.toggleCartItem(photo);
+                        },
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              _buildResponsiveImage(url: photo.previewUrl),
+                              const _WatermarkOverlay(),
+                              if (isSelected) Container(
+                                decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), border: Border.all(color: const Color(0xFF32BCAD), width: 3), borderRadius: BorderRadius.circular(4)),
+                                child: const Center(child: Icon(Icons.check_circle, color: Colors.white, size: 40))
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!isSelected) Positioned(bottom: 0, right: 0, child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.only(topLeft: Radius.circular(4))),
+                          child: Text(NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$').format(photo.price), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    )),
+                    Positioned(top: 4, right: 4, child: Material(color: Colors.transparent, child: InkWell(
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _PhotoDetailView(photo: photo))),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.all(6), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                            child: const Icon(Icons.zoom_in, color: Colors.white, size: 18),
+                          ),
+                    ))),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        
+        // INDICADOR DE PAGINAÇÃO
+        if (vm.isLoadingMore)
+          Container(
+            padding: const EdgeInsets.all(16.0),
+            alignment: Alignment.center,
+            child: const SizedBox(
+              width: 24, height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF32BCAD)),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 // ==========================================
-// MODAL DE CHECKOUT (MVVM)
+// MODAL DE CHECKOUT 
 // ==========================================
 class _CheckoutModalMVVM extends StatefulWidget {
   const _CheckoutModalMVVM();

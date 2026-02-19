@@ -6,6 +6,7 @@ class CustomEmptyState extends StatelessWidget {
   final String message;
   final String? buttonText;
   final VoidCallback? onButtonPressed;
+  final Color? iconColor;
 
   const CustomEmptyState({
     super.key,
@@ -14,7 +15,20 @@ class CustomEmptyState extends StatelessWidget {
     required this.message,
     this.buttonText,
     this.onButtonPressed,
+    this.iconColor,
   });
+
+  // --- NOVO: Construtor específico para Modo Offline ---
+  factory CustomEmptyState.offline({VoidCallback? onRetry}) {
+    return CustomEmptyState(
+      icon: Icons.wifi_off_rounded,
+      iconColor: Colors.red[300],
+      title: "Sem Conexão",
+      message: "Parece que você está offline. Verifique sua internet e tente novamente.",
+      buttonText: "Tentar Novamente",
+      onButtonPressed: onRetry,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +44,7 @@ class CustomEmptyState extends StatelessWidget {
                 color: Colors.grey[100],
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 64, color: Colors.grey[400]),
+              child: Icon(icon, size: 64, color: iconColor ?? Colors.grey[400]),
             ),
             const SizedBox(height: 24),
             Text(

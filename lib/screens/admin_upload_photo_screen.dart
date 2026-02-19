@@ -1,10 +1,10 @@
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart'; // Para kIsWeb
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io' show File;
 
+// IMPORTAÇÃO DO SEU SERVIÇO
 import '../services/cloudinary_service.dart';
 
 class AdminUploadPhotoScreen extends StatefulWidget {
@@ -15,257 +15,256 @@ class AdminUploadPhotoScreen extends StatefulWidget {
 }
 
 class _AdminUploadPhotoScreenState extends State<AdminUploadPhotoScreen> {
-  final _cloudinaryService = CloudinaryService();
-  final _priceController = TextEditingController(text: "10.00");
-  final _folderController = TextEditingController(); // Antigo event_name, agora Tag/Pasta
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _eventNameController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController(text: '10.00');
   
-  // Lista de imagens selecionadas
-  List<XFile> _selectedFiles = [];
-  // Cache de bytes para preview na Web
-  Map<String, Uint8List> _webImagesBytes = {};
-  
+  // Instância do seu serviço do Cloudinary
+  final CloudinaryService _cloudinaryService = CloudinaryService();
+
+  List<XFile> _selectedImages = [];
   bool _isUploading = false;
   double _uploadProgress = 0.0;
-  String _uploadStatus = "";
 
-  // Selecionar MÚLTIPLAS imagens
   Future<void> _pickImages() async {
-    final picker = ImagePicker();
-    // Permite selecionar várias
-    final List<XFile> images = await picker.pickMultiImage(imageQuality: 85);
-
+    final ImagePicker picker = ImagePicker();
+    final List<XFile> images = await picker.pickMultiImage();
     if (images.isNotEmpty) {
-      if (kIsWeb) {
-        // Para web, precisamos ler os bytes de cada uma para mostrar o preview
-        for (var img in images) {
-          final bytes = await img.readAsBytes();
-          _webImagesBytes[img.path] = bytes;
-        }
-      }
-      
       setState(() {
-        _selectedFiles.addAll(images);
+        _selectedImages.addAll(images);
       });
     }
   }
 
   void _removeImage(int index) {
     setState(() {
-      final file = _selectedFiles[index];
-      _webImagesBytes.remove(file.path);
-      _selectedFiles.removeAt(index);
+      _selectedImages.removeAt(index);
     });
   }
 
+  // Gera a URL de preview (com qualidade reduzida/tamanho menor).
+  // Isso economiza banda do Firebase e do usuário na hora de listar as fotos na loja.
+  String _generatePreviewUrl(String originalUrl) {
+    if (originalUrl.contains('/upload/')) {
+      return originalUrl.replaceFirst('/upload/', '/upload/q_auto,f_auto,w_800/');
+    }
+    return originalUrl;
+  }
+
   Future<void> _uploadAll() async {
-    if (_selectedFiles.isEmpty) return;
-    if (_folderController.text.trim().isEmpty) {
+    if (!_formKey.currentState!.validate() || _selectedImages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, informe o nome da Pasta/Tag.'))
+        const SnackBar(content: Text("Preencha os campos e selecione fotos.")),
       );
       return;
     }
-    
+
     setState(() {
       _isUploading = true;
-      _uploadProgress = 0;
+      _uploadProgress = 0.0;
     });
 
-    int total = _selectedFiles.length;
+    final String eventName = _eventNameController.text.trim();
+    final double price = double.tryParse(_priceController.text.replaceAll(',', '.')) ?? 10.0;
+    final int currentYear = DateTime.now().year;
+    
+    // Gerar um ID único e amigável para a pasta (Álbum)
+    final String albumId = "${eventName.replaceAll(' ', '-').toLowerCase()}-$currentYear";
+    
+    String? firstPhotoCoverUrl;
     int successCount = 0;
-    double price = double.tryParse(_priceController.text.replaceAll(',', '.')) ?? 10.0;
-    String folderName = _folderController.text.trim();
 
     try {
-      // Loop de Upload
-      for (int i = 0; i < total; i++) {
-        final file = _selectedFiles[i];
+      for (int i = 0; i < _selectedImages.length; i++) {
+        final image = _selectedImages[i];
         
-        setState(() {
-          _uploadStatus = "Enviando ${i + 1} de $total...";
-          _uploadProgress = (i / total);
-        });
+        // ==========================================================
+        // 1. CHAMA O SEU SERVICE DO CLOUDINARY
+        // ==========================================================
+        final originalUrl = await _cloudinaryService.uploadImage(image);
+        
+        if (originalUrl != null) {
+          final previewUrl = _generatePreviewUrl(originalUrl);
+          
+          if (firstPhotoCoverUrl == null) {
+            firstPhotoCoverUrl = previewUrl; // Salva a 1ª foto para ser a capa do álbum
+          }
 
-        // 1. Upload Cloudinary
-        final String? imageUrl = await _cloudinaryService.uploadImage(file);
-
-        if (imageUrl != null) {
-          // 2. Salva no Firestore
+          // 2. Salva na coleção photo_sales (Fotos individuais - Usado na Paginação)
           await FirebaseFirestore.instance.collection('photo_sales').add({
-            'original_url': imageUrl,
+            'event_name': eventName,
+            'original_url': originalUrl,
+            'preview_url': previewUrl,
             'price': price,
-            'event_name': folderName, // Usado como Tag/Pasta
             'taken_at': FieldValue.serverTimestamp(),
-            'photographer_id': 'admin_fjf',
-            'status': 'active',
+            'created_at': FieldValue.serverTimestamp(),
           });
           successCount++;
         }
-      }
 
-      // Finalização
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$successCount de $total fotos enviadas com sucesso!'))
-        );
         setState(() {
-          _selectedFiles.clear();
-          _webImagesBytes.clear();
-          _isUploading = false;
-          _uploadStatus = "";
-          _uploadProgress = 0;
-          // Não limpamos a pasta nem o preço para facilitar o envio de mais lotes
+          _uploadProgress = (i + 1) / _selectedImages.length;
         });
       }
 
+      // ==========================================================
+      // 3. CRIA/ATUALIZA O ÍNDICE DO ÁLBUM (Otimização da Loja)
+      // ==========================================================
+      if (firstPhotoCoverUrl != null) {
+        await FirebaseFirestore.instance.collection('photo_albums').doc(albumId).set({
+          'name': eventName,
+          'year': currentYear,
+          'coverUrl': firstPhotoCoverUrl,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true)); // Merge evita sobrescrever álbuns já existentes (caso você adicione fotos depois)
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("$successCount fotos enviadas para o álbum $eventName!")),
+        );
+        setState(() {
+          _selectedImages.clear();
+          _eventNameController.clear();
+        });
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
-        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erro fatal no envio: $e")),
+        );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
+      }
+    }
+  }
+
+  // Helper para preview da imagem selecionada (suporte nativo para Web e Mobile)
+  Widget _buildImagePreview(XFile image) {
+    if (kIsWeb) {
+      return Image.network(image.path, fit: BoxFit.cover);
+    } else {
+      return Image.file(File(image.path), fit: BoxFit.cover);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Upload em Massa")),
-      // 🚀 PERFORMANCE: Migrado para CustomScrollView para virtualização da grid
-      body: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverToBoxAdapter(
+      appBar: AppBar(title: const Text("Enviar Fotos (Admin)")),
+      body: _isUploading
+          ? Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // --- 1. CONFIGURAÇÕES DO LOTE ---
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: _folderController,
-                            decoration: const InputDecoration(
-                              labelText: "Nome da Pasta / Tag (Obrigatório)",
-                              hintText: "Ex: Rodada 1 - Time A x Time B",
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.folder),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _priceController,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: const InputDecoration(
-                              labelText: "Preço por foto (R\$)",
-                              border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.attach_money),
-                            ),
-                          ),
-                        ],
+                  CircularProgressIndicator(value: _uploadProgress, color: const Color(0xFF32BCAD)),
+                  const SizedBox(height: 20),
+                  Text("Enviando... ${(_uploadProgress * 100).toInt()}%", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  const Text("Não feche o aplicativo ou a guia do navegador.", style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _eventNameController,
+                      decoration: const InputDecoration(
+                        labelText: "Nome do Evento / Álbum",
+                        hintText: "Ex: Final Sub-15",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.event),
+                      ),
+                      validator: (v) => v == null || v.isEmpty ? "Informe o nome do evento" : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _priceController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: "Preço por Foto (R\$)",
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.attach_money),
+                      ),
+                      validator: (v) => v == null || v.isEmpty ? "Informe o preço" : null,
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _pickImages,
+                      icon: const Icon(Icons.add_photo_alternate),
+                      label: const Text("Selecionar Fotos"),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // --- 2. BOTÃO DE SELEÇÃO ---
-                  OutlinedButton.icon(
-                    onPressed: _isUploading ? null : _pickImages,
-                    icon: const Icon(Icons.add_photo_alternate),
-                    label: Text(_selectedFiles.isEmpty ? "Selecionar Fotos" : "Adicionar Mais Fotos"),
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(16)),
-                  ),
-                  
-                  const SizedBox(height: 10),
-                  if (_selectedFiles.isNotEmpty)
-                     Text("${_selectedFiles.length} fotos selecionadas", style: const TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ),
-          ),
-
-          // --- 3. GRID DE PREVIEW (SLIVER OTIMIZADO) ---
-          if (_selectedFiles.isNotEmpty)
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, 
-                  crossAxisSpacing: 4, 
-                  mainAxisSpacing: 4
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _buildThumbnail(index),
-                        Positioned(
-                          top: 0, right: 0,
-                          child: GestureDetector(
-                            onTap: _isUploading ? null : () => _removeImage(index),
-                            child: Container(
-                              color: Colors.red.withOpacity(0.8),
-                              child: const Icon(Icons.close, color: Colors.white, size: 20),
-                            ),
-                          ),
-                        )
-                      ],
-                    );
-                  },
-                  childCount: _selectedFiles.length,
-                ),
-              ),
-            ),
-
-          // --- 4. BARRA DE PROGRESSO E AÇÃO ---
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 20),
-                  if (_isUploading) ...[
-                    LinearProgressIndicator(value: _uploadProgress),
-                    const SizedBox(height: 8),
-                    Text(_uploadStatus, textAlign: TextAlign.center),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
+                    if (_selectedImages.isNotEmpty) ...[
+                      Text("${_selectedImages.length} fotos selecionadas", style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 120,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _selectedImages.length,
+                          itemBuilder: (context, index) {
+                            return Stack(
+                              children: [
+                                Container(
+                                  width: 100,
+                                  margin: const EdgeInsets.only(right: 8),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: _buildImagePreview(_selectedImages[index]),
+                                ),
+                                Positioned(
+                                  top: 0, right: 8,
+                                  child: Container(
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                      onPressed: () => _removeImage(index),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  ),
+                                )
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton(
+                        onPressed: _uploadAll,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF32BCAD),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        child: const Text("INICIAR UPLOAD", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    ]
                   ],
-
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Theme.of(context).primaryColor,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: (_isUploading || _selectedFiles.isEmpty) ? null : _uploadAll,
-                    icon: const Icon(Icons.cloud_upload),
-                    label: Text(_isUploading ? "Processando..." : "Enviar Todas"),
-                  ),
-                  // Espaço extra no final para não colar na borda
-                  const SizedBox(height: 40),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
-      ),
     );
-  }
-
-  Widget _buildThumbnail(int index) {
-    final file = _selectedFiles[index];
-    if (kIsWeb) {
-      final bytes = _webImagesBytes[file.path];
-      if (bytes != null) {
-        return Image.memory(bytes, fit: BoxFit.cover);
-      }
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-    } else {
-      return Image.file(File(file.path), fit: BoxFit.cover);
-    }
   }
 }

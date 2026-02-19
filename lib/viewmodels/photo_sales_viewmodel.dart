@@ -2,30 +2,48 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/photo_product_model.dart';
 
 enum CheckoutStep { form, loading, pix, success }
 
 class PhotoSalesViewModel extends ChangeNotifier {
-  // --- ESTADO ---
-  List<PhotoProduct> _allPhotos = [];
-  bool _isLoadingPhotos = true;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // --- ESTADO GERAL ---
+  bool _isOffline = false;
   String? _errorMessage;
 
-  // Carrinho
+  // --- ESTADO DOS ÁLBUNS (Leve e Barato) ---
+  List<Map<String, dynamic>> _albums = [];
+  bool _isLoadingAlbums = true;
+
+  // --- ESTADO DAS FOTOS PAGINADAS (Econômico) ---
+  List<PhotoProduct> _folderPhotos = [];
+  bool _isLoadingPhotos = false;
+  bool _isLoadingMore = false;
+  bool _hasMorePhotos = true;
+  DocumentSnapshot? _lastVisibleDocument;
+
+  // --- CARRINHO E CHECKOUT ---
   final Set<PhotoProduct> _cart = {};
-  
-  // Checkout
   CheckoutStep _checkoutStep = CheckoutStep.form;
   String _pixCode = "";
   String _paymentId = "";
   String _customerEmail = "";
-  List<PhotoProduct> _purchasedItems = []; // Itens confirmados
+  List<PhotoProduct> _purchasedItems = []; 
 
-  // --- GETTERS (Para a View consumir) ---
-  List<PhotoProduct> get allPhotos => _allPhotos;
-  bool get isLoadingPhotos => _isLoadingPhotos;
+  // --- GETTERS ---
+  bool get isOffline => _isOffline;
   String? get errorMessage => _errorMessage;
+  
+  List<Map<String, dynamic>> get albums => _albums;
+  bool get isLoadingAlbums => _isLoadingAlbums;
+  
+  List<PhotoProduct> get folderPhotos => _folderPhotos;
+  bool get isLoadingPhotos => _isLoadingPhotos;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get hasMorePhotos => _hasMorePhotos;
   
   List<PhotoProduct> get cartItems => _cart.toList();
   int get cartCount => _cart.length;
@@ -36,30 +54,102 @@ class PhotoSalesViewModel extends ChangeNotifier {
   String get customerEmail => _customerEmail;
   List<PhotoProduct> get purchasedItems => _purchasedItems;
 
-  // --- AÇÕES ---
+  // --- HELPERS ---
+  Future<bool> _checkConnectivity() async {
+    final result = await Connectivity().checkConnectivity();
+    _isOffline = result == ConnectivityResult.none;
+    notifyListeners();
+    return !_isOffline;
+  }
 
-  // 1. Inicialização
-  Future<void> loadPhotos() async {
-    _isLoadingPhotos = true;
+  // ==============================================================
+  // 1. CARREGAR APENAS AS PASTAS (Custo Mínimo de Leitura)
+  // ==============================================================
+  Future<void> loadAlbums({bool isRefresh = false}) async {
+    if (!await _checkConnectivity()) {
+      _isLoadingAlbums = false;
+      notifyListeners();
+      return;
+    }
+
+    _isLoadingAlbums = true;
     _errorMessage = null;
-    notifyListeners(); 
+    notifyListeners();
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('photo_sales')
-          .orderBy('taken_at', descending: true)
+      // Lê de uma coleção separada, muito mais leve!
+      final snapshot = await _firestore.collection('photo_albums')
+          .orderBy('year', descending: true)
+          .orderBy('name')
           .get();
 
-      _allPhotos = snapshot.docs.map((d) => PhotoProduct.fromFirestore(d)).toList();
+      _albums = snapshot.docs.map((d) => d.data()).toList();
     } catch (e) {
-      _errorMessage = "Erro ao carregar fotos: $e";
+      debugPrint("Erro ao carregar álbuns: $e");
+      _errorMessage = "Não foi possível carregar as galerias.";
     } finally {
-      _isLoadingPhotos = false;
+      _isLoadingAlbums = false;
       notifyListeners();
     }
   }
 
-  // 2. Carrinho
+  // ==============================================================
+  // 2. CARREGAR FOTOS DA PASTA COM PAGINAÇÃO (Economia Máxima)
+  // ==============================================================
+  Future<void> loadPhotosByFolder(String eventName, {bool isRefresh = false}) async {
+    if (!await _checkConnectivity()) return;
+
+    if (isRefresh) {
+      _isLoadingPhotos = true;
+      _folderPhotos.clear();
+      _lastVisibleDocument = null;
+      _hasMorePhotos = true;
+      notifyListeners();
+    } else {
+      if (_isLoadingMore || !_hasMorePhotos) return;
+      _isLoadingMore = true;
+      notifyListeners();
+    }
+
+    try {
+      Query query = _firestore.collection('photo_sales')
+          .where('event_name', isEqualTo: eventName)
+          .orderBy('taken_at', descending: true)
+          .limit(30); // Limita a 30 documentos para economizar leituras
+
+      if (_lastVisibleDocument != null) {
+        query = query.startAfterDocument(_lastVisibleDocument!);
+      }
+
+      final snapshot = await query.get();
+
+      if (snapshot.docs.isNotEmpty) {
+        _lastVisibleDocument = snapshot.docs.last;
+        final newPhotos = snapshot.docs.map((d) => PhotoProduct.fromFirestore(d)).toList();
+        _folderPhotos.addAll(newPhotos);
+        
+        // Se a busca retornou menos de 30, chegamos ao fim da pasta
+        if (snapshot.docs.length < 30) {
+          _hasMorePhotos = false;
+        }
+      } else {
+        _hasMorePhotos = false;
+      }
+      _errorMessage = null;
+
+    } catch (e) {
+      debugPrint("Erro ao paginar fotos: $e");
+      if (isRefresh) _errorMessage = "Erro ao carregar fotos desta pasta.";
+    } finally {
+      _isLoadingPhotos = false;
+      _isLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  // ==============================================================
+  // CARRINHO E CHECKOUT
+  // ==============================================================
   void toggleCartItem(PhotoProduct photo) {
     if (_cart.contains(photo)) {
       _cart.remove(photo);
@@ -74,12 +164,10 @@ class PhotoSalesViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 3. Checkout - Preparação
   Future<void> initCheckout() async {
     _checkoutStep = CheckoutStep.form;
     _errorMessage = null;
     
-    // Recupera e-mail salvo
     final prefs = await SharedPreferences.getInstance();
     _customerEmail = prefs.getString('user_email_delivery') ?? "";
     notifyListeners();
@@ -90,7 +178,6 @@ class PhotoSalesViewModel extends ChangeNotifier {
     notifyListeners(); 
   }
 
-  // 4. Checkout - Gerar Pix (CORRIGIDO)
   Future<void> generatePix() async {
     if (_customerEmail.isEmpty || !_customerEmail.contains('@')) {
       _errorMessage = "Por favor, informe um e-mail válido para entrega.";
@@ -103,13 +190,11 @@ class PhotoSalesViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Salva preferência local
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_email_delivery', _customerEmail);
 
       final photoIds = _cart.map((e) => e.id).toList();
 
-      // Chamada Segura às Cloud Functions
       final result = await FirebaseFunctions.instance
           .httpsCallable('createPixPayment')
           .call({
@@ -117,7 +202,6 @@ class PhotoSalesViewModel extends ChangeNotifier {
             'customerContact': _customerEmail,
           });
 
-      // Validação de Integridade do Retorno
       if (result.data == null || result.data is! Map) {
         throw "O servidor retornou um formato de dados inválido.";
       }
@@ -142,7 +226,6 @@ class PhotoSalesViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 5. Checkout - Monitorar Pagamento (Lógica Real-time)
   void _listenToPaymentStatus() {
     FirebaseFirestore.instance
         .collection('orders')
@@ -164,7 +247,7 @@ class PhotoSalesViewModel extends ChangeNotifier {
   }
 
   Future<void> _finalizeSuccess() async {
-    try {
+    /*try {
       String linksHtml = "";
       for (var photo in _cart) {
          linksHtml += '<li><a href="${photo.highResUrl}">Baixar Foto</a></li>';
@@ -186,7 +269,7 @@ class PhotoSalesViewModel extends ChangeNotifier {
       });
     } catch (e) {
       debugPrint("Erro ao registrar disparo de e-mail: $e");
-    }
+    }*/
 
     _purchasedItems = List.from(_cart);
     _cart.clear(); 
