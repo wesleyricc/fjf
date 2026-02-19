@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:html' as html; 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,7 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
-// import '../models/team_model.dart'; // Não utilizado explicitamente aqui
+import '../models/team_model.dart'; 
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; 
@@ -16,6 +17,8 @@ import '../widgets/home_live_video_card.dart';
 import '../widgets/home_news_feed.dart';
 import '../widgets/home_footer.dart';
 import '../widgets/photo_store_banner.dart';
+import '../widgets/ui/shimmer_effect.dart';     // <-- Import UI
+import '../widgets/ui/custom_empty_state.dart';  // <-- Import UI
 import 'team_detail_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -435,7 +438,6 @@ class _SponsorGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
-        // CORREÇÃO: s agora é Map<String, dynamic>, acessamos com []
         final sponsors = service.sponsors.where((s) {
            return s['location'] == 'grid_teams' && s['isActive'] == true;
         }).toList();
@@ -492,6 +494,7 @@ class _SponsorGridCard extends StatelessWidget {
   }
 }
 
+// --- REFATORADO: GRID DE TIMES COM SHIMMER ---
 class _TeamsSliverGrid extends StatelessWidget {
   const _TeamsSliverGrid();
 
@@ -499,18 +502,42 @@ class _TeamsSliverGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
+        
+        // 1. LOADING: Mostra Grid de Shimmer
         if (service.isLoading && service.teams.isEmpty) {
-          return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20.0), child: CircularProgressIndicator())));
+          return SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3, 
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _buildSkeletonItem(),
+              childCount: 6, // 6 esqueletos
+            ),
+          );
         }
         
         final teams = service.teams;
+
+        // 2. EMPTY STATE: Mostra mensagem amigável
         if (teams.isEmpty) {
-          return const SliverToBoxAdapter(child: Center(child: Text("Nenhuma equipe cadastrada.")));
+          return SliverToBoxAdapter(
+            child: CustomEmptyState(
+              icon: Icons.groups_outlined,
+              title: "Sem Equipes",
+              message: "As equipes desta temporada ainda estão sendo cadastradas.",
+              buttonText: "Atualizar",
+              onButtonPressed: () => service.fetchStaticData(forceRefresh: true),
+            )
+          );
         }
 
         final bool insertSponsor = (teams.length == 8);
         final int itemCount = insertSponsor ? 9 : teams.length;
 
+        // 3. CONTEÚDO REAL
         return SliverGrid(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3, 
@@ -570,6 +597,26 @@ class _TeamsSliverGrid extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  // Widget Skeleton para o Grid
+  Widget _buildSkeletonItem() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Expanded(child: ShimmerEffect.circular(size: 60)),
+          SizedBox(height: 10),
+          ShimmerEffect.rectangular(height: 10, width: 60),
+        ],
+      ),
     );
   }
 }

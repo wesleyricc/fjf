@@ -44,6 +44,7 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   List<DocumentSnapshot> _homePlayers = [];
   List<DocumentSnapshot> _awayPlayers = [];
   bool _isSaving = false;
+  bool _isLoadingPlayers = true; // Novo flag de loading
 
   // --- ESTATÍSTICAS ---
   Map<String, int> _goals = {};
@@ -70,13 +71,15 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     _homeScoreController.addListener(_checkShowTiebreakerSection);
     _awayScoreController.addListener(_checkShowTiebreakerSection);
 
-    _initData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initData();
+    });
   }
 
   void _initData() {
     final data = widget.match.data() as Map<String, dynamic>? ?? {};
     _loadFromMap(data);
-    _loadPlayersFromCache();
+    _loadPlayersFromCache(); // Agora chama o método assíncrono seguro
     _checkShowTiebreakerSection();
   }
 
@@ -161,32 +164,48 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     super.dispose();
   }
 
-  void _loadPlayersFromCache() {
-    final service = Provider.of<ChampionshipService>(context, listen: false);
-    final homeId = widget.match['team_home_id'];
-    final awayId = widget.match['team_away_id'];
+  // --- CORREÇÃO: Método assíncrono para garantir dados ---
+  Future<void> _loadPlayersFromCache() async {
+    setState(() => _isLoadingPlayers = true);
     
-    // --- CORREÇÃO: Usa 'allPlayers' que agora é seguro pelo ChampionshipService
-    // Se a lista estiver vazia, idealmente o Service já deveria ter sido chamado ou
-    // podemos forçar o fetchRoster se necessário (opcional aqui, assume-se que veio da lista de jogos)
-    final all = service.allPlayers;
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    final data = widget.match.data() as Map<String, dynamic>;
+    final homeId = data['team_home_id'];
+    final awayId = data['team_away_id'];
 
-    int sortFunc(Player a, Player b) {
-      if (!a.isStaff && b.isStaff) return -1;
-      if (a.isStaff && !b.isStaff) return 1;
-      int nA = a.jerseyNumber ?? 999;
-      int nB = b.jerseyNumber ?? 999;
-      if (nA != nB) return nA.compareTo(nB);
-      return a.name.compareTo(b.name);
+    try {
+      // Lazy Loading: Garante que os times estão em memória
+      await Future.wait([
+        service.fetchRoster(homeId),
+        service.fetchRoster(awayId),
+      ]);
+
+      if (!mounted) return;
+
+      // Pega do cache seguro
+      final all = service.allPlayers;
+
+      int sortFunc(Player a, Player b) {
+        if (!a.isStaff && b.isStaff) return -1;
+        if (a.isStaff && !b.isStaff) return 1;
+        int nA = a.jerseyNumber ?? 999;
+        int nB = b.jerseyNumber ?? 999;
+        if (nA != nB) return nA.compareTo(nB);
+        return a.name.compareTo(b.name);
+      }
+
+      final homeList = all.where((p) => p.teamId == homeId).toList()..sort(sortFunc);
+      final awayList = all.where((p) => p.teamId == awayId).toList()..sort(sortFunc);
+
+      setState(() {
+        _homePlayers = homeList.map((p) => _mockSnapshot(p)).toList();
+        _awayPlayers = awayList.map((p) => _mockSnapshot(p)).toList();
+        _isLoadingPlayers = false;
+      });
+    } catch (e) {
+      debugPrint("Erro ao carregar jogadores no Admin: $e");
+      if (mounted) setState(() => _isLoadingPlayers = false);
     }
-
-    final homeList = all.where((p) => p.teamId == homeId).toList()..sort(sortFunc);
-    final awayList = all.where((p) => p.teamId == awayId).toList()..sort(sortFunc);
-
-    setState(() {
-      _homePlayers = homeList.map((p) => _mockSnapshot(p)).toList();
-      _awayPlayers = awayList.map((p) => _mockSnapshot(p)).toList();
-    });
   }
 
   DocumentSnapshot _mockSnapshot(Player p) {
@@ -395,15 +414,21 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
             ),
           ),
 
-          // LISTA TIME DA CASA (Sliver)
-          _buildTeamHeaderSliver(widget.match['team_home_name'] ?? 'Casa'),
-          _buildPlayerListSliver(_homePlayers),
+          // Se estiver carregando, mostra loading no lugar das listas
+          if (_isLoadingPlayers)
+            const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))),
 
-          SliverToBoxAdapter(child: const SizedBox(height: 24)),
+          if (!_isLoadingPlayers) ...[
+            // LISTA TIME DA CASA (Sliver)
+            _buildTeamHeaderSliver(widget.match['team_home_name'] ?? 'Casa'),
+            _buildPlayerListSliver(_homePlayers),
 
-          // LISTA TIME VISITANTE (Sliver)
-          _buildTeamHeaderSliver(widget.match['team_away_name'] ?? 'Fora'),
-          _buildPlayerListSliver(_awayPlayers),
+            SliverToBoxAdapter(child: const SizedBox(height: 24)),
+
+            // LISTA TIME VISITANTE (Sliver)
+            _buildTeamHeaderSliver(widget.match['team_away_name'] ?? 'Fora'),
+            _buildPlayerListSliver(_awayPlayers),
+          ],
 
           SliverPadding(
             padding: const EdgeInsets.all(16),
@@ -533,8 +558,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
     );
   }
 
-  // ... (Resto dos widgets auxiliares: _buildStatIcons, _buildBadge, _buildLiveScoutButton, _buildScoreCard mantidos)
-  
   Widget _buildLiveScoutButton() {
     return Container(
       width: double.infinity,
@@ -624,7 +647,6 @@ class _AdminMatchScreenState extends State<AdminMatchScreen> {
   }
 }
 
-// Mock Class (Mantida para não quebrar a lógica de UI existente)
 class MockDocumentSnapshot implements DocumentSnapshot {
   @override final String id;
   final Map<String, dynamic> _data;

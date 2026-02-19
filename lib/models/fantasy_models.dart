@@ -83,7 +83,7 @@ class FantasyTeam {
   final List<String> lineupPlayerIds;
   final String? captainId;
   final String shieldType; 
-  final String? customLogoUrl; // <-- NOVO CAMPO
+  final String? customLogoUrl;
 
   FantasyTeam({
     required this.id,
@@ -98,7 +98,7 @@ class FantasyTeam {
     required this.lineupPlayerIds,
     this.captainId,
     required this.shieldType,
-    this.customLogoUrl, // <-- NOVO
+    this.customLogoUrl,
   });
 
   factory FantasyTeam.fromFirestore(DocumentSnapshot doc) {
@@ -119,7 +119,7 @@ class FantasyTeam {
       ),
       captainId: data['captain_id'],
       shieldType: data['shield_type'] ?? '1',
-      customLogoUrl: data['custom_logo_url'], // <-- NOVO
+      customLogoUrl: data['custom_logo_url'],
     );
   }
 
@@ -136,7 +136,7 @@ class FantasyTeam {
       'lineup_player_ids': lineupPlayerIds,
       'captain_id': captainId,
       'shield_type': shieldType,
-      'custom_logo_url': customLogoUrl, // <-- NOVO
+      'custom_logo_url': customLogoUrl,
     };
   }
 }
@@ -147,6 +147,8 @@ class FantasyGameConfig {
   final double ptsYellowCard;
   final double ptsRedCard;
   final double ptsGoalConceded;
+  
+  // Econômicos (opcional no frontend, mas bom ter mapeado)
   final double factorExpectation;
   final double factorVariation;
   final double capLimitPercent;
@@ -179,30 +181,40 @@ class FantasyGameConfig {
   }
 
   factory FantasyGameConfig.fromMap(Map<String, dynamic> map) {
+    // Helper para converter qualquer número para double com segurança
+    double toDouble(dynamic val, double def) {
+      if (val == null) return def;
+      if (val is num) return val.toDouble();
+      if (val is String) return double.tryParse(val) ?? def;
+      return def;
+    }
+
+    // Mapeamento atualizado para camelCase (padrão Cloud Functions/Firestore novo)
+    // Mantém fallback para snake_case se necessário para compatibilidade retroativa
     return FantasyGameConfig(
-      ptsGoal: (map['pts_goal'] ?? 5.0).toDouble(),
-      ptsAssist: (map['pts_assist'] ?? 3.0).toDouble(),
-      ptsYellowCard: (map['pts_yellow_card'] ?? -1.0).toDouble(),
-      ptsRedCard: (map['pts_red_card'] ?? -3.0).toDouble(),
-      ptsGoalConceded: (map['pts_goal_conceded'] ?? -1.0).toDouble(),
-      factorExpectation: (map['factor_expectation'] ?? 0.35).toDouble(),
-      factorVariation: (map['factor_variation'] ?? 0.25).toDouble(),
-      capLimitPercent: (map['cap_limit_percent'] ?? 0.25).toDouble(),
-      minPrice: (map['min_price'] ?? 1.0).toDouble(),
+      ptsGoal: toDouble(map['ptsGoal'] ?? map['pts_goal'], 5.0),
+      ptsAssist: toDouble(map['ptsAssist'] ?? map['pts_assist'], 3.0),
+      ptsYellowCard: toDouble(map['ptsYellowCard'] ?? map['pts_yellow_card'], -1.0),
+      ptsRedCard: toDouble(map['ptsRedCard'] ?? map['pts_red_card'], -3.0),
+      ptsGoalConceded: toDouble(map['ptsGoalConceded'] ?? map['pts_goal_conceded'], -1.0),
+      factorExpectation: toDouble(map['factorExpectation'] ?? map['factor_expectation'], 0.35),
+      factorVariation: toDouble(map['factorVariation'] ?? map['factor_variation'], 0.25),
+      capLimitPercent: toDouble(map['capLimitPercent'] ?? map['cap_limit_percent'], 0.25),
+      minPrice: toDouble(map['minPrice'] ?? map['min_price'], 1.0),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
-      'pts_goal': ptsGoal,
-      'pts_assist': ptsAssist,
-      'pts_yellow_card': ptsYellowCard,
-      'pts_red_card': ptsRedCard,
-      'pts_goal_conceded': ptsGoalConceded,
-      'factor_expectation': factorExpectation,
-      'factor_variation': factorVariation,
-      'cap_limit_percent': capLimitPercent,
-      'min_price': minPrice,
+      'ptsGoal': ptsGoal,
+      'ptsAssist': ptsAssist,
+      'ptsYellowCard': ptsYellowCard,
+      'ptsRedCard': ptsRedCard,
+      'ptsGoalConceded': ptsGoalConceded,
+      'factorExpectation': factorExpectation,
+      'factorVariation': factorVariation,
+      'capLimitPercent': capLimitPercent,
+      'minPrice': minPrice,
     };
   }
 }

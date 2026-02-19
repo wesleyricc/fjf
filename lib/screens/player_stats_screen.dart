@@ -6,7 +6,9 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/generic_player_rank_list.dart'; 
 import '../widgets/total_cards_rank_list.dart';    
-import '../models/player_model.dart'; 
+import '../models/player_model.dart';
+import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
+import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
 
 class PlayerStatsScreen extends StatefulWidget {
   const PlayerStatsScreen({super.key});
@@ -16,15 +18,19 @@ class PlayerStatsScreen extends StatefulWidget {
 }
 
 class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
-  
+  bool _isFetching = true;
+
   @override
   void initState() {
     super.initState();
-    // Como os jogadores agora são lazy-loaded, precisamos forçar o download de todos
-    // para montar o ranking global corretamente.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<ChampionshipService>(context, listen: false).fetchAllPlayers();
+      _fetchData();
     });
+  }
+
+  Future<void> _fetchData() async {
+    await Provider.of<ChampionshipService>(context, listen: false).fetchAllPlayers();
+    if (mounted) setState(() => _isFetching = false);
   }
 
   Future<void> _showHelp(BuildContext context) async {
@@ -49,52 +55,43 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Obtém a lista completa do Cache
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
         final seasonName = service.currentSeasonName;
-        
-        // Clona a lista para não afetar o cache original durante a ordenação
+        // Clona a lista para processamento
         final List<Player> allPlayers = List.from(service.allPlayers);
 
-        // Se a lista estiver vazia e estiver carregando, mostra loading
-        if (allPlayers.isEmpty && service.isLoading) {
-          return Scaffold(
+        // --- LÓGICA DE LOADING VISUAL ---
+        if (_isFetching && allPlayers.isEmpty) {
+           return Scaffold(
             appBar: AppBar(title: const Text("Estatísticas")),
             drawer: const AppDrawer(),
-            body: const Center(child: CircularProgressIndicator()),
-          );
+            body: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: 8,
+              separatorBuilder: (_,__) => const SizedBox(height: 16),
+              itemBuilder: (_,__) => Row(
+                children: const [
+                  ShimmerEffect.circular(size: 45),
+                  SizedBox(width: 16),
+                  Expanded(child: ShimmerEffect.rectangular(height: 16)),
+                  SizedBox(width: 16),
+                  ShimmerEffect.rectangular(height: 24, width: 40),
+                ],
+              ),
+            ),
+           );
         }
 
-        // Artilheiros
-        final scorers = allPlayers.where((p) => !p.isStaff && p.goals > 0).toList()
-          ..sort((a, b) => b.goals.compareTo(a.goals));
-        
-        // Assistências
-        final assists = allPlayers.where((p) => !p.isStaff && p.assists > 0).toList()
-          ..sort((a, b) => b.assists.compareTo(a.assists));
-        
-        // Goleiros
-        final goalkeepers = allPlayers.where((p) => p.isGoalkeeper).toList()
-          ..sort((a, b) => a.goalsConceded.compareTo(b.goalsConceded)); // Menor é melhor
-        
-        // Craques
-        final motm = allPlayers.where((p) => p.motmAwards > 0).toList()
-          ..sort((a, b) => b.motmAwards.compareTo(a.motmAwards));
-        
-        // Pendurados
+        // Processamento das Listas
+        final scorers = allPlayers.where((p) => !p.isStaff && p.goals > 0).toList()..sort((a, b) => b.goals.compareTo(a.goals));
+        final assists = allPlayers.where((p) => !p.isStaff && p.assists > 0).toList()..sort((a, b) => b.assists.compareTo(a.assists));
+        final goalkeepers = allPlayers.where((p) => p.isGoalkeeper).toList()..sort((a, b) => a.goalsConceded.compareTo(b.goalsConceded));
+        final motm = allPlayers.where((p) => p.motmAwards > 0).toList()..sort((a, b) => b.motmAwards.compareTo(a.motmAwards));
         final pending = allPlayers.where((p) => p.yellowCards == AdminService.pendingYellowCards).toList();
-        
-        // Suspensos
         final suspended = allPlayers.where((p) => p.isSuspended).toList();
-        
-        // Amarelos Total
-        final yellows = allPlayers.where((p) => p.totalYellowCards > 0).toList()
-          ..sort((a, b) => b.totalYellowCards.compareTo(a.totalYellowCards));
-        
-        // Vermelhos Total
-        final reds = allPlayers.where((p) => p.totalRedCards > 0).toList()
-          ..sort((a, b) => b.totalRedCards.compareTo(a.totalRedCards));
+        final yellows = allPlayers.where((p) => p.totalYellowCards > 0).toList()..sort((a, b) => b.totalYellowCards.compareTo(a.totalYellowCards));
+        final reds = allPlayers.where((p) => p.totalRedCards > 0).toList()..sort((a, b) => b.totalRedCards.compareTo(a.totalRedCards));
 
         return DefaultTabController(
           length: 9,
@@ -111,8 +108,12 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
                 IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
                 IconButton(
                   icon: const Icon(Icons.refresh), 
-                  // Recarrega tudo forçado
-                  onPressed: () => service.fetchAllPlayers(force: true)
+                  onPressed: () {
+                    setState(() => _isFetching = true);
+                    service.fetchAllPlayers(force: true).then((_) {
+                       if(mounted) setState(() => _isFetching = false);
+                    });
+                  }
                 ),
               ],
               bottom: const TabBar(
@@ -136,14 +137,14 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
             drawer: const AppDrawer(),
             body: TabBarView(
               children: [
-                GenericPlayerRankList(players: scorers, statField: 'goals', statLabel: 'Gols', emptyMessage: 'Nenhum gol marcado.'),
-                GenericPlayerRankList(players: assists, statField: 'assists', statLabel: 'Ass', emptyMessage: 'Nenhuma assistência.'),
-                GenericPlayerRankList(players: goalkeepers, statField: 'goalsConceded', statLabel: 'GS', emptyMessage: 'Sem dados de goleiros.'),
-                GenericPlayerRankList(players: motm, statField: 'motmAwards', statLabel: 'x', emptyMessage: 'Nenhum craque eleito.'),
-                GenericPlayerRankList(players: pending, isStatusList: true, emptyMessage: 'Ninguém pendurado.'),
-                GenericPlayerRankList(players: suspended, isStatusList: true, isSuspendedTab: true, emptyMessage: 'Ninguém suspenso.'),
-                GenericPlayerRankList(players: yellows, statField: 'totalYellowCards', statLabel: 'CA', emptyMessage: 'Sem cartões.'),
-                GenericPlayerRankList(players: reds, statField: 'totalRedCards', statLabel: 'CV', emptyMessage: 'Sem cartões.'),
+                GenericPlayerRankList(players: scorers, statField: 'goals', statLabel: 'Gols', emptyMessage: 'Nenhum gol marcado.', emptyIcon: Icons.sports_soccer),
+                GenericPlayerRankList(players: assists, statField: 'assists', statLabel: 'Ass', emptyMessage: 'Nenhuma assistência.', emptyIcon: Icons.assistant),
+                GenericPlayerRankList(players: goalkeepers, statField: 'goalsConceded', statLabel: 'GS', emptyMessage: 'Sem dados de goleiros.', emptyIcon: Icons.pan_tool),
+                GenericPlayerRankList(players: motm, statField: 'motmAwards', statLabel: 'x', emptyMessage: 'Nenhum craque eleito.', emptyIcon: Icons.star),
+                GenericPlayerRankList(players: pending, isStatusList: true, emptyMessage: 'Ninguém pendurado.', emptyIcon: Icons.mood),
+                GenericPlayerRankList(players: suspended, isStatusList: true, isSuspendedTab: true, emptyMessage: 'Ninguém suspenso.', emptyIcon: Icons.check_circle_outline),
+                GenericPlayerRankList(players: yellows, statField: 'totalYellowCards', statLabel: 'CA', emptyMessage: 'Sem cartões.', emptyIcon: Icons.style_outlined),
+                GenericPlayerRankList(players: reds, statField: 'totalRedCards', statLabel: 'CV', emptyMessage: 'Sem cartões.', emptyIcon: Icons.style),
                 TotalCardsRankList(allPlayers: allPlayers),
               ],
             ),

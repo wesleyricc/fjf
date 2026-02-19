@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // Import necessário
+import 'package:cached_network_image/cached_network_image.dart'; 
 
 import '../services/fantasy_auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
 import '../models/fantasy_models.dart';
 import '../viewmodels/fantasy_home_viewmodel.dart'; 
+import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
+import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
 import 'fantasy_edit_team_screen.dart';
 
 class FantasyHomeScreen extends StatefulWidget {
@@ -23,27 +25,112 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   Widget build(BuildContext context) {
     return Consumer<FantasyAuthService>(
       builder: (context, authService, _) {
-        if (authService.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        // Estado de Verificação de Auth (rápido)
+        if (authService.isLoading) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
         
         if (!authService.isAuthenticated) return _buildLoginView(context, authService);
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             final champService = Provider.of<ChampionshipService>(context, listen: false);
+            // Inicia carregamento dos dados do Fantasy
             Provider.of<FantasyHomeViewModel>(context, listen: false)
                 .init(authService.user!.uid, champService.currentSeasonId);
         });
 
         return Consumer<FantasyHomeViewModel>(
           builder: (context, vm, child) {
-            if (vm.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-            if (vm.errorMessage != null) return Scaffold(body: Center(child: Text(vm.errorMessage!)));
-            if (vm.team == null) return const Scaffold(body: Center(child: CircularProgressIndicator())); 
+            // 1. ERRO CRÍTICO
+            if (vm.errorMessage != null && vm.team == null) {
+              return Scaffold(
+                appBar: AppBar(title: const Text("Fantasy FJF")),
+                body: CustomEmptyState(
+                  icon: Icons.error_outline,
+                  title: "Erro ao carregar",
+                  message: vm.errorMessage!,
+                  buttonText: "Tentar Novamente",
+                  onButtonPressed: () => vm.init(authService.user!.uid, Provider.of<ChampionshipService>(context, listen: false).currentSeasonId),
+                ),
+              );
+            }
 
+            // 2. LOADING (Skeleton)
+            if (vm.isLoading || vm.team == null) {
+              return _buildLoadingSkeleton(context);
+            }
+
+            // 3. CONTEÚDO
             return _buildDashboardView(context, authService, vm);
           },
         );
       },
+    );
+  }
+
+  // --- SKELETON LOADING (Imita o Layout Real) ---
+  Widget _buildLoadingSkeleton(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Meu Time"), elevation: 0),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Header Curvo
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
+              ),
+              child: Column(
+                children: [
+                  const Center(child: ShimmerEffect.rectangular(height: 24, width: 150)), // Badge Status
+                  const SizedBox(height: 20),
+                  Row(children: const [
+                    ShimmerEffect.circular(size: 64), // Avatar
+                    SizedBox(width: 16),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShimmerEffect.rectangular(height: 20, width: double.infinity), // Nome Time
+                        SizedBox(height: 8),
+                        ShimmerEffect.rectangular(height: 14, width: 100), // Técnico
+                      ],
+                    )),
+                  ]),
+                ],
+              ),
+            ),
+            // Stats e Ações
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Row(children: const [
+                    Expanded(child: ShimmerEffect.rectangular(height: 80)), // Card Patrimônio
+                    SizedBox(width: 12),
+                    Expanded(child: ShimmerEffect.rectangular(height: 80)), // Card Pontos
+                  ]),
+                  const SizedBox(height: 24),
+                  const Align(alignment: Alignment.centerLeft, child: ShimmerEffect.rectangular(height: 20, width: 200)),
+                  const SizedBox(height: 12),
+                  // Grid de Ações
+                  GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.5,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: List.generate(4, (_) => const ShimmerEffect.rectangular(height: 100)),
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
     );
   }
 
@@ -172,7 +259,10 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     return FutureBuilder<List<FantasyPlayer>>(
       future: Provider.of<FantasyService>(context, listen: false).getPlayersByIds(vm.team!.lineupPlayerIds),
       builder: (context, playerSnapshot) {
-        if (!playerSnapshot.hasData) return const Center(child: LinearProgressIndicator());
+        // Shimmer local para a lista de preview
+        if (!playerSnapshot.hasData) {
+           return Column(children: List.generate(3, (i) => const Padding(padding: EdgeInsets.only(bottom: 8), child: ShimmerEffect.rectangular(height: 50))));
+        }
 
         List<FantasyPlayer> players = playerSnapshot.data!;
         players.sort((a, b) => _rankingPos(a.position).compareTo(_rankingPos(b.position)));
@@ -210,6 +300,9 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
+  // --- WIDGETS AUXILIARES DO DASHBOARD ---
+  // (Mantidos do código original, pois são componentes de UI puros)
+  
   Widget _buildMiniPlayerRow(FantasyPlayer player, bool isCaptain, {double score = 0.0, bool showScore = false, String label = ""}) {
     final double finalScore = isCaptain ? score * 2 : score;
     final Color scoreColor = finalScore > 0 ? Colors.green[700]! : (finalScore < 0 ? Colors.red[700]! : Colors.grey);
@@ -239,8 +332,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
       ),
     );
   }
-
-  // --- MÉTODOS AUXILIARES UI ---
+  
   int _rankingPos(String pos) {
     switch (pos) { case 'Goleiro': return 1; case 'Fixo': return 2; case 'Ala': return 3; case 'Pivô': return 4; case 'Técnico': return 5; default: return 99; }
   }
@@ -280,7 +372,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
             ]),
           ),
           Row(children: [
-              // --- CORREÇÃO AQUI: Verifica customLogoUrl ---
               Container(
                 padding: const EdgeInsets.all(4), 
                 decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), 

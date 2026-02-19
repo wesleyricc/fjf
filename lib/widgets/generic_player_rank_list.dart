@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-// FirestoreService removido pois não é mais necessário
 import '../screens/player_profile_screen.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/rank_indicator.dart'; 
 import '../models/player_model.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+import '../widgets/ui/custom_empty_state.dart'; // <-- NOVO
 
 class GenericPlayerRankList extends StatelessWidget {
-  final List<Player> players; // Recebe lista já pronta
+  final List<Player> players;
   final String emptyMessage;
+  final IconData? emptyIcon; // <-- NOVO
   final String? statField;
   final String? statLabel;
   final bool isStatusList;
@@ -23,6 +24,7 @@ class GenericPlayerRankList extends StatelessWidget {
     super.key,
     required this.players,
     required this.emptyMessage,
+    this.emptyIcon,
     this.statField,
     this.statLabel,
     this.isStatusList = false,
@@ -30,7 +32,8 @@ class GenericPlayerRankList extends StatelessWidget {
   });
 
   Future<void> _showClearSuspensionDialog(BuildContext context, Player player) async {
-    final playerName = player.name;
+    // ... (Código do diálogo mantido igual ao original) ...
+     final playerName = player.name;
     final int currentYellows = player.yellowCards;
     final int currentReds = player.redCards;
 
@@ -81,7 +84,6 @@ class GenericPlayerRankList extends StatelessWidget {
                   if(dialogContext.mounted) Navigator.of(dialogContext).pop();
                   if (context.mounted) { 
                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$playerName liberado da suspensão.')));
-                     // Força recarga do cache
                      Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
                   }
                 } catch (e) {
@@ -97,9 +99,15 @@ class GenericPlayerRankList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (players.isEmpty) return Center(child: Text(emptyMessage));
+    // --- ESTADO VAZIO BONITO ---
+    if (players.isEmpty) {
+      return CustomEmptyState(
+        icon: emptyIcon ?? Icons.person_off,
+        title: "Nada por aqui",
+        message: emptyMessage,
+      );
+    }
 
-    // Limitamos a exibição a 50 itens para não pesar a UI (o resto não importa muito)
     final int displayCount = players.length > 50 ? 50 : players.length;
 
     return ListView.builder(
@@ -109,12 +117,10 @@ class GenericPlayerRankList extends StatelessWidget {
         final player = players[index];
         final rank = index + 1;
 
-        // --- DESTAQUE TOP 3 (Apenas se não for lista de status) ---
         if (index < 3 && !isStatusList) {
           return _buildTopRankItem(context, player, rank);
         }
 
-        // --- LISTA PADRÃO ---
         return Column(
           children: [
             _buildCompactPlayerItem(context, player, rank),
@@ -125,8 +131,8 @@ class GenericPlayerRankList extends StatelessWidget {
     );
   }
 
+  // ... (Resto dos widgets auxiliares _buildTopRankItem e _buildCompactPlayerItem mantidos iguais) ...
   Widget _buildTopRankItem(BuildContext context, Player player, int rank) {
-    // Determina valor do campo dinamicamente
     String val = '';
     if (statField == 'goals') val = '${player.goals}';
     else if (statField == 'assists') val = '${player.assists}';

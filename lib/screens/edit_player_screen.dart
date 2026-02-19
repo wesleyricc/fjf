@@ -13,7 +13,7 @@ import 'package:provider/provider.dart';
 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/player_service.dart'; // <-- NOVO SERVICE
+import '../services/player_service.dart';
 import '../models/player_model.dart';
 
 class EditPlayerScreen extends StatefulWidget {
@@ -207,7 +207,14 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-        if (result.startsWith("Sucesso")) Navigator.pop(context);
+        
+        // --- CORREÇÃO: Atualiza cache após salvar ---
+        if (result.startsWith("Sucesso")) {
+          // Invalida e recarrega o cache deste time para refletir as mudanças (foto, nome, etc)
+          await Provider.of<ChampionshipService>(context, listen: false).fetchRoster(widget.teamId, force: true);
+          
+          Navigator.pop(context);
+        }
       }
 
     } catch (e) {

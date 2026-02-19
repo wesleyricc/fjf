@@ -4,6 +4,8 @@ import '../services/fantasy_service.dart';
 import '../services/championship_service.dart'; 
 import '../models/fantasy_models.dart';
 import '../widgets/fantasy_player_card.dart';
+import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
+import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
 
 class FantasyMarketScreen extends StatefulWidget {
   final bool isSelectionMode;
@@ -22,19 +24,16 @@ class FantasyMarketScreen extends StatefulWidget {
 }
 
 class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
-  // Padrão inicia como Goleiro, já que "Todos" foi removido
+  // Padrão inicia como Goleiro
   String _selectedPosition = 'Goleiro'; 
   String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
   
-  // Lista de posições sem a opção "Todos"
   final List<String> _positions = ['Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
 
   @override
   void initState() {
     super.initState();
-    // Se vier uma posição obrigatória (ex: clicou no slot de Ala), seleciona ela.
-    // Caso contrário, mantém o padrão (Goleiro).
     if (widget.requiredPosition != null) {
       _selectedPosition = widget.requiredPosition!;
     }
@@ -49,30 +48,15 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
   void _populateMarket(BuildContext context) async {
     final fantasyService = context.read<FantasyService>();
     final championshipService = context.read<ChampionshipService>();
-    
     final seasonId = championshipService.currentSeasonId;
 
     if (seasonId.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Erro: Nenhuma temporada ativa identificada."),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro: Nenhuma temporada ativa."), backgroundColor: Colors.red));
       return;
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Sincronizando mercado com a temporada $seasonId..."))
-    );
-    
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sincronizando mercado...")));
     final result = await fantasyService.populateMarketFromSeason(seasonId); 
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
-    }
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
   }
 
   @override
@@ -92,16 +76,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               )
           ],
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (widget.isSelectionMode) {
-              Navigator.pop(context);
-            } else {
-              Navigator.of(context).pushNamedAndRemoveUntil('/fantasy-home', (route) => route.isFirst);
-            }
-          },
-        ),
       ),
       body: Column(
         children: [
@@ -115,9 +89,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               itemBuilder: (ctx, i) {
                 final pos = _positions[i];
                 final isSelected = _selectedPosition == pos;
-                
-                // Desabilita troca de filtro se estiver em modo de seleção restrita
-                // (Ex: Clicou para trocar um Ala, só pode ver Ala)
                 final bool isDisabled = widget.requiredPosition != null && widget.requiredPosition != pos; 
 
                 return Padding(
@@ -142,45 +113,38 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
           
           Expanded(
             child: StreamBuilder<List<FantasyPlayer>>(
-              // Passamos diretamente a _selectedPosition, pois ela nunca será "Todos" ou null
               stream: fantasyService.streamMarket(
                 positionFilter: _selectedPosition,
                 searchTerm: _searchTerm,
               ),
               builder: (context, snapshot) {
+                // 1. Loading
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(8),
+                    itemCount: 8,
+                    itemBuilder: (ctx, i) => _buildSkeletonPlayerCard(),
+                  );
                 }
                 
                 var players = snapshot.data ?? [];
                 
-                // Filtro de segurança no cliente (caso o delay do stream traga dados antigos)
                 if (_selectedPosition.isNotEmpty) {
                   players = players.where((p) => p.position == _selectedPosition).toList();
                 }
 
+                // 2. Empty State
                 if (players.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.search_off, size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        Text("Nenhum ${_selectedPosition} encontrado."),
-                        const SizedBox(height: 24),
-                        
-                        // Botão Admin para sincronizar se estiver vazio
-                        // (Idealmente mostrar só para admin, mas deixamos acessível por enquanto para facilitar testes)
-                        ElevatedButton.icon(
-                          onPressed: () => _populateMarket(context),
-                          icon: const Icon(Icons.cloud_download),
-                          label: const Text("Sincronizar Dados"),
-                        )
-                      ],
-                    ),
+                  return CustomEmptyState(
+                    icon: Icons.search_off,
+                    title: "Nenhum Atleta",
+                    message: "Não encontramos atletas para a posição $_selectedPosition.",
+                    buttonText: "Sincronizar (Admin)",
+                    onButtonPressed: () => _populateMarket(context),
                   );
                 }
 
+                // 3. Data
                 return ListView.builder(
                   padding: const EdgeInsets.all(8),
                   itemCount: players.length,
@@ -211,6 +175,34 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // --- SKELETON DO JOGADOR ---
+  Widget _buildSkeletonPlayerCard() {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            const ShimmerEffect.circular(size: 56), // Avatar
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  ShimmerEffect.rectangular(height: 16, width: 150), // Nome
+                  SizedBox(height: 8),
+                  ShimmerEffect.rectangular(height: 12, width: 80), // Posição
+                ],
+              ),
+            ),
+            const ShimmerEffect.rectangular(height: 20, width: 60), // Preço
+          ],
+        ),
       ),
     );
   }

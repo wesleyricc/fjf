@@ -3,13 +3,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-import '../services/team_service.dart'; // <-- NOVO SERVICE
+import '../services/team_service.dart';
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
 import '../models/team_model.dart'; 
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
+import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
+import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
 import 'team_detail_screen.dart';
 import 'edit_team_screen.dart';
 
@@ -85,6 +87,7 @@ class TeamsListScreen extends StatelessWidget {
         final seasonName = champService.currentSeasonName;
         final seasonId = champService.currentSeasonId;
         final teams = champService.teams;
+        final bool isLoading = champService.isLoading;
 
         return Scaffold(
           appBar: AppBar(
@@ -104,58 +107,7 @@ class TeamsListScreen extends StatelessWidget {
             ],
           ),
           drawer: const AppDrawer(),
-          body: teams.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text('Nenhuma equipe encontrada.'),
-                      const SizedBox(height: 10),
-                      ElevatedButton(
-                        onPressed: () => champService.fetchStaticData(forceRefresh: true),
-                        child: const Text("Tentar Novamente"),
-                      )
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: () => champService.fetchStaticData(forceRefresh: true),
-                  child: ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 80),
-                    itemCount: teams.length,
-                    itemBuilder: (context, index) {
-                      final team = teams[index];
-
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                        child: ListTile(
-                          leading: SizedBox(
-                            width: 40, height: 40,
-                            child: CachedNetworkImage(
-                              imageUrl: team.shieldUrl,
-                              placeholder: (_,__) => const Center(child: Icon(Icons.shield, size: 30, color: Colors.grey)),
-                              errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                          title: Text(team.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          
-                          trailing: authService.isAuthenticated
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(icon: Icon(Icons.edit, color: Theme.of(context).primaryColor), onPressed: () => _handleEdit(context, team, seasonId)),
-                                  IconButton(icon: Icon(Icons.delete_forever, color: Colors.red[700]), onPressed: () => _handleDelete(context, team, seasonId)),
-                                ],
-                              )
-                            : const Icon(Icons.arrow_forward_ios, size: 16),
-                          
-                          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => TeamDetailScreen(team: team))),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+          body: _buildBody(context, teams, isLoading, champService),
           bottomNavigationBar: const SponsorBannerRotator(),
           floatingActionButton: authService.isAuthenticated
               ? FloatingActionButton(
@@ -171,6 +123,143 @@ class TeamsListScreen extends StatelessWidget {
               : null,
         );
       },
+    );
+  }
+
+  Widget _buildBody(BuildContext context, List<Team> teams, bool isLoading, ChampionshipService service) {
+    // 1. Estado de Loading com Shimmer (Melhor que spinner)
+    if (isLoading && teams.isEmpty) {
+      return ListView.builder(
+        padding: const EdgeInsets.all(8),
+        itemCount: 8, // Simula 8 itens
+        itemBuilder: (context, index) => _buildSkeletonItem(),
+      );
+    }
+
+    // 2. Estado Vazio (Bonito)
+    if (teams.isEmpty) {
+      return CustomEmptyState(
+        icon: Icons.groups_outlined,
+        title: "Nenhuma equipe",
+        message: "Não encontramos equipes cadastradas nesta temporada ainda.",
+        buttonText: "Tentar Novamente",
+        onButtonPressed: () => service.fetchStaticData(forceRefresh: true),
+      );
+    }
+
+    // 3. Lista Real
+    return RefreshIndicator(
+      onRefresh: () => service.fetchStaticData(forceRefresh: true),
+      child: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 80, top: 8),
+        itemCount: teams.length,
+        itemBuilder: (context, index) {
+          final team = teams[index];
+          return _buildTeamCard(context, team, service.currentSeasonId);
+        },
+      ),
+    );
+  }
+
+  // --- COMPONENTES VISUAIS ---
+
+  Widget _buildSkeletonItem() {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          children: [
+            const ShimmerEffect.circular(size: 40), // Avatar
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  ShimmerEffect.rectangular(height: 16, width: 150), // Título
+                  SizedBox(height: 8),
+                  ShimmerEffect.rectangular(height: 12, width: 100), // Subtítulo
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTeamCard(BuildContext context, Team team, String seasonId) {
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+      elevation: 2,
+      shadowColor: Colors.black.withOpacity(0.05),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => TeamDetailScreen(team: team))),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          child: Row(
+            children: [
+              // Logo com Hero Animation
+              Hero(
+                tag: 'team_shield_${team.id}',
+                child: SizedBox(
+                  width: 50, height: 50,
+                  child: CachedNetworkImage(
+                    imageUrl: team.shieldUrl,
+                    placeholder: (_,__) => Container(color: Colors.grey[100], child: const Icon(Icons.shield, color: Colors.grey)),
+                    errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              
+              // Textos
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      team.name, 
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)
+                    ),
+                    if (team.shortName.isNotEmpty)
+                      Text(
+                        team.shortName, 
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)
+                      ),
+                  ],
+                ),
+              ),
+              
+              // Ações ou Seta
+              if (authService.isAuthenticated)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 20, color: Colors.blue), 
+                      onPressed: () => _handleEdit(context, team, seasonId)
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red), 
+                      onPressed: () => _handleDelete(context, team, seasonId)
+                    ),
+                  ],
+                )
+              else
+                Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

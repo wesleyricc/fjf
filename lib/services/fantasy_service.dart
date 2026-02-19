@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart'; // <--- ADICIONADO
 import 'package:flutter/foundation.dart';
 import '../models/fantasy_models.dart';
 
 class FantasyService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance; // <--- ADICIONADO
 
   CollectionReference get _fantasyTeamsRef => _firestore.collection('fantasy_teams');
   CollectionReference get _fantasyMarketRef => _firestore.collection('fantasy_market_players');
@@ -30,6 +32,8 @@ class FantasyService {
   
   Future<List<FantasyPlayer>> getAllPlayers() async {
     try {
+      // Nota: Buscando da coleção 'players' original ou do mercado? 
+      // Geralmente busca-se do mercado para o Fantasy. Ajustado para mercado se necessário.
       final snapshot = await _firestore.collection('players').get();
       
       if (snapshot.docs.isEmpty) return [];
@@ -38,7 +42,7 @@ class FantasyService {
           .map((doc) => FantasyPlayer.fromFirestore(doc))
           .toList();
     } catch (e) {
-      print("Erro ao buscar todos os jogadores: $e");
+      debugPrint("Erro ao buscar todos os jogadores: $e");
       return [];
     }
   }
@@ -46,12 +50,26 @@ class FantasyService {
   Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids) async {
     if (ids.isEmpty) return [];
     try {
+      // Firestore 'whereIn' suporta até 10 itens. 
+      // Se seu time tiver mais que 10 (ex: reservas), isso precisa ser quebrado em lotes
+      // ou buscar via Future.wait individualmente se o cache não resolver.
+      
+      if (ids.length > 10) {
+        // Fallback simples para listas grandes: busca individual (paralela)
+        final futures = ids.map((id) => _fantasyMarketRef.doc(id).get());
+        final snapshots = await Future.wait(futures);
+        return snapshots
+            .where((doc) => doc.exists)
+            .map((doc) => FantasyPlayer.fromFirestore(doc))
+            .toList();
+      }
+
       final snapshot = await _fantasyMarketRef
           .where(FieldPath.documentId, whereIn: ids)
           .get();
       return snapshot.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
     } catch (e) {
-      debugPrint("Erro ao buscar jogadores: $e");
+      debugPrint("Erro ao buscar jogadores por IDs: $e");
       return [];
     }
   }
@@ -81,11 +99,13 @@ class FantasyService {
       query = query.where('position', isEqualTo: positionFilter);
     }
 
+    // Limite de segurança para leitura
     query = query.limit(100);
 
     return query.snapshots().map((snap) {
       var list = snap.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
       
+      // Filtro de texto no cliente (Firestore não suporta 'contains' nativo eficiente sem Algolia)
       if (searchTerm != null && searchTerm.isNotEmpty) {
         final term = searchTerm.toLowerCase();
         list = list.where((p) => p.name.toLowerCase().contains(term) || 
@@ -149,7 +169,7 @@ class FantasyService {
     }
   }
 
-  // CORREÇÃO DE CONCORRÊNCIA APLICADA AQUI
+  // Lógica de Salvar Time com Transação Segura
   Future<String> saveLineup({
     required String userId,
     required List<String> playerIds,
@@ -160,7 +180,6 @@ class FantasyService {
     try {
       return await _firestore.runTransaction((transaction) async {
         // 1. SEGURANÇA: Verifica Status do Mercado DENTRO da transação
-        // Isso impede que alguém salve enquanto o admin processa a rodada
         final statusRef = _firestore.collection('fantasy_config').doc('status');
         final statusSnap = await transaction.get(statusRef);
         
@@ -181,11 +200,10 @@ class FantasyService {
         
         // 3. VALIDAÇÃO FINANCEIRA ROBUSTA
         // O saldo é recalculado baseado no Patrimônio Total (Source of Truth) menos o Custo do Novo Time.
-        // Isso elimina bugs onde o 'current_balance' ficava dessincronizado.
         final double actualNewBalance = serverPatrimony - newTeamCost;
         
         if (actualNewBalance < -0.01) { // Tolerância para ponto flutuante
-          return "Saldo insuficiente! Você tem C\$${serverPatrimony.toStringAsFixed(2)} e o time custa C\$${newTeamCost.toStringAsFixed(2)}.";
+          return "Saldo insuficiente! Patrimônio: C\$${serverPatrimony.toStringAsFixed(2)} | Time: C\$${newTeamCost.toStringAsFixed(2)}";
         }
 
         final double safeBalance = double.parse(actualNewBalance.toStringAsFixed(2));
@@ -195,7 +213,7 @@ class FantasyService {
           'lineup_player_ids': playerIds, 
           'captain_id': captainId,
           'current_balance': safeBalance,
-          // Remove campo legado se existir
+          // Garante limpeza de campos legados se existirem
           'lineup': FieldValue.delete(), 
         });
         
@@ -206,7 +224,7 @@ class FantasyService {
     }
   }
 
-  // --- STATUS E RANKING ---
+  // --- STATUS E ADMINISTRAÇÃO (COM CLOUD FUNCTIONS) ---
 
   Stream<Map<String, dynamic>> streamMarketStatus() {
     return _firestore.collection('fantasy_config').doc('status').snapshots().map((doc) {
@@ -215,13 +233,41 @@ class FantasyService {
     });
   }
 
-  Future<void> setMarketStatus({required bool isOpen, int? newRound}) async {
-    final Map<String, dynamic> data = {'is_open': isOpen};
-    if (newRound != null) data['current_round'] = newRound;
-    await _firestore.collection('fantasy_config').doc('status').set(data, SetOptions(merge: true));
+  Future<void> setMarketStatus(bool isOpen, int currentRound) async {
+    await _firestore.collection('fantasy_config').doc('status').set({
+      'is_open': isOpen,
+      'current_round': currentRound,
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
-  // --- ADMINISTRAÇÃO ---
+  // --- NOVO: CHAMADA PARA CLOUD FUNCTION ---
+  Future<String> processRoundCloud(String seasonId, int round) async {
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('closeRound');
+      
+      final result = await callable.call(<String, dynamic>{
+        'seasonId': seasonId,
+        'round': round,
+      });
+
+      final data = result.data as Map<dynamic, dynamic>;
+      
+      if (data['success'] == true) {
+        return "Sucesso: ${data['message']}";
+      } else {
+        return "Erro no retorno da função: ${data['message'] ?? 'Desconhecido'}";
+      }
+    } catch (e) {
+      debugPrint("Erro ao chamar Cloud Function: $e");
+      if (e is FirebaseFunctionsException) {
+        return "Erro Cloud (${e.code}): ${e.message}";
+      }
+      return "Erro desconhecido: $e";
+    }
+  }
+
+  // --- SINCRONIZAÇÃO DE MERCADO ---
 
   Future<String> populateMarketFromSeason(String seasonId) async {
     try {
@@ -241,18 +287,16 @@ class FantasyService {
         final String staffRole = data['staff_role'] ?? '';
         final bool isTechnician = staffRole == 'Técnico';
         
-        // Regra de Negócio: No Fantasy, geralmente apenas Técnicos da comissão participam
-        // Ajuste conforme necessidade do seu regulamento
+        // Mapeamento correto de posições
         final String position = isTechnician ? 'Técnico' : (data['position'] ?? 'Desconhecido');
-        
-        final double initialPrice = 10.0;
+        final double initialPrice = 5.0; // Preço base
 
         await _addToBatchIfNew(batch, doc.id, data, position, initialPrice);
         count++;
       }
 
       await batch.commit();
-      return "Sucesso! $count registros verificados/adicionados.";
+      return "Sucesso! $count registros verificados/sincronizados.";
     } catch (e) {
       return "Erro ao popular mercado: $e";
     }
@@ -265,6 +309,7 @@ class FantasyService {
     final marketDocSnap = await marketDocRef.get();
 
     if (!marketDocSnap.exists) {
+      // Cria novo jogador no mercado
       final Map<String, dynamic> playerData = {
         'name': data['name'] ?? 'Sem Nome',
         'position': position,
@@ -281,7 +326,8 @@ class FantasyService {
       };
       batch.set(marketDocRef, playerData);
     } else {
-      // Mantém dados cadastrais atualizados (foto, time), mas NÃO toca no preço/pontos
+      // Se já existe, atualiza APENAS metadados (nome, foto, time),
+      // mantendo preço e pontuação intactos.
       batch.update(marketDocRef, {
         'name': data['name'],
         'photo_url': data['photo_url'],

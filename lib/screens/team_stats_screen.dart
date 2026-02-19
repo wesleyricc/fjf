@@ -1,17 +1,19 @@
-import 'package:fjf_app/services/admin_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 // Services & Models
 import '../services/championship_service.dart';
+import '../services/admin_service.dart';
 import '../models/team_model.dart'; 
 
 // Widgets & Screens
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/rank_indicator.dart';
-import '../widgets/rank_highlight_card.dart'; 
+import '../widgets/rank_highlight_card.dart';
+import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
+import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO 
 import 'team_detail_screen.dart';
 
 class TeamStatsScreen extends StatefulWidget {
@@ -82,11 +84,11 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Consumindo do Cache
     return Consumer<ChampionshipService>(
       builder: (context, champService, child) {
         final seasonName = champService.currentSeasonName;
-        final allTeams = champService.teams; // Dados em memória (Custo zero)
+        final allTeams = champService.teams; 
+        final bool isLoading = champService.isLoading;
 
         return DefaultTabController(
           length: 6,
@@ -141,22 +143,18 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
               ),
             ),
             drawer: const AppDrawer(),
-            // RefreshIndicator permite atualizar puxando para baixo
-            body: RefreshIndicator(
-              onRefresh: () => champService.fetchStaticData(forceRefresh: true),
-              child: allTeams.isEmpty 
-                  ? const Center(child: Text("Nenhuma equipe encontrada."))
-                  : TabBarView(
-                      children: [
-                        _buildRankingList(context, allTeams, (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 'GP', Icons.sports_soccer, descending: true),
-                        _buildRankingList(context, allTeams, (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 'GC', Icons.gpp_good, descending: false), 
-                        _buildRankingList(context, allTeams, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800]),
-                        _buildRankingList(context, allTeams, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red),
-                        _buildRankingList(context, allTeams, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true),
-                        _buildRankingList(context, allTeams, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true), 
-                      ],
-                    ),
+            
+            body: TabBarView(
+              children: [
+                _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 'GP', Icons.sports_soccer, descending: true, champService: champService),
+                _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 'GC', Icons.gpp_good, descending: false, champService: champService), 
+                _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800], champService: champService),
+                _buildRankingList(context, allTeams, isLoading, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red, champService: champService),
+                _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true, champService: champService),
+                _buildRankingList(context, allTeams, isLoading, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true, champService: champService), 
+              ],
             ),
+            
             bottomNavigationBar: const SponsorBannerRotator(),
           ),
         );
@@ -166,16 +164,39 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
 
   Widget _buildRankingList(
     BuildContext context, 
-    List<Team> teams, 
+    List<Team> teams,
+    bool isLoading,
     int Function(Team) valueSelector, 
     String suffix, 
     IconData icon,
     {
-      required bool descending, 
+      required bool descending,
+      required ChampionshipService champService, 
       bool filterZero = false,
       Color? color
     }
   ) {
+    // 1. Loading State (Shimmer)
+    if (isLoading && teams.isEmpty) {
+      return ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: 6,
+        itemBuilder: (_, __) => Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Row(
+            children: const [
+              ShimmerEffect.circular(size: 40),
+              SizedBox(width: 16),
+              Expanded(child: ShimmerEffect.rectangular(height: 16)),
+              SizedBox(width: 16),
+              ShimmerEffect.rectangular(height: 16, width: 40),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Processamento
     var list = List<Team>.from(teams);
     if (filterZero) {
       list = list.where((t) => valueSelector(t) > 0).toList();
@@ -187,58 +208,85 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       return descending ? vb.compareTo(va) : va.compareTo(vb);
     });
 
-    if (list.isEmpty) return const Center(child: Text("Sem dados para exibir."));
+    // 2. Empty State (Ilustrado)
+    if (list.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () => champService.fetchStaticData(forceRefresh: true),
+        child: CustomScrollView(
+          slivers: [
+            SliverFillRemaining(
+              child: CustomEmptyState(
+                icon: Icons.query_stats,
+                title: "Sem Estatísticas",
+                message: "Ainda não há dados suficientes para gerar este ranking.",
+                buttonText: "Atualizar",
+                onButtonPressed: () => champService.fetchStaticData(forceRefresh: true),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 16, top: 8),
-      itemCount: list.length,
-      itemBuilder: (context, index) {
-        final team = list[index];
-        final rank = index + 1;
-        final val = valueSelector(team);
+    // 3. Data List
+    return RefreshIndicator(
+      onRefresh: () => champService.fetchStaticData(forceRefresh: true),
+      child: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 16, top: 8),
+        itemCount: list.length,
+        itemBuilder: (context, index) {
+          final team = list[index];
+          final rank = index + 1;
+          final val = valueSelector(team);
 
-        if (index < 3) {
-          return RankHighlightCard(
-            rank: rank,
-            title: team.name,
-            subtitle: team.shortName.isNotEmpty ? team.shortName : "Equipe",
-            imageUrl: team.shieldUrl,
-            statValue: '$val',
-            statLabel: suffix,
-            statIcon: icon,
-            customColor: color,
-            isPlayer: false,
+          if (index < 3) {
+            return RankHighlightCard(
+              rank: rank,
+              title: team.name,
+              subtitle: team.shortName.isNotEmpty ? team.shortName : "Equipe",
+              imageUrl: team.shieldUrl,
+              statValue: '$val',
+              statLabel: suffix,
+              statIcon: icon,
+              customColor: color,
+              isPlayer: false,
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team))),
+            );
+          }
+
+          Widget trailing;
+          if (color != null) {
+            trailing = Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('$val', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(width: 4),
+              Icon(Icons.style, color: color, size: 20),
+            ]);
+          } else {
+            trailing = Text('$val $suffix', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16));
+          }
+
+          return ListTile(
+            leading: RankIndicator(rank: rank),
+            title: Row(
+              children: [
+                if (team.shieldUrl.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: CachedNetworkImage(
+                      imageUrl: team.shieldUrl, 
+                      width: 25, height: 25, 
+                      fit: BoxFit.contain,
+                      errorWidget: (_,__,___) => const Icon(Icons.shield, size: 25, color: Colors.grey),
+                    ),
+                  ),
+                Expanded(child: Text(team.name, overflow: TextOverflow.ellipsis)),
+              ],
+            ),
+            trailing: trailing,
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team))),
           );
-        }
-
-        Widget trailing;
-        if (color != null) {
-          trailing = Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('$val', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(width: 4),
-            Icon(Icons.style, color: color, size: 20),
-          ]);
-        } else {
-          trailing = Text('$val $suffix', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16));
-        }
-
-        return ListTile(
-          leading: RankIndicator(rank: rank),
-          title: Row(
-            children: [
-              if (team.shieldUrl.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: CachedNetworkImage(imageUrl: team.shieldUrl, width: 25, height: 25, fit: BoxFit.contain),
-                ),
-              Expanded(child: Text(team.name, overflow: TextOverflow.ellipsis)),
-            ],
-          ),
-          trailing: trailing,
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team))),
-        );
-      },
+        },
+      ),
     );
   }
 }

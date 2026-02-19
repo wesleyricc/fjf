@@ -18,8 +18,23 @@ import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/award_card.dart';
 import 'edit_award_screen.dart';
 
-class SeasonSummaryScreen extends StatelessWidget {
+class SeasonSummaryScreen extends StatefulWidget {
   const SeasonSummaryScreen({super.key});
+
+  @override
+  State<SeasonSummaryScreen> createState() => _SeasonSummaryScreenState();
+}
+
+class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
+  
+  @override
+  void initState() {
+    super.initState();
+    // 1. CORREÇÃO: Garante que os dados globais (necessários para estatísticas) sejam carregados
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<ChampionshipService>(context, listen: false).fetchAllPlayers();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +44,8 @@ class SeasonSummaryScreen extends StatelessWidget {
         final authService = Provider.of<AuthService>(context);
         final isAdmin = authService.isAuthenticated;
 
-        if (champService.teams.isEmpty && champService.isLoading) {
+        // Se a lista global de jogadores estiver vazia (ainda carregando lazy), mostra loading
+        if (champService.allPlayers.isEmpty && champService.isLoading) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
@@ -212,7 +228,6 @@ class SeasonSummaryScreen extends StatelessWidget {
   }
 
   // --- ESTATÍSTICAS DE EQUIPES (WRAP) ---
-  // Mantemos Wrap pois são poucos itens e não justifica SliverGrid
   Widget _buildTeamStatsGrid(BuildContext context, ChampionshipService service) {
     final teams = service.teams;
     final matches = service.matches;
@@ -277,6 +292,7 @@ class SeasonSummaryScreen extends StatelessWidget {
 
   // --- ESTATÍSTICAS DE JOGADORES (WRAP) ---
   Widget _buildPlayerStatsGrid(BuildContext context, ChampionshipService service) {
+    // CORREÇÃO: Agora 'allPlayers' estará populado pois chamamos fetchAllPlayers no init
     final players = service.allPlayers;
 
     if (players.isEmpty) return const Center(child: Text("Sem dados."));

@@ -25,33 +25,52 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPlayersFromCache();
+    // Garante que a árvore de widgets montou antes de chamar o provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
   }
 
-  void _loadPlayersFromCache() {
+  Future<void> _loadData() async {
     final service = Provider.of<ChampionshipService>(context, listen: false);
-    final homeId = widget.match['team_home_id'];
-    final awayId = widget.match['team_away_id'];
+    final data = widget.match.data() as Map<String, dynamic>;
+    final homeId = data['team_home_id'];
+    final awayId = data['team_away_id'];
 
-    final all = service.allPlayers;
-    
-    int sortFunc(Player a, Player b) {
-      if (!a.isStaff && b.isStaff) return -1;
-      if (a.isStaff && !b.isStaff) return 1;
-      int nA = a.jerseyNumber ?? 999;
-      int nB = b.jerseyNumber ?? 999;
-      if (nA != nB) return nA.compareTo(nB);
-      return a.name.compareTo(b.name);
+    try {
+      // 1. Garante que os elencos estão carregados (Lazy Loading)
+      await Future.wait([
+        service.fetchRoster(homeId),
+        service.fetchRoster(awayId),
+      ]);
+
+      if (!mounted) return;
+
+      // 2. Busca do cache atualizado
+      final all = service.allPlayers;
+      
+      int sortFunc(Player a, Player b) {
+        if (!a.isStaff && b.isStaff) return -1;
+        if (a.isStaff && !b.isStaff) return 1;
+        int nA = a.jerseyNumber ?? 999;
+        int nB = b.jerseyNumber ?? 999;
+        if (nA != nB) return nA.compareTo(nB);
+        return a.name.compareTo(b.name);
+      }
+
+      final homeList = all.where((p) => p.teamId == homeId).toList()..sort(sortFunc);
+      final awayList = all.where((p) => p.teamId == awayId).toList()..sort(sortFunc);
+
+      setState(() {
+        _homePlayers = homeList.map((p) => _mockSnapshot(p)).toList();
+        _awayPlayers = awayList.map((p) => _mockSnapshot(p)).toList();
+        _isLoadingPlayers = false;
+      });
+
+    } catch (e) {
+      debugPrint("Erro ao carregar jogadores para Scout: $e");
+      if (mounted) setState(() => _isLoadingPlayers = false);
     }
-
-    final homeList = all.where((p) => p.teamId == homeId).toList()..sort(sortFunc);
-    final awayList = all.where((p) => p.teamId == awayId).toList()..sort(sortFunc);
-
-    setState(() {
-      _homePlayers = homeList.map((p) => _mockSnapshot(p)).toList();
-      _awayPlayers = awayList.map((p) => _mockSnapshot(p)).toList();
-      _isLoadingPlayers = false;
-    });
   }
 
   DocumentSnapshot _mockSnapshot(Player p) {
@@ -161,8 +180,8 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
 
                 ScoutTimelineWidget(
                   match: widget.match,
-                  homePlayers: _homePlayers, // <-- Passando lista
-                  awayPlayers: _awayPlayers, // <-- Passando lista
+                  homePlayers: _homePlayers,
+                  awayPlayers: _awayPlayers,
                 ),
               ],
             ),

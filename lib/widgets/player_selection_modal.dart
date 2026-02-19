@@ -18,6 +18,7 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
   int _step = 0; // 0 = Seleção de Time, 1 = Seleção de Jogador
   String _selectedTeamName = '';
   List<Player> _currentPlayers = [];
+  bool _isLoadingPlayers = false; // Novo estado de loading
   
   // Cache de Times
   List<Team> _teams = [];
@@ -36,47 +37,35 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
     });
   }
 
-  void _loadPlayers(String teamId, String teamName) {
-    // Carrega do Service (Cache)
+  Future<void> _loadPlayers(String teamId, String teamName) async {
+    setState(() {
+      _isLoadingPlayers = true;
+      _selectedTeamName = teamName;
+      _step = 1; // Avança para mostrar loading na próxima tela
+    });
+
     final service = Provider.of<ChampionshipService>(context, listen: false);
-    final players = service.getCachedRoster(teamId);
     
-    // Filtra (Ex: Apenas ativos e não-staff para comparação)
-    // Se quiser permitir staff, remova o filtro.
+    // Tenta pegar do cache primeiro
+    List<Player> players = service.getCachedRoster(teamId);
+    
+    // Se vazio, busca do servidor (Lazy Loading em ação)
+    if (players.isEmpty) {
+      players = await service.fetchRoster(teamId);
+    }
+    
+    // Filtra (Ex: Apenas ativos)
     final validPlayers = players.where((p) => p.isActive).toList();
 
-    setState(() {
-      _selectedTeamName = teamName;
-      _currentPlayers = validPlayers;
-      _step = 1;
-    });
+    if (mounted) {
+      setState(() {
+        _currentPlayers = validPlayers;
+        _isLoadingPlayers = false;
+      });
+    }
   }
 
-  // --- Função Auxiliar para simular DocumentSnapshot ---
-  // O widget pai espera um DocumentSnapshot. Como migramos para Model,
-  // precisamos converter de volta ou adaptar o pai.
-  // Para manter compatibilidade sem quebrar o 'player_comparison_screen',
-  // vamos criar um "Mock Snapshot" ou adaptar o retorno.
-  // O ideal seria refatorar 'player_comparison_screen' para usar Model,
-  // mas para esta tarefa focada em redução de custo, vamos retornar um objeto compatível
-  // se o Dart permitir, ou melhor: Retornar o Model e ajustar o pai é mais limpo.
-  
-  // VAMOS AJUSTAR O RETORNO: O pai espera `DocumentSnapshot`.
-  // Truque: Vamos retornar um `Player` model (que não é snapshot).
-  // O `player_comparison_screen` vai quebrar se não ajustarmos lá também.
-  // Porém, a instrução é alterar este arquivo. 
-  // O método `showDialog` é genérico <T>. 
-  // Vou assumir que posso retornar um objeto que tenha `.data()`.
-  // Mas a maneira correta é refatorar o pai.
-  // Como não posso alterar o pai nesta resposta específica (já enviei antes),
-  // vou criar um wrapper simples que imita um snapshot para manter compatibilidade imediata.
-  
-  // ... Pensando bem, o usuário pediu para reduzir consumo.
-  // Refatorar o pai para aceitar `Player` model é trivial e economiza código.
-  // Vou manter o retorno como `dynamic` aqui e você precisará atualizar o `player_comparison_screen`
-  // para tratar `Player` ou `DocumentSnapshot`.
-  // Na verdade, vou criar um mapa aqui que simula o `data()` do snapshot.
-  
+  // Mapa auxiliar para compatibilidade com telas legadas que esperam data()
   Map<String, dynamic> _playerToMap(Player p) {
     return {
       'name': p.name,
@@ -128,7 +117,11 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
               ),
             
             Expanded(
-              child: _step == 0 ? _buildTeamsList() : _buildPlayersList(),
+              child: _step == 0 
+                  ? _buildTeamsList() 
+                  : (_isLoadingPlayers 
+                      ? const Center(child: CircularProgressIndicator()) 
+                      : _buildPlayersList()),
             ),
           ],
         ),
@@ -192,8 +185,7 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
           ),
           subtitle: Text(displayPos, style: const TextStyle(fontSize: 12)),
           onTap: () {
-            // Retorna um Mock DocumentSnapshot para compatibilidade
-            // (Criamos um objeto anônimo que implementa o minimo necessário: data())
+            // Retorna Mock para compatibilidade
             final mockSnapshot = MockDocumentSnapshot(player.id, _playerToMap(player));
             Navigator.of(context).pop(mockSnapshot);
           },
@@ -203,28 +195,15 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
   }
 }
 
-// --- CLASSE MOCK PARA COMPATIBILIDADE (Evita refatorar o pai agora) ---
+// Classe Mock para compatibilidade com telas antigas
 class MockDocumentSnapshot implements DocumentSnapshot {
-  @override
-  final String id;
+  @override final String id;
   final Map<String, dynamic> _data;
-
   MockDocumentSnapshot(this.id, this._data);
-
-  @override
-  Map<String, dynamic> data() => _data;
-
-  @override
-  dynamic get(Object field) => _data[field as String];
-
-  @override
-  dynamic operator [](Object field) => _data[field as String];
-
-  @override
-  bool get exists => true;
-
-  @override
-  DocumentReference get reference => throw UnimplementedError();
-  @override
-  SnapshotMetadata get metadata => throw UnimplementedError();
+  @override Map<String, dynamic> data() => _data;
+  @override dynamic get(Object field) => _data[field as String];
+  @override dynamic operator [](Object field) => _data[field as String];
+  @override bool get exists => true;
+  @override DocumentReference get reference => throw UnimplementedError();
+  @override SnapshotMetadata get metadata => throw UnimplementedError();
 }

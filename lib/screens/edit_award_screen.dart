@@ -27,11 +27,11 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
   String? _selectedTeamId;
   String? _selectedPlayerId;
 
-  // Cache temporário para exibição e salvamento
   Team? _selectedTeamObj;
   Player? _selectedPlayerObj;
 
   bool _isSaving = false;
+  bool _isLoadingRoster = false; // Novo estado para loading de jogadores
 
   @override
   void initState() {
@@ -40,8 +40,8 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
     _orderController = TextEditingController(text: widget.award?.order.toString() ?? '1');
     _selectedCategory = widget.award?.category ?? 'player';
     
-    // Tenta carregar as listas para o dropdown funcionar
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Carrega dados básicos (Times), mas não força jogadores globais
       Provider.of<ChampionshipService>(context, listen: false).fetchStaticData();
     });
   }
@@ -54,30 +54,36 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
   }
 
   // --- Lógica de Filtro ---
-  List<Player> _getFilteredPlayers(List<Player> allPlayers) {
+  List<Player> _getFilteredPlayers(List<Player> teamRoster) {
     if (_selectedTeamId == null) return [];
     
-    // Filtra pelo time
-    final teamPlayers = allPlayers.where((p) => p.teamId == _selectedTeamId).toList();
-
     // Filtra pela categoria do prêmio
     switch (_selectedCategory) {
       case 'goalkeeper':
-        return teamPlayers.where((p) => p.isGoalkeeper).toList();
+        return teamRoster.where((p) => p.isGoalkeeper).toList();
       case 'coach':
-        return teamPlayers.where((p) => p.isStaff).toList();
+        return teamRoster.where((p) => p.isStaff).toList();
       case 'player':
       default:
-        // Mostra atletas (incluindo goleiros, se quiser ser estrito remova isGoalkeeper)
-        // Geralmente "Melhor Jogador" pode ser qualquer um, mas excluímos Staff
-        return teamPlayers.where((p) => !p.isStaff).toList();
+        return teamRoster.where((p) => !p.isStaff).toList();
+    }
+  }
+
+  // Novo método para carregar elenco ao selecionar time
+  Future<void> _loadRosterForSelectedTeam(String teamId) async {
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    
+    // Verifica cache primeiro
+    if (service.getCachedRoster(teamId).isEmpty) {
+      setState(() => _isLoadingRoster = true);
+      await service.fetchRoster(teamId);
+      if (mounted) setState(() => _isLoadingRoster = false);
     }
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Validação da Seleção
     if (_selectedTeamId == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione uma Equipe.')));
       return;
@@ -92,26 +98,22 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
     final service = Provider.of<AwardService>(context, listen: false);
 
-    // Constrói os dados baseados na seleção
     String winnerName = '';
     String subtitle = '';
     String imageUrl = '';
 
     if (_selectedCategory == 'team') {
-      // Prêmio para o Time
       if (_selectedTeamObj != null) {
         winnerName = _selectedTeamObj!.name;
         subtitle = "Equipe";
         imageUrl = _selectedTeamObj!.shieldUrl;
       }
     } else {
-      // Prêmio Individual
       if (_selectedPlayerObj != null) {
         winnerName = _selectedPlayerObj!.name;
-        subtitle = _selectedTeamObj?.name ?? ''; // Subtítulo é o nome do time
+        subtitle = _selectedTeamObj?.name ?? ''; 
         imageUrl = _selectedPlayerObj!.photoUrl;
         
-        // Fallback: Se jogador não tem foto, usa escudo do time
         if (imageUrl.isEmpty && _selectedTeamObj != null) {
           imageUrl = _selectedTeamObj!.shieldUrl;
         }
@@ -155,9 +157,12 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
       ),
       body: Consumer<ChampionshipService>(
         builder: (context, champService, _) {
-          // Garante que temos a lista de times e jogadores
           final teams = champService.teams;
-          final allPlayers = champService.allPlayers;
+          
+          // Obtém o elenco específico do time selecionado (se houver)
+          final List<Player> currentRoster = _selectedTeamId != null 
+              ? champService.getCachedRoster(_selectedTeamId!) 
+              : [];
 
           if (champService.isLoading && teams.isEmpty) {
             return const Center(child: CircularProgressIndicator());
@@ -168,17 +173,12 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // --- 1. CONFIGURAÇÃO DO PRÊMIO ---
                 const Text("Configuração", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 12),
                 
                 TextFormField(
                   controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Título do Prêmio', 
-                    hintText: 'Ex: Melhor Goleiro, Craque da Galera',
-                    border: OutlineInputBorder()
-                  ),
+                  decoration: const InputDecoration(labelText: 'Título do Prêmio', hintText: 'Ex: Melhor Goleiro', border: OutlineInputBorder()),
                   validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
                 ),
                 const SizedBox(height: 12),
@@ -198,7 +198,7 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
                         ],
                         onChanged: (v) => setState(() {
                           _selectedCategory = v!;
-                          _selectedPlayerId = null; // Reseta jogador ao mudar categoria
+                          _selectedPlayerId = null; 
                           _selectedPlayerObj = null;
                         }),
                       ),
@@ -217,30 +217,19 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
 
                 const Divider(height: 40),
 
-                // --- 2. SELEÇÃO DO VENCEDOR ---
                 const Text("Quem Ganhou?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 12),
 
-                // CARD INFORMATIVO (Apenas Edição)
                 if (widget.award != null)
                   Container(
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.amber.withOpacity(0.5))
-                    ),
+                    decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.amber.withOpacity(0.5))),
                     child: Row(
                       children: [
                         const Icon(Icons.info_outline, color: Colors.amber, size: 20),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "Atual: ${widget.award!.winnerName} (${widget.award!.subtitle})\nSelecione abaixo para alterar.",
-                            style: const TextStyle(fontSize: 12, color: Colors.black87),
-                          ),
-                        ),
+                        Expanded(child: Text("Atual: ${widget.award!.winnerName} (${widget.award!.subtitle})\nSelecione abaixo para alterar.", style: const TextStyle(fontSize: 12, color: Colors.black87))),
                       ],
                     ),
                   ),
@@ -249,71 +238,53 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
                 DropdownButtonFormField<String>(
                   value: _selectedTeamId,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Selecione a Equipe',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.shield_outlined),
-                  ),
+                  decoration: const InputDecoration(labelText: 'Selecione a Equipe', border: OutlineInputBorder(), prefixIcon: Icon(Icons.shield_outlined)),
                   items: teams.map((team) {
-                    return DropdownMenuItem(
-                      value: team.id,
-                      child: Text(team.name, overflow: TextOverflow.ellipsis),
-                    );
+                    return DropdownMenuItem(value: team.id, child: Text(team.name, overflow: TextOverflow.ellipsis));
                   }).toList(),
                   onChanged: (v) {
                     setState(() {
                       _selectedTeamId = v;
                       _selectedTeamObj = teams.firstWhere((t) => t.id == v);
-                      // Reseta jogador pois mudou o time
                       _selectedPlayerId = null;
                       _selectedPlayerObj = null;
                     });
+                    // Dispara carregamento do elenco
+                    if (v != null) _loadRosterForSelectedTeam(v);
                   },
                 ),
                 const SizedBox(height: 16),
 
-                // DROPDOWN ATLETA (Condicional)
+                // DROPDOWN ATLETA
                 if (_selectedCategory != 'team') ...[
-                  DropdownButtonFormField<String>(
-                    value: _selectedPlayerId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Selecione o Vencedor',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
-                    // Desabilita se não tiver time selecionado
-                    onChanged: _selectedTeamId == null ? null : (v) {
-                      setState(() {
-                        _selectedPlayerId = v;
-                        _selectedPlayerObj = allPlayers.firstWhere((p) => p.id == v);
-                      });
-                    },
-                    items: _getFilteredPlayers(allPlayers).map((player) {
-                      return DropdownMenuItem(
-                        value: player.id,
-                        child: Text(
-                          "${player.jerseyNumber != null ? '#${player.jerseyNumber} ' : ''}${player.name}", 
-                          overflow: TextOverflow.ellipsis
-                        ),
-                      );
-                    }).toList(),
-                    // Texto de dica caso a lista esteja vazia
-                    hint: _selectedTeamId == null 
-                        ? const Text("Escolha o time primeiro")
-                        : (_getFilteredPlayers(allPlayers).isEmpty 
-                            ? const Text("Nenhum atleta nesta categoria") 
-                            : null),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_selectedTeamId != null && _getFilteredPlayers(allPlayers).isEmpty)
-                    const Text(
-                      "* Nenhum membro encontrado para esta categoria neste time.",
-                      style: TextStyle(color: Colors.red, fontSize: 12),
+                  // Mostra loading se estiver buscando elenco
+                  if (_isLoadingRoster) 
+                    const Padding(padding: EdgeInsets.all(8.0), child: LinearProgressIndicator())
+                  else
+                    DropdownButtonFormField<String>(
+                      value: _selectedPlayerId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Selecione o Vencedor', border: OutlineInputBorder(), prefixIcon: Icon(Icons.person_outline)),
+                      onChanged: _selectedTeamId == null ? null : (v) {
+                        setState(() {
+                          _selectedPlayerId = v;
+                          // Busca na lista local (que já foi carregada)
+                          if (currentRoster.isNotEmpty) {
+                             _selectedPlayerObj = currentRoster.firstWhere((p) => p.id == v);
+                          }
+                        });
+                      },
+                      items: _getFilteredPlayers(currentRoster).map((player) {
+                        return DropdownMenuItem(value: player.id, child: Text("${player.jerseyNumber != null ? '#${player.jerseyNumber} ' : ''}${player.name}", overflow: TextOverflow.ellipsis));
+                      }).toList(),
+                      hint: _selectedTeamId == null 
+                          ? const Text("Escolha o time primeiro")
+                          : (_getFilteredPlayers(currentRoster).isEmpty 
+                              ? const Text("Nenhum atleta nesta categoria") 
+                              : null),
                     ),
                 ],
 
-                // PREVIEW (Opcional)
                 if (_selectedPlayerObj != null || (_selectedCategory == 'team' && _selectedTeamObj != null)) ...[
                   const SizedBox(height: 24),
                   Center(
@@ -345,13 +316,8 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: _isSaving ? null : _save,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).primaryColor,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: _isSaving 
-                        ? const CircularProgressIndicator(color: Colors.white) 
-                        : const Text('CONFIRMAR E SALVAR'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white),
+                    child: _isSaving ? const CircularProgressIndicator(color: Colors.white) : const Text('CONFIRMAR E SALVAR'),
                   ),
                 ),
               ],

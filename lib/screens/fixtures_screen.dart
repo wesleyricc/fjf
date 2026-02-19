@@ -13,6 +13,8 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/modern_fixtures_nav.dart';
 import '../widgets/palpitometro_widget.dart'; 
+import '../widgets/ui/shimmer_effect.dart';     // <-- Import
+import '../widgets/ui/custom_empty_state.dart';  // <-- Import
 import 'admin_match_screen.dart';
 import 'match_stats_screen.dart';
 import 'edit_match_screen.dart';
@@ -89,6 +91,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
         final seasonName = service.currentSeasonName;
         final seasonId = service.currentSeasonId;
 
+        // Filtro Local
         String? phaseFilter = (_selectedPhase == TournamentPhase.first) ? 'first' : null;
         if (_selectedPhase == TournamentPhase.second) {
            switch (_selectedPlayoffStage) {
@@ -105,6 +108,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
           return true;
         }).toList();
 
+        // Configuração de Banner
         String sponsorTitle = "Patrocinador Oficial";
         String? bannerFilterTag;
 
@@ -145,6 +149,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
           drawer: const AppDrawer(),
           body: Column(
             children: [
+              // HEADER DE NAVEGAÇÃO
               Container(
                 color: Colors.white,
                 child: Column(
@@ -167,6 +172,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                 ),
               ),
               
+              // BANNER
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
                 child: Column(
@@ -189,18 +195,9 @@ class _FixturesScreenState extends State<FixturesScreen> {
                 )
               ),
               
+              // LISTA DE JOGOS
               Expanded(
-                child: matches.isEmpty 
-                  ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy, size: 40, color: Colors.grey[300]), const SizedBox(height: 10), Text('Nenhum jogo agendado.', style: TextStyle(color: Colors.grey[600]))]))
-                  : RefreshIndicator(
-                      onRefresh: () => service.fetchStaticData(forceRefresh: true),
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
-                        itemCount: matches.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) => _buildCleanMatchCard(matches[index], authService.isAuthenticated, seasonId),
-                      ),
-                    ),
+                child: _buildMatchesContent(service.isLoading, matches, service, authService, seasonId),
               ),
             ],
           ),
@@ -208,6 +205,65 @@ class _FixturesScreenState extends State<FixturesScreen> {
           floatingActionButton: (authService.isAuthenticated) ? FloatingActionButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditMatchScreen(match: null))), backgroundColor: Theme.of(context).primaryColor, child: const Icon(Icons.add, color: Colors.white)) : null,
         );
       }
+    );
+  }
+
+  Widget _buildMatchesContent(bool isLoading, List<MatchModel> matches, ChampionshipService service, AuthService authService, String seasonId) {
+    // 1. LOADING: Mostra Skeletons
+    if (isLoading && matches.isEmpty) {
+      return ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
+        itemCount: 4, // 4 Placeholders
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (_, __) => _buildMatchSkeleton(),
+      );
+    }
+
+    // 2. EMPTY: Mostra Mensagem Bonita
+    if (matches.isEmpty) {
+      return CustomEmptyState(
+        icon: Icons.event_busy,
+        title: "Sem Jogos",
+        message: "Nenhum jogo agendado para esta fase/rodada.",
+        buttonText: "Atualizar",
+        onButtonPressed: () => service.fetchStaticData(forceRefresh: true),
+      );
+    }
+
+    // 3. LISTA REAL
+    return RefreshIndicator(
+      onRefresh: () => service.fetchStaticData(forceRefresh: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
+        itemCount: matches.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) => _buildCleanMatchCard(matches[index], authService.isAuthenticated, seasonId),
+      ),
+    );
+  }
+
+  // --- SKELETON (SHIMMER) ---
+  Widget _buildMatchSkeleton() {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          const ShimmerEffect.rectangular(height: 12, width: 150), // Data
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Expanded(child: Center(child: ShimmerEffect.circular(size: 45))), // Logo Casa
+              const SizedBox(width: 16),
+              const ShimmerEffect.rectangular(height: 28, width: 60), // Placar
+              const SizedBox(width: 16),
+              const Expanded(child: Center(child: ShimmerEffect.circular(size: 45))), // Logo Fora
+            ],
+          ),
+          const SizedBox(height: 16),
+          const ShimmerEffect.rectangular(height: 24, width: double.infinity), // Palpitômetro
+        ],
+      ),
     );
   }
 
@@ -346,7 +402,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
               ),
             ),
 
-            // Palpitômetro (Com nomes e porcentagens)
+            // Palpitômetro
             if (seasonId.isNotEmpty) 
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -359,9 +415,9 @@ class _FixturesScreenState extends State<FixturesScreen> {
                   awayVotes: match.votesAway,
                   homeColor: Colors.blueAccent,
                   awayColor: Colors.redAccent,
-                  isClosed: !match.isPending, // Se não é pendente (andamento ou finalizado), é fechado (mostra % da votação final)
-                  barHeight: 24.0, // Altura ajustada para caber texto
-                  compactView: false, // Permite mostrar nomes e %
+                  isClosed: !match.isPending, 
+                  barHeight: 24.0, 
+                  compactView: false, 
                 ),
               ),
           ],

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/fantasy_service.dart';
-import '../services/fantasy_admin_service.dart';
-import '../services/championship_service.dart'; 
-import '../models/fantasy_models.dart';
+import '../services/championship_service.dart';
+import '../widgets/ui/custom_empty_state.dart'; // Certifique-se de ter este widget ou remova/adapte
 
 class FantasyAdminControlScreen extends StatefulWidget {
   const FantasyAdminControlScreen({super.key});
@@ -13,410 +12,231 @@ class FantasyAdminControlScreen extends StatefulWidget {
 }
 
 class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
-  final FantasyAdminService _adminService = FantasyAdminService();
-  
   bool _isLoading = false;
-  String _log = "";
-  
-  late TextEditingController _seasonController;
   final TextEditingController _roundController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _seasonController = TextEditingController();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final currentSeasonId = Provider.of<ChampionshipService>(context).currentSeasonId;
-    if (_seasonController.text.isEmpty && currentSeasonId.isNotEmpty) {
-      _seasonController.text = currentSeasonId;
-    }
+    // Carrega a rodada atual do banco ao abrir a tela
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final stream = Provider.of<FantasyService>(context, listen: false).streamMarketStatus();
+      stream.first.then((data) {
+        if (mounted) {
+          setState(() {
+            _roundController.text = (data['current_round'] ?? 1).toString();
+          });
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
-    _seasonController.dispose();
     _roundController.dispose();
     super.dispose();
   }
 
-  void _addLog(String message) {
-    if (!mounted) return;
-    setState(() {
-      _log = "$message\n\n$_log";
-    });
-  }
+  // --- MÉTODOS DE AÇÃO ---
 
-  // --- AÇÕES DO SISTEMA ---
-
-  Future<void> _toggleMarket(FantasyService service, bool open, int round) async {
-    setState(() => _isLoading = true);
-    try {
-      await service.setMarketStatus(isOpen: open, newRound: round);
-      _addLog(open 
-        ? "Mercado ABERTO para a rodada $round." 
-        : "Mercado FECHADO na rodada $round.");
-    } catch (e) {
-      _addLog("Erro ao alterar mercado: $e");
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _processRoundClosing(BuildContext context, int currentRound) async {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text("Processar Rodada #$currentRound"),
-        content: const Text(
-          "Isso irá:\n"
-          "1. Ler scouts da rodada.\n"
-          "2. Calcular valorização.\n"
-          "3. Atualizar times e patrimônio.\n\n"
-          "Confirma?",
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              _executeCloseRound(currentRound);
-            },
-            child: const Text("PROCESSAR AGORA"),
-          ),
-        ],
-      ),
+  Future<void> _syncMarket() async {
+    final confirm = await _showConfirmDialog(
+      "Sincronizar Mercado", 
+      "Isso importará jogadores novos da temporada oficial para o Fantasy.\n\n"
+      "Preços e pontos de jogadores já existentes NÃO serão alterados."
     );
-  }
+    if (!confirm) return;
 
-  Future<void> _executeCloseRound(int round) async {
     setState(() => _isLoading = true);
     try {
-      _addLog("Iniciando fechamento da Rodada $round...");
-      String seasonId = _seasonController.text.trim();
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      final result = await Provider.of<FantasyService>(context, listen: false).populateMarketFromSeason(seasonId);
       
-      if (seasonId.isEmpty) {
-         _addLog("ERRO: ID da temporada não identificado.");
-         return;
-      }
-
-      String result = await _adminService.closeRoundFullRoutine(seasonId, round);
-      _addLog(result);
+      if (mounted) _showFeedback(result, isError: result.contains("Erro"));
     } catch (e) {
-      _addLog("Erro Crítico: $e");
+      if (mounted) _showFeedback("Erro: $e", isError: true);
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _executeSyncAthletes(FantasyService service) async {
-    final seasonId = _seasonController.text.trim();
-    if (seasonId.isEmpty) {
-      _addLog("ERRO: Campo Temporada vazio.");
-      return;
-    }
+  Future<void> _toggleMarket(bool isOpenNow, int currentRound) async {
+    final nextStatus = !isOpenNow; // Se aberto, fecha. Se fechado, abre.
+    final actionLabel = nextStatus ? "ABRIR" : "FECHAR";
+    final targetRound = int.tryParse(_roundController.text) ?? currentRound;
+
+    // Se estiver abrindo, sugere-se avançar a rodada, mas mantém o input do controller
+    // A lógica aqui depende do admin definir a rodada correta no input.
+
+    final confirm = await _showConfirmDialog(
+      "$actionLabel Mercado", 
+      "Você está prestes a $actionLabel o mercado para a Rodada $targetRound.\n\n"
+      "${nextStatus ? 'Os usuários poderão escalar times.' : 'As escalações serão bloqueadas.'}"
+    );
+    if (!confirm) return;
 
     setState(() => _isLoading = true);
     try {
-      _addLog("Sincronizando atletas da temporada $seasonId...");
-      final res = await service.populateMarketFromSeason(seasonId);
-      _addLog("Resultado Sync: $res");
+      await Provider.of<FantasyService>(context, listen: false).setMarketStatus(nextStatus, targetRound);
+      if (mounted) _showFeedback("Mercado ${nextStatus ? 'ABERTO' : 'FECHADO'} com sucesso!", isError: false);
     } catch (e) {
-      _addLog("Erro no Sync: $e");
+      if (mounted) _showFeedback("Erro: $e", isError: true);
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _executeReprocessHistory() async {
-    if (_roundController.text.isEmpty) {
-      _addLog("ERRO: Informe a rodada FINAL no campo acima.");
-      return;
-    }
-    
-    final seasonId = _seasonController.text.trim();
-    if (seasonId.isEmpty) {
-      _addLog("ERRO: ID da temporada vazio.");
-      return;
-    }
+  Future<void> _processRound(int round) async {
+    final confirm = await _showConfirmDialog(
+      "Processar Rodada $round", 
+      "⚠️ ATENÇÃO: AÇÃO IRREVERSÍVEL\n\n"
+      "Isso enviará o comando para a NUVEM (Cloud Functions) para:\n"
+      "1. Calcular pontuação de todos os jogadores (Scouts da rodada $round).\n"
+      "2. Calcular valorização/desvalorização (Cartoletas).\n"
+      "3. Atualizar o patrimônio de TODOS os times.\n\n"
+      "Certifique-se de que TODOS os jogos da rodada foram finalizados e os scouts lançados."
+    );
+    if (!confirm) return;
 
-    bool? confirm = await showDialog<bool>(
+    setState(() => _isLoading = true);
+    try {
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      final result = await Provider.of<FantasyService>(context, listen: false).processRoundCloud(seasonId, round);
+
+      if (mounted) _showFeedback(result, isError: !result.startsWith("Sucesso"));
+    } catch (e) {
+      if (mounted) _showFeedback("Erro fatal: $e", isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- HELPERS VISUAIS ---
+
+  Future<bool> _showConfirmDialog(String title, String content) async {
+    return await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("⚠️ RECONSTRUÇÃO TOTAL"),
-        content: Text(
-          "Esta ação irá ignorar os dados atuais e RECALCULAR TUDO do zero, da Rodada 1 até a rodada informada.\n\n"
-          "Temporada Alvo: $seasonId\n\n"
-          "Ela usará os SCOUTS das partidas como única fonte da verdade.\n\n"
-          "Isso pode demorar alguns segundos. Continuar?"
-        ),
+        title: Text(title, style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold)),
+        content: Text(content),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("SIM, RECALCULAR", style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    setState(() => _isLoading = true);
-    try {
-      int maxRound = int.parse(_roundController.text);
-      _addLog("Iniciando RECONSTRUÇÃO (R1 -> R$maxRound) na temporada $seasonId...");
-      
-      String result = await _adminService.reprocessFullHistory(seasonId, maxRound);
-      
-      _addLog(result);
-    } catch (e) {
-      _addLog("Erro: $e");
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // --- NOVA UI PARA CONFIGURAÇÃO ---
-  Future<void> _openConfigDialog(BuildContext context, FantasyService service) async {
-    setState(() => _isLoading = true);
-    // 1. Busca Config Atual
-    FantasyGameConfig currentConfig = await service.getGameConfig();
-    setState(() => _isLoading = false);
-
-    if (!mounted) return;
-
-    // Controladores
-    final cGoal = TextEditingController(text: currentConfig.ptsGoal.toString());
-    final cAssist = TextEditingController(text: currentConfig.ptsAssist.toString());
-    final cYellow = TextEditingController(text: currentConfig.ptsYellowCard.toString());
-    final cRed = TextEditingController(text: currentConfig.ptsRedCard.toString());
-    final cConceded = TextEditingController(text: currentConfig.ptsGoalConceded.toString());
-
-    final cExpectation = TextEditingController(text: currentConfig.factorExpectation.toString());
-    final cVariation = TextEditingController(text: currentConfig.factorVariation.toString());
-    final cCap = TextEditingController(text: currentConfig.capLimitPercent.toString());
-    final cMin = TextEditingController(text: currentConfig.minPrice.toString());
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Configuração Global"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("PONTUAÇÃO", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-              const SizedBox(height: 8),
-              _buildCompactField("Gol", cGoal),
-              _buildCompactField("Assistência", cAssist),
-              _buildCompactField("Amarelo", cYellow),
-              _buildCompactField("Vermelho", cRed),
-              _buildCompactField("Gol Sofrido", cConceded),
-              const Divider(),
-              const Text("ECONOMIA", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
-              const SizedBox(height: 8),
-              _buildCompactField("Expectativa (Ex: 0.35)", cExpectation),
-              _buildCompactField("Variação (Ex: 0.25)", cVariation),
-              _buildCompactField("Cap Limite (Ex: 0.25)", cCap),
-              _buildCompactField("Preço Min (Ex: 1.0)", cMin),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
           ElevatedButton(
-            onPressed: () async {
-              final newConfig = FantasyGameConfig(
-                ptsGoal: double.parse(cGoal.text),
-                ptsAssist: double.parse(cAssist.text),
-                ptsYellowCard: double.parse(cYellow.text),
-                ptsRedCard: double.parse(cRed.text),
-                ptsGoalConceded: double.parse(cConceded.text),
-                factorExpectation: double.parse(cExpectation.text),
-                factorVariation: double.parse(cVariation.text),
-                capLimitPercent: double.parse(cCap.text),
-                minPrice: double.parse(cMin.text),
-              );
-              
-              Navigator.pop(ctx);
-              setState(() => _isLoading = true);
-              await service.saveGameConfig(newConfig);
-              setState(() => _isLoading = false);
-              _addLog("Configuração salva com sucesso!");
-            },
-            child: const Text("SALVAR NO FIREBASE"),
+            onPressed: () => Navigator.pop(ctx, true), 
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white),
+            child: const Text("Confirmar")
           ),
         ],
       ),
-    );
+    ) ?? false;
   }
 
-  Widget _buildCompactField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        children: [
-          Expanded(flex: 2, child: Text(label + ":", style: const TextStyle(fontSize: 13))),
-          Expanded(
-            flex: 3,
-            child: SizedBox(
-              height: 35,
-              child: TextField(
-                controller: controller,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 8)),
-              ),
-            ),
-          )
-        ],
-      ),
+  void _showFeedback(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 4),
+      )
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final fantasyService = Provider.of<FantasyService>(context, listen: false);
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Painel Admin Fantasy"),
-        backgroundColor: Colors.blueGrey[900],
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: "Configurar Pontos/Economia",
-            onPressed: () => _openConfigDialog(context, fantasyService),
-          )
-        ],
-      ),
+      appBar: AppBar(title: const Text("Painel Admin Fantasy")),
       body: StreamBuilder<Map<String, dynamic>>(
-        stream: fantasyService.streamMarketStatus(),
+        stream: Provider.of<FantasyService>(context).streamMarketStatus(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          if (snapshot.hasError) return Center(child: Text("Erro: ${snapshot.error}"));
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-          final data = snapshot.data ?? {'is_open': true, 'current_round': 1};
+          final data = snapshot.data!;
           final bool isOpen = data['is_open'] ?? true;
-          final int currentRound = data['current_round'] ?? 1;
-
-          if (_roundController.text.isEmpty) {
-            _roundController.text = currentRound.toString();
-          }
+          final int dbRound = data['current_round'] ?? 1;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildStatusCard(isOpen, currentRound),
-
-                const SizedBox(height: 10),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      children: [
-                        const Text("Configuração da Operação", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: TextField(
-                                controller: _seasonController,
-                                decoration: const InputDecoration(
-                                  labelText: "Temporada ID (Ativa)", 
-                                  border: OutlineInputBorder(),
-                                  helperText: "Carregado automaticamente"
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 2,
-                              child: TextField(
-                                controller: _roundController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: "Rodada Alvo", 
-                                  border: OutlineInputBorder(),
-                                  helperText: "Rodada foco"
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                const Text("Rotina Padrão", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-
-                if (isOpen)
-                  _buildActionTile(
-                    icon: Icons.lock,
-                    color: Colors.orange,
-                    title: "Fechar Mercado",
-                    subtitle: "Bloqueia escalações.",
-                    onTap: () => _toggleMarket(fantasyService, false, currentRound),
-                  ),
-
-                if (!isOpen)
-                  _buildActionTile(
-                    icon: Icons.calculate,
-                    color: Colors.blue,
-                    title: "Processar Fechamento",
-                    subtitle: "Calcula rodada atual (Config Dinâmica).",
-                    onTap: () => _processRoundClosing(context, currentRound),
-                  ),
-
-                if (!isOpen)
-                  _buildActionTile(
-                    icon: Icons.lock_open,
-                    color: Colors.green,
-                    title: "Reabrir Mercado (Próxima)",
-                    subtitle: "Inicia R${currentRound + 1}.",
-                    onTap: () => _toggleMarket(fantasyService, true, currentRound + 1),
-                  ),
-                  
-                const Divider(height: 30),
-                const Text("Setup & Manutenção", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                // 1. STATUS ATUAL
+                _buildStatusCard(isOpen, dbRound),
                 
-                 _buildActionTile(
-                    icon: Icons.cloud_download,
-                    color: Colors.purple,
-                    title: "Sincronizar Atletas",
-                    subtitle: "Importa novos jogadores da temporada selecionada acima.",
-                    onTap: () => _executeSyncAthletes(fantasyService),
+                const SizedBox(height: 24),
+                
+                // 2. CONTROLE DA RODADA (INPUT)
+                const Text("Configuração da Rodada", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _roundController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: "Número da Rodada",
+                    hintText: "Ex: $dbRound",
+                    border: const OutlineInputBorder(),
+                    helperText: "Define qual rodada será processada ou aberta.",
+                    prefixIcon: const Icon(Icons.numbers),
                   ),
-
-                const SizedBox(height: 10),
-                _buildActionTile(
-                  icon: Icons.history_edu,
-                  color: Colors.red,
-                  title: "Reprocessar Tudo (Config Dinâmica)",
-                  subtitle: "Recalcula histórico usando a nova configuração.",
-                  onTap: _executeReprocessHistory,
                 ),
 
-                const SizedBox(height: 20),
-                const Text("Log:", style: TextStyle(fontWeight: FontWeight.bold)),
-                Container(
-                  height: 150,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade400)
+                const SizedBox(height: 30),
+
+                // 3. GAME LOOP (Ciclo do Jogo)
+                const Text("Ciclo do Jogo (Game Loop)", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+
+                // PASSO 1: FECHAR
+                _buildStepCard(
+                  step: "1",
+                  title: "FECHAR MERCADO",
+                  subtitle: "Bloqueia escalações. Faça antes do 1º jogo.",
+                  icon: Icons.lock,
+                  color: Colors.redAccent,
+                  isAvailable: isOpen && !_isLoading,
+                  onTap: () => _toggleMarket(isOpen, int.tryParse(_roundController.text) ?? dbRound),
+                ),
+
+                // PASSO 2: PROCESSAR
+                _buildStepCard(
+                  step: "2",
+                  title: "PROCESSAR RODADA (NUVEM)",
+                  subtitle: "Calcula pontos e cartoletas via Cloud Functions.",
+                  icon: Icons.cloud_sync,
+                  color: Colors.purple,
+                  isAvailable: !isOpen && !_isLoading, // Só processa se fechado
+                  onTap: () => _processRound(int.tryParse(_roundController.text) ?? dbRound),
+                ),
+
+                // PASSO 3: REABRIR
+                _buildStepCard(
+                  step: "3",
+                  title: "REABRIR MERCADO",
+                  subtitle: "Prepara para a próxima rodada.",
+                  icon: Icons.lock_open,
+                  color: Colors.green,
+                  isAvailable: !isOpen && !_isLoading,
+                  onTap: () {
+                    // Sugere incrementar rodada ao reabrir
+                    final currentVal = int.tryParse(_roundController.text) ?? dbRound;
+                    _roundController.text = (currentVal + 1).toString();
+                    _toggleMarket(isOpen, currentVal + 1);
+                  },
+                ),
+
+                const Divider(height: 40),
+
+                // 4. MANUTENÇÃO
+                const Text("Manutenção", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _syncMarket,
+                  icon: const Icon(Icons.sync),
+                  label: const Text("Sincronizar Jogadores (Season -> Fantasy)"),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: BorderSide(color: Theme.of(context).primaryColor),
                   ),
-                  child: SingleChildScrollView(child: Text(_log)),
                 ),
               ],
             ),
@@ -428,52 +248,65 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
 
   Widget _buildStatusCard(bool isOpen, int round) {
     return Card(
-      color: isOpen ? Colors.green[50] : Colors.red[50],
+      elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: isOpen ? Colors.green[50] : Colors.red[50],
       child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
+        padding: const EdgeInsets.all(20.0),
+        child: Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(isOpen ? Icons.check_circle : Icons.remove_circle, 
-                  color: isOpen ? Colors.green : Colors.red, size: 30),
-                const SizedBox(width: 10),
-                Text(
-                  isOpen ? "MERCADO ABERTO" : "MERCADO FECHADO",
-                  style: TextStyle(
-                    fontSize: 22, 
-                    fontWeight: FontWeight.bold,
-                    color: isOpen ? Colors.green[800] : Colors.red[800],
-                  ),
-                ),
-              ],
+            Icon(
+              isOpen ? Icons.check_circle : Icons.do_not_disturb_on, 
+              size: 40, 
+              color: isOpen ? Colors.green : Colors.red
             ),
-            const SizedBox(height: 8),
-            Text("Rodada Atual: #$round", style: const TextStyle(fontSize: 16)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isOpen ? "MERCADO ABERTO" : "MERCADO FECHADO",
+                    style: TextStyle(
+                      fontSize: 20, 
+                      fontWeight: FontWeight.w900, 
+                      color: isOpen ? Colors.green[800] : Colors.red[800]
+                    ),
+                  ),
+                  Text("Rodada Atual: $round", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActionTile({
-    required IconData icon, 
-    required Color color, 
-    required String title, 
-    required String subtitle, 
-    required VoidCallback onTap
+  Widget _buildStepCard({
+    required String step,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required bool isAvailable,
+    required VoidCallback onTap,
   }) {
     return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 6),
+      elevation: isAvailable ? 2 : 0,
+      color: isAvailable ? Colors.white : Colors.grey[200],
+      margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
-        leading: CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: _isLoading ? null : onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: CircleAvatar(
+          backgroundColor: isAvailable ? color : Colors.grey[400],
+          child: Text(step, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+        title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: isAvailable ? Colors.black87 : Colors.grey[600])),
+        subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: isAvailable ? Colors.black54 : Colors.grey[500])),
+        trailing: Icon(icon, color: isAvailable ? color : Colors.grey[400]),
+        enabled: isAvailable,
+        onTap: isAvailable ? onTap : null,
       ),
     );
   }

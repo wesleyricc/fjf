@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../services/championship_service.dart';
-import '../services/player_service.dart'; // <-- NOVO SERVICE
+import '../services/player_service.dart'; 
 import '../models/player_model.dart'; 
 
 import '../screens/player_profile_screen.dart';
@@ -140,6 +140,8 @@ Future<void> _deletePlayer(BuildContext context, Player player, String seasonId)
   if (confirm == true && context.mounted) {
     try {
       final playerService = Provider.of<PlayerService>(context, listen: false);
+      final champService = Provider.of<ChampionshipService>(context, listen: false); // <-- Provider do Campeonato
+      
       final ref = FirebaseFirestore.instance
           .collection('championships')
           .doc(seasonId)
@@ -149,7 +151,16 @@ Future<void> _deletePlayer(BuildContext context, Player player, String seasonId)
       final snap = await ref.get();
       if (snap.exists) {
         final result = await playerService.deletePlayer(snap, seasonId);
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+        
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+          
+          // --- CORREÇÃO: Força atualização do cache do time ---
+          if (result.startsWith("Sucesso")) {
+            // Atualiza o cache local para refletir a exclusão imediatamente
+            await champService.fetchRoster(player.teamId, force: true);
+          }
+        }
       }
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e")));
