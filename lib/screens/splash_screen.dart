@@ -438,6 +438,21 @@ class _SponsorGridCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
+
+        if (service.isOffline && service.currentSeasonId.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('FJF')),
+            body: CustomEmptyState.offline(
+              onRetry: () => service.init(), // Força a reiniciar o app
+            ),
+          );
+        }
+
+        // Se estiver carregando pela primeira vez...
+        if (service.isLoading && service.currentSeasonId.isEmpty) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
         final sponsors = service.sponsors.where((s) {
            return s['location'] == 'grid_teams' && s['isActive'] == true;
         }).toList();

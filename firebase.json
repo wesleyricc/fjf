@@ -17,6 +17,9 @@
       }
     }
   },
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
   "hosting": {
     "public": "build/web",
     "ignore": [

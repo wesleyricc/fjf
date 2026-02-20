@@ -18,6 +18,7 @@ import 'admin_match_screen.dart';
 import 'match_stats_screen.dart';
 import 'edit_match_screen.dart';
 import 'match_roster_screen.dart';
+import 'team_detail_screen.dart';
 
 enum TournamentPhase { first, second }
 enum PlayoffStage { quarter_final, semifinal, third_place, final_game }
@@ -254,6 +255,12 @@ class _FixturesScreenState extends State<FixturesScreen> {
 
   // --- CARDS E SKELETON (MANTIDOS) ---
   Widget _buildMatchesContent(bool isLoading, List<MatchModel> matches, ChampionshipService service, AuthService authService, String seasonId) {
+    if (service.isOffline && matches.isEmpty) {
+      return CustomEmptyState.offline(
+        onRetry: () => service.fetchStaticData(forceRefresh: true),
+      );
+    }
+    
     if (isLoading && matches.isEmpty) {
       return ListView.separated(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
@@ -365,9 +372,42 @@ class _FixturesScreenState extends State<FixturesScreen> {
               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
               child: Row(
                 children: [
-                  Expanded(child: Column(children: [_buildShield(match.homeTeamShield), const SizedBox(height: 6), Text(match.homeTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))])),
+                  // --- TIME DA CASA ---
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                         final teams = Provider.of<ChampionshipService>(context, listen: false).teams.where((t) => t.id == match.homeTeamId);
+                         if(teams.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: teams.first, heroTag: 'home_shield_${match.id}')));
+                      },
+                      child: Column(
+                        children: [
+                          _buildShield(match.homeTeamShield, 'home_shield_${match.id}'), 
+                          const SizedBox(height: 6), 
+                          Text(match.homeTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
+                        ]
+                      ),
+                    ),
+                  ),
+                  
+                  // --- PLACAR ---
                   SizedBox(width: 80, child: Column(children: [Text(match.isPending ? "vs" : "${match.scoreHome ?? 0} - ${match.scoreAway ?? 0}", style: TextStyle(fontSize: match.isPending ? 16 : 28, fontWeight: FontWeight.w900, color: Colors.black87, fontFamily: 'Roboto')), if (match.penaltyScoreHome != null) Text("(${match.penaltyScoreHome} - ${match.penaltyScoreAway}) pen", style: const TextStyle(fontSize: 10, color: Colors.grey))])),
-                  Expanded(child: Column(children: [_buildShield(match.awayTeamShield), const SizedBox(height: 6), Text(match.awayTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))])),
+                  
+                  // --- TIME VISITANTE ---
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                         final teams = Provider.of<ChampionshipService>(context, listen: false).teams.where((t) => t.id == match.awayTeamId);
+                         if(teams.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: teams.first, heroTag: 'away_shield_${match.id}')));
+                      },
+                      child: Column(
+                        children: [
+                          _buildShield(match.awayTeamShield, 'away_shield_${match.id}'), 
+                          const SizedBox(height: 6), 
+                          Text(match.awayTeamName, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
+                        ]
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -382,14 +422,17 @@ class _FixturesScreenState extends State<FixturesScreen> {
     );
   }
 
-  Widget _buildShield(String url) {
+  Widget _buildShield(String url, String heroTag) {
     if (url.isEmpty) return const Icon(Icons.shield, size: 40, color: Colors.grey);
-    return SizedBox(
-      height: 45, width: 45,
-      child: CachedNetworkImage(
-        imageUrl: url, fit: BoxFit.contain,
-        placeholder: (_,__) => Container(color: Colors.grey[100]),
-        errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
+    return Hero(
+      tag: heroTag,
+      child: SizedBox(
+        height: 45, width: 45,
+        child: CachedNetworkImage(
+          imageUrl: url, fit: BoxFit.contain,
+          placeholder: (_,__) => Container(color: Colors.transparent),
+          errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
+        ),
       ),
     );
   }

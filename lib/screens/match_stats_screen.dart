@@ -295,7 +295,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildBigShield(data['team_home_shield']),
+                     _buildBigShield(data['team_home_shield'], 'home_shield_${widget.match.id}'),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20.0),
                         child: Text(
@@ -303,7 +303,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
                           style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
-                      _buildBigShield(data['team_away_shield']),
+                      _buildBigShield(data['team_away_shield'], 'away_shield_${widget.match.id}'),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -344,11 +344,14 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
     );
   }
 
-  Widget _buildBigShield(String? url) {
+  Widget _buildBigShield(String? url, String heroTag) {
     if (url == null || url.isEmpty) return const Icon(Icons.shield, size: 60, color: Colors.grey);
-    return SizedBox(
-      width: 60, height: 60,
-      child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain),
+    return Hero(
+      tag: heroTag,
+      child: SizedBox(
+        width: 60, height: 60,
+        child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain),
+      ),
     );
   }
 }

@@ -4,8 +4,8 @@ import '../services/fantasy_service.dart';
 import '../services/championship_service.dart'; 
 import '../models/fantasy_models.dart';
 import '../widgets/fantasy_player_card.dart';
-import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
-import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 
 class FantasyMarketScreen extends StatefulWidget {
   final bool isSelectionMode;
@@ -24,7 +24,6 @@ class FantasyMarketScreen extends StatefulWidget {
 }
 
 class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
-  // Padrão inicia como Goleiro
   String _selectedPosition = 'Goleiro'; 
   String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
@@ -118,7 +117,15 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                 searchTerm: _searchTerm,
               ),
               builder: (context, snapshot) {
-                // 1. Loading
+
+                // 1. ESTADO DE ERRO (OFFLINE)
+                if (snapshot.hasError) {
+                  return CustomEmptyState.offline(
+                    onRetry: () => setState(() {}), // O setState força a recarregar o widget
+                  );
+                }
+
+                // 2. LOADING
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return ListView.builder(
                     padding: const EdgeInsets.all(8),
@@ -133,7 +140,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                   players = players.where((p) => p.position == _selectedPosition).toList();
                 }
 
-                // 2. Empty State
+                // 3. EMPTY STATE
                 if (players.isEmpty) {
                   return CustomEmptyState(
                     icon: Icons.search_off,
@@ -144,7 +151,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                   );
                 }
 
-                // 3. Data
+                // 4. LISTA DE DADOS
                 return ListView.builder(
                   padding: const EdgeInsets.all(8),
                   itemCount: players.length,
@@ -179,7 +186,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     );
   }
 
-  // --- SKELETON DO JOGADOR ---
   Widget _buildSkeletonPlayerCard() {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -187,20 +193,20 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
       child: Padding(
         padding: const EdgeInsets.all(12.0),
         child: Row(
-          children: [
-            const ShimmerEffect.circular(size: 56), // Avatar
-            const SizedBox(width: 16),
+          children: const [
+            ShimmerEffect.circular(size: 56), 
+            SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  ShimmerEffect.rectangular(height: 16, width: 150), // Nome
+                children: [
+                  ShimmerEffect.rectangular(height: 16, width: 150), 
                   SizedBox(height: 8),
-                  ShimmerEffect.rectangular(height: 12, width: 80), // Posição
+                  ShimmerEffect.rectangular(height: 12, width: 80), 
                 ],
               ),
             ),
-            const ShimmerEffect.rectangular(height: 20, width: 60), // Preço
+            ShimmerEffect.rectangular(height: 20, width: 60), 
           ],
         ),
       ),

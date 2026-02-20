@@ -12,7 +12,8 @@ import '../models/team_model.dart';
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../widgets/standings_table_widget.dart'; 
+import '../widgets/standings_table_widget.dart';
+import '../widgets/ui/custom_empty_state.dart'; 
 
 class StandingsScreen extends StatefulWidget {
   const StandingsScreen({super.key});
@@ -86,9 +87,11 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
             ),
           ),
           drawer: const AppDrawer(),
-          body: _cachedTeams.isEmpty
-              ? const Center(child: Text("Nenhuma equipe encontrada."))
-              : TabBarView(
+          body: (service.isOffline && _cachedTeams.isEmpty)
+              ? CustomEmptyState.offline(onRetry: () => service.fetchStaticData(forceRefresh: true))
+              : _cachedTeams.isEmpty
+                  ? const Center(child: Text("Nenhuma equipe encontrada."))
+                  : TabBarView(
                   controller: _tabController,
                   children: [
                     _buildOfficialTab(),

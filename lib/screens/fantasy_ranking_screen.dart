@@ -5,8 +5,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/fantasy_service.dart';
 import '../models/fantasy_models.dart';
 import '../services/fantasy_auth_service.dart';
-import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
-import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 
 class FantasyRankingScreen extends StatefulWidget {
   const FantasyRankingScreen({super.key});
@@ -51,11 +51,16 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen> with Single
   }
 }
 
-class _RankingList extends StatelessWidget {
+class _RankingList extends StatefulWidget {
   final bool isGlobal;
 
   const _RankingList({required this.isGlobal});
 
+  @override
+  State<_RankingList> createState() => _RankingListState();
+}
+
+class _RankingListState extends State<_RankingList> {
   @override
   Widget build(BuildContext context) {
     final fantasyService = Provider.of<FantasyService>(context, listen: false);
@@ -63,9 +68,17 @@ class _RankingList extends StatelessWidget {
     final currentUserId = authService.user?.uid;
 
     return StreamBuilder<List<FantasyTeam>>(
-      stream: fantasyService.streamRanking(isGlobal: isGlobal),
+      stream: fantasyService.streamRanking(isGlobal: widget.isGlobal),
       builder: (context, snapshot) {
-        // 1. Loading
+        
+        // 1. ESTADO OFFLINE/ERRO (Ajuste Novo)
+        if (snapshot.hasError) {
+          return CustomEmptyState.offline(
+            onRetry: () => setState(() {}), // O setState força o Stream a reconectar
+          );
+        }
+
+        // 2. LOADING
         if (snapshot.connectionState == ConnectionState.waiting) {
           return ListView.builder(
             padding: const EdgeInsets.all(10),
@@ -74,7 +87,7 @@ class _RankingList extends StatelessWidget {
           );
         }
 
-        // 2. Empty
+        // 3. EMPTY STATE
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const CustomEmptyState(
             icon: Icons.emoji_events_outlined,
@@ -85,6 +98,7 @@ class _RankingList extends StatelessWidget {
 
         final teams = snapshot.data!;
 
+        // 4. LISTA REAL
         return ListView.builder(
           itemCount: teams.length,
           padding: const EdgeInsets.only(bottom: 20, top: 10),
@@ -93,14 +107,13 @@ class _RankingList extends StatelessWidget {
             final int rank = index + 1;
             final bool isMe = team.userId == currentUserId;
 
-            return _buildRankingCard(context, rank, team, isMe, isGlobal);
+            return _buildRankingCard(context, rank, team, isMe, widget.isGlobal);
           },
         );
       },
     );
   }
 
-  // --- SKELETON ITEM ---
   Widget _buildSkeletonItem() {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -109,30 +122,27 @@ class _RankingList extends StatelessWidget {
         padding: const EdgeInsets.all(16.0),
         child: Row(
           children: const [
-            ShimmerEffect.rectangular(height: 20, width: 30), // Posição
+            ShimmerEffect.rectangular(height: 20, width: 30), 
             SizedBox(width: 12),
-            ShimmerEffect.circular(size: 40), // Escudo
+            ShimmerEffect.circular(size: 40), 
             SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ShimmerEffect.rectangular(height: 16, width: 120), // Nome Time
+                  ShimmerEffect.rectangular(height: 16, width: 120), 
                   SizedBox(height: 6),
-                  ShimmerEffect.rectangular(height: 12, width: 80), // Nome Dono
+                  ShimmerEffect.rectangular(height: 12, width: 80), 
                 ],
               ),
             ),
-            ShimmerEffect.rectangular(height: 20, width: 40), // Pontos
+            ShimmerEffect.rectangular(height: 20, width: 40), 
           ],
         ),
       ),
     );
   }
 
-  // ... (Restante do _buildRankingCard, _buildTeamLogo, _getShieldColor, _getShieldIcon mantidos do original) ...
-  // [CÓDIGO OMITIDO PARA BREVIDADE - MANTER O ORIGINAL DOS HELPERS]
-  
   Widget _buildRankingCard(BuildContext context, int rank, FantasyTeam team, bool isMe, bool isGlobal) {
     Color? rankColor;
     IconData? rankIcon; 

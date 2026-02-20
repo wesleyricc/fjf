@@ -1,0 +1,61 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "fantasy_market_players",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "position", "order": "ASCENDING" },
+        { "fieldPath": "current_price", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "news",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sponsors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "photo_albums",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "year", "order": "DESCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "photo_sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "event_name", "order": "ASCENDING" },
+        { "fieldPath": "taken_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "player_stats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "team_id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "disciplinary_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "playerId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

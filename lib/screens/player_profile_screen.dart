@@ -14,8 +14,9 @@ import '../utils/custom_cache_manager.dart';
 
 class PlayerProfileScreen extends StatefulWidget {
   final String playerId;
+  final String? heroTag;
 
-  const PlayerProfileScreen({super.key, required this.playerId});
+  const PlayerProfileScreen({super.key, required this.playerId, this.heroTag});
 
   @override
   State<PlayerProfileScreen> createState() => _PlayerProfileScreenState();
@@ -146,7 +147,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                       ),
                       Center(
                         child: Hero(
-                          tag: 'player_photo_${player.id}', 
+                          tag: widget.heroTag ?? 'player_photo_${player.id}',
                           child: CircleAvatar(
                             radius: 90,
                             backgroundColor: Colors.white24,

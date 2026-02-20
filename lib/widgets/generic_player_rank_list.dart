@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
@@ -9,12 +8,12 @@ import '../screens/player_profile_screen.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/rank_indicator.dart'; 
 import '../models/player_model.dart';
-import '../widgets/ui/custom_empty_state.dart'; // <-- NOVO
+import '../widgets/ui/custom_empty_state.dart'; 
 
-class GenericPlayerRankList extends StatelessWidget {
+class GenericPlayerRankList extends StatefulWidget {
   final List<Player> players;
   final String emptyMessage;
-  final IconData? emptyIcon; // <-- NOVO
+  final IconData? emptyIcon; 
   final String? statField;
   final String? statLabel;
   final bool isStatusList;
@@ -31,9 +30,16 @@ class GenericPlayerRankList extends StatelessWidget {
     this.isSuspendedTab = false,
   });
 
+  @override
+  State<GenericPlayerRankList> createState() => _GenericPlayerRankListState();
+}
+
+class _GenericPlayerRankListState extends State<GenericPlayerRankList> {
+  // --- CONTROLE DE PAGINAÇÃO ---
+  int _displayLimit = 10;
+
   Future<void> _showClearSuspensionDialog(BuildContext context, Player player) async {
-    // ... (Código do diálogo mantido igual ao original) ...
-     final playerName = player.name;
+    final playerName = player.name;
     final int currentYellows = player.yellowCards;
     final int currentReds = player.redCards;
 
@@ -76,9 +82,24 @@ class GenericPlayerRankList extends StatelessWidget {
 
                   await playerRef.update(updateData);
                   
-                  final logQuery = await FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('disciplinary_log').where('playerId', isEqualTo: player.id).orderBy('timestamp', descending: true).limit(1).get();
+                  final logQuery = await FirebaseFirestore.instance
+                      .collection('championships')
+                      .doc(seasonId)
+                      .collection('disciplinary_log')
+                      .where('playerId', isEqualTo: player.id)
+                      .orderBy('timestamp', descending: true)
+                      .limit(1)
+                      .get();
+                      
                   if (logQuery.docs.isNotEmpty) {
-                    await logQuery.docs.first.reference.update({'return_date': FieldValue.serverTimestamp()});
+                    // CORREÇÃO: Usando a referência limpa e Timestamp.now() em vez de serverTimestamp
+                    final docId = logQuery.docs.first.id;
+                    await FirebaseFirestore.instance
+                        .collection('championships')
+                        .doc(seasonId)
+                        .collection('disciplinary_log')
+                        .doc(docId)
+                        .update({'return_date': Timestamp.now()});
                   }
 
                   if(dialogContext.mounted) Navigator.of(dialogContext).pop();
@@ -99,25 +120,48 @@ class GenericPlayerRankList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // --- ESTADO VAZIO BONITO ---
-    if (players.isEmpty) {
+    if (widget.players.isEmpty) {
       return CustomEmptyState(
-        icon: emptyIcon ?? Icons.person_off,
+        icon: widget.emptyIcon ?? Icons.person_off,
         title: "Nada por aqui",
-        message: emptyMessage,
+        message: widget.emptyMessage,
       );
     }
 
-    final int displayCount = players.length > 50 ? 50 : players.length;
+    // Lógica de Paginação
+    final bool hasMore = widget.players.length > _displayLimit;
+    final int displayCount = hasMore ? _displayLimit : widget.players.length;
+    final int itemCount = displayCount + (hasMore ? 1 : 0);
 
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 20, top: 8),
-      itemCount: displayCount,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
-        final player = players[index];
+        // Botão Carregar Mais
+        if (index == displayCount) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
+            child: OutlinedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _displayLimit += 10;
+                });
+              },
+              icon: const Icon(Icons.add),
+              label: const Text("CARREGAR MAIS", style: TextStyle(fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                foregroundColor: Theme.of(context).primaryColor,
+                side: BorderSide(color: Theme.of(context).primaryColor),
+              ),
+            ),
+          );
+        }
+
+        final player = widget.players[index];
         final rank = index + 1;
 
-        if (index < 3 && !isStatusList) {
+        if (index < 3 && !widget.isStatusList) {
           return _buildTopRankItem(context, player, rank);
         }
 
@@ -131,25 +175,24 @@ class GenericPlayerRankList extends StatelessWidget {
     );
   }
 
-  // ... (Resto dos widgets auxiliares _buildTopRankItem e _buildCompactPlayerItem mantidos iguais) ...
   Widget _buildTopRankItem(BuildContext context, Player player, int rank) {
     String val = '';
-    if (statField == 'goals') val = '${player.goals}';
-    else if (statField == 'assists') val = '${player.assists}';
-    else if (statField == 'goalsConceded') val = '${player.goalsConceded}';
-    else if (statField == 'motmAwards') val = '${player.motmAwards}';
-    else if (statField == 'totalYellowCards') val = '${player.totalYellowCards}';
-    else if (statField == 'totalRedCards') val = '${player.totalRedCards}';
+    if (widget.statField == 'goals') val = '${player.goals}';
+    else if (widget.statField == 'assists') val = '${player.assists}';
+    else if (widget.statField == 'goalsConceded') val = '${player.goalsConceded}';
+    else if (widget.statField == 'motmAwards') val = '${player.motmAwards}';
+    else if (widget.statField == 'totalYellowCards') val = '${player.totalYellowCards}';
+    else if (widget.statField == 'totalRedCards') val = '${player.totalRedCards}';
 
     IconData icon = Icons.star;
-    if (statLabel == 'Gols') icon = Icons.sports_soccer;
-    else if (statLabel == 'Ass') icon = Icons.assistant;
-    else if (statLabel == 'GS') icon = Icons.pan_tool_outlined;
-    else if (statLabel == 'CA' || statLabel == 'CV') icon = Icons.style;
+    if (widget.statLabel == 'Gols') icon = Icons.sports_soccer;
+    else if (widget.statLabel == 'Ass') icon = Icons.assistant;
+    else if (widget.statLabel == 'GS') icon = Icons.pan_tool_outlined;
+    else if (widget.statLabel == 'CA' || widget.statLabel == 'CV') icon = Icons.style;
 
     Color? customColor;
-    if (statLabel == 'CA') customColor = Colors.amber[800];
-    if (statLabel == 'CV') customColor = Colors.red;
+    if (widget.statLabel == 'CA') customColor = Colors.amber[800];
+    if (widget.statLabel == 'CV') customColor = Colors.red;
 
     return RankHighlightCard(
       rank: rank,
@@ -157,11 +200,11 @@ class GenericPlayerRankList extends StatelessWidget {
       subtitle: player.teamName,
       imageUrl: player.photoUrl,
       statValue: val,
-      statLabel: statLabel ?? '',
+      statLabel: widget.statLabel ?? '',
       statIcon: icon,
       customColor: customColor,
       isPlayer: true,
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: player.id))),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: player.id, heroTag: 'rank_player_${player.id}'))),
     );
   }
 
@@ -169,9 +212,9 @@ class GenericPlayerRankList extends StatelessWidget {
     final isAdmin = Provider.of<AuthService>(context).isAuthenticated;
 
     Widget trailing;
-    if (isStatusList) {
+    if (widget.isStatusList) {
       List<Widget> icons = [];
-      if (isSuspendedTab) {
+      if (widget.isSuspendedTab) {
         if (player.redCards > 0) icons.add(const Icon(Icons.style, color: Colors.red, size: 18));
         if (player.yellowCards >= (AdminService.suspensionYellowCards > 0 ? AdminService.suspensionYellowCards : 3)) {
            if (icons.isNotEmpty) icons.add(const SizedBox(width: 4));
@@ -183,22 +226,23 @@ class GenericPlayerRankList extends StatelessWidget {
       trailing = Row(mainAxisSize: MainAxisSize.min, children: icons);
     } else {
       String val = '';
-      if (statField == 'goals') val = '${player.goals}';
-      else if (statField == 'assists') val = '${player.assists}';
-      else if (statField == 'goalsConceded') val = '${player.goalsConceded}';
-      else if (statField == 'motmAwards') val = '${player.motmAwards}';
-      else if (statField == 'totalYellowCards') val = '${player.totalYellowCards}';
-      else if (statField == 'totalRedCards') val = '${player.totalRedCards}';
+      if (widget.statField == 'goals') val = '${player.goals}';
+      else if (widget.statField == 'assists') val = '${player.assists}';
+      else if (widget.statField == 'goalsConceded') val = '${player.goalsConceded}';
+      else if (widget.statField == 'motmAwards') val = '${player.motmAwards}';
+      else if (widget.statField == 'totalYellowCards') val = '${player.totalYellowCards}';
+      else if (widget.statField == 'totalRedCards') val = '${player.totalRedCards}';
 
       trailing = Text(
-        "$val ${statLabel ?? ''}", 
+        "$val ${widget.statLabel ?? ''}", 
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)
       );
     }
 
     return ListTile(
       visualDensity: VisualDensity.compact,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      // --- OTIMIZAÇÃO: Removido Hero e CircleAvatar/Imagens (MUITO MAIS LEVE) ---
       leading: RankIndicator(rank: rank, size: 28, fontSize: 12),
       title: Text(
         player.name,
@@ -208,24 +252,14 @@ class GenericPlayerRankList extends StatelessWidget {
           fontStyle: player.isStaff ? FontStyle.italic : FontStyle.normal
         ),
       ),
-      subtitle: Row(
-        children: [
-          if (player.teamShieldUrl.isNotEmpty) ...[
-            CachedNetworkImage(
-              imageUrl: player.teamShieldUrl, width: 14, height: 14, fit: BoxFit.contain,
-              memCacheWidth: 42,
-              errorWidget: (_,__,___)=>const Icon(Icons.shield, size: 14, color: Colors.grey),
-            ),
-            const SizedBox(width: 4),
-          ],
-          Flexible(child: Text(player.teamName, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey[600]))),
-        ],
-      ),
+      // --- OTIMIZAÇÃO: Removida a logo do time. Apenas texto. ---
+      subtitle: Text(player.teamName, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       trailing: trailing,
       onTap: () {
-        if (isSuspendedTab && isAdmin) {
+        if (widget.isSuspendedTab && isAdmin) {
           _showClearSuspensionDialog(context, player);
         } else {
+          // Navega normalmente, mas sem a tag Hero animada para esses itens leves
           Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: player.id)));
         }
       },

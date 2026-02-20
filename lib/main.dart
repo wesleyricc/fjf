@@ -14,6 +14,7 @@ import 'screens/fantasy_admin_control_screen.dart';
 import 'screens/fantasy_history_screen.dart';
 import 'screens/fantasy_ranking_screen.dart';
 import 'screens/fantasy_rules_screen.dart';
+import 'screens/teams_list_screen.dart';
 import 'theme/app_theme.dart';
 
 // Services
@@ -82,6 +83,12 @@ void main() async {
     if (environment == 'test') debugPrint("⚠️ AMBIENTE DE TESTE ⚠️");
 
     await Firebase.initializeApp(options: firebaseOptions);
+
+    if (kIsWeb) {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: false, // Desliga o IndexedDB corrompido na Web
+      );
+    }
     
     // --- LÓGICA DE PERSISTÊNCIA INTELIGENTE ---
     // Mobile: Sempre ATIVADA (!kIsWeb é true).
@@ -178,6 +185,7 @@ class FjfApp extends StatelessWidget {
           '/': (ctx) => const SplashScreen(),
           '/fixtures': (ctx) => const FixturesScreen(),
           '/standings': (ctx) => const StandingsScreen(),
+          '/teams': (ctx) => const TeamsListScreen(),
           '/team-stats': (ctx) => const TeamStatsScreen(),
           '/player-stats': (ctx) => const PlayerStatsScreen(),
           '/suspension-history': (ctx) => const SuspensionHistoryScreen(),

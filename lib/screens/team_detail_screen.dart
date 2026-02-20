@@ -23,8 +23,9 @@ import '../utils/custom_cache_manager.dart';
 
 class TeamDetailScreen extends StatefulWidget {
   final Team team;
+  final String? heroTag;
 
-  const TeamDetailScreen({super.key, required this.team});
+  const TeamDetailScreen({super.key, required this.team, this.heroTag});
 
   @override
   State<TeamDetailScreen> createState() => _TeamDetailScreenState();
@@ -357,7 +358,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 40.0),
                           child: Hero(
-                            tag: 'team_shield_${widget.team.id}',
+                            tag: widget.heroTag ?? 'team_shield_${widget.team.id}',
                             child: SizedBox(
                               height: 100, width: 100,
                               child: CachedNetworkImage(

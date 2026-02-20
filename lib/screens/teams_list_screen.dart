@@ -10,14 +10,21 @@ import '../models/team_model.dart';
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
-import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
 import 'edit_team_screen.dart';
 
-class TeamsListScreen extends StatelessWidget {
+class TeamsListScreen extends StatefulWidget {
   const TeamsListScreen({super.key});
 
+  @override
+  State<TeamsListScreen> createState() => _TeamsListScreenState();
+}
+
+class _TeamsListScreenState extends State<TeamsListScreen> {
+  
+  // --- LÓGICA DE ADMIN (MANTIDA) ---
   Future<void> _handleDelete(BuildContext context, Team team, String seasonId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -33,7 +40,6 @@ class TeamsListScreen extends StatelessWidget {
 
     if (confirm == true && context.mounted) {
       final teamService = Provider.of<TeamService>(context, listen: false);
-      
       try {
         final docRef = FirebaseFirestore.instance
             .collection('championships')
@@ -67,7 +73,6 @@ class TeamsListScreen extends StatelessWidget {
       
       if (docSnap.exists && context.mounted) {
         final teamModel = Team.fromFirestore(docSnap);
-        
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (ctx) => EditTeamScreen(team: teamModel))
         );
@@ -90,11 +95,12 @@ class TeamsListScreen extends StatelessWidget {
         final bool isLoading = champService.isLoading;
 
         return Scaffold(
+          backgroundColor: Colors.grey[100], // Fundo levemente cinza para destacar os cards
           appBar: AppBar(
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Equipes', style: TextStyle(fontSize: 18)),
+                const Text('Equipes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
               ],
             ),
@@ -107,10 +113,10 @@ class TeamsListScreen extends StatelessWidget {
             ],
           ),
           drawer: const AppDrawer(),
-          body: _buildBody(context, teams, isLoading, champService),
+          body: _buildBody(context, teams, isLoading, champService, authService.isAuthenticated, seasonId),
           bottomNavigationBar: const SponsorBannerRotator(),
           floatingActionButton: authService.isAuthenticated
-              ? FloatingActionButton(
+              ? FloatingActionButton.extended(
                   onPressed: () async {
                     await Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const EditTeamScreen(team: null)));
                     if (context.mounted) {
@@ -118,7 +124,8 @@ class TeamsListScreen extends StatelessWidget {
                     }
                   },
                   backgroundColor: Theme.of(context).primaryColor,
-                  child: const Icon(Icons.add, color: Colors.white),
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text("Nova Equipe", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )
               : null,
         );
@@ -126,139 +133,170 @@ class TeamsListScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBody(BuildContext context, List<Team> teams, bool isLoading, ChampionshipService service) {
-    // 1. Estado de Loading com Shimmer (Melhor que spinner)
-    if (isLoading && teams.isEmpty) {
-      return ListView.builder(
-        padding: const EdgeInsets.all(8),
-        itemCount: 8, // Simula 8 itens
-        itemBuilder: (context, index) => _buildSkeletonItem(),
+  Widget _buildBody(BuildContext context, List<Team> teams, bool isLoading, ChampionshipService service, bool isAdmin, String seasonId) {
+    // 1. ESTADO OFFLINE
+    if (service.isOffline && teams.isEmpty) {
+      return CustomEmptyState.offline(
+        onRetry: () => service.fetchStaticData(forceRefresh: true),
       );
     }
 
-    // 2. Estado Vazio (Bonito)
+    // 2. ESTADO DE LOADING (SHIMMER GRID)
+    if (isLoading && teams.isEmpty) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, 
+          crossAxisSpacing: 16, 
+          mainAxisSpacing: 16, 
+          childAspectRatio: 0.85
+        ),
+        itemCount: 8,
+        itemBuilder: (context, index) => _buildSkeletonCard(),
+      );
+    }
+
+    // 3. ESTADO VAZIO
     if (teams.isEmpty) {
       return CustomEmptyState(
-        icon: Icons.groups_outlined,
+        icon: Icons.shield_outlined,
         title: "Nenhuma equipe",
-        message: "Não encontramos equipes cadastradas nesta temporada ainda.",
+        message: "As equipes desta temporada ainda estão sendo cadastradas.",
         buttonText: "Tentar Novamente",
         onButtonPressed: () => service.fetchStaticData(forceRefresh: true),
       );
     }
 
-    // 3. Lista Real
+    // 4. LISTA REAL (GRID NOVO)
     return RefreshIndicator(
       onRefresh: () => service.fetchStaticData(forceRefresh: true),
-      child: ListView.builder(
-        padding: const EdgeInsets.only(bottom: 80, top: 8),
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+        physics: const AlwaysScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, 
+          crossAxisSpacing: 16, 
+          mainAxisSpacing: 16, 
+          childAspectRatio: 0.85 // Proporção ideal para foto + texto
+        ),
         itemCount: teams.length,
         itemBuilder: (context, index) {
           final team = teams[index];
-          return _buildTeamCard(context, team, service.currentSeasonId);
+          return _buildTeamGridCard(context, team, seasonId, isAdmin);
         },
       ),
     );
   }
 
-  // --- COMPONENTES VISUAIS ---
+  // --- NOVO CARD VISUAL ---
+  Widget _buildTeamGridCard(BuildContext context, Team team, String seasonId, bool isAdmin) {
+    final String heroTag = 'team_shield_${team.id}'; // Tag para o Hero Animation
 
-  Widget _buildSkeletonItem() {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
+      elevation: 3,
+      shadowColor: Colors.black.withOpacity(0.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias, // Mantém o banner inferior dentro das bordas redondas
+      child: InkWell(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: heroTag))),
+        child: Stack(
           children: [
-            const ShimmerEffect.circular(size: 40), // Avatar
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  ShimmerEffect.rectangular(height: 16, width: 150), // Título
-                  SizedBox(height: 8),
-                  ShimmerEffect.rectangular(height: 12, width: 100), // Subtítulo
-                ],
+            // 1. ÁREA DA IMAGEM DO ESCUDO
+            Positioned.fill(
+              bottom: 50, // Deixa 50px pro texto embaixo
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Hero(
+                  tag: heroTag,
+                  child: team.shieldUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: team.shieldUrl,
+                          fit: BoxFit.contain,
+                          placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 60, color: Colors.grey),
+                        )
+                      : const Icon(Icons.shield, size: 60, color: Colors.grey),
+                ),
               ),
             ),
+
+            // 2. BANNER DE TEXTO INFERIOR
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(top: BorderSide(color: Colors.grey.shade100)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      team.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                    ),
+                    if (team.shortName.isNotEmpty)
+                      Text(
+                        team.shortName,
+                        style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.w600),
+                        maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 3. MENU DE ADMIN (Três Pontinhos)
+            if (isAdmin)
+              Positioned(
+                top: 0, right: 0,
+                child: PopupMenuButton<String>(
+                  icon: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.8), shape: BoxShape.circle),
+                    child: const Icon(Icons.more_vert, color: Colors.black87, size: 20),
+                  ),
+                  onSelected: (val) {
+                    if (val == 'edit') _handleEdit(context, team, seasonId);
+                    if (val == 'delete') _handleDelete(context, team, seasonId);
+                  },
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue, size: 20), SizedBox(width: 8), Text('Editar')])),
+                    const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, color: Colors.red, size: 20), SizedBox(width: 8), Text('Excluir')])),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTeamCard(BuildContext context, Team team, String seasonId) {
-    final authService = Provider.of<AuthService>(context, listen: false);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-      elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => TeamDetailScreen(team: team))),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-          child: Row(
-            children: [
-              // Logo com Hero Animation
-              Hero(
-                tag: 'team_shield_${team.id}',
-                child: SizedBox(
-                  width: 50, height: 50,
-                  child: CachedNetworkImage(
-                    imageUrl: team.shieldUrl,
-                    placeholder: (_,__) => Container(color: Colors.grey[100], child: const Icon(Icons.shield, color: Colors.grey)),
-                    errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              
-              // Textos
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      team.name, 
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)
-                    ),
-                    if (team.shortName.isNotEmpty)
-                      Text(
-                        team.shortName, 
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)
-                      ),
-                  ],
-                ),
-              ),
-              
-              // Ações ou Seta
-              if (authService.isAuthenticated)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit, size: 20, color: Colors.blue), 
-                      onPressed: () => _handleEdit(context, team, seasonId)
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red), 
-                      onPressed: () => _handleDelete(context, team, seasonId)
-                    ),
-                  ],
-                )
-              else
-                Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
-            ],
+  // --- SKELETON PARA O GRID ---
+  Widget _buildSkeletonCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200)
+      ),
+      child: Column(
+        children: [
+          const Expanded(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: ShimmerEffect.circular(size: double.infinity), // Bola do escudo
+            )
           ),
-        ),
+          Container(
+            height: 50, 
+            padding: const EdgeInsets.all(12),
+            child: const ShimmerEffect.rectangular(height: 14, width: double.infinity) // Barra de texto
+          ),
+        ],
       ),
     );
   }

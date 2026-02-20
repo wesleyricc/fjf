@@ -61,6 +61,22 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
         // Clona a lista para processamento
         final List<Player> allPlayers = List.from(service.allPlayers);
 
+        // --- ESTADO OFFLINE ---
+        if (service.isOffline && allPlayers.isEmpty) {
+           return Scaffold(
+            appBar: AppBar(title: const Text("Estatísticas")),
+            drawer: const AppDrawer(),
+            body: CustomEmptyState.offline(
+              onRetry: () {
+                setState(() => _isFetching = true);
+                service.fetchAllPlayers(force: true).then((_) {
+                   if(mounted) setState(() => _isFetching = false);
+                });
+              }
+            ),
+           );
+        }
+
         // --- LÓGICA DE LOADING VISUAL ---
         if (_isFetching && allPlayers.isEmpty) {
            return Scaffold(

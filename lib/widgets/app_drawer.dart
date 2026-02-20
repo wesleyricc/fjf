@@ -72,6 +72,7 @@ class AppDrawer extends StatelessWidget {
                     _buildSectionHeader(context, "COMPETIÇÃO"),
                     _buildDrawerItem(context, Icons.calendar_month, 'Tabela de Jogos', '/fixtures'),
                     _buildDrawerItem(context, Icons.leaderboard, 'Classificação', '/standings'),
+                    _buildDrawerItem(context, Icons.shield, 'Equipes', '/teams'),
 
                     _buildSectionHeader(context, "DADOS & ESTATÍSTICAS"),
                     _buildDrawerItem(context, Icons.query_stats, 'Estatísticas de Equipes', '/team-stats'),

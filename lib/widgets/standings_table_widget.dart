@@ -54,7 +54,6 @@ class StandingsTableWidget extends StatelessWidget {
           final standing = entry.value; 
           final team = standing.team;   
 
-          // Cores
           Color? rowColor;
           if (isModel2) {
             if (index <= 2) {
@@ -77,14 +76,18 @@ class StandingsTableWidget extends StatelessWidget {
               DataCell(
                 InkWell(
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team)));
+                    // --- AJUSTE: Passagem de Hero Tag ---
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: 'standings_shield_${team.id}')));
                   },
                   child: Row(
                     children: [
                       if (team.shieldUrl.isNotEmpty)
-                        CachedNetworkImage(
-                          imageUrl: team.shieldUrl, width: 20, height: 20, fit: BoxFit.contain, 
-                          errorWidget: (_,__,___) => const Icon(Icons.shield, size: 18)
+                        Hero(
+                          tag: 'standings_shield_${team.id}', // --- AJUSTE: Hero Tag ---
+                          child: CachedNetworkImage(
+                            imageUrl: team.shieldUrl, width: 20, height: 20, fit: BoxFit.contain, 
+                            errorWidget: (_,__,___) => const Icon(Icons.shield, size: 18)
+                          ),
                         ),
                       const SizedBox(width: 6),
                       

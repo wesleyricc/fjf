@@ -8,8 +8,8 @@ import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
 import '../models/fantasy_models.dart';
 import '../viewmodels/fantasy_home_viewmodel.dart'; 
-import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
-import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 import 'fantasy_edit_team_screen.dart';
 
 class FantasyHomeScreen extends StatefulWidget {
@@ -25,7 +25,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   Widget build(BuildContext context) {
     return Consumer<FantasyAuthService>(
       builder: (context, authService, _) {
-        // Estado de Verificação de Auth (rápido)
         if (authService.isLoading) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
@@ -35,14 +34,27 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             final champService = Provider.of<ChampionshipService>(context, listen: false);
-            // Inicia carregamento dos dados do Fantasy
             Provider.of<FantasyHomeViewModel>(context, listen: false)
                 .init(authService.user!.uid, champService.currentSeasonId);
         });
 
         return Consumer<FantasyHomeViewModel>(
           builder: (context, vm, child) {
-            // 1. ERRO CRÍTICO
+            // 1. ESTADO OFFLINE (Ajuste Novo)
+            if (vm.isOffline && vm.team == null) {
+              return Scaffold(
+                appBar: AppBar(title: const Text("Fantasy FJF")),
+                body: CustomEmptyState.offline(
+                  onRetry: () => vm.init(
+                    authService.user!.uid, 
+                    Provider.of<ChampionshipService>(context, listen: false).currentSeasonId, 
+                    force: true
+                  ),
+                ),
+              );
+            }
+
+            // 2. ERRO CRÍTICO
             if (vm.errorMessage != null && vm.team == null) {
               return Scaffold(
                 appBar: AppBar(title: const Text("Fantasy FJF")),
@@ -51,17 +63,21 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                   title: "Erro ao carregar",
                   message: vm.errorMessage!,
                   buttonText: "Tentar Novamente",
-                  onButtonPressed: () => vm.init(authService.user!.uid, Provider.of<ChampionshipService>(context, listen: false).currentSeasonId),
+                  onButtonPressed: () => vm.init(
+                    authService.user!.uid, 
+                    Provider.of<ChampionshipService>(context, listen: false).currentSeasonId,
+                    force: true
+                  ),
                 ),
               );
             }
 
-            // 2. LOADING (Skeleton)
+            // 3. LOADING (Skeleton)
             if (vm.isLoading || vm.team == null) {
               return _buildLoadingSkeleton(context);
             }
 
-            // 3. CONTEÚDO
+            // 4. CONTEÚDO
             return _buildDashboardView(context, authService, vm);
           },
         );
@@ -69,14 +85,13 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  // --- SKELETON LOADING (Imita o Layout Real) ---
+  // --- SKELETON LOADING ---
   Widget _buildLoadingSkeleton(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Meu Time"), elevation: 0),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Header Curvo
             Container(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
               decoration: BoxDecoration(
@@ -85,37 +100,35 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
               ),
               child: Column(
                 children: [
-                  const Center(child: ShimmerEffect.rectangular(height: 24, width: 150)), // Badge Status
+                  const Center(child: ShimmerEffect.rectangular(height: 24, width: 150)), 
                   const SizedBox(height: 20),
                   Row(children: const [
-                    ShimmerEffect.circular(size: 64), // Avatar
+                    ShimmerEffect.circular(size: 64), 
                     SizedBox(width: 16),
                     Expanded(child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ShimmerEffect.rectangular(height: 20, width: double.infinity), // Nome Time
+                        ShimmerEffect.rectangular(height: 20, width: double.infinity), 
                         SizedBox(height: 8),
-                        ShimmerEffect.rectangular(height: 14, width: 100), // Técnico
+                        ShimmerEffect.rectangular(height: 14, width: 100), 
                       ],
                     )),
                   ]),
                 ],
               ),
             ),
-            // Stats e Ações
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
                   Row(children: const [
-                    Expanded(child: ShimmerEffect.rectangular(height: 80)), // Card Patrimônio
+                    Expanded(child: ShimmerEffect.rectangular(height: 80)), 
                     SizedBox(width: 12),
-                    Expanded(child: ShimmerEffect.rectangular(height: 80)), // Card Pontos
+                    Expanded(child: ShimmerEffect.rectangular(height: 80)), 
                   ]),
                   const SizedBox(height: 24),
                   const Align(alignment: Alignment.centerLeft, child: ShimmerEffect.rectangular(height: 20, width: 200)),
                   const SizedBox(height: 12),
-                  // Grid de Ações
                   GridView.count(
                     shrinkWrap: true,
                     crossAxisCount: 2,
@@ -259,7 +272,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     return FutureBuilder<List<FantasyPlayer>>(
       future: Provider.of<FantasyService>(context, listen: false).getPlayersByIds(vm.team!.lineupPlayerIds),
       builder: (context, playerSnapshot) {
-        // Shimmer local para a lista de preview
         if (!playerSnapshot.hasData) {
            return Column(children: List.generate(3, (i) => const Padding(padding: EdgeInsets.only(bottom: 8), child: ShimmerEffect.rectangular(height: 50))));
         }
@@ -301,8 +313,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   }
 
   // --- WIDGETS AUXILIARES DO DASHBOARD ---
-  // (Mantidos do código original, pois são componentes de UI puros)
-  
   Widget _buildMiniPlayerRow(FantasyPlayer player, bool isCaptain, {double score = 0.0, bool showScore = false, String label = ""}) {
     final double finalScore = isCaptain ? score * 2 : score;
     final Color scoreColor = finalScore > 0 ? Colors.green[700]! : (finalScore < 0 ? Colors.red[700]! : Colors.grey);

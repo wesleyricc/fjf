@@ -176,6 +176,13 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       Color? color
     }
   ) {
+
+    if (champService.isOffline && teams.isEmpty) {
+      return CustomEmptyState.offline(
+        onRetry: () => champService.fetchStaticData(forceRefresh: true),
+      );
+    }
+
     // 1. Loading State (Shimmer)
     if (isLoading && teams.isEmpty) {
       return ListView.builder(
@@ -272,18 +279,22 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                 if (team.shieldUrl.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(right: 8.0),
-                    child: CachedNetworkImage(
-                      imageUrl: team.shieldUrl, 
-                      width: 25, height: 25, 
-                      fit: BoxFit.contain,
-                      errorWidget: (_,__,___) => const Icon(Icons.shield, size: 25, color: Colors.grey),
+                    child: Hero(
+                      tag: 'stat_shield_${team.id}_$suffix', // --- AJUSTE: Hero Tag Dinâmica ---
+                      child: CachedNetworkImage(
+                        imageUrl: team.shieldUrl, 
+                        width: 25, height: 25, 
+                        fit: BoxFit.contain,
+                        placeholder: (_,__) => Container(color: Colors.transparent),
+                        errorWidget: (_,__,___) => const Icon(Icons.shield, size: 25, color: Colors.grey),
+                      ),
                     ),
                   ),
                 Expanded(child: Text(team.name, overflow: TextOverflow.ellipsis)),
               ],
             ),
             trailing: trailing,
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team))),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: 'stat_shield_${team.id}_$suffix'))), // --- AJUSTE NAVEGAÇÃO ---
           );
         },
       ),
