@@ -9,7 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
+import '../services/voting_service.dart'; // <-- NOVO IMPORT
 import '../models/team_model.dart'; 
+import '../models/poll_model.dart'; // <-- NOVO IMPORT
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; 
@@ -17,9 +19,10 @@ import '../widgets/home_live_video_card.dart';
 import '../widgets/home_news_feed.dart';
 import '../widgets/home_footer.dart';
 import '../widgets/photo_store_banner.dart';
-import '../widgets/ui/shimmer_effect.dart';     // <-- Import UI
-import '../widgets/ui/custom_empty_state.dart';  // <-- Import UI
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
+import '../services/fantasy_auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -59,7 +62,6 @@ class _SplashScreenState extends State<SplashScreen> {
     
     SplashScreen.hasShownOpenAd = true;
     
-    // Pequeno delay para garantir que a UI montou
     await Future.delayed(const Duration(seconds: 1));
     if (mounted) _showAdDialog();
   }
@@ -174,6 +176,79 @@ class _SplashScreenState extends State<SplashScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // --- COMPONENTE DO BANNER DE VOTAÇÃO (CENÁRIO ÚNICO) ---
+  Widget _buildVotingBanner(BuildContext context, Poll poll, String seasonId) {
+    final user = Provider.of<FantasyAuthService>(context, listen: false).user;
+
+    return FutureBuilder<bool>(
+      // Verifica no banco se este usuário já votou
+      future: user != null ? VotingService().hasUserVoted(seasonId, poll.id, user.uid) : Future.value(false),
+      builder: (context, snapshot) {
+        final hasVoted = snapshot.data ?? false;
+
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              // Quando volta da tela de votação, atualiza a Home para checar o novo status
+              onTap: () => Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {})),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.purple.shade900, Colors.deepPurpleAccent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(color: Colors.purple.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+                  ],
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.amber.withOpacity(0.2), shape: BoxShape.circle),
+                    child: const Icon(Icons.how_to_vote, color: Colors.amber, size: 28),
+                  ),
+                  title: const Text(
+                    "VOTAÇÃO ABERTA!", 
+                    style: TextStyle(color: Colors.amber, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)
+                  ),
+                  subtitle: Text(
+                    poll.title, 
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: hasVoted
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(20)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.check_circle, color: Colors.white, size: 16),
+                              SizedBox(width: 4),
+                              Text("VOTADO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11)),
+                            ],
+                          ),
+                        )
+                      : Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(20)),
+                          child: Text("VOTAR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Colors.purple.shade900)),
+                        ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
     );
   }
 
@@ -323,8 +398,118 @@ class _SplashScreenState extends State<SplashScreen> {
                         ),
 
                       const SizedBox(height: 10),
+                      
+                      // --- BANNER DE VOTAÇÃO (INTELIGENTE: ÚNICO OU MÚLTIPLO) ---
+                      if (seasonId.isNotEmpty)
+                        StreamBuilder<List<Poll>>(
+                          stream: VotingService().streamActivePolls(seasonId),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return const SizedBox.shrink(); // Fica invisível se não tiver votação
+                            }
+                            
+                            final activePolls = snapshot.data!;
+                            
+                            // CENÁRIO 1: Apenas 1 votação ativa (Banner Gigante Clássico)
+                            if (activePolls.length == 1) {
+                              return _buildVotingBanner(context, activePolls.first, seasonId);
+                            }
+                            
+                            // CENÁRIO 2: Múltiplas votações (Painel de Premiações Fixo com Checklist)
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.purple.shade900.withOpacity(0.3)),
+                                boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 4))],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(colors: [Colors.purple.shade900, Colors.deepPurpleAccent]),
+                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "PREMIAÇÕES ABERTAS (${activePolls.length})", 
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1, fontSize: 13)
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  
+                                  ListView.separated(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    padding: EdgeInsets.zero,
+                                    itemCount: activePolls.length,
+                                    separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade200),
+                                    itemBuilder: (context, index) {
+                                      final poll = activePolls[index];
+                                      final user = Provider.of<FantasyAuthService>(context, listen: false).user;
+
+                                      return FutureBuilder<bool>(
+                                        future: user != null ? VotingService().hasUserVoted(seasonId, poll.id, user.uid) : Future.value(false),
+                                        builder: (context, voteSnapshot) {
+                                          final hasVoted = voteSnapshot.data ?? false;
+
+                                          return ListTile(
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                            leading: CircleAvatar(
+                                              radius: 18,
+                                              backgroundColor: hasVoted ? Colors.green.withOpacity(0.1) : Colors.amber.withOpacity(0.2),
+                                              child: Icon(hasVoted ? Icons.check : Icons.how_to_vote, color: hasVoted ? Colors.green : Colors.amber, size: 18),
+                                            ),
+                                            title: Text(poll.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: hasVoted ? Colors.grey : Colors.black87)),
+                                            subtitle: Text(poll.category.replaceAll('_', ' ').toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                            trailing: hasVoted
+                                                ? Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                                    decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: const [
+                                                        Icon(Icons.check_circle, color: Colors.green, size: 14),
+                                                        SizedBox(width: 4),
+                                                        Text("VOTADO", style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 10)),
+                                                      ],
+                                                    ),
+                                                  )
+                                                : ElevatedButton(
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: Colors.amber,
+                                                      foregroundColor: Colors.purple.shade900,
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                                      minimumSize: const Size(60, 32),
+                                                      elevation: 0,
+                                                    ),
+                                                    onPressed: () => Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {})),
+                                                    child: const Text("VOTAR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
+                                                  ),
+                                            onTap: () => Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {})),
+                                          );
+                                        }
+                                      );
+                                    },
+                                  )
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      // ------------------------------------------------
+
                       HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
-                      const SizedBox(height: 10),      
+                      const SizedBox(height: 4),      
                       // Fantasy Card
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -443,12 +628,11 @@ class _SponsorGridCard extends StatelessWidget {
           return Scaffold(
             appBar: AppBar(title: const Text('FJF')),
             body: CustomEmptyState.offline(
-              onRetry: () => service.init(), // Força a reiniciar o app
+              onRetry: () => service.init(), 
             ),
           );
         }
 
-        // Se estiver carregando pela primeira vez...
         if (service.isLoading && service.currentSeasonId.isEmpty) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
@@ -509,7 +693,6 @@ class _SponsorGridCard extends StatelessWidget {
   }
 }
 
-// --- REFATORADO: GRID DE TIMES COM SHIMMER ---
 class _TeamsSliverGrid extends StatelessWidget {
   const _TeamsSliverGrid();
 
@@ -518,7 +701,6 @@ class _TeamsSliverGrid extends StatelessWidget {
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
         
-        // 1. LOADING: Mostra Grid de Shimmer
         if (service.isLoading && service.teams.isEmpty) {
           return SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -529,14 +711,13 @@ class _TeamsSliverGrid extends StatelessWidget {
             ),
             delegate: SliverChildBuilderDelegate(
               (context, index) => _buildSkeletonItem(),
-              childCount: 6, // 6 esqueletos
+              childCount: 6, 
             ),
           );
         }
         
         final teams = service.teams;
 
-        // 2. EMPTY STATE: Mostra mensagem amigável
         if (teams.isEmpty) {
           return SliverToBoxAdapter(
             child: CustomEmptyState(
@@ -552,7 +733,6 @@ class _TeamsSliverGrid extends StatelessWidget {
         final bool insertSponsor = (teams.length == 8);
         final int itemCount = insertSponsor ? 9 : teams.length;
 
-        // 3. CONTEÚDO REAL
         return SliverGrid(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3, 
@@ -615,7 +795,6 @@ class _TeamsSliverGrid extends StatelessWidget {
     );
   }
 
-  // Widget Skeleton para o Grid
   Widget _buildSkeletonItem() {
     return Container(
       decoration: BoxDecoration(

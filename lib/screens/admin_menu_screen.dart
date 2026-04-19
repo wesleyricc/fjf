@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/admin_service.dart';
-import '../services/championship_service.dart'; // Import necessário para o seasonId
+import '../services/championship_service.dart'; 
 import 'fantasy_admin_control_screen.dart'; 
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
@@ -16,6 +16,8 @@ import 'manage_seasons_screen.dart';
 import '../services/migration_service.dart';
 import 'admin_upload_photo_screen.dart';
 import 'tournament_format_screen.dart'; 
+import 'admin_polls_screen.dart'; // <-- NOVO IMPORT ADICIONADO AQUI
+import 'admin_sponsors_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -120,7 +122,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
   }
 
   Future<void> _showChangePasswordDialog() async {
-    // (Mantido igual)
     final authService = Provider.of<AuthService>(context, listen: false);
     final String? currentAdminUsername = authService.adminUsername;
 
@@ -191,7 +192,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  // --- CORREÇÃO AQUI: Salvar na Temporada Atual ---
   Future<void> _showSetDefaultViewDialog() async {
     bool isDialogSaving = false;
     
@@ -256,7 +256,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   onPressed: () async {
                     setDialogState(() => isDialogSaving = true);
                     try {
-                      // --- CORREÇÃO: Caminho aninhado da temporada ---
                       await _firestore
                           .collection('championships')
                           .doc(seasonId)
@@ -289,7 +288,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  // --- BUILD UI (Mantido igual) ---
+  // --- BUILD UI ---
 
   @override
   Widget build(BuildContext context) {
@@ -350,6 +349,16 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: Column(
                     children: [
+                      // ---> AQUI ESTÁ O NOVO BOTÃO DE VOTAÇÕES <---
+                      _buildActionTile(
+                        icon: Icons.how_to_vote,
+                        color: Colors.amber[700]!,
+                        title: "Gerenciar Votações",
+                        subtitle: "Enquetes e Craques",
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminPollsScreen())),
+                      ),
+                      const Divider(height: 1, indent: 56),
+                      // ---------------------------------------------
                       _buildActionTile(
                         icon: Icons.newspaper,
                         color: Colors.indigo,
@@ -357,6 +366,14 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         subtitle: "Feed e banners da Home",
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminMediaScreen())),
                       ),
+                      _buildActionTile(
+                        icon: Icons.monetization_on,
+                        color: Colors.green.shade700,
+                        title: "Patrocinadores (Banners)",
+                        subtitle: "Controle de Cotas e Espaços",
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminSponsorsScreen())),
+                      ),
+                      const Divider(height: 1, indent: 56),
                       const Divider(height: 1, indent: 56),
                       _buildActionTile(
                         icon: Icons.camera_enhance,

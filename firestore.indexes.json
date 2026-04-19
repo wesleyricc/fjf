@@ -20,6 +20,14 @@
       "collectionGroup": "sponsors",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "location", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sponsors",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "isActive", "order": "ASCENDING" },
         { "fieldPath": "order", "order": "ASCENDING" }
       ]

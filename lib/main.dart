@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:flutter/foundation.dart'; // Necessário para kIsWeb e kReleaseMode
+import 'package:flutter/foundation.dart'; 
 
 // Configurações
 import 'firebase_options.dart'; 
@@ -60,6 +60,10 @@ import 'screens/about_history_screen.dart';
 import 'screens/about_board_screen.dart';
 import 'screens/season_summary_screen.dart';
 
+// ---> IMPORTS DO SISTEMA DE VOTAÇÃO <---
+import 'screens/voting_screen.dart';
+import 'models/poll_model.dart';
+
 void _logFirestoreIndexError(Object error) {
   final e = error.toString();
   if (e.contains('failed-precondition') || e.contains('requires an index')) {
@@ -91,9 +95,6 @@ void main() async {
     }
     
     // --- LÓGICA DE PERSISTÊNCIA INTELIGENTE ---
-    // Mobile: Sempre ATIVADA (!kIsWeb é true).
-    // Web Produção (Release): ATIVADA (kReleaseMode é true).
-    // Web Desenvolvimento (Debug): DESATIVADA (evita o erro "Unexpected state").
     const bool enablePersistence = !kIsWeb || kReleaseMode;
 
     FirebaseFirestore.instance.settings = const Settings(
@@ -204,6 +205,17 @@ class FjfApp extends StatelessWidget {
           '/about-board': (ctx) => const AboutBoardScreen(),
           '/season-summary': (ctx) => const SeasonSummaryScreen(),
         },
+        // ---> NAVEGAÇÃO DINÂMICA DA VOTAÇÃO AQUI <---
+        onGenerateRoute: (settings) {
+          if (settings.name == '/voting') {
+            final pollArgs = settings.arguments as Poll;
+            return MaterialPageRoute(
+              builder: (context) => VotingScreen(poll: pollArgs),
+            );
+          }
+          return null; 
+        },
+        // ---------------------------------------------
       ),
     );
   }
