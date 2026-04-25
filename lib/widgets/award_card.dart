@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../models/award_model.dart'; //
+import '../models/award_model.dart'; 
+import '../utils/custom_cache_manager.dart';
 
 class AwardCard extends StatelessWidget {
   final Award award;
@@ -19,7 +20,6 @@ class AwardCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     IconData icon;
-    // Define o ícone com base na categoria
     switch (award.category) {
       case 'goalkeeper': icon = Icons.sports_handball; break;
       case 'coach': icon = Icons.psychology; break;
@@ -27,7 +27,6 @@ class AwardCard extends StatelessWidget {
       case 'player': default: icon = Icons.person; break;
     }
 
-    // Cor de destaque para prêmios (Amber/Dourado) para manter consistência
     final Color headerColor = Colors.amber[800]!;
 
     return Stack(
@@ -40,7 +39,6 @@ class AwardCard extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // 1. HEADER (Título e Ícone no Topo)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -65,12 +63,17 @@ class AwardCard extends StatelessWidget {
                 
                 const SizedBox(height: 10),
 
-                // 2. FOTO / AVATAR (Agora abaixo do título)
+                // ---> OTIMIZAÇÃO: LIMITADOR DE RAM NO PROVIDER <---
                 CircleAvatar(
                   radius: 30,
                   backgroundColor: headerColor.withOpacity(0.1),
                   backgroundImage: (award.imageUrl != null && award.imageUrl!.isNotEmpty)
-                      ? CachedNetworkImageProvider(award.imageUrl!)
+                      ? CachedNetworkImageProvider(
+                          award.imageUrl!,
+                          cacheManager: PlayerCacheManager.instance,
+                          maxWidth: 150,
+                          maxHeight: 150,
+                        )
                       : null,
                   child: (award.imageUrl == null || award.imageUrl!.isEmpty)
                       ? Icon(icon, size: 28, color: headerColor)
@@ -79,7 +82,6 @@ class AwardCard extends StatelessWidget {
                 
                 const SizedBox(height: 8),
                 
-                // 3. NOME DO VENCEDOR
                 Text(
                   award.winnerName,
                   style: const TextStyle(
@@ -92,7 +94,6 @@ class AwardCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 
-                // 4. SUBTÍTULO (Time ou Cargo)
                 if (award.subtitle != null && award.subtitle!.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -108,7 +109,6 @@ class AwardCard extends StatelessWidget {
           ),
         ),
         
-        // Botão de Menu (Admin)
         if (isAdmin)
           Positioned(
             right: 4,

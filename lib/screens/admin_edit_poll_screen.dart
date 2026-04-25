@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/championship_service.dart';
+import '../services/voting_service.dart';
 import '../models/poll_model.dart';
 import '../models/player_model.dart';
 
@@ -42,7 +42,6 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
     _selectedCategory = widget.poll?.category ?? 'craque_rodada';
     _isActive = widget.poll?.isActive ?? false;
 
-    // Carrega todos os jogadores para a busca de indicados (caso ainda não estejam no cache)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ChampionshipService>(context, listen: false).fetchAllPlayers();
     });
@@ -54,7 +53,7 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
 
     try {
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-      final coll = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('polls');
+      final votingService = VotingService();
 
       final data = {
         'title': _titleController.text.trim(),
@@ -64,16 +63,16 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
       };
 
       if (widget.poll == null) {
-        await coll.add(data);
+        await votingService.createPoll(seasonId, data);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Votação criada!')));
-          Navigator.pop(context); // Volta para a lista após criar
+          Navigator.pop(context); 
         }
       } else {
-        await coll.doc(widget.poll!.id).update(data);
+        await votingService.updatePoll(seasonId, widget.poll!.id, data);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Votação atualizada!')));
-          Navigator.pop(context); // <-- AGORA VOLTA PARA A LISTA APÓS EDITAR TAMBÉM!
+          Navigator.pop(context); 
         }
       }
     } catch (e) {
@@ -85,14 +84,13 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
 
   Future<void> _removeNominee(String nomineeId) async {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    await FirebaseFirestore.instance
-        .collection('championships')
-        .doc(seasonId)
-        .collection('polls')
-        .doc(widget.poll!.id)
-        .collection('nominees')
-        .doc(nomineeId)
-        .delete();
+    await VotingService().removeNominee(seasonId, widget.poll!.id, nomineeId);
+  }
+
+  Future<void> _deletePoll() async {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    await VotingService().deletePoll(seasonId, widget.poll!.id);
+    if (mounted) Navigator.pop(context);
   }
 
   void _showAddNomineeModal() {
@@ -107,6 +105,8 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.poll == null ? 'Nova Votação' : 'Editar Votação'),
@@ -114,11 +114,7 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
           if (widget.poll != null)
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.redAccent),
-              onPressed: () async {
-                 final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-                 await FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('polls').doc(widget.poll!.id).delete();
-                 if (mounted) Navigator.pop(context);
-              },
+              onPressed: _deletePoll,
             )
         ],
       ),
@@ -127,7 +123,6 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- FORMULÁRIO PRINCIPAL ---
             Form(
               key: _formKey,
               child: Column(
@@ -172,7 +167,6 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
 
             const SizedBox(height: 40),
 
-            // --- LISTA DE INDICADOS ---
             if (widget.poll == null)
               const Center(child: Text("Salve a votação primeiro para adicionar os indicados.", style: TextStyle(color: Colors.grey)))
             else ...[
@@ -180,7 +174,7 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Atletas Indicados', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  if (widget.poll != null && !['craque_galera', 'melhor_treinador', 'selecao_campeonato'].contains(widget.poll!.category))
+                  if (!['craque_galera', 'melhor_treinador', 'selecao_campeonato'].contains(widget.poll!.category))
                     TextButton.icon(
                       onPressed: _showAddNomineeModal,
                       icon: const Icon(Icons.person_add),
@@ -189,18 +183,12 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
                 ],
               ),
               const Divider(),
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('championships')
-                    .doc(Provider.of<ChampionshipService>(context, listen: false).currentSeasonId)
-                    .collection('polls')
-                    .doc(widget.poll!.id)
-                    .collection('nominees')
-                    .orderBy('vote_count', descending: true)
-                    .snapshots(),
+              // OTIMIZADO: Substituído QuerySnapshot genérico pelo Stream Tipado
+              StreamBuilder<List<Nominee>>(
+                stream: VotingService().streamNominees(seasonId, widget.poll!.id),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  final nominees = snapshot.data!.docs;
+                  final nominees = snapshot.data!;
 
                   if (nominees.isEmpty) return const Padding(padding: EdgeInsets.all(16), child: Text("Nenhum indicado cadastrado."));
 
@@ -209,7 +197,7 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: nominees.length,
                     itemBuilder: (context, index) {
-                      final nom = Nominee.fromFirestore(nominees[index]);
+                      final nom = nominees[index];
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundImage: nom.playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(nom.playerPhotoUrl) : null,
@@ -231,7 +219,6 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
   }
 }
 
-// --- COMPONENTE DE BUSCA (MODAL) ---
 class _PlayerSearchModal extends StatefulWidget {
   final String pollId;
   const _PlayerSearchModal({required this.pollId});
@@ -245,20 +232,17 @@ class _PlayerSearchModalState extends State<_PlayerSearchModal> {
 
   Future<void> _addSelectedPlayer(Player player) async {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
-    await FirebaseFirestore.instance
-        .collection('championships')
-        .doc(seasonId)
-        .collection('polls')
-        .doc(widget.pollId)
-        .collection('nominees')
-        .add({
+    
+    final data = {
       'player_id': player.id,
       'player_name': player.name,
       'player_photo_url': player.photoUrl,
       'team_name': player.teamName,
       'team_shield_url': player.teamShieldUrl,
       'vote_count': 0,
-    });
+    };
+
+    await VotingService().addNominee(seasonId, widget.pollId, data);
     if (mounted) Navigator.pop(context);
   }
 

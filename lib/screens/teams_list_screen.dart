@@ -24,7 +24,6 @@ class TeamsListScreen extends StatefulWidget {
 
 class _TeamsListScreenState extends State<TeamsListScreen> {
   
-  // --- LÓGICA DE ADMIN (MANTIDA) ---
   Future<void> _handleDelete(BuildContext context, Team team, String seasonId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -95,7 +94,7 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
         final bool isLoading = champService.isLoading;
 
         return Scaffold(
-          backgroundColor: Colors.grey[100], // Fundo levemente cinza para destacar os cards
+          backgroundColor: Colors.grey[100],
           appBar: AppBar(
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -134,14 +133,12 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
   }
 
   Widget _buildBody(BuildContext context, List<Team> teams, bool isLoading, ChampionshipService service, bool isAdmin, String seasonId) {
-    // 1. ESTADO OFFLINE
     if (service.isOffline && teams.isEmpty) {
       return CustomEmptyState.offline(
         onRetry: () => service.fetchStaticData(forceRefresh: true),
       );
     }
 
-    // 2. ESTADO DE LOADING (SHIMMER GRID)
     if (isLoading && teams.isEmpty) {
       return GridView.builder(
         padding: const EdgeInsets.all(16),
@@ -156,7 +153,6 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
       );
     }
 
-    // 3. ESTADO VAZIO
     if (teams.isEmpty) {
       return CustomEmptyState(
         icon: Icons.shield_outlined,
@@ -167,7 +163,6 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
       );
     }
 
-    // 4. LISTA REAL (GRID NOVO)
     return RefreshIndicator(
       onRefresh: () => service.fetchStaticData(forceRefresh: true),
       child: GridView.builder(
@@ -177,7 +172,7 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
           crossAxisCount: 2, 
           crossAxisSpacing: 16, 
           mainAxisSpacing: 16, 
-          childAspectRatio: 0.85 // Proporção ideal para foto + texto
+          childAspectRatio: 0.85 
         ),
         itemCount: teams.length,
         itemBuilder: (context, index) {
@@ -188,22 +183,20 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
     );
   }
 
-  // --- NOVO CARD VISUAL ---
   Widget _buildTeamGridCard(BuildContext context, Team team, String seasonId, bool isAdmin) {
-    final String heroTag = 'team_shield_${team.id}'; // Tag para o Hero Animation
+    final String heroTag = 'team_shield_${team.id}';
 
     return Card(
       elevation: 3,
       shadowColor: Colors.black.withOpacity(0.2),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      clipBehavior: Clip.antiAlias, // Mantém o banner inferior dentro das bordas redondas
+      clipBehavior: Clip.antiAlias, 
       child: InkWell(
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: heroTag))),
         child: Stack(
           children: [
-            // 1. ÁREA DA IMAGEM DO ESCUDO
             Positioned.fill(
-              bottom: 50, // Deixa 50px pro texto embaixo
+              bottom: 50, 
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Hero(
@@ -212,6 +205,10 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
                       ? CachedNetworkImage(
                           imageUrl: team.shieldUrl,
                           fit: BoxFit.contain,
+                          // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
+                          // Escudos muito grandes agora são reduzidos para não travar o Scroll do Grid
+                          memCacheHeight: 300, 
+                          memCacheWidth: 300,
                           placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                           errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 60, color: Colors.grey),
                         )
@@ -220,7 +217,6 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
               ),
             ),
 
-            // 2. BANNER DE TEXTO INFERIOR
             Positioned(
               bottom: 0, left: 0, right: 0,
               child: Container(
@@ -249,7 +245,6 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
               ),
             ),
 
-            // 3. MENU DE ADMIN (Três Pontinhos)
             if (isAdmin)
               Positioned(
                 top: 0, right: 0,
@@ -275,7 +270,6 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
     );
   }
 
-  // --- SKELETON PARA O GRID ---
   Widget _buildSkeletonCard() {
     return Container(
       decoration: BoxDecoration(
@@ -288,13 +282,13 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
           const Expanded(
             child: Padding(
               padding: EdgeInsets.all(24.0),
-              child: ShimmerEffect.circular(size: double.infinity), // Bola do escudo
+              child: ShimmerEffect.circular(size: double.infinity), 
             )
           ),
           Container(
             height: 50, 
             padding: const EdgeInsets.all(12),
-            child: const ShimmerEffect.rectangular(height: 14, width: double.infinity) // Barra de texto
+            child: const ShimmerEffect.rectangular(height: 14, width: double.infinity)
           ),
         ],
       ),

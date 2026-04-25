@@ -5,7 +5,8 @@
       "http://localhost:3000",
       "https://fjfapp.web.app",
       "https://fjf-app.web.app",
-      "https://fjfapp-test.web.app"
+      "https://fjfapp-test.web.app",
+	    "https://acefjf.web.app"
     ],
     "method": ["GET", "PUT", "POST", "OPTIONS"],
     "maxAgeSeconds": 3600,

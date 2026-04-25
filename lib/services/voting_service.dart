@@ -5,6 +5,10 @@ import '../models/player_model.dart';
 class VotingService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // =======================================================
+  // LEITURA (STREAMS)
+  // =======================================================
+
   Stream<List<Poll>> streamActivePolls(String seasonId) {
     if (seasonId.isEmpty) return Stream.value([]);
     return _db
@@ -12,6 +16,17 @@ class VotingService {
         .doc(seasonId)
         .collection('polls')
         .where('is_active', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => Poll.fromFirestore(doc)).toList());
+  }
+
+  // NOVO: Usado pelo Painel Admin para listar todas as votações
+  Stream<List<Poll>> streamAllPolls(String seasonId) {
+    if (seasonId.isEmpty) return Stream.value([]);
+    return _db
+        .collection('championships')
+        .doc(seasonId)
+        .collection('polls')
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => Poll.fromFirestore(doc)).toList());
   }
@@ -40,7 +55,34 @@ class VotingService {
     return doc.exists;
   }
 
-  // --- VOTAÇÃO SIMPLES E LIVRE ---
+  // =======================================================
+  // ADMINISTRAÇÃO (CRUD)
+  // =======================================================
+
+  Future<void> createPoll(String seasonId, Map<String, dynamic> data) async {
+    await _db.collection('championships').doc(seasonId).collection('polls').add(data);
+  }
+
+  Future<void> updatePoll(String seasonId, String pollId, Map<String, dynamic> data) async {
+    await _db.collection('championships').doc(seasonId).collection('polls').doc(pollId).update(data);
+  }
+
+  Future<void> deletePoll(String seasonId, String pollId) async {
+    await _db.collection('championships').doc(seasonId).collection('polls').doc(pollId).delete();
+  }
+
+  Future<void> addNominee(String seasonId, String pollId, Map<String, dynamic> data) async {
+    await _db.collection('championships').doc(seasonId).collection('polls').doc(pollId).collection('nominees').add(data);
+  }
+
+  Future<void> removeNominee(String seasonId, String pollId, String nomineeId) async {
+    await _db.collection('championships').doc(seasonId).collection('polls').doc(pollId).collection('nominees').doc(nomineeId).delete();
+  }
+
+  // =======================================================
+  // PROCESSAMENTO DE VOTOS
+  // =======================================================
+
   Future<String> castVote({
     required String seasonId,
     required String pollId,
@@ -56,9 +98,6 @@ class VotingService {
       final nomineeRef = pollRef.collection('nominees').doc(nomineeId);
 
       return await _db.runTransaction((transaction) async {
-        // =======================================================
-        // 1. LEITURAS OBRIGATÓRIAS (TODOS OS GETS PRIMEIRO)
-        // =======================================================
         final voteSnapshot = await transaction.get(voteRef);
         final nomineeSnapshot = await transaction.get(nomineeRef);
 
@@ -66,16 +105,11 @@ class VotingService {
           return "Você já votou nesta categoria!";
         }
 
-        // =======================================================
-        // 2. GRAVAÇÕES E ATUALIZAÇÕES
-        // =======================================================
-        // Grava o Voto do Usuário
         transaction.set(voteRef, {
           'nominee_id': nomineeId,
           'timestamp': FieldValue.serverTimestamp(),
         });
 
-        // Atualiza ou Cria o Indicado
         if (nomineeSnapshot.exists) {
           transaction.update(nomineeRef, {
             'vote_count': FieldValue.increment(1),
@@ -99,7 +133,6 @@ class VotingService {
     }
   }
 
-  // --- VOTAÇÃO DA SELEÇÃO (DRAFT - 11 JOGADORES) ---
   Future<String> castDraftVote({
     required String seasonId,
     required String pollId,
@@ -111,31 +144,22 @@ class VotingService {
       final voteRef = pollRef.collection('votes').doc(userId);
 
       return await _db.runTransaction((transaction) async {
-        // =======================================================
-        // 1. LEITURAS OBRIGATÓRIAS (TODOS OS GETS PRIMEIRO)
-        // =======================================================
         final voteSnapshot = await transaction.get(voteRef);
         if (voteSnapshot.exists) {
           return "Você já escalou sua Seleção do Campeonato!";
         }
 
-        // Lê o status de todos os 11 jogadores selecionados antes de gravar
         Map<String, DocumentSnapshot> nomineesSnaps = {};
         for (var player in selectedPlayers) {
           final nomineeRef = pollRef.collection('nominees').doc(player.id);
           nomineesSnaps[player.id] = await transaction.get(nomineeRef);
         }
 
-        // =======================================================
-        // 2. GRAVAÇÕES E ATUALIZAÇÕES
-        // =======================================================
-        // Grava o "Recibo" de voto do Usuário
         transaction.set(voteRef, {
           'type': 'draft_selection',
           'timestamp': FieldValue.serverTimestamp(),
         });
 
-        // Loop pelos 11 selecionados para computar +1 voto para cada
         for (var player in selectedPlayers) {
           final nomineeRef = pollRef.collection('nominees').doc(player.id);
           final nomineeSnap = nomineesSnaps[player.id]!;

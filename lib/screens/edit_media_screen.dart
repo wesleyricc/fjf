@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart'; 
 import '../services/championship_service.dart';
-import '../services/media_service.dart'; // <-- NOVO SERVICE
+import '../services/media_service.dart'; 
 
 class EditMediaScreen extends StatefulWidget {
   final DocumentSnapshot? mediaDoc; 
@@ -20,15 +20,14 @@ class EditMediaScreen extends StatefulWidget {
 
 class _EditMediaScreenState extends State<EditMediaScreen> {
   final _formKey = GlobalKey<FormState>();
-  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.firebasestorage.app");
+  // OTIMIZAÇÃO: Usa a instância padrão do Storage
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  // Controladores
   late TextEditingController _titleController;
   late TextEditingController _targetUrlController;
   late TextEditingController _orderController;
   late TextEditingController _authorController;
 
-  // Estado da Imagem
   Uint8List? _pickedImageBytes;
   String _pickedImageName = '';
   String? _existingImageUrl;

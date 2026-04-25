@@ -14,7 +14,6 @@ class RankHighlightCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool isPlayer;
   
-  // Novo parâmetro para informações extras (ex: detalhe dos cartões)
   final Widget? extraInfoWidget;
 
   const RankHighlightCard({
@@ -29,7 +28,7 @@ class RankHighlightCard extends StatelessWidget {
     required this.onTap,
     this.customColor,
     this.isPlayer = false,
-    this.extraInfoWidget, // <-- Novo
+    this.extraInfoWidget, 
   });
 
   @override
@@ -104,12 +103,12 @@ class RankHighlightCard extends StatelessWidget {
                   
                   const SizedBox(width: 12),
 
-                  // 2. Imagem (Lógica Diferenciada para Time vs Jogador)
+                  // 2. Imagem
                   Hero(
                     tag: 'rank_${rank}_$title',
                     child: isPlayer
-                        ? _buildPlayerImage() // Jogador: Círculo com foto
-                        : _buildTeamImage(),  // Time: Logo solta (contain)
+                        ? _buildPlayerImage() 
+                        : _buildTeamImage(),  
                   ),
 
                   const SizedBox(width: 16),
@@ -165,7 +164,7 @@ class RankHighlightCard extends StatelessWidget {
                           color: textColor.withOpacity(0.7),
                         ),
                       ),
-                      // Exibe o widget extra se fornecido (Ex: Detalhe de cartões)
+                      // Exibe o widget extra se fornecido
                       if (extraInfoWidget != null) ...[
                         const SizedBox(height: 4),
                         extraInfoWidget!,
@@ -181,7 +180,7 @@ class RankHighlightCard extends StatelessWidget {
     );
   }
 
-  // Lógica Visual para Jogador (Mantém Círculo)
+  // Lógica Visual para Jogador (Com Limite de RAM)
   Widget _buildPlayerImage() {
     return CircleAvatar(
       radius: 30,
@@ -193,6 +192,9 @@ class RankHighlightCard extends StatelessWidget {
             ? CachedNetworkImageProvider(
                 imageUrl,
                 cacheManager: PlayerCacheManager.instance,
+                // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
+                maxHeight: 150, 
+                maxWidth: 150,
               )
             : null,
         child: imageUrl.isEmpty
@@ -202,12 +204,11 @@ class RankHighlightCard extends StatelessWidget {
     );
   }
 
-  // Lógica Visual para Time (Logo inteira, sem corte)
+  // Lógica Visual para Time (Com Limite de RAM)
   Widget _buildTeamImage() {
     return Container(
       width: 60,
       height: 60,
-      // Sombra sutil para destacar o logo do fundo colorido
       decoration: BoxDecoration(
          shape: BoxShape.circle,
          boxShadow: [
@@ -221,7 +222,10 @@ class RankHighlightCard extends StatelessWidget {
       child: imageUrl.isNotEmpty
           ? CachedNetworkImage(
               imageUrl: imageUrl,
-              fit: BoxFit.contain, // Garante que o escudo apareça inteiro
+              fit: BoxFit.contain, 
+              // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
+              memCacheHeight: 150,
+              memCacheWidth: 150,
               placeholder: (c, u) => const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
               errorWidget: (c, u, e) => const Icon(Icons.shield, size: 30, color: Colors.white54),
             )

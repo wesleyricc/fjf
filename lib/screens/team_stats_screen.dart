@@ -2,18 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-// Services & Models
 import '../services/championship_service.dart';
 import '../services/admin_service.dart';
 import '../models/team_model.dart'; 
 
-// Widgets & Screens
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/rank_indicator.dart';
 import '../widgets/rank_highlight_card.dart';
-import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
-import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO 
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
 
 class TeamStatsScreen extends StatefulWidget {
@@ -24,7 +22,6 @@ class TeamStatsScreen extends StatefulWidget {
 }
 
 class _TeamStatsScreenState extends State<TeamStatsScreen> {
-  // Controle do Toggle (False = 1ª Fase, True = Geral)
   bool _showOverall = false; 
 
   Future<void> _showHelp(BuildContext context) async {
@@ -39,32 +36,22 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 15), 
                 children: <TextSpan>[
                   const TextSpan(text: 'Esta tela mostra os rankings e o status disciplinar das equipes.\n\n'),
-                  
                   const TextSpan(text: 'Melhor Ataque:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Ranking de equipes com mais gols.\n\n'),
-
                   const TextSpan(text: 'Melhor Defesa:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Ranking de equipes com menos gols sofridos.\n\n'),
-
                   const TextSpan(text: 'Cartões Amarelos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Soma-se o total de cartões amarelos que a equipe levou e que contabilizam para a pontuação disciplinar. Conforme definido no regulamento do campeonato e pela CBFS. Ex: 2CA e 1CV no mesmo jogo, contabiliza-se nesta guia, apenas 1 CA.\n\n'),
-
                   const TextSpan(text: 'Cartões Vermelhos:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Soma-se o total de cartões vermelhos registrados em súmula.\n\n'),
-
                   const TextSpan(text: 'Total de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Soma-se o total de CV e CA que a equipe levou e que contabilizam para a pontuação disciplinar. Conforme definido no regulamento do campeonato e pela CBFS. Ex: 2CA e 1CV no mesmo jogo, contabiliza-se nesta guia, apenas 1 CA e 1 CV.\n\n'),
-
-                  // --- INÍCIO DA ALTERAÇÃO (Adicionada nova legenda) ---
                   const TextSpan(text: 'Fair Play (PD):\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Ranking de equipes com menos Pontos Disciplinares (ordem ascendente). Este é o critério de desempate na classificação.\n\n'),
-                  // --- FIM DA ALTERAÇÃO ---
-
                   const TextSpan(text: 'Regra Geral de Suspensão:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextSpan(text: '- Um atleta é suspenso quando toma 1 CV ou ${AdminService.suspensionYellowCards} CA em jogos diferentes (2 CA no mesmo joga contabiliza-se apenas um para regra de Suspensão);\n'),
                   const TextSpan(text: '- Se um atleta vem para o jogo com 1 CA acumulado e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão pelo CV, e seus CA seguem acumulados;\n'),
                   TextSpan(text: '- Se um atleta vem para o jogo pendurado (${AdminService.pendingYellowCards} CA) e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão dobrada, pelo CV e pelos CA acumulados.\n\n'),
-                  
                   const TextSpan(text: 'Regra Geral de Zeramento de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Um atleta tem seus CA zerados apenas quando cumpre suspensão por levar 3CA.\n'),
                 ],
@@ -183,7 +170,6 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       );
     }
 
-    // 1. Loading State (Shimmer)
     if (isLoading && teams.isEmpty) {
       return ListView.builder(
         padding: const EdgeInsets.all(16),
@@ -203,7 +189,6 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       );
     }
 
-    // Processamento
     var list = List<Team>.from(teams);
     if (filterZero) {
       list = list.where((t) => valueSelector(t) > 0).toList();
@@ -215,7 +200,6 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       return descending ? vb.compareTo(va) : va.compareTo(vb);
     });
 
-    // 2. Empty State (Ilustrado)
     if (list.isEmpty) {
       return RefreshIndicator(
         onRefresh: () => champService.fetchStaticData(forceRefresh: true),
@@ -235,7 +219,6 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       );
     }
 
-    // 3. Data List
     return RefreshIndicator(
       onRefresh: () => champService.fetchStaticData(forceRefresh: true),
       child: ListView.builder(
@@ -280,11 +263,14 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Hero(
-                      tag: 'stat_shield_${team.id}_$suffix', // --- AJUSTE: Hero Tag Dinâmica ---
+                      tag: 'stat_shield_${team.id}_$suffix', 
                       child: CachedNetworkImage(
                         imageUrl: team.shieldUrl, 
                         width: 25, height: 25, 
                         fit: BoxFit.contain,
+                        // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
+                        memCacheWidth: 100,
+                        memCacheHeight: 100,
                         placeholder: (_,__) => Container(color: Colors.transparent),
                         errorWidget: (_,__,___) => const Icon(Icons.shield, size: 25, color: Colors.grey),
                       ),
@@ -294,7 +280,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
               ],
             ),
             trailing: trailing,
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: 'stat_shield_${team.id}_$suffix'))), // --- AJUSTE NAVEGAÇÃO ---
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: 'stat_shield_${team.id}_$suffix'))), 
           );
         },
       ),

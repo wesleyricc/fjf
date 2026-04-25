@@ -1,4 +1,3 @@
-// lib/widgets/match_result_card.dart
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -27,14 +26,13 @@ class MatchResultCard extends StatelessWidget {
     required this.date,
     required this.location,
     required this.matchLabel,
-    this.leagueName = "FJF 2025",
+    this.leagueName = "FJF",
     this.homeScorers = const [],
     this.awayScorers = const [],
   });
 
   @override
   Widget build(BuildContext context) {
-    // Largura fixa para a coluna central (Placar) para garantir alinhamento
     const double centerWidth = 140.0; 
 
     return AspectRatio(
@@ -52,7 +50,6 @@ class MatchResultCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Fundo
             Positioned.fill(
               child: Opacity(
                 opacity: 0.1,
@@ -71,7 +68,6 @@ class MatchResultCard extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // --- Cabeçalho ---
                   Column(
                     children: [
                       FittedBox(
@@ -86,24 +82,20 @@ class MatchResultCard extends StatelessWidget {
                     ],
                   ),
 
-                  // --- ÁREA CENTRAL (DIVIDIDA EM LINHAS PARA ALINHAMENTO PERFEITO) ---
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // 1. LINHA DOS ESCUDOS E PLACAR (Alinhamento Centralizado)
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.center, 
                           children: [
-                            // Casa
                             Expanded(
                               child: Align(
-                                alignment: Alignment.center, // Centraliza o escudo na coluna dele
+                                alignment: Alignment.center,
                                 child: _buildShield(homeShield),
                               ),
                             ),
                             
-                            // Centro (Largura Fixa)
                             SizedBox(
                               width: centerWidth,
                               child: Column(
@@ -143,7 +135,6 @@ class MatchResultCard extends StatelessWidget {
                               ),
                             ),
 
-                            // Fora
                             Expanded(
                               child: Align(
                                 alignment: Alignment.center,
@@ -155,21 +146,14 @@ class MatchResultCard extends StatelessWidget {
 
                         const SizedBox(height: 8),
 
-                        // 2. LINHA DOS GOLEADORES (Alinhamento Topo)
-                        // Usamos Flexible para que essa parte ocupe o espaço que sobrar, mas não empurre os escudos
                         Flexible(
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Lista Casa
                               Expanded(
                                 child: _buildScorersList(homeScorers),
                               ),
-                              
-                              // Espaço Vazio no Meio (Mesma largura do placar)
                               const SizedBox(width: centerWidth),
-
-                              // Lista Fora
                               Expanded(
                                 child: _buildScorersList(awayScorers),
                               ),
@@ -179,9 +163,7 @@ class MatchResultCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // --- FIM ÁREA CENTRAL ---
 
-                  // --- Rodapé ---
                   Column(
                     children: [
                       Row(
@@ -233,6 +215,10 @@ class MatchResultCard extends StatelessWidget {
           ? CachedNetworkImage(
               imageUrl: url,
               fit: BoxFit.contain,
+              // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
+              // Ajuda o pacote de Screenshot a não falhar por falta de RAM na hora de salvar
+              memCacheHeight: 300, 
+              memCacheWidth: 300,
               placeholder: (c, u) => Center(child: Icon(Icons.shield, size: 50, color: Colors.white.withOpacity(0.3))),
               errorWidget: (c, u, e) => Icon(Icons.shield, size: 60, color: Colors.white.withOpacity(0.5)),
             )
@@ -243,7 +229,6 @@ class MatchResultCard extends StatelessWidget {
   Widget _buildScorersList(List<String> scorers) {
     if (scorers.isEmpty) return const SizedBox.shrink();
 
-    // FittedBox aqui garante que a lista diminua a fonte se não couber
     return FittedBox(
       fit: BoxFit.scaleDown, 
       alignment: Alignment.topCenter,

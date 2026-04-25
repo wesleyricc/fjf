@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
+import '../services/voting_service.dart';
 import '../models/poll_model.dart';
 import 'admin_edit_poll_screen.dart';
 import 'admin_poll_results_screen.dart';
@@ -19,21 +19,18 @@ class AdminPollsScreen extends StatelessWidget {
       ),
       body: seasonId.isEmpty
           ? const Center(child: Text("Nenhuma temporada selecionada."))
-          : StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('championships')
-                  .doc(seasonId)
-                  .collection('polls')
-                  .snapshots(),
+          // OTIMIZADO: Substituído QuerySnapshot genérico pela lista tipada via Service
+          : StreamBuilder<List<Poll>>(
+              stream: VotingService().streamAllPolls(seasonId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
                   return const Center(child: Text('Nenhuma votação criada.'));
                 }
 
-                final polls = snapshot.data!.docs.map((doc) => Poll.fromFirestore(doc)).toList();
+                final polls = snapshot.data!;
 
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),

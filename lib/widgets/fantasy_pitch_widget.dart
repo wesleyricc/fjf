@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/custom_cache_manager.dart';
 import '../models/fantasy_models.dart';
 
 class FantasyPitchWidget extends StatelessWidget {
-  final Map<int, FantasyPlayer?> lineup; // Mapa de Posição -> Jogador
+  final Map<int, FantasyPlayer?> lineup; 
   final Function(int slotIndex, String position) onSlotTap;
   final Function(int slotIndex) onRemovePlayer;
   final String? captainId;
@@ -19,8 +21,6 @@ class FantasyPitchWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Cores de quadra de futsal (Azul ou Madeira/Amarelo, ou Verde mesmo)
-    // Vamos usar um Azul moderno para diferenciar do campo de grama
     final Color courtColor = Colors.blue[800]!; 
     final Color courtLines = Colors.white54;
 
@@ -32,10 +32,7 @@ class FantasyPitchWidget extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // --- DESENHO DA QUADRA (Simplificado) ---
-          // Linha central
           Center(child: Container(height: 2, color: courtLines)), 
-          // Círculo central
           Center(
             child: Container(
               width: 80,
@@ -46,7 +43,6 @@ class FantasyPitchWidget extends StatelessWidget {
               ),
             ),
           ),
-          // Áreas (Goleiro)
           Positioned(
             top: 0, left: 100, right: 100,
             child: Container(
@@ -61,22 +57,11 @@ class FantasyPitchWidget extends StatelessWidget {
             ),
           ),
 
-          // --- FORMAÇÃO FUTSAL (1-1-2-1 ou Losango) ---
-          
-          // 1. Goleiro (Lá no fundo)
           _buildPlayerNode(context, slotIndex: 1, positionLabel: 'Goleiro', top: 0.88, left: 0.40),
-
-          // 2. Fixo (Defesa Central)
           _buildPlayerNode(context, slotIndex: 2, positionLabel: 'Fixo', top: 0.65, left: 0.40),
-
-          // 3. Alas (Abertos e um pouco avançados em relação ao fixo)
-          _buildPlayerNode(context, slotIndex: 3, positionLabel: 'Ala', top: 0.45, left: 0.08), // Ala Esquerda
-          _buildPlayerNode(context, slotIndex: 4, positionLabel: 'Ala', top: 0.45, left: 0.72), // Ala Direita
-
-          // 4. Pivô (Lá na frente)
+          _buildPlayerNode(context, slotIndex: 3, positionLabel: 'Ala', top: 0.45, left: 0.08), 
+          _buildPlayerNode(context, slotIndex: 4, positionLabel: 'Ala', top: 0.45, left: 0.72), 
           _buildPlayerNode(context, slotIndex: 5, positionLabel: 'Pivô', top: 0.15, left: 0.40),
-
-          // 5. Técnico (Fora da quadra, canto inferior direito)
           _buildPlayerNode(context, slotIndex: 6, positionLabel: 'Técnico', top: 0.90, left: 0.80, isCoach: true),
         ],
       ),
@@ -112,7 +97,7 @@ class FantasyPitchWidget extends StatelessWidget {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 50, // Um pouco maior pois são menos jogadores
+                  width: 50, 
                   height: 50,
                   decoration: BoxDecoration(
                     color: isEmpty ? Colors.white.withOpacity(0.3) : Colors.white,
@@ -121,8 +106,17 @@ class FantasyPitchWidget extends StatelessWidget {
                       color: isCaptain ? Colors.orangeAccent : Colors.white, 
                       width: isCaptain ? 3 : 2
                     ),
+                    // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
                     image: (!isEmpty && player.photoUrl.isNotEmpty)
-                        ? DecorationImage(image: NetworkImage(player.photoUrl), fit: BoxFit.cover)
+                        ? DecorationImage(
+                            image: CachedNetworkImageProvider(
+                              player.photoUrl,
+                              cacheManager: PlayerCacheManager.instance,
+                              maxWidth: 150,
+                              maxHeight: 150,
+                            ),
+                            fit: BoxFit.cover,
+                          )
                         : null,
                   ),
                   child: isEmpty
@@ -185,7 +179,15 @@ class FantasyPitchWidget extends StatelessWidget {
         return Wrap(
           children: [
             ListTile(
-              leading: CircleAvatar(backgroundImage: NetworkImage(player.photoUrl)),
+              // Cache também na modal para não piscar
+              leading: CircleAvatar(
+                backgroundImage: CachedNetworkImageProvider(
+                  player.photoUrl,
+                  cacheManager: PlayerCacheManager.instance,
+                  maxWidth: 100,
+                  maxHeight: 100,
+                )
+              ),
               title: Text(player.name),
               subtitle: Text("${player.position} - ${player.teamId}"),
             ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/fantasy_admin_service.dart';
 import '../services/fantasy_service.dart';
 import '../services/championship_service.dart';
 import '../widgets/ui/custom_empty_state.dart'; // Certifique-se de ter este widget ou remova/adapte
@@ -52,6 +53,33 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
       final result = await Provider.of<FantasyService>(context, listen: false).populateMarketFromSeason(seasonId);
       
+      if (mounted) _showFeedback(result, isError: result.contains("Erro"));
+    } catch (e) {
+      if (mounted) _showFeedback("Erro: $e", isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _reprocessHistory(int maxRound) async {
+    final confirm = await _showConfirmDialog(
+      "Reprocessar Todo o Campeonato", 
+      "⚠️ ZONA DE PERIGO ⚠️\n\n"
+      "Isso vai apagar a pontuação atual e recalcular TUDO desde a Rodada 1 até a Rodada $maxRound usando os scouts atualizados das súmulas.\n\n"
+      "O patrimônio livre dos usuários que já venderam jogadores na rodada atual não pode ser desfeito. Tem certeza absoluta?"
+    );
+    if (!confirm) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      
+      // Instancia o serviço de admin do fantasy
+      final fantasyAdminService = FantasyAdminService();
+      
+      // Chama o reprocessamento
+      final result = await fantasyAdminService.reprocessFullHistory(seasonId, maxRound);
+
       if (mounted) _showFeedback(result, isError: result.contains("Erro"));
     } catch (e) {
       if (mounted) _showFeedback("Erro: $e", isError: true);
@@ -236,6 +264,24 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     side: BorderSide(color: Theme.of(context).primaryColor),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+                
+                // 🚨 NOVO BOTÃO DE REPROCESSAMENTO 🚨
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : () {
+                    // Pega a rodada que está digitada no campo de input lá em cima
+                    final targetRound = int.tryParse(_roundController.text) ?? dbRound;
+                    _reprocessHistory(targetRound);
+                  },
+                  icon: const Icon(Icons.warning_amber_rounded),
+                  label: const Text("Reprocessar Histórico Completo"),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: const BorderSide(color: Colors.red),
                   ),
                 ),
               ],

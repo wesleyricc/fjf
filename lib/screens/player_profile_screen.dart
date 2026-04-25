@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/player_service.dart'; // <-- NOVO SERVICE
+import '../services/player_service.dart'; 
 import '../models/player_model.dart';
 
 import '../widgets/sponsor_banner_rotator.dart';
@@ -23,7 +23,6 @@ class PlayerProfileScreen extends StatefulWidget {
 }
 
 class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
-  // Para históricos antigos, mantemos acesso direto ao Firestore pois é algo muito específico
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   late Future<Player?> _playerFuture;
@@ -155,7 +154,13 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                               radius: 86,
                               backgroundColor: Colors.grey.shade300,
                               backgroundImage: player.photoUrl.isNotEmpty
-                                  ? CachedNetworkImageProvider(player.photoUrl, cacheManager: PlayerCacheManager.instance)
+                                  ? CachedNetworkImageProvider(
+                                      player.photoUrl, 
+                                      cacheManager: PlayerCacheManager.instance,
+                                      // ---> OTIMIZAÇÃO DE MEMÓRIA AQUI <---
+                                      maxWidth: 400, 
+                                      maxHeight: 400,
+                                    )
                                   : null,
                               child: player.photoUrl.isEmpty
                                   ? Icon(player.isStaff ? Icons.assignment_ind_outlined : Icons.person, size: 80, color: Colors.grey[700])
@@ -173,7 +178,13 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                             backgroundColor: Colors.white,
                             child: Padding(
                               padding: const EdgeInsets.all(2.0),
-                              child: CachedNetworkImage(imageUrl: player.teamShieldUrl, fit: BoxFit.contain),
+                              child: CachedNetworkImage(
+                                imageUrl: player.teamShieldUrl, 
+                                fit: BoxFit.contain,
+                                // ---> OTIMIZAÇÃO DE MEMÓRIA AQUI <---
+                                memCacheHeight: 150,
+                                memCacheWidth: 150,
+                              ),
                             ),
                           ),
                         ),
@@ -182,7 +193,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                         bottom: 0, left: 0, right: 0,
                         child: Container(
                           height: 60,
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
@@ -318,7 +329,15 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
             Row(
               children: [
                 if (p.teamShieldUrl.isNotEmpty) 
-                  CachedNetworkImage(imageUrl: p.teamShieldUrl, width: 28, height: 28, fit: BoxFit.contain),
+                  CachedNetworkImage(
+                    imageUrl: p.teamShieldUrl, 
+                    width: 28, 
+                    height: 28, 
+                    fit: BoxFit.contain,
+                    // ---> OTIMIZAÇÃO AQUI <---
+                    memCacheHeight: 100,
+                    memCacheWidth: 100,
+                  ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(seasonName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isCurrent ? Colors.black : Colors.grey[700])),

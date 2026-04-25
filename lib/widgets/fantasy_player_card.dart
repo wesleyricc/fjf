@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/custom_cache_manager.dart';
 import '../models/fantasy_models.dart';
 
 class FantasyPlayerCard extends StatelessWidget {
@@ -15,7 +17,6 @@ class FantasyPlayerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Cor da Variação
     final Color variationColor = player.lastPriceChange > 0 
         ? Colors.green 
         : (player.lastPriceChange < 0 ? Colors.red : Colors.grey);
@@ -36,13 +37,20 @@ class FantasyPlayerCard extends StatelessWidget {
           padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
-              // 1. Foto e Escudo
+              // 1. Foto e Escudo (OTIMIZADOS COM CACHE)
               Stack(
                 children: [
                   CircleAvatar(
                     radius: 28,
                     backgroundColor: Colors.grey[200],
-                    backgroundImage: player.photoUrl.isNotEmpty ? NetworkImage(player.photoUrl) : null,
+                    backgroundImage: player.photoUrl.isNotEmpty 
+                        ? CachedNetworkImageProvider(
+                            player.photoUrl, 
+                            cacheManager: PlayerCacheManager.instance,
+                            maxWidth: 150, 
+                            maxHeight: 150,
+                          ) 
+                        : null,
                     child: player.photoUrl.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
                   ),
                   Positioned(
@@ -51,7 +59,14 @@ class FantasyPlayerCard extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 10,
                       backgroundColor: Colors.white,
-                      backgroundImage: player.teamShieldUrl.isNotEmpty ? NetworkImage(player.teamShieldUrl) : null,
+                      backgroundImage: player.teamShieldUrl.isNotEmpty 
+                          ? CachedNetworkImageProvider(
+                              player.teamShieldUrl, 
+                              cacheManager: PlayerCacheManager.instance,
+                              maxWidth: 60, 
+                              maxHeight: 60,
+                            ) 
+                          : null,
                     ),
                   )
                 ],
@@ -89,7 +104,7 @@ class FantasyPlayerCard extends StatelessWidget {
                 ),
               ),
 
-              // 3. Preço e Variação (FORMATADO 2 CASAS)
+              // 3. Preço e Variação
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [

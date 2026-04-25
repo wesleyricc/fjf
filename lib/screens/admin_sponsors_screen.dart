@@ -47,7 +47,14 @@ class AdminSponsorsScreen extends StatelessWidget {
                     child: SizedBox(
                       width: 50, height: 50,
                       child: data['imageUrl'] != null && data['imageUrl'].toString().isNotEmpty
-                          ? CachedNetworkImage(imageUrl: data['imageUrl'], fit: BoxFit.cover, errorWidget: (_,__,___) => const Icon(Icons.broken_image))
+                          // ---> OTIMIZAÇÃO: LIMITADOR DE RAM <---
+                          ? CachedNetworkImage(
+                              imageUrl: data['imageUrl'], 
+                              fit: BoxFit.cover,
+                              memCacheWidth: 150,
+                              memCacheHeight: 150,
+                              errorWidget: (_,__,___) => const Icon(Icons.broken_image)
+                            )
                           : const Icon(Icons.image, color: Colors.grey),
                     ),
                   ),
@@ -98,9 +105,9 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
   late TextEditingController _nameController;
   late TextEditingController _imageUrlController;
   late TextEditingController _targetUrlController;
-  late TextEditingController _displayTimeSecondsController; // Ajustado para o padrão
+  late TextEditingController _displayTimeSecondsController; 
   late TextEditingController _orderController;
-  late TextEditingController _roundController; // Ajustado para o padrão
+  late TextEditingController _roundController; 
   
   String _location = 'footer_home';
   bool _isActive = true;
@@ -129,7 +136,6 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
     try {
       final collection = FirebaseFirestore.instance.collection('sponsors');
 
-      // 1. Prepara os dados base que servem tanto para criar quanto atualizar
       final Map<String, dynamic> sponsorData = {
         'name': _nameController.text.trim(),
         'imageUrl': _imageUrlController.text.trim(),
@@ -140,36 +146,31 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
         'isActive': _isActive,
       };
 
-      // 2. Lógica segura da Rodada
       final roundNumber = int.tryParse(_roundController.text.trim());
       
       if (widget.sponsorDoc == null) {
-        // --- SE ESTÁ CRIANDO UM NOVO BANNER ---
         if (_location == 'header_fixtures' && roundNumber != null) {
-          sponsorData['round'] = roundNumber; // Só envia a rodada se ela existir e o local for tabela
+          sponsorData['round'] = roundNumber; 
         }
         await collection.add(sponsorData);
         
       } else {
-        // --- SE ESTÁ EDITANDO UM BANNER EXISTENTE ---
         if (_location == 'header_fixtures' && roundNumber != null) {
           sponsorData['round'] = roundNumber;
         } else {
-          // Aqui SIM podemos usar o FieldValue.delete() para apagar o campo caso ele mude de local
           sponsorData['round'] = FieldValue.delete();
         }
         await collection.doc(widget.sponsorDoc!.id).update(sponsorData);
       }
 
       if (mounted) {
-        Navigator.pop(context); // Fecha o modal
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Patrocinador salvo com sucesso!'), backgroundColor: Colors.green)
         );
       }
     } catch (e) {
       if (mounted) {
-        // Caso ocorra outro erro, garante que a mensagem apareça
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro ao salvar: $e'), backgroundColor: Colors.red)
         );

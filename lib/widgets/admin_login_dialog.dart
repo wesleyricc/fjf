@@ -10,13 +10,13 @@ class AdminLoginDialog extends StatefulWidget {
 }
 
 class _AdminLoginDialogState extends State<AdminLoginDialog> {
-  final _userController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passController = TextEditingController();
   bool _isLoading = false;
 
   @override
   void dispose() {
-    _userController.dispose();
+    _emailController.dispose();
     _passController.dispose();
     super.dispose();
   }
@@ -26,9 +26,9 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
     
     setState(() => _isLoading = true);
 
-    // Tenta Logar
+    // Tenta Logar usando E-mail e Senha no Firebase Auth
     final error = await authService.login(
-      _userController.text.trim(),
+      _emailController.text.trim(),
       _passController.text,
     );
 
@@ -54,8 +54,9 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
-            controller: _userController,
-            decoration: const InputDecoration(labelText: 'Usuário', prefixIcon: Icon(Icons.person)),
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress, // Habilita o teclado com '@'
+            decoration: const InputDecoration(labelText: 'E-mail Admin', prefixIcon: Icon(Icons.email)),
             enabled: !_isLoading,
             textInputAction: TextInputAction.next,
           ),

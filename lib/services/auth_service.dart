@@ -1,69 +1,92 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:crypto/crypto.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService with ChangeNotifier {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   // Estado Local
   bool _isAuthenticated = false;
-  String? _adminUsername;
-  bool _isLoading = true; // Para mostrar splash enquanto verificamos o disco
+  String? _adminEmail;
+  bool _isLoading = true;
 
   // Getters para a UI consumir
   bool get isAuthenticated => _isAuthenticated;
-  String? get adminUsername => _adminUsername;
+  String? get adminUsername => _adminEmail; // Mantido o getter como adminUsername para compatibilidade
   bool get isLoading => _isLoading;
 
-  // Construtor: Tenta recuperar sessão anterior ao iniciar
   AuthService() {
-    _tryAutoLogin();
+    _initAuthListener();
   }
 
-  // --- Lógica de Hash (Encapsulada) ---
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
+  // --- Listener de Autenticação Oficial do Firebase ---
+  void _initAuthListener() {
+    _auth.authStateChanges().listen((User? user) async {
+      if (user != null) {
+        // Verifica se o UID do usuário existe na coleção de administradores
+        try {
+          final doc = await _firestore.collection('admin_users').doc(user.uid).get();
+          if (doc.exists) {
+            _isAuthenticated = true;
+            _adminEmail = user.email;
+          } else {
+            // Se não está na coleção de admins, não tem permissão para este painel
+            await _auth.signOut();
+            _isAuthenticated = false;
+            _adminEmail = null;
+          }
+        } catch (e) {
+          _isAuthenticated = false;
+          _adminEmail = null;
+        }
+      } else {
+        _isAuthenticated = false;
+        _adminEmail = null;
+      }
+      _isLoading = false;
+      notifyListeners();
+    });
   }
 
   // --- Login ---
-  Future<String?> login(String username, String password) async {
+  Future<String?> login(String email, String password) async {
     try {
       _isLoading = true;
       notifyListeners();
 
-      final String inputHash = _hashPassword(password);
-      
-      // Busca no Firestore (Coleção Global)
-      final docRef = _firestore.collection('admin_users').doc(username);
-      final docSnap = await docRef.get();
+      // Autenticação Segura via Firebase Auth
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+
+      // Validação de Segurança (Role-Based Access)
+      final docSnap = await _firestore.collection('admin_users').doc(userCredential.user!.uid).get();
 
       if (!docSnap.exists) {
+        await _auth.signOut();
         _isLoading = false;
         notifyListeners();
-        return 'Usuário não encontrado.';
+        return 'Acesso negado: Você não tem permissão de administrador.';
       }
 
-      final storedHash = docSnap.data()?['password_hash'];
-
-      if (inputHash == storedHash) {
-        // Sucesso! Atualiza estado e persiste
-        _isAuthenticated = true;
-        _adminUsername = username;
-        
-        await _persistSession(username);
-        
-        _isLoading = false;
-        notifyListeners(); // Avisa todos os widgets que o login mudou
-        return null; // Null significa sucesso (sem erro)
-      } else {
-        _isLoading = false;
-        notifyListeners();
-        return 'Senha incorreta.';
+      // Sucesso!
+      _isAuthenticated = true;
+      _adminEmail = email.trim();
+      
+      _isLoading = false;
+      notifyListeners(); 
+      return null; // Null significa sucesso (sem erro)
+    } on FirebaseAuthException catch (e) {
+      _isLoading = false;
+      notifyListeners();
+      if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+        return 'Administrador não encontrado ou e-mail inválido.';
+      } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        return 'Credenciais inválidas. Verifique e tente novamente.';
       }
+      return 'Erro de autenticação: ${e.message}';
     } catch (e) {
       _isLoading = false;
       notifyListeners();
@@ -73,41 +96,9 @@ class AuthService with ChangeNotifier {
 
   // --- Logout ---
   Future<void> logout() async {
+    await _auth.signOut();
     _isAuthenticated = false;
-    _adminUsername = null;
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Limpa dados do disco
-    
+    _adminEmail = null;
     notifyListeners();
-  }
-
-  // --- Persistência (Para PWA não deslogar no Refresh) ---
-  Future<void> _persistSession(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('admin_username', username);
-    await prefs.setBool('is_auth', true);
-  }
-
-  Future<void> _tryAutoLogin() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (!prefs.containsKey('is_auth')) {
-        _isLoading = false;
-        notifyListeners();
-        return;
-      }
-
-      final isAuth = prefs.getBool('is_auth') ?? false;
-      if (isAuth) {
-        _adminUsername = prefs.getString('admin_username');
-        _isAuthenticated = true;
-      }
-    } catch (e) {
-      debugPrint("Erro ao tentar auto-login: $e");
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
   }
 }

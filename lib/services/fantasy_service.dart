@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart'; 
 import 'package:flutter/foundation.dart';
-import 'package:connectivity_plus/connectivity_plus.dart'; // <-- NOVO
+import 'package:connectivity_plus/connectivity_plus.dart'; 
 import '../models/fantasy_models.dart';
 
 class FantasyService {
@@ -11,13 +11,10 @@ class FantasyService {
   CollectionReference get _fantasyTeamsRef => _firestore.collection('fantasy_teams');
   CollectionReference get _fantasyMarketRef => _firestore.collection('fantasy_market_players');
   
-  // --- HELPERS DE CONECTIVIDADE ---
   Future<bool> _isOnline() async {
     final result = await Connectivity().checkConnectivity();
     return result != ConnectivityResult.none;
   }
-
-  // --- CONFIGURAÇÃO DO JOGO ---
 
   Future<FantasyGameConfig> getGameConfig() async {
     try {
@@ -35,15 +32,16 @@ class FantasyService {
     await _firestore.collection('fantasy_config').doc('rules').set(config.toMap());
   }
 
-  // --- LEITURA DE DADOS ---
-  
+  // ---> OTIMIZAÇÃO DE CUSTO AQUI <---
+  // Antes estava a buscar a coleção global inteira de 'players' (milhares de leituras)
+  // Agora busca apenas os jogadores instanciados no mercado do Fantasy!
   Future<List<FantasyPlayer>> getAllPlayers() async {
     try {
-      final snapshot = await _firestore.collection('players').get();
+      final snapshot = await _fantasyMarketRef.get(); 
       if (snapshot.docs.isEmpty) return [];
       return snapshot.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
     } catch (e) {
-      debugPrint("Erro ao buscar todos os jogadores: $e");
+      debugPrint("Erro ao buscar todos os jogadores do mercado: $e");
       return [];
     }
   }
@@ -78,7 +76,6 @@ class FantasyService {
     });
   }
 
-  // --- MERCADO OTIMIZADO ---
   Stream<List<FantasyPlayer>> streamMarket({String? positionFilter, String? searchTerm}) {
     Query query = _fantasyMarketRef.orderBy('current_price', descending: true);
     if (positionFilter != null && positionFilter != 'Todos') {
@@ -96,13 +93,11 @@ class FantasyService {
     });
   }
 
-  // --- OPERAÇÕES DO USUÁRIO ---
-
   Future<String> updateTeamProfile({
     required String userId, required String teamName, required String ownerName,
     required String shieldType, String? customLogoUrl,
   }) async {
-    if (!await _isOnline()) return "Erro: Sem conexão com a internet."; // <-- NOVO
+    if (!await _isOnline()) return "Erro: Sem conexão com a internet."; 
     try {
       return await _firestore.runTransaction((transaction) async {
         final docRef = _fantasyTeamsRef.doc(userId);
@@ -118,7 +113,7 @@ class FantasyService {
   }
 
   Future<void> createUserTeam({required String userId, required String userName, required String teamName}) async {
-    if (!await _isOnline()) return; // <-- NOVO
+    if (!await _isOnline()) return; 
     final docSnap = await _fantasyTeamsRef.doc(userId).get();
     
     if (!docSnap.exists) {
@@ -132,12 +127,11 @@ class FantasyService {
     }
   }
 
-  // Lógica de Salvar Time com Transação Segura
   Future<String> saveLineup({
     required String userId, required List<String> playerIds, required String? captainId,
     required double expectedOldTeamCost, required double newTeamCost,
   }) async {
-    if (!await _isOnline()) return "Erro: Sem conexão com a internet. O time não foi salvo."; // <-- NOVO
+    if (!await _isOnline()) return "Erro: Sem conexão com a internet. O time não foi salvo."; 
     
     try {
       return await _firestore.runTransaction((transaction) async {
@@ -175,8 +169,6 @@ class FantasyService {
     } catch (e) { return "Erro ao salvar transação: $e"; }
   }
 
-  // --- STATUS E ADMINISTRAÇÃO (COM CLOUD FUNCTIONS) ---
-
   Stream<Map<String, dynamic>> streamMarketStatus() {
     return _firestore.collection('fantasy_config').doc('status').snapshots().map((doc) {
       if (!doc.exists) return {'is_open': true, 'current_round': 1};
@@ -192,7 +184,7 @@ class FantasyService {
   }
 
   Future<String> processRoundCloud(String seasonId, int round) async {
-    if (!await _isOnline()) return "Erro: Sem internet. Não é possível chamar a Cloud Function."; // <-- NOVO
+    if (!await _isOnline()) return "Erro: Sem internet. Não é possível chamar a Cloud Function."; 
     try {
       final HttpsCallable callable = _functions.httpsCallable('closeRound');
       final result = await callable.call(<String, dynamic>{'seasonId': seasonId, 'round': round});
@@ -206,8 +198,6 @@ class FantasyService {
       return "Erro desconhecido: $e";
     }
   }
-
-  // --- SINCRONIZAÇÃO DE MERCADO ---
 
   Future<String> populateMarketFromSeason(String seasonId) async {
     if (!await _isOnline()) return "Erro de Conexão.";

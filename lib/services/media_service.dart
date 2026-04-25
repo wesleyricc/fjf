@@ -3,10 +3,15 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 class MediaService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.firebasestorage.app");
+  // OTIMIZAÇÃO: Usa a instância padrão do Storage configurada no firebase_options.dart
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   CollectionReference _getMediaRef(String seasonId) {
     return _firestore.collection('championships').doc(seasonId).collection('news');
+  }
+
+  Stream<QuerySnapshot> streamMediaItems(String seasonId) {
+    return _getMediaRef(seasonId).orderBy('order', descending: true).snapshots();
   }
 
   Future<int> getNextMediaOrder(String seasonId) async {

@@ -33,7 +33,8 @@ class EditPlayerScreen extends StatefulWidget {
 }
 
 class _EditPlayerScreenState extends State<EditPlayerScreen> {
-  final FirebaseStorage _storage = FirebaseStorage.instanceFor(bucket: "fjfapp.firebasestorage.app");
+  // OTIMIZAÇÃO: Usa a instância padrão do Storage
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _nameController;
@@ -208,11 +209,8 @@ class _EditPlayerScreenState extends State<EditPlayerScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
         
-        // --- CORREÇÃO: Atualiza cache após salvar ---
         if (result.startsWith("Sucesso")) {
-          // Invalida e recarrega o cache deste time para refletir as mudanças (foto, nome, etc)
           await Provider.of<ChampionshipService>(context, listen: false).fetchRoster(widget.teamId, force: true);
-          
           Navigator.pop(context);
         }
       }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../utils/custom_cache_manager.dart';
 import '../services/fantasy_auth_service.dart';
 import '../services/championship_service.dart';
 import '../models/fantasy_models.dart';
-import '../viewmodels/fantasy_lineup_viewmodel.dart'; // <--- Import ViewModel
+import '../viewmodels/fantasy_lineup_viewmodel.dart'; 
 import 'fantasy_market_screen.dart'; 
 
 class FantasyLineupScreen extends StatefulWidget {
@@ -18,7 +20,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicializa o ViewModel
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = Provider.of<FantasyAuthService>(context, listen: false);
       final champ = Provider.of<ChampionshipService>(context, listen: false);
@@ -30,14 +31,12 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
     });
   }
 
-  // Helper para abrir o mercado (Isso é UI logic, pode ficar na View)
   Future<void> _openMarketForSlot(FantasyLineupViewModel vm, int slotIndex, String position) async {
     if (!vm.isMarketOpen) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mercado Fechado!")));
       return;
     }
 
-    // Calcula orçamento para este slot específico
     double budget = vm.currentBalance;
     if (vm.lineup.containsKey(slotIndex)) {
       budget += vm.lineup[slotIndex]!.currentPrice;
@@ -63,7 +62,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
   Widget build(BuildContext context) {
     return Consumer<FantasyLineupViewModel>(
       builder: (context, vm, child) {
-        // Feedback de Erro/Sucesso via SnackBar
         if (vm.errorMessage != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage!), backgroundColor: Colors.red));
@@ -79,7 +77,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
 
         if (vm.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-        // Cálculo da Parcial Total (Apenas para exibição)
         double totalLiveScore = 0.0;
         if (!vm.isMarketOpen) {
            for (var p in vm.lineup.values) {
@@ -130,7 +127,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     final config = vm.slotsConfig[i];
                     final int slotIndex = config['index'];
                     final String posLabel = config['pos'];
-                    // Ícone fixo para simplificar (ou mapeie do int se preferir)
                     IconData icon = Icons.person;
                     if(posLabel == 'Goleiro') icon = Icons.sports_handball;
                     else if(posLabel == 'Fixo') icon = Icons.shield;
@@ -142,13 +138,9 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     if (player == null) {
                       return _buildEmptySlotCard(vm, slotIndex, posLabel, icon);
                     } else {
-                      // Se fechado, mostra parcial. Se aberto, mostra lastScore.
-                      double displayScore = 0.0;
-                      if (!vm.isMarketOpen) {
-                        displayScore = vm.liveScores[player.playerId]?.totalScore ?? 0.0;
-                      } else {
-                        displayScore = player.lastScore;
-                      }
+                      double displayScore = (!vm.isMarketOpen) 
+                          ? (vm.liveScores[player.playerId]?.totalScore ?? 0.0) 
+                          : player.lastScore;
 
                       return _buildPlayerCard(vm, slotIndex, player, displayScore);
                     }
@@ -170,11 +162,9 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _buildInfoItem("Patrimônio", vm.totalPatrimony, Colors.black87),
-
           vm.isMarketOpen 
             ? _buildInfoItem("Disponível", vm.currentBalance, vm.currentBalance < 0 ? Colors.red : Colors.green[700]!)
             : _buildInfoItem("Parcial", liveScore, liveScore >= 0 ? Colors.green : Colors.red, isLive: true),
-
           Column(
             children: [
               Text("${vm.lineup.length}/6", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: vm.lineup.length == 6 ? Colors.green : Colors.orange)),
@@ -241,8 +231,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
 
   Widget _buildPlayerCard(FantasyLineupViewModel vm, int slotIndex, FantasyPlayer player, double score) {
     final bool isCaptain = vm.captainId == player.playerId;
-    
-    // Ajuste visual para parcial (Se capitão, mostra x2)
     final double displayValue = (!vm.isMarketOpen && isCaptain) ? score * 2 : score;
 
     final Color apprecColor = player.lastPriceChange >= 0 ? Colors.green : Colors.red;
@@ -256,7 +244,18 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          leading: CircleAvatar(backgroundImage: player.photoUrl.isNotEmpty ? NetworkImage(player.photoUrl) : null, child: player.photoUrl.isEmpty ? const Icon(Icons.person) : null),
+          // ---> OTIMIZAÇÃO AQUI (CachedNetworkImageProvider) <---
+          leading: CircleAvatar(
+            backgroundImage: player.photoUrl.isNotEmpty 
+                ? CachedNetworkImageProvider(
+                    player.photoUrl, 
+                    cacheManager: PlayerCacheManager.instance,
+                    maxWidth: 150, 
+                    maxHeight: 150
+                  ) 
+                : null, 
+            child: player.photoUrl.isEmpty ? const Icon(Icons.person) : null
+          ),
           title: Row(children: [
               Text(player.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               if (isCaptain) Container(margin: const EdgeInsets.only(left: 8), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(4)), child: const Text("C", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))

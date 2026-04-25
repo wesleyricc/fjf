@@ -4,6 +4,70 @@ import 'package:flutter/material.dart';
 class MigrationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  Future<String> migrateStorageUrls(String seasonId) async {
+    const String oldBucket = 'fjfapp.firebasestorage.app';
+    const String newBucket = 'acefjf.firebasestorage.app';
+    
+    WriteBatch batch = _firestore.batch();
+    int count = 0;
+
+    debugPrint("🚀 [STORAGE MIGRAÇÃO] Iniciando substituição de URLs...");
+
+    // Função interna auxiliar para processar documentos
+    Future<int> processDocs(Query query, List<String> fields, int currentCount, WriteBatch currentBatch) async {
+      final snap = await query.get();
+      int localCount = currentCount;
+      WriteBatch localBatch = currentBatch;
+
+      for (var doc in snap.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        bool changed = false;
+        Map<String, dynamic> updates = {};
+
+        for (String field in fields) {
+          if (data[field] != null && data[field].toString().contains(oldBucket)) {
+            updates[field] = data[field].toString().replaceAll(oldBucket, newBucket);
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          localBatch.update(doc.reference, updates);
+          localCount++;
+          
+          if (localCount >= 450) {
+            await localBatch.commit();
+            localBatch = _firestore.batch();
+            localCount = 0;
+            debugPrint("♻️ Batch intermediário comitado.");
+          }
+        }
+      }
+      return localCount; // Retorna o contador residual
+    }
+
+    try {
+      // 1. Coleções Globais
+      count = await processDocs(_firestore.collection('teams_directory'), ['shield_url'], count, batch);
+      count = await processDocs(_firestore.collection('players'), ['photo_url'], count, batch);
+      count = await processDocs(_firestore.collection('photo_albums'), ['coverUrl'], count, batch);
+      count = await processDocs(_firestore.collection('photo_sales'), ['original_url', 'preview_url'], count, batch);
+      count = await processDocs(_firestore.collection('fantasy_teams'), ['custom_logo_url'], count, batch);
+      count = await processDocs(_firestore.collection('sponsors'), ['imageUrl', 'bannerUrl'], count, batch);
+
+      // 2. Coleções da Temporada
+      final seasonRef = _firestore.collection('championships').doc(seasonId);
+      count = await processDocs(seasonRef.collection('teams_participation'), ['shield_url'], count, batch);
+      count = await processDocs(seasonRef.collection('player_stats'), ['photo_url', 'team_shield_url'], count, batch);
+      count = await processDocs(seasonRef.collection('news'), ['imageUrl'], count, batch);
+
+      await batch.commit();
+      return "Sucesso: URLs do Storage migradas.";
+    } catch (e) {
+      return "Erro na migração: $e";
+    }
+  }
+
   Future<String> migrateLegacyTo2025() async {
     try {
       const String newSeasonId = '2025_fjf';
@@ -27,7 +91,7 @@ class MigrationService {
       WriteBatch batch = _firestore.batch();
       int batchCount = 0;
 
-      // Helper para comitar se o batch encher
+      // Helper para comitar se o batch encher (Limite do Firestore é 500 operações por Batch)
       Future<void> commitIfNeeded() async {
         if (batchCount >= 400) {
           await batch.commit();
@@ -37,8 +101,7 @@ class MigrationService {
         }
       }
 
-      // --- PASSO 0: CACHE DE JOGADORES (Necessário para gerar Timeline) ---
-      // Como os stats antigos só tem ID, precisamos buscar o Nome e TimeID do jogador global
+      // --- PASSO 0: CACHE DE JOGADORES (Necessário para gerar Timeline sintética) ---
       debugPrint("⏳ [MIGRAÇÃO] Pré-carregando cache de jogadores...");
       final allPlayersSnap = await _firestore.collection('players').get();
       final Map<String, Map<String, dynamic>> playerCache = {};
@@ -53,18 +116,20 @@ class MigrationService {
       for (var doc in legacyTeams.docs) {
         final data = doc.data();
         
-        // A. CRIA CADASTRO GLOBAL
+        // A. CRIA CADASTRO GLOBAL (Com Null Safety para dados legados imperfeitos)
         final dirRef = _firestore.collection('teams_directory').doc(doc.id);
         batch.set(dirRef, {
-          'name': data['name'],
-          'short_name': data['short_name'],
-          'shield_url': data['shield_url'],
+          'name': data['name'] ?? 'Time Desconhecido',
+          'short_name': data['short_name'] ?? '',
+          'shield_url': data['shield_url'] ?? '',
           'championship_history': data['championship_history'] ?? [],
         });
+        batchCount++;
 
         // B. MOVE DADOS PARA A TEMPORADA
         final partRef = seasonRef.collection('teams_participation').doc(doc.id);
         batch.set(partRef, data);
+        batchCount++;
 
         // C. MIGRA SUB-COLEÇÃO 'extra_points_log'
         final legacyLogs = await doc.reference.collection('extra_points_log').get();
@@ -72,7 +137,7 @@ class MigrationService {
            final newLogRef = partRef.collection('extra_points_log').doc(logDoc.id);
            batch.set(newLogRef, logDoc.data());
            batch.delete(logDoc.reference); 
-           batchCount++;
+           batchCount += 2;
            await commitIfNeeded();
         }
 
@@ -82,7 +147,7 @@ class MigrationService {
         await commitIfNeeded();
       }
 
-      // --- ETAPA 2: JOGOS + GERAÇÃO DE TIMELINE (Ajustado) ---
+      // --- ETAPA 2: JOGOS + GERAÇÃO DE TIMELINE ---
       debugPrint("⏳ [MIGRAÇÃO] 2/6 - Jogos e Geração de Timeline (Minuto 0)...");
       final legacyMatches = await _firestore.collection('matches').get();
       
@@ -92,6 +157,7 @@ class MigrationService {
         
         // 1. Copia a partida
         batch.set(newMatchRef, matchData);
+        batchCount++;
         
         // 2. GERA TIMELINE SINTÉTICA A PARTIR DOS STATS (Minuto 0)
         if (matchData.containsKey('stats_applied') && matchData['stats_applied']?['player_stats'] != null) {
@@ -120,9 +186,10 @@ class MigrationService {
                   'playerId': playerId,
                   'playerName': pName,
                   'teamId': pTeamId,
-                  'minute': 0, // <-- REGRA SOLICITADA
+                  'minute': 0, // <-- EVENTOS LEGADOS FICAM NO MINUTO 0
                   'period': '1T',
-                  'timestamp': matchData['datetime'], // Usa data do jogo para ordenação
+                  // Null safety para jogos que não tinham data preenchida
+                  'timestamp': matchData['datetime'] ?? FieldValue.serverTimestamp(), 
                   'concededByPlayerId': null // Não temos como saber quem era o goleiro no legado
                 });
                 batchCount++;
@@ -131,13 +198,11 @@ class MigrationService {
           }
 
           // Gera Gols
-          generateEvents(pStats['goals'], 'goal');
+          generateEvents(pStats['goals'] as Map<String, dynamic>?, 'goal');
           // Gera Amarelos
-          generateEvents(pStats['yellows'], 'yellowCard');
+          generateEvents(pStats['yellows'] as Map<String, dynamic>?, 'yellowCard');
           // Gera Vermelhos
-          generateEvents(pStats['reds'], 'redCard');
-          
-          // Nota: Não precisamos comitar aqui dentro pois o commitIfNeeded é chamado abaixo
+          generateEvents(pStats['reds'] as Map<String, dynamic>?, 'redCard');
         }
 
         // Tenta migrar timeline antiga se existir (apenas segurança, caso algum já tenha)
@@ -146,7 +211,7 @@ class MigrationService {
           final newEventRef = newMatchRef.collection('timeline').doc(eventDoc.id);
           batch.set(newEventRef, eventDoc.data());
           batch.delete(eventDoc.reference);
-          batchCount++;
+          batchCount += 2;
         }
 
         batch.delete(doc.reference);
@@ -161,7 +226,7 @@ class MigrationService {
         final newLogRef = seasonRef.collection('disciplinary_log').doc(doc.id);
         batch.set(newLogRef, doc.data());
         batch.delete(doc.reference);
-        batchCount++;
+        batchCount += 2;
         await commitIfNeeded();
       }
 
@@ -171,8 +236,8 @@ class MigrationService {
       for (var doc in legacyPlayers.docs) {
         final seasonStatsRef = seasonRef.collection('player_stats').doc(doc.id);
         batch.set(seasonStatsRef, doc.data());
-        // Não deleta da raiz
         batchCount++;
+        // NÃO deletamos da raiz, pois a coleção `players` agora funciona como o diretório global!
         await commitIfNeeded();
       }
 
@@ -186,7 +251,7 @@ class MigrationService {
           final targetRef = seasonRef.collection('settings').doc(docId);
           batch.set(targetRef, docSnap.data()!);
           batch.delete(docRef); 
-          batchCount++;
+          batchCount += 2;
           await commitIfNeeded();
         }
       }
@@ -198,16 +263,17 @@ class MigrationService {
         final newNewsRef = seasonRef.collection('news').doc(doc.id);
         batch.set(newNewsRef, doc.data());
         batch.delete(doc.reference);
-        batchCount++;
+        batchCount += 2;
         await commitIfNeeded();
       }
       
-      await batch.commit(); // Commit final
-      debugPrint("✅ [MIGRAÇÃO] SUCESSO TOTAL! Banco migrado e Timelines geradas.");
+      // Limpeza final das sobras (voting_stats ignorado conscientemente)
+      await batch.commit(); 
+      debugPrint("✅ [MIGRAÇÃO] SUCESSO TOTAL! Banco legado migrado para a temporada 2025_fjf.");
 
       return "Sucesso";
-    } catch (e) {
-      debugPrint("❌ [MIGRAÇÃO] ERRO CRÍTICO: $e");
+    } catch (e, stack) {
+      debugPrint("❌ [MIGRAÇÃO] ERRO CRÍTICO: $e\n$stack");
       return "Erro: $e";
     }
   }

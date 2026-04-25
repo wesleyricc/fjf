@@ -1,26 +1,43 @@
 {
   "project_info": {
-    "project_number": "211551139323",
-    "project_id": "fjfapp",
-    "storage_bucket": "fjfapp.firebasestorage.app"
+    "project_number": "893803829585",
+    "project_id": "acefjf",
+    "storage_bucket": "acefjf.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:211551139323:android:01cd6cd94956967cadc75e",
+        "mobilesdk_app_id": "1:893803829585:android:4f9e3135170694b1f9db70",
         "android_client_info": {
           "package_name": "com.fjf_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "893803829585-jp8uuugt42m2qknabm4lene03mimllai.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyB-DWvTPnrmER5pee2IiQ-D4DEHhFay0gQ"
+          "current_key": "AIzaSyBe_mP6DGidEAewkcObDinERnAEe2-nipY"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "893803829585-jp8uuugt42m2qknabm4lene03mimllai.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "893803829585-gug1mrkak51qgcsg19s732k38g91iv5j.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.fjfApp"
+              }
+            }
+          ]
         }
       }
     }

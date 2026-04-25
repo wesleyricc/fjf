@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/admin_service.dart';
@@ -16,7 +15,7 @@ import 'manage_seasons_screen.dart';
 import '../services/migration_service.dart';
 import 'admin_upload_photo_screen.dart';
 import 'tournament_format_screen.dart'; 
-import 'admin_polls_screen.dart'; // <-- NOVO IMPORT ADICIONADO AQUI
+import 'admin_polls_screen.dart'; 
 import 'admin_sponsors_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
@@ -29,13 +28,42 @@ class AdminMenuScreen extends StatefulWidget {
 class _AdminMenuScreenState extends State<AdminMenuScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _isSaving = false;
+  bool _isProcessingStorage = false;
 
   // --- LÓGICA DE NEGÓCIO ---
 
-  String _hashPassword(String password) {
-    final bytes = utf8.encode(password); 
-    final digest = sha256.convert(bytes); 
-    return digest.toString();
+  Future<void> _handleStorageMigration() async {
+    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Migrar URLs do Storage"),
+        content: Text("Isso irá varrer todos os documentos da temporada '$seasonId' e atualizar os links das imagens do bucket antigo para o novo ('acefjf'). Deseja continuar?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancelar")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("MIGRAR AGORA", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isProcessingStorage = true);
+    final result = await MigrationService().migrateStorageUrls(seasonId);
+    setState(() => _isProcessingStorage = false);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result),
+        backgroundColor: result.startsWith("Sucesso") ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 5),
+      ));
+    }
   }
 
   Future<void> _showChangeVideoIdDialog() async {
@@ -139,7 +167,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text('Mudar Senha ($currentAdminUsername)'),
+              title: Text('Mudar Senha\n($currentAdminUsername)'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -160,21 +188,38 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                       ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Senhas não conferem.')));
                       return;
                     }
+                    if (newPasswordController.text.length < 6) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('A nova senha deve ter no mínimo 6 caracteres.')));
+                      return;
+                    }
+                    
                     setDialogState(() => isLoading = true);
 
                     try {
-                      final currentHash = _hashPassword(currentPasswordController.text);
-                      final docRef = _firestore.collection('admin_users').doc(currentAdminUsername);
-                      final docSnap = await docRef.get();
-                      
-                      if (currentHash != docSnap.data()?['password_hash']) {
-                        throw Exception('Senha atual incorreta.');
+                      User? user = FirebaseAuth.instance.currentUser;
+                      if (user != null && user.email != null) {
+                        
+                        // Reautenticar o usuário antes de alterar a senha nativamente
+                        AuthCredential credential = EmailAuthProvider.credential(
+                          email: user.email!,
+                          password: currentPasswordController.text,
+                        );
+                        
+                        await user.reauthenticateWithCredential(credential);
+                        await user.updatePassword(newPasswordController.text);
+                        
+                        if (mounted) {
+                          Navigator.of(dialogContext).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha alterada com sucesso no Firebase!')));
+                        }
+                      } else {
+                        throw Exception("Usuário não autenticado no Firebase.");
                       }
-
-                      await docRef.update({'password_hash': _hashPassword(newPasswordController.text)});
-                      if (mounted) {
-                        Navigator.of(dialogContext).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha alterada!')));
+                    } on FirebaseAuthException catch (e) {
+                      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+                         if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('A senha atual está incorreta.')));
+                      } else {
+                         if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: ${e.message}')));
                       }
                     } catch (e) {
                         if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
@@ -182,7 +227,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         if (mounted) setDialogState(() => isLoading = false);
                     }
                   },
-                  child: const Text('Alterar'),
+                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Alterar'),
                 ),
               ],
             );
@@ -349,7 +394,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: Column(
                     children: [
-                      // ---> AQUI ESTÁ O NOVO BOTÃO DE VOTAÇÕES <---
                       _buildActionTile(
                         icon: Icons.how_to_vote,
                         color: Colors.amber[700]!,
@@ -358,7 +402,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminPollsScreen())),
                       ),
                       const Divider(height: 1, indent: 56),
-                      // ---------------------------------------------
                       _buildActionTile(
                         icon: Icons.newspaper,
                         color: Colors.indigo,
@@ -366,6 +409,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         subtitle: "Feed e banners da Home",
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminMediaScreen())),
                       ),
+                      const Divider(height: 1, indent: 56),
                       _buildActionTile(
                         icon: Icons.monetization_on,
                         color: Colors.green.shade700,
@@ -373,7 +417,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         subtitle: "Controle de Cotas e Espaços",
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const AdminSponsorsScreen())),
                       ),
-                      const Divider(height: 1, indent: 56),
                       const Divider(height: 1, indent: 56),
                       _buildActionTile(
                         icon: Icons.camera_enhance,
@@ -458,7 +501,31 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         subtitle: "Atualizar credenciais",
                         onTap: _showChangePasswordDialog,
                       ),
-                      // ZONA DE PERIGO
+                      const Divider(height: 1, indent: 56),
+                      
+                      // ---> NOVO BOTÃO: MIGRAÇÃO DE STORAGE <---
+                      if (_isProcessingStorage)
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Center(
+                            child: SizedBox(
+                              width: 24, height: 24, 
+                              child: CircularProgressIndicator(color: Colors.orange, strokeWidth: 2)
+                            )
+                          ),
+                        )
+                      else
+                        _buildActionTile(
+                          icon: Icons.cloud_sync,
+                          color: Colors.orange,
+                          title: "Migrar URLs do Storage",
+                          subtitle: "Atualiza bucket antigo para o novo",
+                          textColor: Colors.orange[800],
+                          onTap: _handleStorageMigration,
+                        ),
+                      // ------------------------------------------
+
+                      // ZONA DE PERIGO (Migração de banco legado)
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.red[50],

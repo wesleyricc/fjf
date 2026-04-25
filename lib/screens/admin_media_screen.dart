@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart'; 
-import '../services/media_service.dart'; // <-- NOVO SERVICE
+import '../services/media_service.dart';
 import '../services/championship_service.dart'; 
 import 'edit_media_screen.dart';
 
@@ -14,8 +14,7 @@ class AdminMediaScreen extends StatefulWidget {
 }
 
 class _AdminMediaScreenState extends State<AdminMediaScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
+  
   Future<void> _showDeleteMediaDialog(DocumentSnapshot doc, String seasonId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -41,11 +40,7 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
     final championshipService = Provider.of<ChampionshipService>(context);
     final seasonId = championshipService.currentSeasonId;
     final seasonName = championshipService.currentSeasonName;
-
-    final Query mediaQuery = _firestore
-        .collection('championships')
-        .doc(seasonId)
-        .collection('news');
+    final mediaService = Provider.of<MediaService>(context, listen: false);
 
     return Scaffold(
       appBar: AppBar(
@@ -57,8 +52,9 @@ class _AdminMediaScreenState extends State<AdminMediaScreen> {
           ],
         ),
       ),
+      // OTIMIZADO: Substituída a query direta pelo stream fornecido pelo MediaService
       body: StreamBuilder<QuerySnapshot>(
-        stream: mediaQuery.orderBy('order', descending: true).snapshots(),
+        stream: mediaService.streamMediaItems(seasonId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           if (snapshot.hasError) return Center(child: Text('Erro: ${snapshot.error}'));
