@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/fantasy_models.dart';
 import '../repositories/fantasy_repository.dart';
 import '../services/fantasy_scout_service.dart';
@@ -7,48 +8,43 @@ import '../services/fantasy_scout_service.dart';
 class FantasyLineupViewModel extends ChangeNotifier {
   final FantasyRepository _repository = FantasyRepository();
   final FantasyScoutService _scoutService = FantasyScoutService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // --- ESTADO ---
   bool _isLoading = true;
+  bool _isSaving = false;
   String? _errorMessage;
   String? _successMessage;
+  String? _userId;
 
-  // Dados do Time
   FantasyTeam? _team;
-  final Map<int, FantasyPlayer> _lineup = {}; // Mapa de Slots (1 a 6)
+  final Map<int, FantasyPlayer> _lineup = {}; 
   String? _captainId;
   
-  // Financeiro
   double _currentBalance = 0.0;
   double _teamPrice = 0.0;
   double _totalPatrimony = 0.0;
-  
-  // Controle de Integridade (Necessário para a Transação no Servidor)
   double _expectedOldTeamCost = 0.0;
 
-  // Mercado & Scouts
   bool _isMarketOpen = true;
   int _currentRound = 1;
   Map<String, FantasyScoutDetail> _liveScores = {};
 
   StreamSubscription? _marketSub;
+  StreamSubscription? _teamSub; 
   StreamSubscription? _scoutSub;
 
   // --- GETTERS ---
   bool get isLoading => _isLoading;
+  bool get isSaving => _isSaving;
   String? get errorMessage => _errorMessage;
   String? get successMessage => _successMessage;
-  
   bool get isMarketOpen => _isMarketOpen;
   int get currentRound => _currentRound;
-  
   Map<int, FantasyPlayer> get lineup => _lineup;
   String? get captainId => _captainId;
-  
   double get currentBalance => _currentBalance;
-  double get teamPrice => _teamPrice;
   double get totalPatrimony => _totalPatrimony;
-  
   Map<String, FantasyScoutDetail> get liveScores => _liveScores;
 
   final List<Map<String, dynamic>> slotsConfig = [
@@ -62,11 +58,12 @@ class FantasyLineupViewModel extends ChangeNotifier {
 
   // --- INICIALIZAÇÃO ---
   void init(String userId, String seasonId) {
+    _userId = userId;
     _isLoading = true;
-    _errorMessage = null;
     notifyListeners();
 
-    // 1. Monitora Mercado (Via Repository)
+    // 1. Monitora Mercado
+    _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
       _isMarketOpen = status['is_open'] ?? true;
       _currentRound = status['current_round'] ?? 1;
@@ -74,173 +71,142 @@ class FantasyLineupViewModel extends ChangeNotifier {
       notifyListeners();
     });
 
-    // 2. Carrega Time
-    _loadTeamData(userId, seasonId);
+    // 2. Monitoramento em Tempo Real do Time
+    _teamSub?.cancel();
+    _teamSub = _repository.streamUserTeam(userId).listen((team) async {
+      if (team != null) {
+        await _syncLocalStateWithDatabase(team, seasonId);
+      } else {
+        _isLoading = false;
+        notifyListeners();
+      }
+    });
   }
 
-  Future<void> _loadTeamData(String userId, String seasonId) async {
-    try {
-      final team = await _repository.getUserTeam(userId, forceRefresh: true);
-      
-      if (team != null) {
-        _team = team;
-        _currentBalance = team.currentBalance;
-        _captainId = team.captainId;
-        
-        if (team.lineupPlayerIds.isNotEmpty) {
-          final players = await _repository.getPlayersByIds(team.lineupPlayerIds);
-          
-          _lineup.clear();
-          double calculatedTeamPrice = 0.0;
+  // --- SINC LOCAL COM DATABASE ---
+  // --- SINC LOCAL COM DATABASE ---
+  Future<void> _syncLocalStateWithDatabase(FantasyTeam team, String seasonId) async {
+    _team = team;
+    _currentBalance = team.currentBalance;
+    _captainId = team.captainId;
+    _totalPatrimony = team.teamValue;
 
-          for (var p in players) {
-            calculatedTeamPrice += p.currentPrice;
-            if (p.position == 'Goleiro') _lineup[1] = p;
-            else if (p.position == 'Fixo') _lineup[2] = p;
-            else if (p.position == 'Pivô') _lineup[5] = p;
-            else if (p.position == 'Técnico') _lineup[6] = p;
-            else if (p.position == 'Ala') {
-              if (!_lineup.containsKey(3)) _lineup[3] = p;
-              else _lineup[4] = p;
-            }
+    if (team.lineupPlayerIds.isNotEmpty) {
+      try {
+        // 🚨 CORREÇÃO: Removido o forceRefresh que não existia no repositório
+        final players = await _repository.getPlayersByIds(team.lineupPlayerIds);
+        
+        _lineup.clear();
+        double calculatedTeamPrice = 0.0;
+
+        // Mapeamento Inteligente (Case Insensitive)
+        for (var p in players) {
+          calculatedTeamPrice += p.currentPrice;
+          final pos = p.position.toLowerCase();
+
+          if (pos.contains('gol')) _lineup[1] = p;
+          else if (pos.contains('fix')) _lineup[2] = p;
+          else if (pos.contains('piv')) _lineup[5] = p;
+          else if (pos.contains('téc')) _lineup[6] = p;
+          else if (pos.contains('ala')) {
+            if (!_lineup.containsKey(3)) _lineup[3] = p; else _lineup[4] = p;
           }
-          _teamPrice = calculatedTeamPrice;
-          // Armazena o custo que o time tinha no banco para validação de transação posterior
-          _expectedOldTeamCost = calculatedTeamPrice;
         }
-
-        // Define patrimônio base
-        _totalPatrimony = team.teamValue;
-        
-        _checkScoutSubscription(seasonId);
+        _teamPrice = calculatedTeamPrice;
+        _expectedOldTeamCost = calculatedTeamPrice;
+      } catch (e) {
+        _errorMessage = "Falha ao carregar detalhes dos atletas: $e";
       }
-    } catch (e) {
-      _errorMessage = "Erro ao carregar time: $e";
-    } finally {
-      _isLoading = false;
-      notifyListeners();
+    } else {
+      _lineup.clear();
+      _teamPrice = 0.0;
     }
+
+    _checkScoutSubscription(seasonId);
+    _isLoading = false;
+    notifyListeners();
   }
 
   // --- LÓGICA DE ESCALAÇÃO ---
-
   void addPlayer(int slotIndex, FantasyPlayer player) {
-    if (!_isMarketOpen) {
-      _errorMessage = "Mercado Fechado!";
+    if (!_isMarketOpen) return;
+    
+    if (_lineup.values.any((p) => p.playerId == player.playerId)) {
+      _errorMessage = "${player.name} já está no seu time.";
       notifyListeners();
       return;
     }
 
-    bool isDuplicate = _lineup.entries.any((entry) => 
-      entry.key != slotIndex && entry.value.playerId == player.playerId
-    );
-
-    if (isDuplicate) {
-      _errorMessage = "${player.name} já está escalado.";
-      notifyListeners();
-      return;
-    }
-
-    if (_lineup.containsKey(slotIndex)) {
-      final oldPlayer = _lineup[slotIndex]!;
-      _currentBalance += oldPlayer.currentPrice;
-      _teamPrice -= oldPlayer.currentPrice;
-      if (_captainId == oldPlayer.playerId) _captainId = null;
-    }
-
-    _currentBalance -= player.currentPrice;
-    _teamPrice += player.currentPrice;
     _lineup[slotIndex] = player;
-
-    if (_captainId == null && player.position != 'Técnico') {
-      _captainId = player.playerId;
-    }
-
-    notifyListeners();
+    _calculateFinancials();
+    _autoSave();
   }
 
   void removePlayer(int slotIndex) {
-    if (!_isMarketOpen || !_lineup.containsKey(slotIndex)) return;
-
-    final player = _lineup[slotIndex]!;
-    _currentBalance += player.currentPrice;
-    _teamPrice -= player.currentPrice;
-    
-    if (_captainId == player.playerId) _captainId = null;
-    
-    _lineup.remove(slotIndex);
-    notifyListeners();
+    if (!_isMarketOpen) return;
+    final p = _lineup.remove(slotIndex);
+    if (p != null && _captainId == p.playerId) _captainId = null;
+    _calculateFinancials();
+    _autoSave();
   }
 
   void sellAll() {
     if (!_isMarketOpen) return;
     _lineup.clear();
     _captainId = null;
-    _currentBalance = _totalPatrimony; 
+    _currentBalance = _totalPatrimony;
     _teamPrice = 0.0;
-    notifyListeners();
+    _autoSave();
   }
 
   void setCaptain(String playerId) {
     if (!_isMarketOpen) return;
-    _captainId = playerId;
+    _captainId = (_captainId == playerId) ? null : playerId;
+    _autoSave();
+  }
+
+  void _calculateFinancials() {
+    double price = 0;
+    for (var p in _lineup.values) {
+      price += p.currentPrice;
+    }
+    _teamPrice = price;
+    _currentBalance = _totalPatrimony - _teamPrice;
     notifyListeners();
   }
 
-  Future<void> saveLineup(String userId) async {
-    if (!_isMarketOpen) return;
+  // --- AUTO-SAVE DIRETO ---
+  Future<void> _autoSave() async {
+    if (!_isMarketOpen || _userId == null) return;
     
-    if (_lineup.length < 6) {
-      _errorMessage = "Sua equipe deve ter 6 integrantes.";
-      notifyListeners();
-      return;
-    }
-
-    if (_captainId == null) {
-      _errorMessage = "Selecione um capitão.";
-      notifyListeners();
-      return;
-    }
-
-    _isLoading = true;
+    _isSaving = true;
     notifyListeners();
 
     try {
       final playerIds = _lineup.values.map((p) => p.playerId).toList();
       
-      // CORREÇÃO: Chama o repositório com os parâmetros de validação de custo
-      final result = await _repository.saveLineup(
-        userId: userId,
-        playerIds: playerIds,
-        captainId: _captainId,
-        expectedOldTeamCost: _expectedOldTeamCost,
-        totalCost: _teamPrice, // O novo custo total da equipe escalada
-      );
-
-      if (result == "Sucesso") {
-        _successMessage = "Time escalado com sucesso!";
-        // Atualiza o custo antigo esperado para a próxima edição sem precisar de refresh
-        _expectedOldTeamCost = _teamPrice;
-      } else {
-        _errorMessage = result;
-      }
+      await _firestore.collection('fantasy_teams').doc(_userId).update({
+        'lineup_player_ids': playerIds,
+        'captain_id': _captainId,
+        'balance': _currentBalance,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+      _expectedOldTeamCost = _teamPrice;
     } catch (e) {
-      _errorMessage = "Erro ao salvar: $e";
+      debugPrint("Erro no Auto-Save: $e");
     } finally {
-      _isLoading = false;
+      _isSaving = false;
       notifyListeners();
     }
   }
 
-  void clearMessages() {
-    _errorMessage = null;
-    _successMessage = null;
+  void clearMessages() { 
+    _errorMessage = null; 
+    _successMessage = null; 
   }
 
-  // --- SCOUTS ---
   void _checkScoutSubscription(String seasonId) {
     _scoutSub?.cancel();
-    
     if (!_isMarketOpen && _lineup.isNotEmpty) {
       final ids = _lineup.values.map((p) => p.playerId).toList();
       _scoutSub = _scoutService.streamLiveScores(seasonId, _currentRound, ids).listen((scores) {
@@ -251,9 +217,10 @@ class FantasyLineupViewModel extends ChangeNotifier {
   }
 
   @override
-  void dispose() {
-    _marketSub?.cancel();
-    _scoutSub?.cancel();
-    super.dispose();
+  void dispose() { 
+    _marketSub?.cancel(); 
+    _teamSub?.cancel(); 
+    _scoutSub?.cancel(); 
+    super.dispose(); 
   }
 }

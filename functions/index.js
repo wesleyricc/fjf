@@ -15,8 +15,8 @@ const client = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
 
 // FANTASY GAME (Padrões de Pontuação e Economia)
 const DEFAULT_CONFIG = {
-  ptsGoal: 8.0,
-  ptsAssist: 4.0,
+  ptsGoal: 5.0,
+  ptsAssist: 3.0,
   ptsYellowCard: -1.0,
   ptsRedCard: -3.0,
   ptsGoalConceded: -1.0,
@@ -169,202 +169,178 @@ exports.closeRound = onCall({
   timeoutSeconds: 540, // 9 minutos (máximo) para processar muitos times
   memory: '1GB'        // Mais memória para cálculos em lote
 }, async (request) => {
-  
-  // 1. Verificação de Segurança (Apenas Admin pode chamar)
-  // No seu app, o AdminService chama isso. Garanta que as Regras do Firestore
-  // protejam a coleção 'admin_users' para que apenas admins reais tenham conta.
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Acesso negado. Faça login.');
+  const { seasonId, round } = request.data;
+
+  if (!seasonId || !round) {
+    throw new HttpsError('invalid-argument', 'seasonId e round são obrigatórios.');
   }
 
-  const { seasonId, round } = request.data;
-  if (!seasonId || !round) {
-    throw new HttpsError('invalid-argument', 'SeasonId e Round são obrigatórios.');
-  }
+  const db = admin.firestore();
 
   try {
-    // A. CONFIGURAÇÃO
-    let config = DEFAULT_CONFIG;
-    const configSnap = await db.collection('fantasy_config').doc('rules').get();
-    if (configSnap.exists) {
-      config = configSnap.data();
-    }
+    const configSnap = await db.collection('fantasy_config').doc('settings').get();
+    const config = configSnap.exists ? { ...DEFAULT_CONFIG, ...configSnap.data() } : DEFAULT_CONFIG;
 
-    // B. SCOUTS: Busca partidas da rodada para calcular pontos
-    const matchesSnap = await db.collection('championships')
-        .doc(seasonId)
-        .collection('matches')
-        .where('round', '==', round)
-        .get();
+    const matchesSnap = await db.collection('championships').doc(seasonId)
+      .collection('matches').where('round', '==', round).get();
 
-    const scoresMap = {}; // Map: PlayerID -> Pontos
+    const scoresMap = {};
 
     matchesSnap.forEach(doc => {
-      const matchData = doc.data();
-      const stats = matchData.stats_applied?.player_stats || {};
-      
-      const processStat = (map, multiplier) => {
-        if (!map) return;
-        Object.keys(map).forEach(pid => {
-          const qtd = map[pid] || 0;
-          scoresMap[pid] = (scoresMap[pid] || 0) + (qtd * multiplier);
-        });
+      const data = doc.data();
+      if (!data.stats_applied || !data.stats_applied.player_stats) return;
+
+      const stats = data.stats_applied.player_stats;
+      const ptsRules = {
+        goals: config.ptsGoal,
+        assists: config.ptsAssist,
+        yellows: config.ptsYellowCard,
+        reds: config.ptsRedCard,
+        goals_conceded: config.ptsGoalConceded
       };
 
-      processStat(stats.goals, config.ptsGoal);
-      processStat(stats.assists, config.ptsAssist);
-      processStat(stats.yellows, config.ptsYellowCard);
-      processStat(stats.reds, config.ptsRedCard);
-      processStat(stats.goals_conceded, config.ptsGoalConceded);
+      ['goals', 'assists', 'yellows', 'reds', 'goals_conceded'].forEach(cat => {
+        if (stats[cat]) {
+          Object.entries(stats[cat]).forEach(([pid, val]) => {
+            const points = (Number(val) || 0) * (ptsRules[cat] || 0);
+            scoresMap[pid] = (scoresMap[pid] || 0) + points;
+          });
+        }
+      });
     });
 
-    // C. TÉCNICOS: Calcula média do time e atribui ao técnico
+    console.log(`--- 🔍 CALCULANDO MÉDIA DOS TÉCNICOS (R${round}) ---`);
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
-    const teamScores = {};
-    const coachMap = {}; // TeamID -> CoachID
-
-    allPlayersSnap.forEach(doc => {
-      const p = doc.data();
-      // Mapeia técnicos
-      if (p.position === 'Técnico' && p.team_id) {
-        coachMap[p.team_id] = doc.id;
-      } 
-      // Agrupa pontuações por time
-      else if (p.team_id && scoresMap[doc.id] !== undefined) {
-        if (!teamScores[p.team_id]) teamScores[p.team_id] = [];
-        teamScores[p.team_id].push(scoresMap[doc.id]);
-      }
-    });
-
-    // Atribui média aos técnicos
-    Object.keys(coachMap).forEach(teamId => {
-      const scores = teamScores[teamId] || [];
-      if (scores.length > 0) {
-        const total = scores.reduce((a, b) => a + b, 0);
-        const avg = total / scores.length;
-        scoresMap[coachMap[teamId]] = Number(avg.toFixed(2));
-      } else {
-        scoresMap[coachMap[teamId]] = 0.0;
-      }
-    });
-
-    // D. MERCADO: Atualiza preços e histórico dos jogadores
-    const batchHandler = new BatchHandler(db);
+    
+    const teamScores = {};    
+    const teamLogDetails = {}; 
+    const teamCoaches = {};   
 
     allPlayersSnap.forEach(doc => {
       const p = doc.data();
       const pid = doc.id;
-      const score = scoresMap[pid] || 0.0;
-      const currentPrice = Number(p.current_price || 0);
+      const teamId = p.team_id; // Ajustado para snake_case
 
-      // Algoritmo de Valorização
+      if (!teamId) return;
+
+      if (p.position === 'Técnico') {
+        teamCoaches[teamId] = pid;
+      }
+
+      if (scoresMap[pid] !== undefined) {
+        const points = scoresMap[pid];
+        if (!teamScores[teamId]) {
+          teamScores[teamId] = [];
+          teamLogDetails[teamId] = [];
+        }
+        teamScores[teamId].push(points);
+        teamLogDetails[teamId].push(`${p.name} (${p.position}): ${points}pts`);
+      }
+    });
+
+    Object.entries(teamCoaches).forEach(([tId, coachPid]) => {
+      const scores = teamScores[tId] || [];
+      if (scores.length > 0) {
+        const total = scores.reduce((a, b) => a + b, 0);
+        const avg = total / scores.length;
+        scoresMap[coachPid] = Number(avg.toFixed(2));
+        console.log(`[MÉDIA TÉCNICO] Time: ${tId} | Scores: ${scores} | Quantidade: ${scores.length} | Total: ${total} | Participantes: ${teamLogDetails[tId].join(' | ')} | Média: ${scoresMap[coachPid]}`);
+      } else {
+        scoresMap[coachPid] = 0;
+      }
+    });
+
+    const batchHandler = new BatchHandler(db);
+    const newPricesMap = {};
+
+    allPlayersSnap.forEach(doc => {
+      const p = doc.data();
+      const pid = doc.id;
+      const score = scoresMap[pid] || 0;
+      const currentPrice = p.current_price || config.minPrice; // Ajustado: current_price
+
       const expectation = currentPrice * config.factorExpectation;
       const performance = score - expectation;
       let variation = performance * config.factorVariation;
       const limit = currentPrice * config.capLimitPercent;
 
-      // Travas de variação
       if (variation > limit) variation = limit;
       if (variation < -limit) variation = -limit;
 
       let newPrice = currentPrice + variation;
       if (newPrice < config.minPrice) newPrice = config.minPrice;
 
-      variation = Number(variation.toFixed(2));
-      newPrice = Number(newPrice.toFixed(2));
+      newPricesMap[pid] = Number(newPrice.toFixed(1));
+      variation = Number(variation.toFixed(1));
 
-      // Objeto de Histórico
-      const historyEntry = {
+      const updatedHistory = Array.isArray(p.history) ? p.history.filter(h => h.round !== round) : [];
+      updatedHistory.push({
         round: round,
         score: score,
         price_before: currentPrice,
-        price_after: newPrice,
+        price_after: newPricesMap[pid],
         variation: variation,
-        played: (score !== 0), // Simplificação: se pontuou, jogou
+        played: true,
         processed_at: admin.firestore.Timestamp.now()
-      };
+      });
 
-      // Update Player
+      const playedMatches = updatedHistory.filter(h => h.played);
+      const avgScore = playedMatches.length > 0 ? (playedMatches.reduce((acc, h) => acc + h.score, 0) / playedMatches.length) : 0;
+
       batchHandler.update(doc.ref, {
-        current_price: newPrice,
+        current_price: newPricesMap[pid],
         last_price_change: variation,
         last_score: score,
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        average_score: Number(avgScore.toFixed(2)),
+        matches_played: playedMatches.length,
+        history: updatedHistory
       });
     });
 
-    // E. TIMES DOS USUÁRIOS: Calcula pontuação e atualiza patrimônio
+    // --- ATUALIZAÇÃO DOS TIMES USANDO SNAKE_CASE ---
     const userTeamsSnap = await db.collection('fantasy_teams').get();
-    
-    // Precisamos de um mapa rápido de preços NOVOS para atualizar o patrimônio
-    // (Poderíamos ter salvo no passo D, mas recalculamos aqui ou buscamos novamente. 
-    //  Para eficiência, assumimos o cálculo feito no passo D).
-    // NOTA: Em produção, o ideal é salvar os novos preços em um Map<ID, Price> na memória durante o passo D.
-    
-    // Vamos fazer um "re-scan" rápido ou otimizar em memória se possível. 
-    // Como Cloud Functions tem memória, vamos refazer o loop simples dos preços:
-    const newPriceMap = {};
-    allPlayersSnap.docs.forEach(doc => {
-       const p = doc.data();
-       const pid = doc.id;
-       const score = scoresMap[pid] || 0.0;
-       const currentPrice = Number(p.current_price || 0);
-       
-       const expectation = currentPrice * config.factorExpectation;
-       const performance = score - expectation;
-       let variation = performance * config.factorVariation;
-       const limit = currentPrice * config.capLimitPercent;
-       if (variation > limit) variation = limit;
-       if (variation < -limit) variation = -limit;
-       let newPrice = currentPrice + variation;
-       if (newPrice < config.minPrice) newPrice = config.minPrice;
-       
-       newPriceMap[pid] = Number(newPrice.toFixed(2));
-    });
-
     userTeamsSnap.forEach(doc => {
       const team = doc.data();
-      let roundPoints = 0.0;
-      let squadValue = 0.0;
-      const lineup = team.lineup_player_ids || [];
+      const lineup = team.lineup_player_ids || []; // Ajustado: lineup_player_ids
+      const captainId = team.captain_id || null;    // Ajustado: captain_id (Garante null se vazio)
+
+      let roundPoints = 0;
+      let playersCurrentValue = 0;
 
       lineup.forEach(pid => {
-        // Pontos
-        let pScore = scoresMap[pid] || 0.0;
-        if (team.captain_id === pid) pScore *= 2;
+        let pScore = scoresMap[pid] || 0;
+        if (pid === captainId) pScore *= 2;
         roundPoints += pScore;
-
-        // Valor do Time (soma dos novos preços dos jogadores)
-        squadValue += (newPriceMap[pid] || 0.0);
+        playersCurrentValue += (newPricesMap[pid] || config.minPrice);
       });
 
-      // Patrimônio Total = Saldo em Caixa + Valor do Elenco
-      const totalPatrimony = (team.current_balance || 0) + squadValue;
+      const currentBalance = team.current_balance || 0; // Ajustado: current_balance
+      const totalPatrimony = Number((currentBalance + playersCurrentValue).toFixed(2));
 
-      // Update Time
-      batchHandler.update(doc.ref, {
-        total_points: (team.total_points || 0) + roundPoints,
-        last_score: roundPoints,
-        team_value: Number(totalPatrimony.toFixed(2))
-      });
+      const teamHistoryRef = doc.ref.collection('history').doc(round.toString());
       
-      // Salva Histórico da Rodada
-      const histRef = doc.ref.collection('history').doc(String(round));
-      batchHandler.set(histRef, {
+      batchHandler.set(teamHistoryRef, {
         round: round,
         points: roundPoints,
-        patrimony: Number(totalPatrimony.toFixed(2)),
+        patrimony: totalPatrimony,
         processed_at: admin.firestore.Timestamp.now(),
-        captain_id: team.captain_id,
-        lineup_snapshot: lineup
+        captain_id: captainId, 
+        lineup_snapshot: lineup // Ajustado: lineup_snapshot
+      });
+
+      batchHandler.update(doc.ref, {
+        total_points: Number(((team.total_points || 0) + roundPoints).toFixed(2)), // Ajustado: total_points
+        last_score: roundPoints,                                                   // Ajustado: last_score
+        team_value: totalPatrimony,                                                // Ajustado: team_value
+        updated_at: admin.firestore.Timestamp.now()                                 // Ajustado: updated_at
       });
     });
 
-    await batchHandler.commit(); // Finaliza escritas pendentes
+    await batchHandler.commit();
 
     return { 
       success: true, 
-      message: `Rodada ${round} processada com sucesso.\nJogadores: ${allPlayersSnap.size}\nTimes: ${userTeamsSnap.size}` 
+      message: `Rodada ${round} finalizada com sucesso (snake_case padrão).` 
     };
 
   } catch (error) {
@@ -372,6 +348,7 @@ exports.closeRound = onCall({
     throw new HttpsError('internal', error.message);
   }
 });
+
 
 // ==================================================================
 // UTILS: Batch Handler (Para lidar com limite de 500 writes)

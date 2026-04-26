@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/fantasy_models.dart';
 import 'fantasy_service.dart'; 
+import 'dart:developer' as developer;
 
 class FantasyAdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -63,56 +64,65 @@ class FantasyAdminService {
     return rawMap.map((key, value) => MapEntry(key.toString(), (value is num) ? value.toInt() : 0));
   }
 
-  // --- NOVO: CÁLCULO DA MÉDIA DO TÉCNICO ---
+  // --- 🚨 REGRA ATUALIZADA: CÁLCULO DA MÉDIA DO TÉCNICO ---
   Future<void> _calculateCoachesAverages(Map<String, double> scoresMap) async {
     try {
-      debugPrint("--- CALCULANDO PONTUAÇÃO DOS TÉCNICOS ---");
+      // 🚀 LOG DE INÍCIO
+      developer.log('--- 🔍 INICIANDO CÁLCULO DE MÉDIA DOS TÉCNICOS ---', name: 'FJF.Fantasy');
       
-      // 1. Busca todos os jogadores do mercado para mapear Time e Posição
       final marketSnap = await _firestore.collection('fantasy_market_players').get();
       final List<FantasyPlayer> allPlayers = marketSnap.docs.map((d) => FantasyPlayer.fromFirestore(d)).toList();
 
-      // Mapas auxiliares
-      final Map<String, List<double>> teamScores = {}; // TeamID -> Lista de pontuações
-      final Map<String, String> teamCoaches = {};      // TeamID -> CoachID
+      final Map<String, List<Map<String, dynamic>>> teamScoutDetails = {}; 
+      final Map<String, List<double>> teamScores = {}; 
+      final Map<String, String> teamCoaches = {};      
 
-      // 2. Popula os mapas
       for (var player in allPlayers) {
         if (player.position == 'Técnico') {
-          // Registra quem é o técnico do time
           if (player.teamId.isNotEmpty) {
             teamCoaches[player.teamId] = player.playerId;
           }
-        } else {
-          // Se o jogador pontuou, adiciona à lista do time
-          if (scoresMap.containsKey(player.playerId)) {
-            final score = scoresMap[player.playerId]!;
-            if (player.teamId.isNotEmpty) {
-              teamScores.putIfAbsent(player.teamId, () => []).add(score);
-            }
+        } 
+        
+        if (scoresMap.containsKey(player.playerId)) {
+          final score = scoresMap[player.playerId]!;
+          if (player.teamId.isNotEmpty) {
+            teamScores.putIfAbsent(player.teamId, () => []).add(score);
+            
+            teamScoutDetails.putIfAbsent(player.teamId, () => []).add({
+              'nome': player.name,
+              'posicao': player.position,
+              'pontos': score
+            });
           }
         }
       }
 
-      // 3. Calcula a média e atribui ao técnico
       teamCoaches.forEach((teamId, coachId) {
         final scores = teamScores[teamId] ?? [];
+        final details = teamScoutDetails[teamId] ?? [];
         double average = 0.0;
         
         if (scores.isNotEmpty) {
           final double total = scores.reduce((a, b) => a + b);
           average = total / scores.length;
+          
+          // 🚀 ESTE LOG APARECERÁ NO CONSOLE DO NAVEGADOR (F12)
+          String logMembros = details.map((m) => "${m['nome']} (${m['pontos']} pts)").join(', ');
+          
+          developer.log(
+            '📊 TIME: $teamId | TÉCNICO ID: $coachId\n'
+            '   Atletas/Comissão: $logMembros\n'
+            '   🧮 CONTA: ${total.toStringAsFixed(2)} / ${scores.length} = ${average.toStringAsFixed(2)}',
+            name: 'FJF.Fantasy'
+          );
         }
 
-        // Insere a pontuação do técnico no mapa principal de scores
-        // Isso garante que ele será processado nas rotinas de valorização e pontuação dos times
         scoresMap[coachId] = double.parse(average.toStringAsFixed(2));
-        
-        debugPrint("Técnico do time $teamId recebeu $average pts (Baseado em ${scores.length} atletas).");
       });
 
     } catch (e) {
-      debugPrint("Erro ao calcular média dos técnicos: $e");
+      developer.log('❌ Erro média técnicos', error: e, name: 'FJF.Fantasy');
     }
   }
 

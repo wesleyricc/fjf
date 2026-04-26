@@ -381,6 +381,67 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   int _rankingPos(String pos) { switch (pos) { case 'Goleiro': return 1; case 'Fixo': return 2; case 'Ala': return 3; case 'Pivô': return 4; case 'Técnico': return 5; default: return 99; } }
   Widget _buildStatCard(BuildContext context, String title, String value, IconData icon, Color color) { return Container( padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, color: color, size: 24), const SizedBox(height: 8), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey))])); }
   Widget _buildActionCard(BuildContext context, String title, IconData icon, Color color, VoidCallback? onTap) { final bool isDisabled = onTap == null; return Material(color: Colors.white, borderRadius: BorderRadius.circular(12), elevation: isDisabled ? 0 : 2, child: Opacity(opacity: isDisabled ? 0.6 : 1.0, child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.bold))])))); }
-  Widget _buildTeamHeader(BuildContext context, FantasyTeam team, bool isMarketOpen, int round) { return Container( padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Theme.of(context).primaryColor, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30))), child: Row(children: [CircleAvatar(radius: 30, backgroundColor: Colors.white, backgroundImage: team.customLogoUrl != null ? NetworkImage(team.customLogoUrl!) : null, child: team.customLogoUrl == null ? Icon(Icons.shield, color: Theme.of(context).primaryColor) : null), const SizedBox(width: 16), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(team.teamName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)), Text("Rodada $round - ${isMarketOpen ? 'ABERTO' : 'FECHADO'}", style: const TextStyle(color: Colors.white70))])])); }
+  
+  
+  Widget _buildTeamHeader(BuildContext context, FantasyTeam team, bool isMarketOpen, int round) { 
+    return Container( 
+      padding: const EdgeInsets.all(20), 
+      decoration: BoxDecoration(
+        color: Theme.of(context).primaryColor, 
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))]
+      ), 
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 30, 
+            backgroundColor: Colors.white,
+            backgroundImage: team.customLogoUrl != null ? NetworkImage(team.customLogoUrl!) : null,
+            child: team.customLogoUrl == null ? Icon(Icons.shield, color: Theme.of(context).primaryColor) : null,
+          ), 
+          const SizedBox(width: 16), 
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [
+                Text(
+                  team.teamName, 
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ), 
+                Text(
+                  "Técnico: ${team.ownerName}", 
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Rodada $round - ${isMarketOpen ? 'ABERTO' : 'FECHADO'}", 
+                  style: TextStyle(color: isMarketOpen ? Colors.greenAccent : Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)
+                )
+              ]
+            )
+          ),
+          // 🚨 BOTÃO DE EDIÇÃO RESTAURADO 🚨
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2), 
+              borderRadius: BorderRadius.circular(12)
+            ), 
+            child: IconButton(
+              icon: const Icon(Icons.edit, color: Colors.white), 
+              tooltip: "Editar Perfil", 
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FantasyEditTeamScreen()))
+            )
+          )
+        ]
+      )
+    ); 
+  }
+  
+  
+  
   Widget _buildLoadingSkeleton(BuildContext context) { return const Scaffold(body: Center(child: CircularProgressIndicator())); }
 }

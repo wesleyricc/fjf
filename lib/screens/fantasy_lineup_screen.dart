@@ -91,34 +91,46 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
           appBar: AppBar(
             title: Column(
               children: [
-                const Text("Escalar Time"),
+                const Text("Escalação"),
                 Text(
                   vm.isMarketOpen 
-                      ? "Mercado ABERTO (Rodada ${vm.currentRound})" 
-                      : "Mercado FECHADO (Parciais R${vm.currentRound})",
-                  style: TextStyle(fontSize: 12, color: vm.isMarketOpen ? Colors.greenAccent : Colors.orangeAccent),
+                      ? "Escalando Rodada ${vm.currentRound}" 
+                      : "Parciais da Rodada ${vm.currentRound}",
+                  style: TextStyle(
+                    fontSize: 12, 
+                    color: vm.isMarketOpen ? Colors.greenAccent : Colors.orangeAccent,
+                    fontWeight: FontWeight.bold
+                  ),
                 ),
               ],
             ),
             actions: [
-              if (vm.isMarketOpen) ...[
+              if (vm.isMarketOpen)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                    child: vm.isSaving 
+                      ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.cloud_done, color: Colors.greenAccent, size: 20),
+                  ),
+                ),
+              if (vm.isMarketOpen)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.white),
+                  icon: const Icon(Icons.delete_outline),
                   tooltip: "Limpar Time",
                   onPressed: vm.lineup.isNotEmpty ? vm.sellAll : null
                 ),
-                IconButton(
-                  icon: const Icon(Icons.save),
-                  tooltip: "Salvar Escalação",
-                  onPressed: () => vm.saveLineup(Provider.of<FantasyAuthService>(context, listen: false).user!.uid)
-                ),
-              ]
             ],
           ),
           body: Column(
             children: [
               _buildFinancialHeader(vm, totalLiveScore),
               
+              if (vm.isMarketOpen && vm.lineup.length < 6)
+                _buildWarningBanner("Seu time está incompleto! Escale os 6 integrantes para pontuar.", Icons.warning_amber_rounded, Colors.orange),
+              if (vm.isMarketOpen && vm.lineup.isNotEmpty && vm.captainId == null)
+                _buildWarningBanner("Você não definiu um Capitão! Clique na estrela do jogador para dobrar os pontos.", Icons.star_border, Colors.blue),
+
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.only(bottom: 80),
@@ -128,6 +140,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     final int slotIndex = config['index'];
                     final String posLabel = config['pos'];
                     IconData icon = Icons.person;
+                    
                     if(posLabel == 'Goleiro') icon = Icons.sports_handball;
                     else if(posLabel == 'Fixo') icon = Icons.shield;
                     else if(posLabel == 'Ala') icon = Icons.flash_on;
@@ -154,10 +167,25 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
     );
   }
 
+  Widget _buildWarningBanner(String text, IconData icon, MaterialColor color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: color.shade50,
+      child: Row(
+        children: [
+          Icon(icon, color: color.shade700, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: TextStyle(color: color.shade800, fontSize: 12, fontWeight: FontWeight.w500))),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFinancialHeader(FantasyLineupViewModel vm, double liveScore) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
+      decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -231,10 +259,14 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
 
   Widget _buildPlayerCard(FantasyLineupViewModel vm, int slotIndex, FantasyPlayer player, double score) {
     final bool isCaptain = vm.captainId == player.playerId;
-    final double displayValue = (!vm.isMarketOpen && isCaptain) ? score * 2 : score;
+    
+    // Leitura das propriedades raiz atualizadas no ViewModel
+    final double lastScore = player.lastScore;
+    final double priceChange = player.lastPriceChange;
+    final double average = player.averageScore;
 
-    final Color apprecColor = player.lastPriceChange >= 0 ? Colors.green : Colors.red;
-    final String apprecIcon = player.lastPriceChange >= 0 ? "▲" : "▼";
+    final Color apprecColor = priceChange >= 0 ? Colors.green : Colors.red;
+    final String apprecIcon = priceChange >= 0 ? "▲" : "▼";
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -244,7 +276,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          // ---> OTIMIZAÇÃO AQUI (CachedNetworkImageProvider) <---
           leading: CircleAvatar(
             backgroundImage: player.photoUrl.isNotEmpty 
                 ? CachedNetworkImageProvider(
@@ -262,7 +293,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
           ]),
           subtitle: Row(children: [
               if (vm.isMarketOpen) Text("C\$ ${player.currentPrice.toStringAsFixed(2)}", style: const TextStyle(color: Colors.grey)),
-              if (!vm.isMarketOpen) Text("Parcial: ${displayValue.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              if (!vm.isMarketOpen) Text("Parcial: ${score.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
           ]),
           children: [
             Container(
@@ -270,17 +301,17 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
               child: Column(children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                        const Text("Última Pontuação"),
-                       Text(player.lastScore.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold)),
+                       Text(lastScore.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold)),
                   ]),
                   const Divider(),
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                        const Text("Média"),
-                       Text(player.averageScore.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold)),
+                       Text(average.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold)),
                   ]),
                   const Divider(),
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                        const Text("Valorização"),
-                       Text("$apprecIcon ${player.lastPriceChange.toStringAsFixed(2)}", style: TextStyle(color: apprecColor)),
+                       Text("$apprecIcon ${priceChange.toStringAsFixed(2)}", style: TextStyle(color: apprecColor, fontWeight: FontWeight.bold)),
                   ]),
                   if (vm.isMarketOpen) ...[
                     const Divider(),

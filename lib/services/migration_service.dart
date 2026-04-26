@@ -51,7 +51,10 @@ class MigrationService {
     try {
       // 1. Coleções Globais
       count = await processDocs(_firestore.collection('teams_directory'), ['shield_url'], count, batch);
-      count = await processDocs(_firestore.collection('players'), ['photo_url'], count, batch);
+      
+      // 🚨 ADICIONADO: team_shield_url na coleção global de players
+      count = await processDocs(_firestore.collection('players'), ['photo_url', 'team_shield_url'], count, batch);
+      
       count = await processDocs(_firestore.collection('photo_albums'), ['coverUrl'], count, batch);
       count = await processDocs(_firestore.collection('photo_sales'), ['original_url', 'preview_url'], count, batch);
       count = await processDocs(_firestore.collection('fantasy_teams'), ['custom_logo_url'], count, batch);
@@ -62,11 +65,20 @@ class MigrationService {
       count = await processDocs(seasonRef.collection('teams_participation'), ['shield_url'], count, batch);
       count = await processDocs(seasonRef.collection('player_stats'), ['photo_url', 'team_shield_url'], count, batch);
       count = await processDocs(seasonRef.collection('news'), ['imageUrl'], count, batch);
-      
-      // 🚨 ADICIONADO: Coleção de Jogos e Súmulas 🚨
+      count = await processDocs(seasonRef.collection('matches'), ['team_home_shield', 'team_away_shield', 'sumula_url'], count, batch);
+
+      // 🚨 ADICIONADO: Histórico disciplinar (logo do time e foto do jogador)
       count = await processDocs(
-        seasonRef.collection('matches'), 
-        ['team_home_shield', 'team_away_shield', 'sumula_url'], 
+        seasonRef.collection('disciplinary_log'), 
+        ['teamLogoUrl', 'playerPhotoUrl'], 
+        count, 
+        batch
+      );
+
+      // 🚨 ADICIONADO: Configurações do app (regulamento em PDF)
+      count = await processDocs(
+        seasonRef.collection('settings'), 
+        ['regulation_pdf_url'], 
         count, 
         batch
       );

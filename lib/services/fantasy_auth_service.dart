@@ -8,7 +8,7 @@ import 'fantasy_service.dart';
 class FantasyAuthService with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   
-  // ---> COLE O SEU WEB CLIENT ID NOVO AQUI <---
+  // ---> COLE O SEU WEB CLIENT ID AQUI <---
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? '893803829585-jp8uuugt42m2qknabm4lene03mimllai.apps.googleusercontent.com' : null,
   );
@@ -50,23 +50,46 @@ class FantasyAuthService with ChangeNotifier {
       final User? user = userCredential.user;
 
       if (user != null) {
-        // 🚨 TRUQUE SÊNIOR PARA EVITAR RACE CONDITION (ERRO DE PERMISSÃO) 🚨
-        // Força a renovação e propagação imediata do Token de Acesso para o Firestore
+        // 🚨 TRUQUE SÊNIOR V2: RETRY LOOP PARA LATÊNCIA DE REDE 🚨
+        // Força a renovação e propagação do Token de Acesso
         await user.getIdToken(true);
-        await Future.delayed(const Duration(milliseconds: 600)); // Fôlego para a rede
+        
+        bool isTokenPropagated = false;
+        int attempts = 0;
+        
+        while (!isTokenPropagated && attempts < 5) {
+          attempts++;
+          try {
+            // Tempo progressivo: 600ms, 1200ms, 1800ms... 
+            // Dá o tempo exato que a rede do usuário precisar!
+            await Future.delayed(Duration(milliseconds: 600 * attempts));
+            
+            // 2. Garante que o time existe no banco
+            final docSnap = await FirebaseFirestore.instance
+                .collection('fantasy_teams')
+                .doc(user.uid)
+                .get();
 
-        // 2. Garante que o time existe no banco
-        final docSnap = await FirebaseFirestore.instance
-            .collection('fantasy_teams')
-            .doc(user.uid)
-            .get();
-
-        if (!docSnap.exists) {
-          await _fantasyService.createUserTeam(
-            userId: user.uid,
-            userName: user.displayName ?? 'Treinador',
-            teamName: 'Time de ${user.displayName?.split(' ').first ?? 'Treinador'}',
-          );
+            // Se chegou aqui, a permissão foi concedida pelo Firestore!
+            if (!docSnap.exists) {
+              await _fantasyService.createUserTeam(
+                userId: user.uid,
+                userName: user.displayName ?? 'Treinador',
+                teamName: 'Time de ${user.displayName?.split(' ').first ?? 'Treinador'}',
+              );
+            }
+            
+            isTokenPropagated = true; // Sucesso! Sai do loop.
+          } catch (e) {
+            final errorStr = e.toString().toLowerCase();
+            // Se for erro de permissão e ainda tiver tentativas, tenta de novo
+            if (errorStr.contains('permission') || errorStr.contains('insufficient')) {
+              debugPrint('Aguardando token propagar no Firestore... (Tentativa $attempts)');
+              if (attempts == 5) rethrow; // Falhou definitivamente
+            } else {
+              rethrow; // Erro de conexão / offline, devolve pra tela
+            }
+          }
         }
       }
 
@@ -78,7 +101,7 @@ class FantasyAuthService with ChangeNotifier {
       return "Erro no Firebase: ${e.message}";
     } catch (e) {
       _setLoading(false);
-      return "Erro desconhecido: $e";
+      return "Falha de comunicação: $e";
     }
   }
 

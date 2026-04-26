@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../services/fantasy_admin_service.dart';
 import '../services/fantasy_service.dart';
 import '../services/championship_service.dart';
-import '../widgets/ui/custom_empty_state.dart'; // Certifique-se de ter este widget ou remova/adapte
 
 class FantasyAdminControlScreen extends StatefulWidget {
   const FantasyAdminControlScreen({super.key});
@@ -74,10 +73,8 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
     try {
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
       
-      // Instancia o serviço de admin do fantasy
+      // O reprocessamento histórico completo continua no app (AdminService)
       final fantasyAdminService = FantasyAdminService();
-      
-      // Chama o reprocessamento
       final result = await fantasyAdminService.reprocessFullHistory(seasonId, maxRound);
 
       if (mounted) _showFeedback(result, isError: result.contains("Erro"));
@@ -92,9 +89,6 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
     final nextStatus = !isOpenNow; // Se aberto, fecha. Se fechado, abre.
     final actionLabel = nextStatus ? "ABRIR" : "FECHAR";
     final targetRound = int.tryParse(_roundController.text) ?? currentRound;
-
-    // Se estiver abrindo, sugere-se avançar a rodada, mas mantém o input do controller
-    // A lógica aqui depende do admin definir a rodada correta no input.
 
     final confirm = await _showConfirmDialog(
       "$actionLabel Mercado", 
@@ -114,6 +108,7 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
     }
   }
 
+  // 🚨 RESTAURADO PARA CLOUD FUNCTION 🚨
   Future<void> _processRound(int round) async {
     final confirm = await _showConfirmDialog(
       "Processar Rodada $round", 
@@ -129,6 +124,8 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
     setState(() => _isLoading = true);
     try {
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      
+      // Chamando a Cloud Function
       final result = await Provider.of<FantasyService>(context, listen: false).processRoundCloud(seasonId, round);
 
       if (mounted) _showFeedback(result, isError: !result.startsWith("Sucesso"));
@@ -269,10 +266,9 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
 
                 const SizedBox(height: 12),
                 
-                // 🚨 NOVO BOTÃO DE REPROCESSAMENTO 🚨
+                // BOTÃO DE REPROCESSAMENTO
                 OutlinedButton.icon(
                   onPressed: _isLoading ? null : () {
-                    // Pega a rodada que está digitada no campo de input lá em cima
                     final targetRound = int.tryParse(_roundController.text) ?? dbRound;
                     _reprocessHistory(targetRound);
                   },
