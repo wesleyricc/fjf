@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/photo_product_model.dart';
+import '../services/analytics_service.dart'; // Import já estava aqui, perfeito!
 
 enum CheckoutStep { form, loading, pix, success }
 
@@ -212,6 +213,11 @@ class PhotoSalesViewModel extends ChangeNotifier {
 
       if (_paymentId.isNotEmpty && _pixCode.isNotEmpty) {
         _checkoutStep = CheckoutStep.pix;
+        
+        // 🚨 EVENTO DE NEGÓCIO: Tentativa de Compra (Início do Checkout)
+        // Dispara para o Analytics a quantidade de itens e o valor total gerado no PIX
+        AnalyticsService.logPhotoPackCheckout(_cart.length, totalPrice);
+
         _listenToPaymentStatus();
       } else {
         throw "Não foi possível gerar o código Pix. Tente novamente mais tarde.";

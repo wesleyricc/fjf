@@ -12,7 +12,7 @@ class FantasyRepository {
   // --- CACHE EM MEMÓRIA ---
   List<FantasyPlayer>? _cachedPlayers;
   DateTime? _lastPlayersFetch;
-  static const Duration PLAYER_CACHE_VALIDITY = Duration(minutes: 10);
+  static const Duration PLAYER_CACHE_VALIDITY = Duration(minutes: 5);
 
   Map<String, dynamic>? _cachedMarketStatus;
   DateTime? _lastMarketFetch;
@@ -64,12 +64,20 @@ class FantasyRepository {
     return _marketStatusStream!;
   }
 
-  Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids) async {
-    if (_cachedPlayers != null) {
+  Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids, {bool forceRefresh = false}) async {
+    final bool isExpired = _lastPlayersFetch == null || 
+        DateTime.now().difference(_lastPlayersFetch!) > PLAYER_CACHE_VALIDITY;
+
+    // Se o cache global existir e não estiver expirado (e não for um forceRefresh), filtra localmente
+    if (_cachedPlayers != null && !isExpired && !forceRefresh) {
       return _cachedPlayers!.where((p) => ids.contains(p.playerId)).toList();
     }
     
-    return _api.getPlayersByIds(ids);
+    // Caso contrário, busca direto da API (Firebase)
+    final players = await _api.getPlayersByIds(ids);
+    
+    // Opcional: Atualiza o cache global se necessário, ou apenas retorna
+    return players;
   }
 
   Future<String> saveLineup({

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui'; // 🚨 Necessário para o PlatformDispatcher do Crashlytics
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
@@ -6,6 +7,9 @@ import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart'; 
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // 🚨 Adicionado Crashlytics
+import 'package:firebase_analytics/firebase_analytics.dart';     // 🚨 Adicionado Analytics
 
 // Configurações
 import 'firebase_options.dart'; 
@@ -88,9 +92,22 @@ void main() async {
 
     await Firebase.initializeApp(options: firebaseOptions);
 
+    // 🚨 1. CRASHLYTICS GLOBAL: Captura erros a nível de plataforma
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+
+    // 🚨 ATIVAÇÃO DO FIREBASE APP CHECK 🚨
+    await FirebaseAppCheck.instance.activate(
+      webProvider: ReCaptchaV3Provider('6LfdwM4sAAAAACPNPfvuk5uW_c2FVt93yr1jQ1NH'),
+      androidProvider: kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
+      appleProvider: AppleProvider.deviceCheck,
+    );
+
     if (kIsWeb) {
       FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: false, // Desliga o IndexedDB corrompido na Web
+        persistenceEnabled: false, 
       );
     }
     
@@ -110,10 +127,12 @@ void main() async {
     await NotificationService().init();
     await initializeDateFormatting('pt_BR', null);
 
+    // 🚨 2. CRASHLYTICS GLOBAL: Captura erros de UI/Widgets do Flutter
     FlutterError.onError = (FlutterErrorDetails details) {
       if (details.exception.toString().contains('failed-precondition')) {
          _logFirestoreIndexError(details.exception);
       }
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details); // Envia pro Firebase
       FlutterError.presentError(details); 
     };
 
@@ -122,11 +141,16 @@ void main() async {
   }, (error, stack) {
     _logFirestoreIndexError(error);
     debugPrint("Erro assíncrono: $error");
+    // 🚨 3. CRASHLYTICS GLOBAL: Captura erros assíncronos não tratados
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
 }
 
 class FjfApp extends StatelessWidget {
   const FjfApp({super.key});
+
+  // 🚨 4. Instância única do Analytics para o App inteiro
+  static FirebaseAnalytics analytics = FirebaseAnalytics.instance;
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +186,13 @@ class FjfApp extends StatelessWidget {
         title: 'FJF 2025',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme, 
+        
+        // 🚨 5. ANALYTICS GLOBAL (O Radar de Telas)
+        // Registra automaticamente no painel do Firebase toda vez que o usuário navegar.
+        navigatorObservers: [
+          FirebaseAnalyticsObserver(analytics: analytics),
+        ],
+
         builder: (context, child) {
           if (isTestEnv) {
             return Banner(

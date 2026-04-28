@@ -142,7 +142,7 @@ class FantasyRulesScreen extends StatelessWidget {
           children: [
             _buildRuleRow(Icons.star, "Capitão", "A pontuação do capitão é multiplicada por 2x."),
             const SizedBox(height: 16),
-            _buildRuleRow(Icons.store, "Mercado", "O mercado fecha 15 minutos antes do primeiro jogo da rodada."),
+            _buildRuleRow(Icons.store, "Mercado", "O mercado fecha 20 minutos antes do primeiro jogo da rodada."),
             const SizedBox(height: 16),
             _buildRuleRow(Icons.group, "Formação", "É obrigatório escalar 1 Goleiro, 1 Fixo, 2 Alas, 1 Pivô e 1 Técnico."),
           ],

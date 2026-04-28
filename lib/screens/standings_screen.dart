@@ -9,6 +9,7 @@ import '../utils/standings_calculator.dart';
 import '../utils/standings_sorter.dart';     
 import '../models/match_model.dart';
 import '../models/team_model.dart';
+import '../services/analytics_service.dart';
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
@@ -32,6 +33,12 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
   List<Team> _cachedTeams = [];
   List<MatchModel> _cachedMatches = [];
 
+  // 🚨 OTIMIZAÇÃO DE PERFORMANCE: MEMOIZATION
+  // Evita que o app calcule a tabela oficial toda vez que o usuário digita no simulador
+  List<TeamStanding>? _memoizedOfficialStandings;
+  Map<String, Map<String, dynamic>>? _memoizedLiveScores;
+  int _lastDataHash = 0;
+
   final Map<String, String> _tiebreakerNames = {
     'head_to_head': 'Confronto Direto (CD)',
     'disciplinary_points': 'Menor Pontuação Disciplinar (PD)',
@@ -45,6 +52,13 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+
+    // 🚨 EVENTO DE NEGÓCIO: Adiciona um ouvinte para ver quando ele abre a aba do Simulador
+    _tabController.addListener(() {
+      if (_tabController.index == 1 && !_tabController.indexIsChanging) {
+        AnalyticsService.logSimulatorUsed();
+      }
+    });
   }
 
   @override
@@ -53,16 +67,49 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
     super.dispose();
   }
 
+  // 🚨 LÓGICA DO MEMOIZATION
+  void _updateMemoization() {
+    // Cria uma assinatura única para os dados atuais do banco
+    int currentHash = Object.hash(_cachedTeams, _cachedMatches);
+    
+    // Só processa matemática pesada se a assinatura mudou (dados novos chegaram)
+    if (_memoizedOfficialStandings == null || _lastDataHash != currentHash) {
+      debugPrint("🧮 [MEMOIZATION] Calculando Tabela Oficial...");
+      
+      _memoizedOfficialStandings = StandingsCalculator.calculate(
+        teams: _cachedTeams,
+        matches: _cachedMatches,
+        simulatedScores: null,
+      );
+
+      _memoizedLiveScores = {};
+      for (var m in _cachedMatches) {
+         if (m.isInProgress && m.scoreHome != null) {
+            final sH = m.scoreHome!;
+            final sA = m.scoreAway!;
+            Color cH = (sH > sA) ? Colors.green : ((sH < sA) ? Colors.red : Colors.grey);
+            Color cA = (sA > sH) ? Colors.green : ((sA < sH) ? Colors.red : Colors.grey);
+            _memoizedLiveScores![m.homeTeamId] = {'score': '[$sH-$sA]', 'color': cH};
+            _memoizedLiveScores![m.awayTeamId] = {'score': '[$sA-$sH]', 'color': cA};
+         }
+      }
+      _lastDataHash = currentHash; // Salva a nova assinatura
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
         final seasonName = service.currentSeasonName;
         
-        // Pega do Cache
+        // Pega do Cache do Provider
         _cachedTeams = service.teams;
         // Filtra apenas jogos da 1ª Fase para classificação
         _cachedMatches = service.matches.where((m) => m.phase == 'first').toList();
+
+        // 🚨 Atualiza a tabela oficial APENAS se houver dados novos do servidor
+        _updateMemoization();
 
         return Scaffold(
           appBar: AppBar(
@@ -105,24 +152,6 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
   }
 
   Widget _buildOfficialTab() {
-    final officialStandings = StandingsCalculator.calculate(
-      teams: _cachedTeams,
-      matches: _cachedMatches,
-      simulatedScores: null,
-    );
-
-    final Map<String, Map<String, dynamic>> liveScores = {};
-    for (var m in _cachedMatches) {
-       if (m.isInProgress && m.scoreHome != null) {
-          final sH = m.scoreHome!;
-          final sA = m.scoreAway!;
-          Color cH = (sH > sA) ? Colors.green : ((sH < sA) ? Colors.red : Colors.grey);
-          Color cA = (sA > sH) ? Colors.green : ((sA < sH) ? Colors.red : Colors.grey);
-          liveScores[m.homeTeamId] = {'score': '[$sH-$sA]', 'color': cH};
-          liveScores[m.awayTeamId] = {'score': '[$sA-$sH]', 'color': cA};
-       }
-    }
-
     return RefreshIndicator(
       onRefresh: () => Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true),
       child: CustomScrollView(
@@ -130,9 +159,9 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
         slivers: [
           SliverToBoxAdapter(
             child: StandingsTableWidget(
-              standings: officialStandings,
+              standings: _memoizedOfficialStandings!, // Usa o cache inteligente
               allMatches: _cachedMatches,
-              liveScores: liveScores,
+              liveScores: _memoizedLiveScores!, // Usa o cache inteligente
             ),
           ),
           SliverToBoxAdapter(
@@ -153,6 +182,7 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
     }
     final rounds = groupedMatches.keys.toList()..sort();
 
+    // 🚨 O Simulador é a única aba que roda o cálculo em tempo real a cada digitação
     final simulatedStandings = StandingsCalculator.calculate(
       teams: _cachedTeams,
       matches: _cachedMatches,
@@ -204,7 +234,13 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
 
   Widget _buildSimulationMatchRow(MatchModel match) {
     final id = match.id;
-    _userSimulations.putIfAbsent(id, () => {'home': -1, 'away': -1});
+    
+    // 🚨 CORREÇÃO: Se o jogo está em andamento, o valor padrão do simulador 
+    // deve ser o placar atual da partida. Caso contrário, fica vazio (-1).
+    int defaultH = (match.isInProgress && match.scoreHome != null) ? match.scoreHome! : -1;
+    int defaultA = (match.isInProgress && match.scoreAway != null) ? match.scoreAway! : -1;
+
+    _userSimulations.putIfAbsent(id, () => {'home': defaultH, 'away': defaultA});
 
     final int currentH = _userSimulations[id]!['home'] ?? -1;
     final int currentA = _userSimulations[id]!['away'] ?? -1;

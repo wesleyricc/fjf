@@ -40,19 +40,33 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
           builder: (context, vm, child) {
             if (vm.isOffline && vm.team == null) {
               return Scaffold(
-                appBar: AppBar(title: const Text("Fantasy FJF")),
+                appBar: AppBar(title: const Text("Fantasy FJF"), elevation: 0),
                 body: CustomEmptyState.offline(onRetry: () => vm.init(authService.user!.uid, Provider.of<ChampionshipService>(context, listen: false).currentSeasonId, force: true)),
               );
             }
 
             if (vm.errorMessage != null && vm.team == null) {
               return Scaffold(
-                appBar: AppBar(title: const Text("Fantasy FJF")),
+                appBar: AppBar(title: const Text("Fantasy FJF"), elevation: 0),
                 body: CustomEmptyState(icon: Icons.error_outline, title: "Erro ao carregar", message: vm.errorMessage!, buttonText: "Tentar Novamente", onButtonPressed: () => vm.init(authService.user!.uid, Provider.of<ChampionshipService>(context, listen: false).currentSeasonId, force: true)),
               );
             }
 
-            if (vm.isLoading || vm.team == null) return _buildLoadingSkeleton(context);
+            if (vm.isLoading) return _buildLoadingSkeleton(context);
+
+            // 🚨 TRAVA DE SEGURANÇA UX: Se parou de carregar e o time não veio, permite atualizar manualmente
+            if (vm.team == null) {
+              return Scaffold(
+                appBar: AppBar(title: const Text("Fantasy FJF"), elevation: 0),
+                body: CustomEmptyState(
+                  icon: Icons.sync_problem,
+                  title: "Sincronizando...",
+                  message: "Seu esquadrão está sendo preparado no servidor.\nClique abaixo para atualizar.",
+                  buttonText: "Atualizar Agora",
+                  onButtonPressed: () => vm.init(authService.user!.uid, Provider.of<ChampionshipService>(context, listen: false).currentSeasonId, force: true),
+                ),
+              );
+            }
 
             return _buildDashboardView(context, authService, vm);
           },
@@ -69,7 +83,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      // BOTÃO VOLTAR NA APPBAR TRANSPARENTE
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -130,7 +143,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                         const Divider(),
                         _buildMiniScoutRow("Assistência", "+3.0 pts", Colors.blue),
                         const Divider(),
-                        // 🚨 ADICIONADO: GOL SOFRIDO 🚨
                         _buildMiniScoutRow("Gol Sofrido", "-1.0 pts", Colors.black),
                         const Divider(),
                         _buildMiniScoutRow("Cartão Amarelo", "-1.0 pts", Colors.amber[800]!),
@@ -278,7 +290,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
       appBar: AppBar(
         title: const Text("Meu Time"),
         elevation: 0,
-        // BOTÃO VOLTAR PARA A HOME GERAL DO APP
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -333,9 +344,12 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
         if (!playerSnapshot.hasData) return const CircularProgressIndicator();
         List<FantasyPlayer> players = playerSnapshot.data!;
         players.sort((a, b) => _rankingPos(a.position).compareTo(_rankingPos(b.position)));
+        
         return Column(
           children: [
+            // 🚨 LOGICA DO NOVO BANNER AQUI 🚨
             if (!vm.isMarketOpen)
+              // Banner Verde de Parciais (Quando Mercado Fechado)
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -344,10 +358,26 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                     const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("TOTAL DA PARCIAL", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)), Text("Rodada Atual", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500))]),
                     Text("${vm.teamPartialScore.toStringAsFixed(2)} pts", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
                 ]),
+              )
+            else if (vm.currentRound > 1) 
+              // Banner Azul da Última Rodada (Quando Mercado Aberto)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.blue.shade800, Colors.blue.shade600]), borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))]),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text("PONTUAÇÃO DA ÚLTIMA RODADA", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)), 
+                      Text("Rodada ${vm.currentRound - 1}", style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500))
+                    ]),
+                    Text("${vm.team!.lastScore.toStringAsFixed(2)} pts", style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                ]),
               ),
+
+            // Lista de Jogadores
             ...players.map((p) {
               final scoreData = vm.liveScores[p.playerId] ?? LiveScoreData(totalScore: 0, isCaptain: false);
-              return _buildMiniPlayerRow(context, p, scoreData, vm.isMarketOpen, vm.config);
+              return _buildMiniPlayerRow(context, p, scoreData, vm.isMarketOpen, vm.config, vm.team!.captainId);
             }),
           ],
         );
@@ -355,9 +385,15 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
     );
   }
 
-  Widget _buildMiniPlayerRow(BuildContext context, FantasyPlayer player, LiveScoreData score, bool isMarketOpen, FantasyGameConfig config) {
-    final double finalScore = score.isCaptain ? score.totalScore * 2 : score.totalScore;
+  Widget _buildMiniPlayerRow(BuildContext context, FantasyPlayer player, LiveScoreData score, bool isMarketOpen, FantasyGameConfig config, String? currentCaptainId) {
+    // 🚨 AQUI MOSTRAMOS A PONTUAÇÃO INDIVIDUAL MESMO COM O MERCADO ABERTO 🚨
+    final bool isCaptain = isMarketOpen ? (player.playerId == currentCaptainId) : score.isCaptain;
+    final double finalScore = isMarketOpen 
+        ? (isCaptain ? player.lastScore * 2 : player.lastScore) 
+        : (isCaptain ? score.totalScore * 2 : score.totalScore);
+        
     final Color scoreColor = finalScore >= 0 ? Colors.green[700]! : Colors.red[700]!;
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 1,
@@ -365,23 +401,49 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
       child: InkWell(
         onTap: isMarketOpen ? null : () => _showScoutDetails(context, player, score, config),
         borderRadius: BorderRadius.circular(8),
-        child: Padding(padding: const EdgeInsets.all(8.0), child: Row(children: [
+        child: Padding(
+          padding: const EdgeInsets.all(8.0), 
+          child: Row(
+            children: [
               Container(width: 25, alignment: Alignment.center, child: Text(player.position.substring(0, 1), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12))),
               const SizedBox(width: 8),
               CircleAvatar(radius: 16, backgroundColor: Colors.grey[200], backgroundImage: player.photoUrl.isNotEmpty ? NetworkImage(player.photoUrl) : null, child: player.photoUrl.isEmpty ? const Icon(Icons.person, size: 16) : null),
               const SizedBox(width: 12),
               Expanded(child: Text(player.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
-              if (score.isCaptain) Container(margin: const EdgeInsets.only(right: 8), padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle), child: const Icon(Icons.star, color: Colors.white, size: 10)),
-              if (!isMarketOpen) Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: scoreColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(finalScore.toStringAsFixed(2), style: TextStyle(fontWeight: FontWeight.w900, color: scoreColor, fontSize: 14))),
-        ])),
+              
+              if (isCaptain) Container(margin: const EdgeInsets.only(right: 8), padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle), child: const Icon(Icons.star, color: Colors.white, size: 10)),
+              
+              if (!isMarketOpen) 
+                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: scoreColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(finalScore.toStringAsFixed(2), style: TextStyle(fontWeight: FontWeight.w900, color: scoreColor, fontSize: 14)))
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(finalScore.toStringAsFixed(2), style: TextStyle(fontWeight: FontWeight.w900, color: finalScore >= 0 ? Colors.blue[700] : Colors.red[700], fontSize: 14)),
+                    const Text("pts", style: TextStyle(fontSize: 9, color: Colors.grey)),
+                  ]
+                )
+            ]
+          )
+        ),
       ),
     );
   }
 
   int _rankingPos(String pos) { switch (pos) { case 'Goleiro': return 1; case 'Fixo': return 2; case 'Ala': return 3; case 'Pivô': return 4; case 'Técnico': return 5; default: return 99; } }
-  Widget _buildStatCard(BuildContext context, String title, String value, IconData icon, Color color) { return Container( padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, color: color, size: 24), const SizedBox(height: 8), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey))])); }
-  Widget _buildActionCard(BuildContext context, String title, IconData icon, Color color, VoidCallback? onTap) { final bool isDisabled = onTap == null; return Material(color: Colors.white, borderRadius: BorderRadius.circular(12), elevation: isDisabled ? 0 : 2, child: Opacity(opacity: isDisabled ? 0.6 : 1.0, child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.bold))])))); }
   
+  Widget _buildStatCard(BuildContext context, String title, String value, IconData icon, Color color) { 
+    return Container( 
+      padding: const EdgeInsets.all(16), 
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)), 
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, color: color, size: 24), const SizedBox(height: 8), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey))])
+    ); 
+  }
+  
+  Widget _buildActionCard(BuildContext context, String title, IconData icon, Color color, VoidCallback? onTap) { 
+    final bool isDisabled = onTap == null; 
+    return Material(color: Colors.white, borderRadius: BorderRadius.circular(12), elevation: isDisabled ? 0 : 2, child: Opacity(opacity: isDisabled ? 0.6 : 1.0, child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.bold))])))); 
+  }
   
   Widget _buildTeamHeader(BuildContext context, FantasyTeam team, bool isMarketOpen, int round) { 
     return Container( 
@@ -424,7 +486,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
               ]
             )
           ),
-          // 🚨 BOTÃO DE EDIÇÃO RESTAURADO 🚨
           Container(
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2), 
@@ -440,8 +501,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
       )
     ); 
   }
-  
-  
   
   Widget _buildLoadingSkeleton(BuildContext context) { return const Scaffold(body: Center(child: CircularProgressIndicator())); }
 }

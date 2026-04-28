@@ -13,7 +13,7 @@ class AuthService with ChangeNotifier {
 
   // Getters para a UI consumir
   bool get isAuthenticated => _isAuthenticated;
-  String? get adminUsername => _adminEmail; // Mantido o getter como adminUsername para compatibilidade
+  String? get adminUsername => _adminEmail; 
   bool get isLoading => _isLoading;
 
   AuthService() {
@@ -24,15 +24,16 @@ class AuthService with ChangeNotifier {
   void _initAuthListener() {
     _auth.authStateChanges().listen((User? user) async {
       if (user != null) {
-        // Verifica se o UID do usuário existe na coleção de administradores
+        // Verifica se o UID do usuário logado existe na coleção de administradores
         try {
           final doc = await _firestore.collection('admin_users').doc(user.uid).get();
           if (doc.exists) {
             _isAuthenticated = true;
             _adminEmail = user.email;
           } else {
-            // Se não está na coleção de admins, não tem permissão para este painel
-            await _auth.signOut();
+            // 🚨 CORREÇÃO CRÍTICA: Não podemos dar "signOut" aqui!
+            // Se dermos signOut, expulsamos os jogadores normais do Fantasy App.
+            // Apenas informamos ao app que esta pessoa logada NÃO é um admin.
             _isAuthenticated = false;
             _adminEmail = null;
           }
@@ -49,7 +50,7 @@ class AuthService with ChangeNotifier {
     });
   }
 
-  // --- Login ---
+  // --- Login Manual (Apenas para o Painel Admin) ---
   Future<String?> login(String email, String password) async {
     try {
       _isLoading = true;
@@ -65,6 +66,8 @@ class AuthService with ChangeNotifier {
       final docSnap = await _firestore.collection('admin_users').doc(userCredential.user!.uid).get();
 
       if (!docSnap.exists) {
+        // 🚨 AQUI SIM é o lugar correto para o signOut. 
+        // A pessoa tentou usar o formulário Admin e falhou.
         await _auth.signOut();
         _isLoading = false;
         notifyListeners();
@@ -77,7 +80,7 @@ class AuthService with ChangeNotifier {
       
       _isLoading = false;
       notifyListeners(); 
-      return null; // Null significa sucesso (sem erro)
+      return null; 
     } on FirebaseAuthException catch (e) {
       _isLoading = false;
       notifyListeners();

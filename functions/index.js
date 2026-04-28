@@ -1,4 +1,6 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler"); // 🚨 ADICIONADO PARA O CRON JOB
 const admin = require("firebase-admin");
 const { MercadoPagoConfig, Payment } = require("mercadopago");
 
@@ -8,21 +10,18 @@ admin.initializeApp();
 // CONFIGURAÇÕES GERAIS
 // ==================================================================
 
-// MERCADO PAGO
-// Em produção, use: firebase functions:config:set mercadopago.token="SEU_TOKEN"
 const MP_ACCESS_TOKEN = "APP_USR-3797379599804379-013016-48576b74ed518f25f9190c9c29996f12-146749346"; 
 const client = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
 
-// FANTASY GAME (Padrões de Pontuação e Economia)
 const DEFAULT_CONFIG = {
   ptsGoal: 5.0,
   ptsAssist: 3.0,
   ptsYellowCard: -1.0,
   ptsRedCard: -3.0,
   ptsGoalConceded: -1.0,
-  factorExpectation: 0.35, // Fator para cálculo de valorização
+  factorExpectation: 0.35, 
   factorVariation: 0.25,
-  capLimitPercent: 0.25,   // Limite máximo de variação de preço (25%)
+  capLimitPercent: 0.25,   
   minPrice: 1.0,
 };
 
@@ -46,7 +45,6 @@ exports.createPixPayment = onCall({ cors: true }, async (request) => {
     let totalPrice = 0.0;
     const itemsToSave = [];
     
-    // Busca preços reais no banco para evitar fraude
     const promises = photoIds.map(id => db.collection('photo_sales').doc(id).get());
     const snapshots = await Promise.all(promises);
 
@@ -65,7 +63,6 @@ exports.createPixPayment = onCall({ cors: true }, async (request) => {
       throw new HttpsError('failed-precondition', 'Erro ao calcular total.');
     }
 
-    // Criação no Mercado Pago
     const payment = new Payment(client);
     const paymentData = {
       transaction_amount: totalPrice,
@@ -86,7 +83,6 @@ exports.createPixPayment = onCall({ cors: true }, async (request) => {
     const qrCodeCopyPaste = response.point_of_interaction.transaction_data.qr_code;
     const mpPaymentId = response.id;
 
-    // Salva Pedido
     await db.collection('orders').doc(mpPaymentId.toString()).set({
       mp_payment_id: mpPaymentId,
       status: 'pending',
@@ -112,7 +108,10 @@ exports.handleMpWebhook = onRequest(async (req, res) => {
     if (!paymentId && req.query.id) paymentId = req.query.id;
     if (!paymentId && req.body.type === 'payment' && req.body.id) paymentId = req.body.id;
 
-    if (!paymentId) return res.status(200).send("No ID found");
+    if (!paymentId || isNaN(paymentId)) {
+      console.warn("Webhook ignorado: ID de pagamento inválido ou ausente.");
+      return res.status(400).send("Bad Request: ID inválido");
+    }
 
     const payment = await new Payment(client).get({ id: paymentId });
 
@@ -123,14 +122,12 @@ exports.handleMpWebhook = onRequest(async (req, res) => {
       if (orderSnap.exists) {
         const orderData = orderSnap.data();
         
-        // Evita processar duplicado
         if (orderData.status !== 'approved') {
           await orderRef.update({
             status: 'approved',
             approved_at: admin.firestore.FieldValue.serverTimestamp(),
           });
 
-          // Disparo de E-mail (Garante entrega mesmo se app fechado)
           const itemsListHtml = (orderData.items || []).map(item => 
               `<li><a href="${item.original_url}">Baixar Foto (${item.event_name})</a></li>`
           ).join('');
@@ -161,24 +158,33 @@ exports.handleMpWebhook = onRequest(async (req, res) => {
 });
 
 // ==================================================================
-// ⚽ MÓDULO FANTASY (Fechamento de Rodada Seguro)
+// ⚽ MÓDULO FANTASY (Fechamento de Rodada)
 // ==================================================================
 
 exports.closeRound = onCall({ 
   cors: true, 
-  timeoutSeconds: 540, // 9 minutos (máximo) para processar muitos times
-  memory: '1GB'        // Mais memória para cálculos em lote
+  timeoutSeconds: 540, 
+  memory: '1GB'        
 }, async (request) => {
+  
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Acesso negado. O usuário precisa estar logado.');
+  }
+
+  const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
+  if (!adminDoc.exists) {
+    console.error(`🚨 TENTATIVA DE INVASÃO DETECTADA! UID: ${request.auth.uid} tentou executar closeRound.`);
+    throw new HttpsError('permission-denied', 'Acesso negado. Apenas administradores podem fechar a rodada.');
+  }
+
   const { seasonId, round } = request.data;
 
   if (!seasonId || !round) {
     throw new HttpsError('invalid-argument', 'seasonId e round são obrigatórios.');
   }
 
-  const db = admin.firestore();
-
   try {
-    const configSnap = await db.collection('fantasy_config').doc('settings').get();
+    const configSnap = await db.collection('fantasy_config').doc('rules').get();
     const config = configSnap.exists ? { ...DEFAULT_CONFIG, ...configSnap.data() } : DEFAULT_CONFIG;
 
     const matchesSnap = await db.collection('championships').doc(seasonId)
@@ -219,7 +225,7 @@ exports.closeRound = onCall({
     allPlayersSnap.forEach(doc => {
       const p = doc.data();
       const pid = doc.id;
-      const teamId = p.team_id; // Ajustado para snake_case
+      const teamId = p.team_id; 
 
       if (!teamId) return;
 
@@ -244,7 +250,6 @@ exports.closeRound = onCall({
         const total = scores.reduce((a, b) => a + b, 0);
         const avg = total / scores.length;
         scoresMap[coachPid] = Number(avg.toFixed(2));
-        console.log(`[MÉDIA TÉCNICO] Time: ${tId} | Scores: ${scores} | Quantidade: ${scores.length} | Total: ${total} | Participantes: ${teamLogDetails[tId].join(' | ')} | Média: ${scoresMap[coachPid]}`);
       } else {
         scoresMap[coachPid] = 0;
       }
@@ -257,7 +262,7 @@ exports.closeRound = onCall({
       const p = doc.data();
       const pid = doc.id;
       const score = scoresMap[pid] || 0;
-      const currentPrice = p.current_price || config.minPrice; // Ajustado: current_price
+      const currentPrice = p.current_price || config.minPrice; 
 
       const expectation = currentPrice * config.factorExpectation;
       const performance = score - expectation;
@@ -297,12 +302,11 @@ exports.closeRound = onCall({
       });
     });
 
-    // --- ATUALIZAÇÃO DOS TIMES USANDO SNAKE_CASE ---
     const userTeamsSnap = await db.collection('fantasy_teams').get();
     userTeamsSnap.forEach(doc => {
       const team = doc.data();
-      const lineup = team.lineup_player_ids || []; // Ajustado: lineup_player_ids
-      const captainId = team.captain_id || null;    // Ajustado: captain_id (Garante null se vazio)
+      const lineup = team.lineup_player_ids || []; 
+      const captainId = team.captain_id || null;    
 
       let roundPoints = 0;
       let playersCurrentValue = 0;
@@ -314,7 +318,7 @@ exports.closeRound = onCall({
         playersCurrentValue += (newPricesMap[pid] || config.minPrice);
       });
 
-      const currentBalance = team.current_balance || 0; // Ajustado: current_balance
+      const currentBalance = team.current_balance || 0; 
       const totalPatrimony = Number((currentBalance + playersCurrentValue).toFixed(2));
 
       const teamHistoryRef = doc.ref.collection('history').doc(round.toString());
@@ -325,14 +329,14 @@ exports.closeRound = onCall({
         patrimony: totalPatrimony,
         processed_at: admin.firestore.Timestamp.now(),
         captain_id: captainId, 
-        lineup_snapshot: lineup // Ajustado: lineup_snapshot
+        lineup_snapshot: lineup 
       });
 
       batchHandler.update(doc.ref, {
-        total_points: Number(((team.total_points || 0) + roundPoints).toFixed(2)), // Ajustado: total_points
-        last_score: roundPoints,                                                   // Ajustado: last_score
-        team_value: totalPatrimony,                                                // Ajustado: team_value
-        updated_at: admin.firestore.Timestamp.now()                                 // Ajustado: updated_at
+        total_points: Number(((team.total_points || 0) + roundPoints).toFixed(2)), 
+        last_score: roundPoints,                                                   
+        team_value: totalPatrimony,                                                
+        updated_at: admin.firestore.Timestamp.now()                                 
       });
     });
 
@@ -340,7 +344,7 @@ exports.closeRound = onCall({
 
     return { 
       success: true, 
-      message: `Rodada ${round} finalizada com sucesso (snake_case padrão).` 
+      message: `Rodada ${round} finalizada com sucesso.` 
     };
 
   } catch (error) {
@@ -349,9 +353,197 @@ exports.closeRound = onCall({
   }
 });
 
+// ==================================================================
+// 📡 MÓDULO FANTASY (Parciais Ao Vivo)
+// ==================================================================
+
+exports.updateLiveScouts = onDocumentWritten({
+  document: "championships/{seasonId}/matches/{matchId}",
+}, async (event) => {
+  const seasonId = event.params.seasonId;
+  const matchData = event.data.after.data();
+  const previousData = event.data.before.data();
+
+  if (!matchData || !matchData.round) return;
+
+  if (previousData) {
+    const oldStats = JSON.stringify(previousData.stats_applied?.player_stats || {});
+    const newStats = JSON.stringify(matchData.stats_applied?.player_stats || {});
+    if (oldStats === newStats) {
+      return; 
+    }
+  }
+
+  const round = matchData.round;
+
+  try {
+    const configSnap = await db.collection('fantasy_config').doc('rules').get();
+    const config = configSnap.exists ? { ...DEFAULT_CONFIG, ...configSnap.data() } : DEFAULT_CONFIG;
+
+    const matchesSnap = await db.collection('championships').doc(seasonId)
+      .collection('matches').where('round', '==', round).get();
+
+    const scoresMap = {};
+
+    matchesSnap.forEach(doc => {
+      const data = doc.data();
+      if (!data.stats_applied || !data.stats_applied.player_stats) return;
+
+      const stats = data.stats_applied.player_stats;
+      const ptsRules = {
+        goals: config.ptsGoal,
+        assists: config.ptsAssist,
+        yellows: config.ptsYellowCard,
+        reds: config.ptsRedCard,
+        goals_conceded: config.ptsGoalConceded
+      };
+
+      ['goals', 'assists', 'yellows', 'reds', 'goals_conceded'].forEach(cat => {
+        if (stats[cat]) {
+          Object.entries(stats[cat]).forEach(([pid, val]) => {
+            if (!scoresMap[pid]) {
+              scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0 };
+            }
+            const count = Number(val) || 0;
+            scoresMap[pid].totalScore += (count * ptsRules[cat]);
+            scoresMap[pid][cat] += count;
+          });
+        }
+      });
+    });
+
+    const allPlayersSnap = await db.collection('fantasy_market_players').get();
+    const teamScores = {};
+    const teamCoaches = {};
+
+    allPlayersSnap.forEach(doc => {
+      const p = doc.data();
+      const pid = doc.id;
+      const teamId = p.team_id;
+
+      if (!teamId) return;
+
+      if (p.position === 'Técnico') {
+        teamCoaches[teamId] = pid;
+      } 
+      
+      if (scoresMap[pid] !== undefined) {
+        if (!teamScores[teamId]) teamScores[teamId] = [];
+        teamScores[teamId].push(scoresMap[pid].totalScore);
+      }
+    });
+
+    Object.entries(teamCoaches).forEach(([tId, coachPid]) => {
+      const scores = teamScores[tId] || [];
+      if (!scoresMap[coachPid]) {
+        scoresMap[coachPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0 };
+      }
+      
+      if (scores.length > 0) {
+        const total = scores.reduce((a, b) => a + b, 0);
+        scoresMap[coachPid].totalScore = Number((total / scores.length).toFixed(2));
+      } else {
+        scoresMap[coachPid].totalScore = 0;
+      }
+    });
+
+    Object.keys(scoresMap).forEach(pid => {
+      scoresMap[pid].totalScore = Number(scoresMap[pid].totalScore.toFixed(2));
+    });
+
+    await db.collection('championships').doc(seasonId)
+      .collection('fantasy_live').doc(`round_${round}`)
+      .set({
+        updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        scores: scoresMap
+      });
+      
+    console.log(`✅ Parciais geradas com sucesso para a rodada ${round}.`);
+
+  } catch (error) {
+    console.error("🔥 Erro ao atualizar Live Scouts:", error);
+  }
+});
+
 
 // ==================================================================
-// UTILS: Batch Handler (Para lidar com limite de 500 writes)
+// ⏰ PILOTO AUTOMÁTICO (Fechar Mercado Sozinho - CRON)
+// ==================================================================
+
+exports.autoCloseMarket = onSchedule({
+  schedule: "every 10 minutes",
+  timeZone: "America/Sao_Paulo",
+}, async (event) => {
+  try {
+    // 1. Verifica se o mercado já está fechado (Economia de leituras)
+    const statusRef = db.collection('fantasy_config').doc('status');
+    const statusSnap = await statusRef.get();
+    
+    if (!statusSnap.exists) return;
+    
+    const statusData = statusSnap.data();
+    if (statusData.is_open === false) {
+      return; // Já está fechado, aborta.
+    }
+
+    const currentRound = statusData.current_round || 1;
+
+    // 2. Procura a temporada ativa
+    const seasonsSnap = await db.collection('championships')
+      .where('is_active', '==', true)
+      .limit(1)
+      .get();
+      
+    if (seasonsSnap.empty) {
+      console.log("Nenhuma temporada ativa encontrada.");
+      return;
+    }
+    const seasonId = seasonsSnap.docs[0].id;
+
+    // 3. Busca o próximo jogo pendente da rodada atual
+    const nextMatchSnap = await db.collection('championships').doc(seasonId)
+      .collection('matches')
+      .where('round', '==', currentRound)
+      .where('status', '==', 'pending')
+      .orderBy('datetime', 'asc')
+      .limit(1)
+      .get();
+
+    if (nextMatchSnap.empty) {
+      // Se não há jogos pendentes, pode ser o fim da rodada ou não há jogos cadastrados
+      return;
+    }
+
+    const nextMatch = nextMatchSnap.docs[0].data();
+    if (!nextMatch.datetime) return;
+
+    // 4. Calcula o tempo restante
+    const matchTimeMs = nextMatch.datetime.toDate().getTime();
+    const nowMs = Date.now();
+    
+    console.log(`matchTimeMs: ${matchTimeMs}`)
+    console.log(`nowMs: ${nowMs}`)
+
+    // Calcula diferença em minutos
+    const diffMinutes = (matchTimeMs - nowMs) / (1000 * 60);
+
+    // 5. Se faltar 20 minutos ou menos (ou se o jogo já deveria ter começado)
+    if (diffMinutes <= 20) {
+      await statusRef.update({
+        is_open: false,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO para a rodada ${currentRound}. Tempo restante para o jogo: ${diffMinutes.toFixed(1)} minutos.`);
+    }
+
+  } catch (error) {
+    console.error("🔥 Erro no autoCloseMarket:", error);
+  }
+});
+
+
+// ==================================================================
+// UTILS: Batch Handler
 // ==================================================================
 class BatchHandler {
   constructor(dbInstance) {
@@ -372,7 +564,7 @@ class BatchHandler {
 
   async checkCommit() {
     this.count++;
-    if (this.count >= 490) { // Margem de segurança para o limite de 500
+    if (this.count >= 490) { 
       await this.batch.commit();
       this.batch = this.db.batch();
       this.count = 0;

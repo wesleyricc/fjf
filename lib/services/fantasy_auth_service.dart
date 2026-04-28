@@ -68,7 +68,7 @@ class FantasyAuthService with ChangeNotifier {
             final docSnap = await FirebaseFirestore.instance
                 .collection('fantasy_teams')
                 .doc(user.uid)
-                .get();
+                .get(const GetOptions(source: Source.server)); // 🚨 FORÇA BUSCAR NO SERVIDOR E IGNORAR CACHE CORROMPIDO DA WEB
 
             // Se chegou aqui, a permissão foi concedida pelo Firestore!
             if (!docSnap.exists) {

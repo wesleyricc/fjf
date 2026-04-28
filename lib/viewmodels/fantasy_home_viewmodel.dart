@@ -6,19 +6,23 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:connectivity_plus/connectivity_plus.dart'; 
 import 'package:image_picker/image_picker.dart'; 
 
+import '../services/analytics_service.dart';
 import '../models/fantasy_models.dart';
 import '../repositories/fantasy_repository.dart'; 
 import '../services/fantasy_service.dart';
+import '../services/fantasy_scout_service.dart';
 
 class FantasyHomeViewModel extends ChangeNotifier {
   final FantasyRepository _repository = FantasyRepository();
   final FantasyService _fantasyService = FantasyService();
+  final FantasyScoutService _scoutService = FantasyScoutService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance; 
 
   String? _loadedUserId;
   String? _loadedSeasonId;
   bool _isOffline = false; 
+  bool _isDisposed = false;
 
   bool _isLoading = true;
   String? _errorMessage;
@@ -58,7 +62,6 @@ class FantasyHomeViewModel extends ChangeNotifier {
     return double.parse(total.toStringAsFixed(2));
   }
 
-  // --- LÓGICA DE ATUALIZAÇÃO DE PERFIL (SIMPLIFICADA) ---
   Future<bool> updateTeamProfile({
     required String newName,
     String? selectedPresetUrl,
@@ -70,7 +73,6 @@ class FantasyHomeViewModel extends ChangeNotifier {
     try {
       String? finalLogoUrl = selectedPresetUrl;
 
-      // 1. Se o usuário enviou uma imagem nova, faz o upload
       if (imageFile != null) {
         final ref = _storage
             .ref()
@@ -84,13 +86,9 @@ class FantasyHomeViewModel extends ChangeNotifier {
           await ref.putFile(File(imageFile.path));
         }
 
-        // Pega a URL direta (já estará no bucket novo)
         finalLogoUrl = await ref.getDownloadURL();
       } 
 
-      // 2. Atualiza o Firestore
-      // Se finalLogoUrl for nulo e não houver arquivo, o Firestore manterá o que já existe
-      // ou atualizará se o usuário escolheu um preset.
       final Map<String, dynamic> updates = {
         'team_name': newName.trim(),
         'updated_at': FieldValue.serverTimestamp(),
@@ -112,17 +110,15 @@ class FantasyHomeViewModel extends ChangeNotifier {
     }
   }
 
-  // --- MÉTODOS DE INICIALIZAÇÃO E PARCIAIS ---
-
   void _setLoading(bool value) {
     _isLoading = value;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
   }
 
   Future<bool> _checkConnectivity() async {
     final result = await Connectivity().checkConnectivity();
     _isOffline = result == ConnectivityResult.none;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     return !_isOffline;
   }
 
@@ -132,11 +128,11 @@ class FantasyHomeViewModel extends ChangeNotifier {
     _loadedUserId = userId;
     _loadedSeasonId = seasonId;
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
 
     if (!await _checkConnectivity()) {
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return; 
     }
 
@@ -157,7 +153,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
       } else {
         _matchesSub?.cancel();
         _liveScores = {}; 
-        notifyListeners();
+        if (!_isDisposed) notifyListeners();
       }
     });
 
@@ -168,7 +164,11 @@ class FantasyHomeViewModel extends ChangeNotifier {
         _subscribeToLiveMatches(seasonId, _currentRound);
       }
       _isLoading = false;
-      notifyListeners();
+
+      // 🚨 EVENTO DE NEGÓCIO: O usuário carregou o painel do time
+      if (team != null) AnalyticsService.logFantasyAccess(userId);
+      
+      if (!_isDisposed) notifyListeners();
     });
   }
 
@@ -187,101 +187,37 @@ class FantasyHomeViewModel extends ChangeNotifier {
   void _subscribeToLiveMatches(String seasonId, int round) {
     if (_team == null) return;
     _matchesSub?.cancel(); 
-    _matchesSub = _firestore.collection('championships')
-        .doc(seasonId)
-        .collection('matches')
-        .where('round', isEqualTo: round)
-        .snapshots() 
-        .listen((snapshot) {
-      _processLiveScoresSnapshot(snapshot);
-    });
-  }
-
-  Future<void> _processLiveScoresSnapshot(QuerySnapshot snapshot) async {
-    if (_team == null) return;
-    try {
-      Map<String, _ScoutCounts> rawScouts = {}; 
-      for (var doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        if (data['stats_applied'] != null && data['stats_applied']['player_stats'] != null) {
-          final stats = data['stats_applied']['player_stats'];
-          _accumulateScouts(rawScouts, stats['goals'], 'G');
-          _accumulateScouts(rawScouts, stats['assists'], 'A');
-          _accumulateScouts(rawScouts, stats['yellows'], 'Y');
-          _accumulateScouts(rawScouts, stats['reds'], 'R');
-          _accumulateScouts(rawScouts, stats['goals_conceded'], 'GC');
-        }
-      }
-      Map<String, List<double>> teamScoresAccumulator = {};
-      rawScouts.forEach((pid, counts) {
-        final teamId = _playerTeamMap[pid];
-        if (teamId != null) {
-          double pPoints = counts.calculate(_gameConfig);
-          teamScoresAccumulator.putIfAbsent(teamId, () => []).add(pPoints);
-        }
-      });
-      Map<String, double> coachAverages = {};
-      teamScoresAccumulator.forEach((teamId, scores) {
-        if (scores.isNotEmpty) {
-          coachAverages[teamId] = scores.reduce((a, b) => a + b) / scores.length;
-        }
-      });
+    
+    // 📡 Escuta o documento único da rodada
+    _matchesSub = _scoutService.streamLiveScores(seasonId, round).listen((scores) {
       Map<String, LiveScoreData> calculatedScores = {};
-      List<FantasyPlayer> myLineupDetails = await _repository.getPlayersByIds(_team!.lineupPlayerIds);
-      for (var player in myLineupDetails) {
-        if (player.position == 'Técnico') {
-          calculatedScores[player.playerId] = LiveScoreData(
-            totalScore: coachAverages[player.teamId] ?? 0.0,
-            isCaptain: false,
-          );
-        } else {
-          final s = rawScouts[player.playerId] ?? _ScoutCounts();
-          calculatedScores[player.playerId] = LiveScoreData(
-            totalScore: s.calculate(_gameConfig),
-            isCaptain: (_team!.captainId == player.playerId),
-            goals: s.g,
-            assists: s.a,
-            yellows: s.y,
-            reds: s.r,
-            goalsConceded: s.gc,
-          );
-        }
+      
+      for (String pid in _team!.lineupPlayerIds) {
+         final s = scores[pid] ?? FantasyScoutDetail(totalScore: 0.0);
+         calculatedScores[pid] = LiveScoreData(
+           totalScore: s.totalScore,
+           isCaptain: (_team!.captainId == pid),
+           goals: s.goals,
+           assists: s.assists,
+           yellows: s.yellows,
+           reds: s.reds,
+           goalsConceded: s.goalsConceded,
+         );
       }
+      
       _liveScores = calculatedScores;
-      notifyListeners();
-    } catch (e) {
-      debugPrint("Erro ao calcular parciais: $e");
-    }
-  }
-
-  void _accumulateScouts(Map<String, _ScoutCounts> map, dynamic statMap, String type) {
-    if (statMap is Map) {
-      statMap.forEach((playerId, quantity) {
-        final String pid = playerId.toString();
-        final int qtd = (quantity is num) ? quantity.toInt() : 0;
-        if (qtd <= 0) return;
-        map.putIfAbsent(pid, () => _ScoutCounts());
-        if (type == 'G') map[pid]!.g += qtd;
-        else if (type == 'A') map[pid]!.a += qtd;
-        else if (type == 'Y') map[pid]!.y += qtd;
-        else if (type == 'R') map[pid]!.r += qtd;
-        else if (type == 'GC') map[pid]!.gc += qtd;
-      });
-    }
+      if (!_isDisposed) notifyListeners();
+    });
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     _marketSub?.cancel();
     _teamSub?.cancel();
     _matchesSub?.cancel();
     super.dispose();
   }
-}
-
-class _ScoutCounts {
-  int g = 0, a = 0, y = 0, r = 0, gc = 0;
-  double calculate(FantasyGameConfig c) => (g * c.ptsGoal) + (a * c.ptsAssist) + (y * c.ptsYellowCard) + (r * c.ptsRedCard) + (gc * c.ptsGoalConceded);
 }
 
 class LiveScoreData {
