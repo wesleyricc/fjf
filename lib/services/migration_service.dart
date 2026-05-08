@@ -6,8 +6,8 @@ class MigrationService {
 
   // --- MIGRAR REFERÊNCIAS DE STORAGE (URLS) ---
   Future<String> migrateStorageUrls(String seasonId) async {
-    const String oldBucket = 'fjfapp.firebasestorage.app';
-    const String newBucket = 'acefjf.firebasestorage.app';
+    const String oldBucket = 'acefjf.firebasestorage.app';
+    const String newBucket = 'acefjf-us-storage';
     
     WriteBatch batch = _firestore.batch();
     int count = 0;
@@ -58,6 +58,7 @@ class MigrationService {
       count = await processDocs(_firestore.collection('photo_albums'), ['coverUrl'], count, batch);
       count = await processDocs(_firestore.collection('photo_sales'), ['original_url', 'preview_url'], count, batch);
       count = await processDocs(_firestore.collection('fantasy_teams'), ['custom_logo_url'], count, batch);
+      count = await processDocs(_firestore.collection('fantasy_market_players'), ['team_shield_url', 'photo_url'], count, batch);
       count = await processDocs(_firestore.collection('sponsors'), ['imageUrl', 'targetUrl'], count, batch);
 
       // 2. Coleções da Temporada

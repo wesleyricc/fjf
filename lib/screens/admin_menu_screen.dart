@@ -149,94 +149,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
-  Future<void> _showChangePasswordDialog() async {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final String? currentAdminUsername = authService.adminUsername;
-
-    if (currentAdminUsername == null) return;
-    
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool isLoading = false;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Mudar Senha\n($currentAdminUsername)'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(controller: currentPasswordController, obscureText: true, decoration: const InputDecoration(labelText: 'Senha Atual', prefixIcon: Icon(Icons.lock_outline))),
-                    const SizedBox(height: 10),
-                    TextField(controller: newPasswordController, obscureText: true, decoration: const InputDecoration(labelText: 'Nova Senha', prefixIcon: Icon(Icons.lock))),
-                    const SizedBox(height: 10),
-                    TextField(controller: confirmPasswordController, obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar Nova Senha', prefixIcon: Icon(Icons.lock_reset))),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
-                ElevatedButton(
-                  onPressed: isLoading ? null : () async {
-                    if (newPasswordController.text != confirmPasswordController.text) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Senhas não conferem.')));
-                      return;
-                    }
-                    if (newPasswordController.text.length < 6) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('A nova senha deve ter no mínimo 6 caracteres.')));
-                      return;
-                    }
-                    
-                    setDialogState(() => isLoading = true);
-
-                    try {
-                      User? user = FirebaseAuth.instance.currentUser;
-                      if (user != null && user.email != null) {
-                        
-                        // Reautenticar o usuário antes de alterar a senha nativamente
-                        AuthCredential credential = EmailAuthProvider.credential(
-                          email: user.email!,
-                          password: currentPasswordController.text,
-                        );
-                        
-                        await user.reauthenticateWithCredential(credential);
-                        await user.updatePassword(newPasswordController.text);
-                        
-                        if (mounted) {
-                          Navigator.of(dialogContext).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha alterada com sucesso no Firebase!')));
-                        }
-                      } else {
-                        throw Exception("Usuário não autenticado no Firebase.");
-                      }
-                    } on FirebaseAuthException catch (e) {
-                      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-                         if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('A senha atual está incorreta.')));
-                      } else {
-                         if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: ${e.message}')));
-                      }
-                    } catch (e) {
-                        if (mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
-                    } finally {
-                        if (mounted) setDialogState(() => isLoading = false);
-                    }
-                  },
-                  child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Alterar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   Future<void> _showSetDefaultViewDialog() async {
     bool isDialogSaving = false;
     
@@ -494,13 +406,6 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: Column(
                     children: [
-                      _buildActionTile(
-                        icon: Icons.password,
-                        color: Colors.grey[700]!,
-                        title: "Alterar Senha",
-                        subtitle: "Atualizar credenciais",
-                        onTap: _showChangePasswordDialog,
-                      ),
                       const Divider(height: 1, indent: 56),
                       
                       // ---> NOVO BOTÃO: MIGRAÇÃO DE STORAGE <---
@@ -575,7 +480,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                 const SizedBox(height: 40),
                 const Center(
                   child: Text(
-                    "FJF Admin v2.2.0",
+                    "FJF Admin v2.0.0",
                     style: TextStyle(color: Colors.grey, fontSize: 12),
                   ),
                 ),

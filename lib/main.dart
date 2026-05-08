@@ -18,6 +18,8 @@ import 'screens/fantasy_admin_control_screen.dart';
 import 'screens/fantasy_history_screen.dart';
 import 'screens/fantasy_ranking_screen.dart';
 import 'screens/fantasy_rules_screen.dart';
+import 'screens/free_agent_registration_screen.dart';
+import 'screens/free_agents_market_screen.dart';
 import 'screens/teams_list_screen.dart';
 import 'theme/app_theme.dart';
 
@@ -38,6 +40,7 @@ import 'services/award_service.dart';
 import 'viewmodels/photo_sales_viewmodel.dart';
 import 'viewmodels/fantasy_home_viewmodel.dart';
 import 'viewmodels/fantasy_lineup_viewmodel.dart';
+import 'viewmodels/fantasy_league_viewmodel.dart';
 
 // Repositories
 import 'repositories/fantasy_repository.dart';
@@ -63,6 +66,7 @@ import 'screens/fantasy_history_screen.dart';
 import 'screens/about_history_screen.dart';
 import 'screens/about_board_screen.dart';
 import 'screens/season_summary_screen.dart';
+import 'screens/fantasy_leagues_screen.dart';
 
 // ---> IMPORTS DO SISTEMA DE VOTAÇÃO <---
 import 'screens/voting_screen.dart';
@@ -94,17 +98,19 @@ void main() async {
 
     // 🚨 1. CRASHLYTICS GLOBAL: Captura erros a nível de plataforma
     PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      if (!kIsWeb) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      }
       return true;
     };
 
-    // 🚨 ATIVAÇÃO DO FIREBASE APP CHECK 🚨
+    // 🚨 ATIVAÇÃO DO FIREBASE APP CHECK (Definitivo)
     await FirebaseAppCheck.instance.activate(
       webProvider: ReCaptchaV3Provider('6LfdwM4sAAAAACPNPfvuk5uW_c2FVt93yr1jQ1NH'),
       androidProvider: kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
       appleProvider: AppleProvider.deviceCheck,
     );
-
+    
     if (kIsWeb) {
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: false, 
@@ -132,7 +138,9 @@ void main() async {
       if (details.exception.toString().contains('failed-precondition')) {
          _logFirestoreIndexError(details.exception);
       }
-      FirebaseCrashlytics.instance.recordFlutterFatalError(details); // Envia pro Firebase
+      if (!kIsWeb) {
+        FirebaseCrashlytics.instance.recordFlutterFatalError(details); // Envia pro Firebase
+      }
       FlutterError.presentError(details); 
     };
 
@@ -142,7 +150,9 @@ void main() async {
     _logFirestoreIndexError(error);
     debugPrint("Erro assíncrono: $error");
     // 🚨 3. CRASHLYTICS GLOBAL: Captura erros assíncronos não tratados
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    if (!kIsWeb) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    }
   });
 }
 
@@ -173,6 +183,7 @@ class FjfApp extends StatelessWidget {
 
         ChangeNotifierProvider(create: (_) => FantasyHomeViewModel()),
         ChangeNotifierProvider(create: (_) => FantasyLineupViewModel()),
+        ChangeNotifierProvider(create: (_) => FantasyLeagueViewModel()),
         
         Provider(create: (_) => FantasyService()),
         
@@ -235,6 +246,9 @@ class FjfApp extends StatelessWidget {
           '/about-history': (ctx) => const AboutHistoryScreen(),
           '/about-board': (ctx) => const AboutBoardScreen(),
           '/season-summary': (ctx) => const SeasonSummaryScreen(),
+          '/fantasy-leagues': (ctx) => const FantasyLeaguesScreen(),
+          '/free-agents-registration': (ctx) => const FreeAgentRegistrationScreen(),
+          '/free-agents-market': (ctx) => const FreeAgentsMarketScreen(),
         },
         // ---> NAVEGAÇÃO DINÂMICA DA VOTAÇÃO AQUI <---
         onGenerateRoute: (settings) {

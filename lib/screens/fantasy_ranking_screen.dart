@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/fantasy_service.dart';
 import '../models/fantasy_models.dart';
 import '../services/fantasy_auth_service.dart';
 import '../widgets/ui/shimmer_effect.dart';     
 import '../widgets/ui/custom_empty_state.dart';  
+import '../widgets/team_logo_widget.dart'; // 🚨 Nosso componente inteligente importado
 
 class FantasyRankingScreen extends StatefulWidget {
   const FantasyRankingScreen({super.key});
@@ -71,10 +70,10 @@ class _RankingListState extends State<_RankingList> {
       stream: fantasyService.streamRanking(isGlobal: widget.isGlobal),
       builder: (context, snapshot) {
         
-        // 1. ESTADO OFFLINE/ERRO (Ajuste Novo)
+        // 1. ESTADO OFFLINE/ERRO
         if (snapshot.hasError) {
           return CustomEmptyState.offline(
-            onRetry: () => setState(() {}), // O setState força o Stream a reconectar
+            onRetry: () => setState(() {}), 
           );
         }
 
@@ -174,7 +173,13 @@ class _RankingListState extends State<_RankingList> {
                   : Text("$rankº", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey), textAlign: TextAlign.center),
             ),
             const SizedBox(width: 8),
-            _buildTeamLogo(team),
+            
+            // 🔥 MAGIA APLICADA AQUI: Delegando a interface para o Widget Centralizado 🔥
+            TeamLogoWidget(
+              logoUrl: team.customLogoUrl,
+              radius: 20,
+            ),
+
           ],
         ),
         title: Text(team.teamName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -189,21 +194,5 @@ class _RankingListState extends State<_RankingList> {
         ),
       ),
     );
-  }
-
-  Widget _buildTeamLogo(FantasyTeam team) {
-    if (team.customLogoUrl != null && team.customLogoUrl!.isNotEmpty) {
-      return CircleAvatar(radius: 20, backgroundColor: Colors.transparent, backgroundImage: CachedNetworkImageProvider(team.customLogoUrl!));
-    } else {
-      return CircleAvatar(radius: 20, backgroundColor: _getShieldColor(team.shieldType), child: Icon(_getShieldIcon(team.shieldType), color: Colors.white, size: 20));
-    }
-  }
-
-  Color _getShieldColor(String type) {
-    switch (type) { case '1': return Colors.blue; case '2': return Colors.red; case '3': return Colors.green; case '4': return Colors.orange; case '5': return Colors.purple; case '6': return Colors.black; case '7': return Colors.teal; case '8': return Colors.amber; case '9': return Colors.indigo; case '10': return Colors.deepOrange; default: return Colors.blue; }
-  }
-  
-  IconData _getShieldIcon(String type) {
-    switch (type) { case '6': return Icons.sports_soccer; case '7': return FontAwesomeIcons.shieldHalved; case '8': return FontAwesomeIcons.shieldCat; case '9': return FontAwesomeIcons.futbol; case '10': return FontAwesomeIcons.userShield; case '11': return FontAwesomeIcons.shirt; case '12': return FontAwesomeIcons.trophy; default: return Icons.shield; }
   }
 }

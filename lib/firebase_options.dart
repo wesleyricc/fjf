@@ -58,7 +58,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '893803829585',
     projectId: 'acefjf',
     authDomain: 'acefjf.firebaseapp.com',
-    storageBucket: 'acefjf.firebasestorage.app',
+    storageBucket: 'acefjf-us-storage',
     measurementId: 'G-GHY5150MH5',
   );
 }

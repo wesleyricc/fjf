@@ -23,11 +23,12 @@ import '../widgets/ui/shimmer_effect.dart';
 import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
 import '../services/fantasy_auth_service.dart';
+import 'package:provider/provider.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   static const routeName = '/splash';
-  static const String appVersion = '2.2.0';
+  static const String appVersion = '2.0.0';
   static bool hasShownOpenAd = false;
 
   @override
@@ -308,11 +309,30 @@ class _SplashScreenState extends State<SplashScreen> {
                 backgroundColor: primaryColor,
                 elevation: 0,
                 stretch: true,
+                // 🚨 O NOVO BOTÃO DE TEMPORADAS AQUI 🚨
                 actions: [
-                  IconButton(
-                    icon: const Icon(Icons.history_outlined),
-                    tooltip: 'Trocar Temporada',
-                    onPressed: () => _showSeasonSelectionDialog(context),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12.0, top: 8.0, bottom: 8.0),
+                    child: TextButton.icon(
+                      onPressed: () => _showSeasonSelectionDialog(context),
+                      icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
+                      label: Text(
+                        "Temporada $displayYear",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.15),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(color: Colors.white.withOpacity(0.3), width: 1),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
                 flexibleSpace: FlexibleSpaceBar(

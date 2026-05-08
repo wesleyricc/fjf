@@ -75,7 +75,8 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
 
 flutter:
 
@@ -97,3 +98,15 @@ flutter_launcher_icons:
   adaptive_icon_background: "#FFFFFF" # "#C25F22" # Cor de fundo
   adaptive_icon_foreground: "assets/icon/icon.png" # (Confirme se este é o caminho correto)
   image_path: "assets/icon/icon.png" # <-- Caminho para sua imagem
+
+
+flutter_native_splash:
+  color: "#FFFFFF" # Cor de fundo da tela (Branco). Mude para a cor do seu app se quiser.
+  image: "assets/icon/icon.png"
+  android: true
+  ios: true
+  web: false # Não aplicaremos no Web, pois o Web usa outro sistema de loading
+  
+  # Opções para deixar centralizado bonito:
+  android_gravity: center
+  ios_content_mode: center

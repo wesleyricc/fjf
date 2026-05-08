@@ -8,6 +8,7 @@ import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
 import '../models/fantasy_models.dart';
 import '../viewmodels/fantasy_home_viewmodel.dart'; 
+import '../widgets/team_logo_widget.dart';
 import '../widgets/ui/shimmer_effect.dart';     
 import '../widgets/ui/custom_empty_state.dart';  
 import 'fantasy_edit_team_screen.dart';
@@ -323,7 +324,8 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                     children: [
                       _buildActionCard(context, "Escalar Time", Icons.shield, vm.isMarketOpen ? Colors.blueAccent : Colors.grey, vm.isMarketOpen ? () => Navigator.of(context).pushNamed('/fantasy-lineup') : () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mercado Fechado! Escalações bloqueadas."))); }),
                       _buildActionCard(context, "Mercado", Icons.shopping_cart, Colors.orangeAccent, () => Navigator.pushNamed(context, '/fantasy-market')),
-                      _buildActionCard(context, "Ranking", Icons.groups, Colors.purpleAccent, () => Navigator.of(context).pushNamed('/fantasy-rankings')),
+                      _buildActionCard(context, "Ranking Geral", Icons.groups, Colors.purpleAccent, () => Navigator.of(context).pushNamed('/fantasy-rankings')),
+                      _buildActionCard(context, "Ligas Privadas", Icons.diversity_3, Colors.lightGreen, () => Navigator.of(context).pushNamed('/fantasy-leagues')),
                       _buildActionCard(context, "Regras", Icons.menu_book, Colors.blueGrey, () => Navigator.of(context).pushNamed('/fantasy-rules')),
                     ],
                   ),
@@ -454,51 +456,98 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))]
       ), 
       child: Row(
+  children: [
+    TeamLogoWidget(
+      logoUrl: team.customLogoUrl,
+      radius: 30,
+    ),
+    const SizedBox(width: 16), 
+    Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, 
         children: [
-          CircleAvatar(
-            radius: 30, 
-            backgroundColor: Colors.white,
-            backgroundImage: team.customLogoUrl != null ? NetworkImage(team.customLogoUrl!) : null,
-            child: team.customLogoUrl == null ? Icon(Icons.shield, color: Theme.of(context).primaryColor) : null,
+          Text(
+            team.teamName, 
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ), 
-          const SizedBox(width: 16), 
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
-              children: [
-                Text(
-                  team.teamName, 
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ), 
-                Text(
-                  "Técnico: ${team.ownerName}", 
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  "Rodada $round - ${isMarketOpen ? 'ABERTO' : 'FECHADO'}", 
-                  style: TextStyle(color: isMarketOpen ? Colors.greenAccent : Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold)
+          Text(
+            "Técnico: ${team.ownerName}", 
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6), // 🚨 Um respiro maior antes do badge
+          
+          // 🚨 NOVO BADGE DE STATUS DO MERCADO
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isMarketOpen ? Colors.greenAccent : Colors.redAccent,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: (isMarketOpen ? Colors.greenAccent : Colors.redAccent).withOpacity(0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
                 )
               ]
-            )
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2), 
-              borderRadius: BorderRadius.circular(12)
-            ), 
-            child: IconButton(
-              icon: const Icon(Icons.edit, color: Colors.white), 
-              tooltip: "Editar Perfil", 
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FantasyEditTeamScreen()))
-            )
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min, // Mantém o tamanho ajustado ao texto
+              children: [
+                Icon(
+                  isMarketOpen ? Icons.lock_open_rounded : Icons.lock_rounded,
+                  size: 12,
+                  color: Colors.black87, // Alto contraste contra o fundo verde/vermelho
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isMarketOpen ? "MERCADO ABERTO" : "MERCADO FECHADO",
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w900, // Extra-bold para leitura rápida
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Pílula interna com a rodada
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.black26, // Fundo semi-transparente
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    "RODADA $round",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           )
         ]
       )
+    ),
+    Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2), 
+        borderRadius: BorderRadius.circular(12)
+      ), 
+      child: IconButton(
+        icon: const Icon(Icons.edit, color: Colors.white), 
+        tooltip: "Editar Perfil", 
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FantasyEditTeamScreen()))
+      )
+    )
+  ]
+)
     ); 
   }
   

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/auth_service.dart';
 
 class AdminLoginDialog extends StatefulWidget {
@@ -10,27 +11,15 @@ class AdminLoginDialog extends StatefulWidget {
 }
 
 class _AdminLoginDialogState extends State<AdminLoginDialog> {
-  final _emailController = TextEditingController();
-  final _passController = TextEditingController();
   bool _isLoading = false;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passController.dispose();
-    super.dispose();
-  }
 
   Future<void> _attemptLogin() async {
     final authService = Provider.of<AuthService>(context, listen: false);
     
     setState(() => _isLoading = true);
 
-    // Tenta Logar usando E-mail e Senha no Firebase Auth
-    final error = await authService.login(
-      _emailController.text.trim(),
-      _passController.text,
-    );
+    // 🚨 AGORA USA O GMAIL 🚨
+    final error = await authService.signInWithGoogle();
 
     if (!mounted) return;
     setState(() => _isLoading = false);
@@ -49,37 +38,20 @@ class _AdminLoginDialogState extends State<AdminLoginDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Acesso Administrativo'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress, // Habilita o teclado com '@'
-            decoration: const InputDecoration(labelText: 'E-mail Admin', prefixIcon: Icon(Icons.email)),
-            enabled: !_isLoading,
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _passController,
-            decoration: const InputDecoration(labelText: 'Senha', prefixIcon: Icon(Icons.lock)),
-            obscureText: true,
-            enabled: !_isLoading,
-            onSubmitted: (_) => _attemptLogin(), // Permite enter para logar
-          ),
-        ],
-      ),
+      title: const Text('Acesso Restrito'),
+      content: const Text('Utilize sua conta Google para se identificar no sistema da FJF.'),
       actions: [
         TextButton(
           onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
           child: const Text('Cancelar'),
         ),
-        ElevatedButton(
+        ElevatedButton.icon(
           onPressed: _isLoading ? null : _attemptLogin,
-          child: _isLoading
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700], foregroundColor: Colors.white),
+          icon: _isLoading
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text('Entrar'),
+              : const FaIcon(FontAwesomeIcons.google, size: 16),
+          label: const Text('Entrar com Google'),
         ),
       ],
     );

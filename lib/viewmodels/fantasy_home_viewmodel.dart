@@ -64,8 +64,8 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
   Future<bool> updateTeamProfile({
     required String newName,
-    String? selectedPresetUrl,
-    XFile? imageFile,
+    String? selectedPresetUrl, // Nova opção: URL de escudo pronto
+    XFile? imageFile,          // Opção existente: Upload de arquivo
   }) async {
     if (_team == null) return false;
     _setLoading(true);
@@ -73,6 +73,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
     try {
       String? finalLogoUrl = selectedPresetUrl;
 
+      // Se o usuário selecionou um arquivo do celular, o upload tem prioridade
       if (imageFile != null) {
         final ref = _storage
             .ref()
@@ -94,6 +95,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
         'updated_at': FieldValue.serverTimestamp(),
       };
 
+      // Só atualiza a logo se houver uma nova (Preset ou Upload)
       if (finalLogoUrl != null) {
         updates['custom_logo_url'] = finalLogoUrl;
       }

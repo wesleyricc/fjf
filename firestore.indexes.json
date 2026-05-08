@@ -64,7 +64,6 @@
         { "fieldPath": "timestamp", "order": "DESCENDING" }
       ]
     },
-
     {
       "collectionGroup": "matches",
       "queryScope": "COLLECTION",
@@ -72,6 +71,14 @@
         { "fieldPath": "round", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "datetime", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "fantasy_leagues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "members", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "name", "order": "ASCENDING" }
       ]
     }
   ],

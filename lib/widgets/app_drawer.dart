@@ -8,18 +8,21 @@ class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
 
   Future<void> _handleAdminAction(BuildContext context, AuthService authService) async {
-    Navigator.of(context).pop();
-
-    if (authService.isAuthenticated) {
+    if (authService.isAdmin) {
+      Navigator.of(context).pop();
       Navigator.of(context).pushNamed('/admin-menu');
     } else {
-      final bool? success = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => const AdminLoginDialog(),
-      );
-
-      if (success == true && context.mounted) {
+      // Dispara o login do Google do AuthService
+      final String? error = await authService.signInWithGoogle();
+      
+      if (error != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      } else if (authService.isAdmin && context.mounted) {
+        Navigator.of(context).pop();
         Navigator.of(context).pushNamed('/admin-menu');
+      } else if (authService.isPresident && context.mounted) {
+        Navigator.of(context).pop(); // 🚨 CORREÇÃO AQUI
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bem-vindo, Presidente! Acesso ao Mercado liberado.")));
       }
     }
   }
@@ -65,7 +68,7 @@ class AppDrawer extends StatelessWidget {
                     _buildDrawerItem(context, Icons.dashboard, 'Início', '/'),
                     
                     _buildSectionHeader(context, "DESTAQUES"),
-                    _buildDrawerItem(context, Icons.emoji_events, 'Resumo da Temporada', '/season-summary', highlight: true), // <-- NOVO
+                    _buildDrawerItem(context, Icons.emoji_events, 'Resumo da Temporada', '/season-summary', highlight: true), 
                     _buildDrawerItem(context, Icons.sports_soccer, 'Fantasy FJF', '/fantasy-home', highlight: true),
                     _buildDrawerItem(context, Icons.collections, 'Loja de Fotos', '/photo-sales', highlight: true),
                     
@@ -80,22 +83,27 @@ class AppDrawer extends StatelessWidget {
                     _buildDrawerItem(context, Icons.history_toggle_off, 'Suspensões', '/suspension-history'),
                     _buildDrawerItem(context, Icons.compare_arrows, 'Comparador de Atletas', '/player-comparison'),
                     
+                    // 🚨 NOVA SEÇÃO: SEJA UM ATLETA FJF 🚨
+                    _buildSectionHeader(context, "SEJA UM ATLETA FJF"),
+                    _buildDrawerItem(context, Icons.assignment_ind, 'Inscrição no Mercado', '/free-agents-registration', highlight: true),
+                    _buildDrawerItem(context, Icons.transfer_within_a_station, 'Mercado de Atletas', '/free-agents-market'),
+
                     _buildSectionHeader(context, "SOBRE A FJF"),
                     _buildDrawerItem(context, Icons.history_edu, 'Nossa História', '/about-history'),
-                    _buildDrawerItem(context, Icons.groups_2, 'Diretoria', '/about-board'),
+                    _buildDrawerItem(context, Icons.groups_2, 'Diretoria', '/aboutR-board'),
 
                     const Divider(height: 30),
                     _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),
                     
                     ListTile(
                       leading: Icon(
-                        authService.isAuthenticated ? Icons.admin_panel_settings : Icons.settings_outlined,
-                        color: authService.isAuthenticated ? Colors.green : Colors.grey,
+                        authService.isAdmin ? Icons.admin_panel_settings : Icons.settings_outlined,
+                        color: authService.isAdmin ? Colors.green : Colors.grey,
                       ),
                       title: Text(
-                        authService.isAuthenticated ? 'Painel Admin' : 'Acesso Restrito',
+                        authService.isAdmin ? 'Painel Admin' : 'Acesso Restrito',
                         style: TextStyle(
-                          color: authService.isAuthenticated ? Colors.green[700] : Colors.grey[700],
+                          color: authService.isAdmin ? Colors.green[700] : Colors.grey[700],
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -118,7 +126,7 @@ class AppDrawer extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'FJF App v2.2.0',
+                  'FJF App v2.0.0',
                   style: TextStyle(color: Colors.grey[400], fontSize: 10),
                 ),
               ),

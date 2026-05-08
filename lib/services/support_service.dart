@@ -22,7 +22,7 @@ class SupportService {
           "*Tipo:* $reportType\n"
           "*Título:* $title\n"
           "*Descrição:* $description\n\n"
-          "Enviado pelo App (v2.2.0).";
+          "Enviado pelo App (v2.0.0).";
 
       // 3. Codifica para URL
       final String encodedMessage = Uri.encodeComponent(message);
