@@ -55,9 +55,37 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
     final awayName = widget.match['team_away_name'];
     
     final currentType = widget.eventToEdit?.type ?? widget.cardType;
-    final bool isRed = currentType == MatchEventType.redCard;
-    final Color color = isRed ? Colors.red : Colors.amber[800]!;
-    final String title = isRed ? "CARTÃO VERMELHO" : "CARTÃO AMARELO";
+    
+    // 🚨 DESIGN INTELIGENTE PARA CADA SCOUT 🚨
+    String title;
+    Color color;
+
+    switch (currentType) {
+      case MatchEventType.redCard:
+        title = "CARTÃO VERMELHO";
+        color = Colors.red;
+        break;
+      case MatchEventType.yellowCard:
+        title = "CARTÃO AMARELO";
+        color = Colors.amber[800]!;
+        break;
+      case MatchEventType.penaltyMissed:
+        title = "PÊNALTI PERDIDO";
+        color = Colors.deepPurple;
+        break;
+      case MatchEventType.penaltySaved:
+        title = "PÊNALTI DEFENDIDO";
+        color = Colors.teal;
+        break;
+      case MatchEventType.shotOnPost:
+        title = "NA TRAVE";
+        color = Colors.brown;
+        break;
+      default:
+        title = "EVENTO";
+        color = Colors.blue;
+    }
+
     final bool isEditing = widget.eventToEdit != null;
 
     List<DocumentSnapshot> activePlayers = [];
@@ -101,7 +129,7 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
               value: _selectedPlayerId,
               isExpanded: true,
               hint: const Text('Selecione o Atleta'),
-              decoration: const InputDecoration(labelText: 'Quem recebeu?', border: OutlineInputBorder()),
+              decoration: const InputDecoration(labelText: 'Atleta envolvido', border: OutlineInputBorder()),
               items: activePlayers.map((p) {
                 final d = p.data() as Map<String, dynamic>;
                 final bool isStaff = d['is_staff'] == true;
@@ -196,7 +224,7 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
       if (widget.eventToEdit == null) {
         // CREATE
         await matchService.addMatchEvent(seasonId: seasonId, matchId: widget.match.id, event: event);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cartão registrado!')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scout registrado!')));
       } else {
         // UPDATE
         await matchService.updateMatchEvent(
@@ -205,7 +233,7 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
           oldEvent: widget.eventToEdit!, 
           newEvent: event
         );
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cartão atualizado!')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scout atualizado!')));
       }
 
       if (mounted) Navigator.of(context).pop();

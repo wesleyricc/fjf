@@ -204,6 +204,10 @@ class FantasyHomeViewModel extends ChangeNotifier {
            yellows: s.yellows,
            reds: s.reds,
            goalsConceded: s.goalsConceded,
+           penaltiesSaved: s.penaltiesSaved,
+           penaltiesMissed: s.penaltiesMissed,
+           shotsOnPost: s.shotsOnPost,
+           cleanSheets: s.cleanSheets,
          );
       }
       
@@ -230,6 +234,13 @@ class LiveScoreData {
   final int yellows;
   final int reds;
   final int goalsConceded;
+  
+  final int penaltiesSaved;
+  final int penaltiesMissed;
+  final int shotsOnPost;
+  final int cleanSheets;
+  
+  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets) > 0;
 
   LiveScoreData({
     required this.totalScore,
@@ -239,5 +250,9 @@ class LiveScoreData {
     this.yellows = 0,
     this.reds = 0,
     this.goalsConceded = 0,
+    this.penaltiesSaved = 0,
+    this.penaltiesMissed = 0,
+    this.shotsOnPost = 0,
+    this.cleanSheets = 0,
   });
 }

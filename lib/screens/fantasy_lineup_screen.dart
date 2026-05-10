@@ -5,6 +5,7 @@ import '../utils/custom_cache_manager.dart';
 import '../services/fantasy_auth_service.dart';
 import '../services/championship_service.dart';
 import '../models/fantasy_models.dart';
+import '../services/fantasy_scout_service.dart';
 import '../viewmodels/fantasy_lineup_viewmodel.dart'; 
 import 'fantasy_market_screen.dart'; 
 
@@ -56,6 +57,58 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
     if (selectedPlayer != null) {
       vm.addPlayer(slotIndex, selectedPlayer);
     }
+  }
+
+  // 🚨 ATUALIZADO: Widget auxiliar para desenhar as parciais dentro do ExpansionTile
+  Widget _buildLiveScouts(FantasyScoutDetail? scouts, bool isCaptain) {
+    if (scouts == null || !scouts.hasStats) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8.0),
+        child: Text("Nenhum scout registrado na rodada.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+      );
+    }
+
+    List<Widget> badges = [];
+
+    void addBadge(String label, int count, Color color) {
+      if (count > 0) {
+        badges.add(Container(
+          margin: const EdgeInsets.only(right: 6, bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withOpacity(0.5)),
+          ),
+          child: Text("${count}x $label", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
+        ));
+      }
+    }
+
+    // Inserção dos badges (Cartola Style)
+    addBadge("G", scouts.goals, Colors.green);
+    addBadge("A", scouts.assists, Colors.blue);
+    addBadge("SG", scouts.cleanSheets, Colors.teal);
+    addBadge("PD", scouts.penaltiesSaved, Colors.orange);
+    addBadge("FT", scouts.shotsOnPost, Colors.brown);
+    addBadge("CA", scouts.yellows, Colors.amber.shade800);
+    addBadge("PP", scouts.penaltiesMissed, Colors.deepPurple);
+    addBadge("CV", scouts.reds, Colors.red);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const Text("Scouts da Rodada:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black54)),
+        const SizedBox(height: 6),
+        Wrap(children: badges),
+        if (isCaptain)
+          const Padding(
+            padding: EdgeInsets.only(top: 4.0),
+            child: Text("* Pontuação a dobrar pelo Capitão.", style: TextStyle(fontSize: 10, color: Colors.orange, fontStyle: FontStyle.italic)),
+          )
+      ],
+    );
   }
 
   @override
@@ -260,7 +313,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
   Widget _buildPlayerCard(FantasyLineupViewModel vm, int slotIndex, FantasyPlayer player, double score) {
     final bool isCaptain = vm.captainId == player.playerId;
     
-    // Leitura das propriedades raiz atualizadas no ViewModel
     final double lastScore = player.lastScore;
     final double priceChange = player.lastPriceChange;
     final double average = player.averageScore;
@@ -298,7 +350,9 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), color: Colors.grey[50],
-              child: Column(children: [
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                        const Text("Última Pontuação"),
                        Text(lastScore.toStringAsFixed(2), style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -313,6 +367,13 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                        const Text("Valorização"),
                        Text("$apprecIcon ${priceChange.toStringAsFixed(2)}", style: TextStyle(color: apprecColor, fontWeight: FontWeight.bold)),
                   ]),
+                  
+                  // 🚨 NOVA ÁREA: DETALHES DE SCOUTS AO VIVO NO CARD
+                  if (!vm.isMarketOpen) ...[
+                    const Divider(),
+                    _buildLiveScouts(vm.liveScores[player.playerId], isCaptain),
+                  ],
+
                   if (vm.isMarketOpen) ...[
                     const Divider(),
                     Row(mainAxisAlignment: MainAxisAlignment.end, children: [

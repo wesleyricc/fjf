@@ -1,24 +1,28 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { onSchedule } = require("firebase-functions/v2/scheduler"); // 🚨 ADICIONADO PARA O CRON JOB
+const { onSchedule } = require("firebase-functions/v2/scheduler"); 
 const admin = require("firebase-admin");
 const { MercadoPagoConfig, Payment } = require("mercadopago");
 
 admin.initializeApp();
 
 // ==================================================================
-// CONFIGURAÇÕES GERAIS
+// CONFIGURAÇÕES GERAIS E SCOUTS (PADRÃO CARTOLA FC)
 // ==================================================================
 
 const MP_ACCESS_TOKEN = "APP_USR-3797379599804379-013016-48576b74ed518f25f9190c9c29996f12-146749346"; 
 const client = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
 
 const DEFAULT_CONFIG = {
-  ptsGoal: 5.0,
-  ptsAssist: 3.0,
-  ptsYellowCard: -1.0,
-  ptsRedCard: -3.0,
-  ptsGoalConceded: -1.0,
+  ptsGoal: 8.0,             // Gol
+  ptsAssist: 5.0,           // Assistência
+  ptsYellowCard: -1.0,      // Cartão Amarelo
+  ptsRedCard: -3.0,         // Cartão Vermelho
+  ptsPenaltySaved: 5.0,     // Pênalti Defendido (NOVO)
+  ptsPenaltyMissed: -3.0,   // Pênalti Perdido (NOVO)
+  ptsShotOnPost: 3.0,       // Na Trave (NOVO)
+  ptsCleanSheet: 5.0,       // Saldo de Gols - SG (NOVO)
+  
   factorExpectation: 0.35, 
   factorVariation: 0.25,
   capLimitPercent: 0.25,   
@@ -191,9 +195,17 @@ exports.closeRound = onCall({
       .collection('matches').where('round', '==', round).get();
 
     const scoresMap = {};
+    const teamCleanSheets = {}; // Mapeamento de SG
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
+      
+      // Inteligência do Saldo de Gols (Clean Sheet)
+      const scoreHome = data.score_home || 0;
+      const scoreAway = data.score_away || 0;
+      if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
+      if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
 
       const stats = data.stats_applied.player_stats;
@@ -202,10 +214,12 @@ exports.closeRound = onCall({
         assists: config.ptsAssist,
         yellows: config.ptsYellowCard,
         reds: config.ptsRedCard,
-        goals_conceded: config.ptsGoalConceded
+        penalties_saved: config.ptsPenaltySaved,     // NOVO
+        penalties_missed: config.ptsPenaltyMissed,   // NOVO
+        shots_on_post: config.ptsShotOnPost          // NOVO
       };
 
-      ['goals', 'assists', 'yellows', 'reds', 'goals_conceded'].forEach(cat => {
+      ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post'].forEach(cat => {
         if (stats[cat]) {
           Object.entries(stats[cat]).forEach(([pid, val]) => {
             const points = (Number(val) || 0) * (ptsRules[cat] || 0);
@@ -215,7 +229,7 @@ exports.closeRound = onCall({
       });
     });
 
-    console.log(`--- 🔍 CALCULANDO MÉDIA DOS TÉCNICOS (R${round}) ---`);
+    console.log(`--- 🔍 CALCULANDO MÉDIA DOS TÉCNICOS E SG (R${round}) ---`);
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
     
     const teamScores = {};    
@@ -228,6 +242,11 @@ exports.closeRound = onCall({
       const teamId = p.team_id; 
 
       if (!teamId) return;
+
+      // Adiciona o Saldo de Gols (SG) para Goleiros e Fixos se o time não tomou gol
+      if (teamCleanSheets[teamId] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
+        scoresMap[pid] = (scoresMap[pid] || 0) + config.ptsCleanSheet;
+      }
 
       if (p.position === 'Técnico') {
         teamCoaches[teamId] = pid;
@@ -369,7 +388,13 @@ exports.updateLiveScouts = onDocumentWritten({
   if (previousData) {
     const oldStats = JSON.stringify(previousData.stats_applied?.player_stats || {});
     const newStats = JSON.stringify(matchData.stats_applied?.player_stats || {});
-    if (oldStats === newStats) {
+    const oldHome = previousData.score_home;
+    const oldAway = previousData.score_away;
+    const newHome = matchData.score_home;
+    const newAway = matchData.score_away;
+    
+    // Se nada mudou nas stats nem no placar principal (afeta SG), não faz nada.
+    if (oldStats === newStats && oldHome === newHome && oldAway === newAway) {
       return; 
     }
   }
@@ -384,9 +409,17 @@ exports.updateLiveScouts = onDocumentWritten({
       .collection('matches').where('round', '==', round).get();
 
     const scoresMap = {};
+    const teamCleanSheets = {}; // Mapeamento de SG
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
+      
+      // Inteligência do Saldo de Gols (Clean Sheet)
+      const scoreHome = data.score_home || 0;
+      const scoreAway = data.score_away || 0;
+      if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
+      if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
 
       const stats = data.stats_applied.player_stats;
@@ -395,14 +428,16 @@ exports.updateLiveScouts = onDocumentWritten({
         assists: config.ptsAssist,
         yellows: config.ptsYellowCard,
         reds: config.ptsRedCard,
-        goals_conceded: config.ptsGoalConceded
+        penalties_saved: config.ptsPenaltySaved,     // NOVO
+        penalties_missed: config.ptsPenaltyMissed,   // NOVO
+        shots_on_post: config.ptsShotOnPost          // NOVO
       };
 
-      ['goals', 'assists', 'yellows', 'reds', 'goals_conceded'].forEach(cat => {
+      ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post'].forEach(cat => {
         if (stats[cat]) {
           Object.entries(stats[cat]).forEach(([pid, val]) => {
             if (!scoresMap[pid]) {
-              scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0 };
+              scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0 };
             }
             const count = Number(val) || 0;
             scoresMap[pid].totalScore += (count * ptsRules[cat]);
@@ -423,6 +458,15 @@ exports.updateLiveScouts = onDocumentWritten({
 
       if (!teamId) return;
 
+      // Adiciona o SG nas Parciais
+      if (teamCleanSheets[teamId] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
+        if (!scoresMap[pid]) {
+          scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0 };
+        }
+        scoresMap[pid].totalScore += config.ptsCleanSheet;
+        scoresMap[pid].clean_sheets = 1;
+      }
+
       if (p.position === 'Técnico') {
         teamCoaches[teamId] = pid;
       } 
@@ -436,7 +480,7 @@ exports.updateLiveScouts = onDocumentWritten({
     Object.entries(teamCoaches).forEach(([tId, coachPid]) => {
       const scores = teamScores[tId] || [];
       if (!scoresMap[coachPid]) {
-        scoresMap[coachPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0 };
+        scoresMap[coachPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0 };
       }
       
       if (scores.length > 0) {
@@ -458,7 +502,7 @@ exports.updateLiveScouts = onDocumentWritten({
         scores: scoresMap
       });
       
-    console.log(`✅ Parciais geradas com sucesso para a rodada ${round}.`);
+    console.log(`✅ Parciais com novos scouts geradas para a rodada ${round}.`);
 
   } catch (error) {
     console.error("🔥 Erro ao atualizar Live Scouts:", error);
@@ -475,7 +519,6 @@ exports.autoCloseMarket = onSchedule({
   timeZone: "America/Sao_Paulo",
 }, async (event) => {
   try {
-    // 1. Verifica se o mercado já está fechado (Economia de leituras)
     const statusRef = db.collection('fantasy_config').doc('status');
     const statusSnap = await statusRef.get();
     
@@ -483,24 +526,19 @@ exports.autoCloseMarket = onSchedule({
     
     const statusData = statusSnap.data();
     if (statusData.is_open === false) {
-      return; // Já está fechado, aborta.
+      return; 
     }
 
     const currentRound = statusData.current_round || 1;
 
-    // 2. Procura a temporada ativa
     const seasonsSnap = await db.collection('championships')
       .where('is_active', '==', true)
       .limit(1)
       .get();
       
-    if (seasonsSnap.empty) {
-      console.log("Nenhuma temporada ativa encontrada.");
-      return;
-    }
+    if (seasonsSnap.empty) return;
     const seasonId = seasonsSnap.docs[0].id;
 
-    // 3. Busca o próximo jogo pendente da rodada atual
     const nextMatchSnap = await db.collection('championships').doc(seasonId)
       .collection('matches')
       .where('round', '==', currentRound)
@@ -509,31 +547,22 @@ exports.autoCloseMarket = onSchedule({
       .limit(1)
       .get();
 
-    if (nextMatchSnap.empty) {
-      // Se não há jogos pendentes, pode ser o fim da rodada ou não há jogos cadastrados
-      return;
-    }
+    if (nextMatchSnap.empty) return;
 
     const nextMatch = nextMatchSnap.docs[0].data();
     if (!nextMatch.datetime) return;
 
-    // 4. Calcula o tempo restante
     const matchTimeMs = nextMatch.datetime.toDate().getTime();
     const nowMs = Date.now();
     
-    console.log(`matchTimeMs: ${matchTimeMs}`)
-    console.log(`nowMs: ${nowMs}`)
-
-    // Calcula diferença em minutos
     const diffMinutes = (matchTimeMs - nowMs) / (1000 * 60);
 
-    // 5. Se faltar 20 minutos ou menos (ou se o jogo já deveria ter começado)
     if (diffMinutes <= 20) {
       await statusRef.update({
         is_open: false,
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
-      console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO para a rodada ${currentRound}. Tempo restante para o jogo: ${diffMinutes.toFixed(1)} minutos.`);
+      console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO.`);
     }
 
   } catch (error) {

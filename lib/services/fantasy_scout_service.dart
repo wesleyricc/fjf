@@ -9,6 +9,12 @@ class FantasyScoutDetail {
   final int reds;
   final int goalsConceded;
   
+  // Novos Scouts
+  final int penaltiesSaved;
+  final int penaltiesMissed;
+  final int shotsOnPost;
+  final int cleanSheets;
+  
   FantasyScoutDetail({
     required this.totalScore,
     this.goals = 0,
@@ -16,15 +22,18 @@ class FantasyScoutDetail {
     this.yellows = 0,
     this.reds = 0,
     this.goalsConceded = 0,
+    this.penaltiesSaved = 0,
+    this.penaltiesMissed = 0,
+    this.shotsOnPost = 0,
+    this.cleanSheets = 0,
   });
 
-  bool get hasStats => (goals + assists + yellows + reds + goalsConceded) > 0;
+  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets) > 0;
 }
 
 class FantasyScoutService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // 🚀 OTIMIZAÇÃO FINOPS: O app agora apenas escuta o documento consolidado pelo Servidor
   Stream<Map<String, FantasyScoutDetail>> streamLiveScores(String seasonId, int round) {
     if (seasonId.isEmpty) return Stream.value({});
 
@@ -52,6 +61,10 @@ class FantasyScoutService {
           yellows: (stats['yellows'] ?? 0).toInt(),
           reds: (stats['reds'] ?? 0).toInt(),
           goalsConceded: (stats['goals_conceded'] ?? 0).toInt(),
+          penaltiesSaved: (stats['penalties_saved'] ?? 0).toInt(),
+          penaltiesMissed: (stats['penalties_missed'] ?? 0).toInt(),
+          shotsOnPost: (stats['shots_on_post'] ?? 0).toInt(),
+          cleanSheets: (stats['clean_sheets'] ?? 0).toInt(),
         );
       });
 

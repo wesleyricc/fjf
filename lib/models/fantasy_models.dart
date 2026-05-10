@@ -146,9 +146,13 @@ class FantasyGameConfig {
   final double ptsAssist;
   final double ptsYellowCard;
   final double ptsRedCard;
-  final double ptsGoalConceded;
   
-  // Econômicos (opcional no frontend, mas bom ter mapeado)
+  // Novos
+  final double ptsPenaltySaved;
+  final double ptsPenaltyMissed;
+  final double ptsShotOnPost;
+  final double ptsCleanSheet;
+  
   final double factorExpectation;
   final double factorVariation;
   final double capLimitPercent;
@@ -159,7 +163,10 @@ class FantasyGameConfig {
     required this.ptsAssist,
     required this.ptsYellowCard,
     required this.ptsRedCard,
-    required this.ptsGoalConceded,
+    required this.ptsPenaltySaved,
+    required this.ptsPenaltyMissed,
+    required this.ptsShotOnPost,
+    required this.ptsCleanSheet,
     required this.factorExpectation,
     required this.factorVariation,
     required this.capLimitPercent,
@@ -168,11 +175,14 @@ class FantasyGameConfig {
 
   factory FantasyGameConfig.defaults() {
     return FantasyGameConfig(
-      ptsGoal: 5.0,
-      ptsAssist: 3.0,
+      ptsGoal: 8.0,
+      ptsAssist: 5.0,
       ptsYellowCard: -1.0,
       ptsRedCard: -3.0,
-      ptsGoalConceded: -1.0,
+      ptsPenaltySaved: 5.0,
+      ptsPenaltyMissed: -3.0,
+      ptsShotOnPost: 3.0,
+      ptsCleanSheet: 5.0,
       factorExpectation: 0.35,
       factorVariation: 0.25,
       capLimitPercent: 0.25,
@@ -181,7 +191,6 @@ class FantasyGameConfig {
   }
 
   factory FantasyGameConfig.fromMap(Map<String, dynamic> map) {
-    // Helper para converter qualquer número para double com segurança
     double toDouble(dynamic val, double def) {
       if (val == null) return def;
       if (val is num) return val.toDouble();
@@ -189,14 +198,15 @@ class FantasyGameConfig {
       return def;
     }
 
-    // Mapeamento atualizado para camelCase (padrão Cloud Functions/Firestore novo)
-    // Mantém fallback para snake_case se necessário para compatibilidade retroativa
     return FantasyGameConfig(
-      ptsGoal: toDouble(map['ptsGoal'] ?? map['pts_goal'], 5.0),
-      ptsAssist: toDouble(map['ptsAssist'] ?? map['pts_assist'], 3.0),
+      ptsGoal: toDouble(map['ptsGoal'] ?? map['pts_goal'], 8.0),
+      ptsAssist: toDouble(map['ptsAssist'] ?? map['pts_assist'], 5.0),
       ptsYellowCard: toDouble(map['ptsYellowCard'] ?? map['pts_yellow_card'], -1.0),
       ptsRedCard: toDouble(map['ptsRedCard'] ?? map['pts_red_card'], -3.0),
-      ptsGoalConceded: toDouble(map['ptsGoalConceded'] ?? map['pts_goal_conceded'], -1.0),
+      ptsPenaltySaved: toDouble(map['ptsPenaltySaved'] ?? map['pts_penalty_saved'], 5.0),
+      ptsPenaltyMissed: toDouble(map['ptsPenaltyMissed'] ?? map['pts_penalty_missed'], -3.0),
+      ptsShotOnPost: toDouble(map['ptsShotOnPost'] ?? map['pts_shot_on_post'], 3.0),
+      ptsCleanSheet: toDouble(map['ptsCleanSheet'] ?? map['pts_clean_sheet'], 5.0),
       factorExpectation: toDouble(map['factorExpectation'] ?? map['factor_expectation'], 0.35),
       factorVariation: toDouble(map['factorVariation'] ?? map['factor_variation'], 0.25),
       capLimitPercent: toDouble(map['capLimitPercent'] ?? map['cap_limit_percent'], 0.25),
@@ -210,7 +220,10 @@ class FantasyGameConfig {
       'ptsAssist': ptsAssist,
       'ptsYellowCard': ptsYellowCard,
       'ptsRedCard': ptsRedCard,
-      'ptsGoalConceded': ptsGoalConceded,
+      'ptsPenaltySaved': ptsPenaltySaved,
+      'ptsPenaltyMissed': ptsPenaltyMissed,
+      'ptsShotOnPost': ptsShotOnPost,
+      'ptsCleanSheet': ptsCleanSheet,
       'factorExpectation': factorExpectation,
       'factorVariation': factorVariation,
       'capLimitPercent': capLimitPercent,

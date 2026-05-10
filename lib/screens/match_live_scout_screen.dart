@@ -25,7 +25,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   @override
   void initState() {
     super.initState();
-    // Garante que a árvore de widgets montou antes de chamar o provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
     });
@@ -38,7 +37,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
     final awayId = data['team_away_id'];
 
     try {
-      // 1. Garante que os elencos estão carregados (Lazy Loading)
       await Future.wait([
         service.fetchRoster(homeId),
         service.fetchRoster(awayId),
@@ -46,7 +44,6 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
 
       if (!mounted) return;
 
-      // 2. Busca do cache atualizado
       final all = service.allPlayers;
       
       int sortFunc(Player a, Player b) {
@@ -95,7 +92,8 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
     );
   }
 
-  void _openCardDialog(MatchEventType type) {
+  // Reaproveitando o dialog de cartões genérico para selecionar os jogadores dos novos eventos
+  void _openEventDialog(MatchEventType type) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -103,7 +101,7 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
         match: widget.match,
         homePlayers: _homePlayers,
         awayPlayers: _awayPlayers,
-        cardType: type,
+        cardType: type, 
       ),
     );
   }
@@ -163,11 +161,23 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(children: [
-                        Expanded(child: _buildActionButton('AMARELO', Colors.amber[700]!, Icons.style, () => _openCardDialog(MatchEventType.yellowCard))),
-                        const SizedBox(width: 12),
-                        Expanded(child: _buildActionButton('VERMELHO', Colors.red, Icons.style, () => _openCardDialog(MatchEventType.redCard))),
-                      ]),
+                      
+                      // 🚨 NOVO GRID COM TODOS OS SCOUTS 🚨
+                      GridView.count(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisCount: 2,
+                        childAspectRatio: 3.2,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        children: [
+                          _buildActionButton('AMARELO', Colors.amber[700]!, Icons.style, () => _openEventDialog(MatchEventType.yellowCard)),
+                          _buildActionButton('VERMELHO', Colors.red, Icons.style, () => _openEventDialog(MatchEventType.redCard)),
+                          _buildActionButton('PÊN. PERDIDO', Colors.deepPurple, Icons.cancel, () => _openEventDialog(MatchEventType.penaltyMissed)),
+                          _buildActionButton('PÊN. DEFENDIDO', Colors.teal, Icons.sports_martial_arts, () => _openEventDialog(MatchEventType.penaltySaved)),
+                          _buildActionButton('NA TRAVE', Colors.brown, Icons.adjust, () => _openEventDialog(MatchEventType.shotOnPost)),
+                        ],
+                      )
                     ],
                   ),
                 ),
@@ -178,10 +188,12 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
                   child: Text("TIMELINE DO JOGO", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
                 ),
 
-                ScoutTimelineWidget(
-                  match: widget.match,
-                  homePlayers: _homePlayers,
-                  awayPlayers: _awayPlayers,
+                Expanded(
+                  child: ScoutTimelineWidget(
+                    match: widget.match,
+                    homePlayers: _homePlayers,
+                    awayPlayers: _awayPlayers,
+                  ),
                 ),
               ],
             ),
@@ -189,14 +201,16 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   }
 
   Widget _buildActionButton(String label, Color color, IconData icon, VoidCallback onPressed) {
-    return SizedBox(
-      height: 50,
-      child: ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-        icon: Icon(icon, size: 20),
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        onPressed: onPressed,
+    return ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color, 
+        foregroundColor: Colors.white, 
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
       ),
+      icon: Icon(icon, size: 18),
+      label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11), maxLines: 1),
+      onPressed: onPressed,
     );
   }
 }

@@ -49,8 +49,7 @@ class ScoutTimelineWidget extends StatelessWidget {
           // 1. Converte para Objetos
           List<MatchEvent> events = docs.map((d) => MatchEvent.fromMap(d.id, d.data() as Map<String, dynamic>)).toList();
 
-          // 2. ORDENAÇÃO LÓGICA SÉNIOR (CORRIGIDA)
-          // Queremos o evento mais recente do jogo no topo.
+          // 2. ORDENAÇÃO LÓGICA SÉNIOR (CORRIGIDA COM NOVOS SCOUTS)
           events.sort((a, b) {
             // A. Compara Períodos (2T > 1T)
             int periodCompare = b.period.compareTo(a.period);
@@ -61,14 +60,15 @@ class ScoutTimelineWidget extends StatelessWidget {
             if (minuteCompare != 0) return minuteCompare;
 
             // C. PRIORIDADE POR TIPO (Peso do Evento no mesmo minuto)
-            // Ordem desejada no topo: Vermelho -> Amarelo -> Golo -> Assistência
             int getWeight(MatchEventType type) {
               switch (type) {
-                case MatchEventType.redCard: return 4;
-                case MatchEventType.yellowCard: return 3;
-                case MatchEventType.goal: return 2;
+                case MatchEventType.redCard: return 7;
+                case MatchEventType.yellowCard: return 6;
+                case MatchEventType.goal: return 5;
+                case MatchEventType.penaltySaved: return 4;
+                case MatchEventType.penaltyMissed: return 3;
+                case MatchEventType.shotOnPost: return 2;
                 case MatchEventType.assist: return 1;
-                default: return 0;
               }
             }
 
@@ -89,6 +89,7 @@ class ScoutTimelineWidget extends StatelessWidget {
               Color color;
               String typeLabel;
 
+              // 🚨 CORREÇÃO DO EXHAUSTIVE SWITCH 🚨
               switch(evt.type) {
                 case MatchEventType.goal: 
                   icon = Icons.sports_soccer; color = Colors.green; typeLabel = "GOL"; break;
@@ -98,6 +99,12 @@ class ScoutTimelineWidget extends StatelessWidget {
                   icon = Icons.style; color = Colors.red; typeLabel = "VERMELHO"; break;
                 case MatchEventType.assist:
                   icon = Icons.assistant; color = Colors.blue; typeLabel = "ASSISTÊNCIA"; break;
+                case MatchEventType.penaltySaved:
+                  icon = Icons.sports_martial_arts; color = Colors.teal; typeLabel = "PÊN. DEFENDIDO"; break;
+                case MatchEventType.penaltyMissed:
+                  icon = Icons.cancel; color = Colors.deepPurple; typeLabel = "PÊN. PERDIDO"; break;
+                case MatchEventType.shotOnPost:
+                  icon = Icons.adjust; color = Colors.brown; typeLabel = "NA TRAVE"; break;
               }
 
               if (evt.type == MatchEventType.goal && evt.concededByPlayerId != null) {
@@ -146,7 +153,7 @@ class ScoutTimelineWidget extends StatelessWidget {
           e.type == MatchEventType.assist &&
           e.teamId == evt.teamId &&
           e.minute == evt.minute &&
-          (e.timestamp.difference(evt.timestamp).inSeconds.abs() <= 5) // Janela aumentada para segurança
+          (e.timestamp.difference(evt.timestamp).inSeconds.abs() <= 5) 
         );
       } catch (_) {}
 
@@ -161,7 +168,14 @@ class ScoutTimelineWidget extends StatelessWidget {
           linkedAssistEvent: linkedAssist,
         ),
       );
-    } else if (evt.type == MatchEventType.yellowCard || evt.type == MatchEventType.redCard) {
+    } else if (
+        evt.type == MatchEventType.yellowCard || 
+        evt.type == MatchEventType.redCard ||
+        evt.type == MatchEventType.penaltyMissed ||
+        evt.type == MatchEventType.penaltySaved ||
+        evt.type == MatchEventType.shotOnPost
+    ) {
+      // 🚨 AGORA OS NOVOS SCOUTS TAMBÉM ABREM A CAIXA GENÉRICA DE EDIÇÃO 🚨
       showDialog(
         context: context,
         barrierDismissible: false,

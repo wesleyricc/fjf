@@ -64,6 +64,17 @@ class FantasyLineupViewModel extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
+    // 🚨 CORREÇÃO DO BUG: Busca o status inicial manualmente porque o broadcast stream 
+    // pode não re-emitir o último valor para a tela de escalação que foi aberta depois.
+    _firestore.collection('fantasy_config').doc('status').get().then((doc) {
+      if (doc.exists && doc.data() != null) {
+        _isMarketOpen = doc.data()!['is_open'] ?? true;
+        _currentRound = doc.data()!['current_round'] ?? 1;
+        _checkScoutSubscription(seasonId);
+        if (!_isDisposed) notifyListeners();
+      }
+    });
+
     _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
       _isMarketOpen = status['is_open'] ?? true;
@@ -202,7 +213,6 @@ class FantasyLineupViewModel extends ChangeNotifier {
       _expectedOldTeamCost = _teamPrice;
       _hasUnsavedChanges = false; 
 
-      // 🚨 EVENTO DE NEGÓCIO: Escalação Salva com Sucesso!
       AnalyticsService.logLineupSaved(_teamPrice, _captainId != null);
       
     } catch (e) {

@@ -8,9 +8,11 @@ class FantasyAdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FantasyService _fantasyService = FantasyService();
 
-  // --- 0. LEITURA DOS SCOUTS ---
+  // --- 0. LEITURA DOS SCOUTS (ATUALIZADO PARA REGRAS CARTOLA) ---
   Future<Map<String, double>> _fetchSeasonScores(String seasonId, int round, FantasyGameConfig config) async {
     final Map<String, double> scoresMap = {};
+    final Map<String, bool> teamCleanSheets = {}; // Mapeamento de SG
+
     debugPrint("--- LENDO SCOUTS R$round (Temporada $seasonId) ---");
 
     try {
@@ -24,6 +26,16 @@ class FantasyAdminService {
 
       for (var matchDoc in matchesSnap.docs) {
         final data = matchDoc.data();
+        
+        // 🚨 Inteligência do Saldo de Gols (Clean Sheet)
+        final int scoreHome = data['score_home'] ?? 0;
+        final int scoreAway = data['score_away'] ?? 0;
+        final String homeId = data['team_home_id'] ?? '';
+        final String awayId = data['team_away_id'] ?? '';
+        
+        if (scoreAway == 0 && homeId.isNotEmpty) teamCleanSheets[homeId] = true;
+        if (scoreHome == 0 && awayId.isNotEmpty) teamCleanSheets[awayId] = true;
+
         if (data['stats_applied'] == null) continue;
 
         final statsApplied = data['stats_applied'] as Map<String, dynamic>;
@@ -35,11 +47,14 @@ class FantasyAdminService {
         final assistsMap = getStatMap('assists');
         final yellowsMap = getStatMap('yellows');
         final redsMap = getStatMap('reds');
-        final concededMap = getStatMap('goals_conceded'); 
+        final penaltiesSavedMap = getStatMap('penalties_saved');
+        final penaltiesMissedMap = getStatMap('penalties_missed');
+        final shotsOnPostMap = getStatMap('shots_on_post');
 
         final Set<String> allPlayerIds = {
           ...goalsMap.keys, ...assistsMap.keys, ...yellowsMap.keys, 
-          ...redsMap.keys, ...concededMap.keys
+          ...redsMap.keys, ...penaltiesSavedMap.keys, 
+          ...penaltiesMissedMap.keys, ...shotsOnPostMap.keys
         };
 
         for (String pid in allPlayerIds) {
@@ -48,11 +63,27 @@ class FantasyAdminService {
           points += (assistsMap[pid] ?? 0) * config.ptsAssist;
           points += (yellowsMap[pid] ?? 0) * config.ptsYellowCard;
           points += (redsMap[pid] ?? 0) * config.ptsRedCard;
-          points += (concededMap[pid] ?? 0) * config.ptsGoalConceded;
+          points += (penaltiesSavedMap[pid] ?? 0) * config.ptsPenaltySaved;
+          points += (penaltiesMissedMap[pid] ?? 0) * config.ptsPenaltyMissed;
+          points += (shotsOnPostMap[pid] ?? 0) * config.ptsShotOnPost;
           
           scoresMap[pid] = (scoresMap[pid] ?? 0.0) + points;
         }
       }
+
+      // 🚨 Aplica o Saldo de Gols (SG) para Goleiros e Fixos
+      if (teamCleanSheets.isNotEmpty) {
+         final marketSnap = await _firestore.collection('fantasy_market_players').get();
+         for (var doc in marketSnap.docs) {
+           final p = doc.data();
+           final teamId = p['team_id'];
+           final pos = p['position'];
+           if (teamId != null && teamCleanSheets.containsKey(teamId) && (pos == 'Goleiro' || pos == 'Fixo')) {
+              scoresMap[doc.id] = (scoresMap[doc.id] ?? 0.0) + config.ptsCleanSheet;
+           }
+         }
+      }
+
     } catch (e) {
       debugPrint("Erro scouts: $e");
     }
@@ -64,10 +95,9 @@ class FantasyAdminService {
     return rawMap.map((key, value) => MapEntry(key.toString(), (value is num) ? value.toInt() : 0));
   }
 
-  // --- 🚨 REGRA ATUALIZADA: CÁLCULO DA MÉDIA DO TÉCNICO ---
+  // --- CÁLCULO DA MÉDIA DO TÉCNICO ---
   Future<void> _calculateCoachesAverages(Map<String, double> scoresMap) async {
     try {
-      // 🚀 LOG DE INÍCIO
       developer.log('--- 🔍 INICIANDO CÁLCULO DE MÉDIA DOS TÉCNICOS ---', name: 'FJF.Fantasy');
       
       final marketSnap = await _firestore.collection('fantasy_market_players').get();
@@ -107,7 +137,6 @@ class FantasyAdminService {
           final double total = scores.reduce((a, b) => a + b);
           average = total / scores.length;
           
-          // 🚀 ESTE LOG APARECERÁ NO CONSOLE DO NAVEGADOR (F12)
           String logMembros = details.map((m) => "${m['nome']} (${m['pontos']} pts)").join(', ');
           
           developer.log(
@@ -283,7 +312,6 @@ class FantasyAdminService {
 
       final Map<String, double> scores = await _fetchSeasonScores(seasonId, round, config);
       
-      // INJETADO: Cálculo dos técnicos antes de processar valores
       await _calculateCoachesAverages(scores);
 
       if (scores.isEmpty) return "AVISO: Nenhum scout encontrado na Rodada $round.";
@@ -338,7 +366,6 @@ class FantasyAdminService {
 
         final Map<String, double> roundScores = await _fetchSeasonScores(seasonId, r, config);
         
-        // INJETADO: Cálculo dos técnicos no reprocessamento
         await _calculateCoachesAverages(roundScores);
 
         playerSimulationState.forEach((pid, state) {

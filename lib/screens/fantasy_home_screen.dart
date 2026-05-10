@@ -55,7 +55,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
 
             if (vm.isLoading) return _buildLoadingSkeleton(context);
 
-            // 🚨 TRAVA DE SEGURANÇA UX: Se parou de carregar e o time não veio, permite atualizar manualmente
             if (vm.team == null) {
               return Scaffold(
                 appBar: AppBar(title: const Text("Fantasy FJF"), elevation: 0),
@@ -140,13 +139,20 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                     decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade300)),
                     child: Column(
                       children: [
-                        _buildMiniScoutRow("Gol Marcado", "+5.0 pts", Colors.green),
+                        // 🚨 ATUALIZADO: Scouts Oficiais e Pontuação 🚨
+                        _buildMiniScoutRow("Gol Marcado", "+8.0 pts", Colors.green),
                         const Divider(),
-                        _buildMiniScoutRow("Assistência", "+3.0 pts", Colors.blue),
+                        _buildMiniScoutRow("Assistência", "+5.0 pts", Colors.blue),
                         const Divider(),
-                        _buildMiniScoutRow("Gol Sofrido", "-1.0 pts", Colors.black),
+                        _buildMiniScoutRow("Jogo Sem Sofrer Gol (SG)", "+5.0 pts", Colors.teal),
+                        const Divider(),
+                        _buildMiniScoutRow("Pênalti Defendido (PD)", "+5.0 pts", Colors.orange),
+                        const Divider(),
+                        _buildMiniScoutRow("Finalização na Trave (FT)", "+3.0 pts", Colors.brown),
                         const Divider(),
                         _buildMiniScoutRow("Cartão Amarelo", "-1.0 pts", Colors.amber[800]!),
+                        const Divider(),
+                        _buildMiniScoutRow("Pênalti Perdido (PP)", "-3.0 pts", Colors.deepPurple),
                         const Divider(),
                         _buildMiniScoutRow("Cartão Vermelho", "-3.0 pts", Colors.red),
                       ],
@@ -218,15 +224,24 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
             else
               Wrap(
                 alignment: WrapAlignment.center,
-                spacing: 20,
-                runSpacing: 24,
+                spacing: 16,
+                runSpacing: 20,
                 children: [
-                  _buildScoutIcon(Icons.sports_soccer, "Gols", score.goals, Colors.green, score.goals * config.ptsGoal),
-                  _buildScoutIcon(Icons.assistant, "Assists", score.assists, Colors.blue, score.assists * config.ptsAssist),
-                  if (player.position == 'Goleiro')
-                    _buildScoutIcon(Icons.pan_tool_outlined, "Gols Sofr.", score.goalsConceded, Colors.blueGrey, score.goalsConceded * config.ptsGoalConceded),
-                  _buildScoutIcon(Icons.style, "Amarelos", score.yellows, Colors.amber[700]!, score.yellows * config.ptsYellowCard),
-                  _buildScoutIcon(Icons.style, "Vermelho", score.reds, Colors.red, score.reds * config.ptsRedCard),
+                  // 🚨 ATUALIZADO: Todos os novos Scouts incluídos no Modal da Home
+                  if (score.goals > 0) _buildScoutIcon(Icons.sports_soccer, "Gols", score.goals, Colors.green, score.goals * config.ptsGoal),
+                  if (score.assists > 0) _buildScoutIcon(Icons.assistant, "Assists", score.assists, Colors.blue, score.assists * config.ptsAssist),
+                  if (score.cleanSheets > 0) _buildScoutIcon(Icons.shield, "SG", score.cleanSheets, Colors.teal, score.cleanSheets * config.ptsCleanSheet),
+                  if (score.penaltiesSaved > 0) _buildScoutIcon(Icons.sports_martial_arts, "Pên. Def", score.penaltiesSaved, Colors.orange, score.penaltiesSaved * config.ptsPenaltySaved),
+                  if (score.shotsOnPost > 0) _buildScoutIcon(Icons.adjust, "Na Trave", score.shotsOnPost, Colors.brown, score.shotsOnPost * config.ptsShotOnPost),
+                  if (score.yellows > 0) _buildScoutIcon(Icons.style, "Amarelos", score.yellows, Colors.amber[700]!, score.yellows * config.ptsYellowCard),
+                  if (score.penaltiesMissed > 0) _buildScoutIcon(Icons.cancel, "Pên. Per", score.penaltiesMissed, Colors.deepPurple, score.penaltiesMissed * config.ptsPenaltyMissed),
+                  if (score.reds > 0) _buildScoutIcon(Icons.style, "Vermelho", score.reds, Colors.red, score.reds * config.ptsRedCard),
+                  
+                  if (!score.hasStats)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20.0),
+                      child: Text("Nenhum scout registrado na rodada.", style: TextStyle(color: Colors.grey)),
+                    )
                 ],
               ),
             const Divider(height: 48),
@@ -349,9 +364,7 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
         
         return Column(
           children: [
-            // 🚨 LOGICA DO NOVO BANNER AQUI 🚨
             if (!vm.isMarketOpen)
-              // Banner Verde de Parciais (Quando Mercado Fechado)
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -362,7 +375,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                 ]),
               )
             else if (vm.currentRound > 1) 
-              // Banner Azul da Última Rodada (Quando Mercado Aberto)
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -388,7 +400,6 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   }
 
   Widget _buildMiniPlayerRow(BuildContext context, FantasyPlayer player, LiveScoreData score, bool isMarketOpen, FantasyGameConfig config, String? currentCaptainId) {
-    // 🚨 AQUI MOSTRAMOS A PONTUAÇÃO INDIVIDUAL MESMO COM O MERCADO ABERTO 🚨
     final bool isCaptain = isMarketOpen ? (player.playerId == currentCaptainId) : score.isCaptain;
     final double finalScore = isMarketOpen 
         ? (isCaptain ? player.lastScore * 2 : player.lastScore) 
@@ -456,98 +467,96 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
         boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))]
       ), 
       child: Row(
-  children: [
-    TeamLogoWidget(
-      logoUrl: team.customLogoUrl,
-      radius: 30,
-    ),
-    const SizedBox(width: 16), 
-    Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, 
         children: [
-          Text(
-            team.teamName, 
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ), 
-          Text(
-            "Técnico: ${team.ownerName}", 
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          TeamLogoWidget(
+            logoUrl: team.customLogoUrl,
+            radius: 30,
           ),
-          const SizedBox(height: 6), // 🚨 Um respiro maior antes do badge
-          
-          // 🚨 NOVO BADGE DE STATUS DO MERCADO
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isMarketOpen ? Colors.greenAccent : Colors.redAccent,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: (isMarketOpen ? Colors.greenAccent : Colors.redAccent).withOpacity(0.3),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
+          const SizedBox(width: 16), 
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [
+                Text(
+                  team.teamName, 
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ), 
+                Text(
+                  "Técnico: ${team.ownerName}", 
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isMarketOpen ? Colors.greenAccent : Colors.redAccent,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isMarketOpen ? Colors.greenAccent : Colors.redAccent).withOpacity(0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      )
+                    ]
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isMarketOpen ? Icons.lock_open_rounded : Icons.lock_rounded,
+                        size: 12,
+                        color: Colors.black87,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isMarketOpen ? "MERCADO ABERTO" : "MERCADO FECHADO",
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 10,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black26,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          "RODADA $round",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 )
               ]
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min, // Mantém o tamanho ajustado ao texto
-              children: [
-                Icon(
-                  isMarketOpen ? Icons.lock_open_rounded : Icons.lock_rounded,
-                  size: 12,
-                  color: Colors.black87, // Alto contraste contra o fundo verde/vermelho
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  isMarketOpen ? "MERCADO ABERTO" : "MERCADO FECHADO",
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w900, // Extra-bold para leitura rápida
-                    fontSize: 10,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                // Pílula interna com a rodada
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black26, // Fundo semi-transparente
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    "RODADA $round",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            )
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2), 
+              borderRadius: BorderRadius.circular(12)
+            ), 
+            child: IconButton(
+              icon: const Icon(Icons.edit, color: Colors.white), 
+              tooltip: "Editar Perfil", 
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FantasyEditTeamScreen()))
+            )
           )
         ]
       )
-    ),
-    Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2), 
-        borderRadius: BorderRadius.circular(12)
-      ), 
-      child: IconButton(
-        icon: const Icon(Icons.edit, color: Colors.white), 
-        tooltip: "Editar Perfil", 
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FantasyEditTeamScreen()))
-      )
-    )
-  ]
-)
     ); 
   }
   

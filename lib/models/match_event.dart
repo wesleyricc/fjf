@@ -1,4 +1,5 @@
-enum MatchEventType { goal, yellowCard, redCard, assist }
+// Adicionamos penaltySaved, penaltyMissed e shotOnPost
+enum MatchEventType { goal, yellowCard, redCard, assist, penaltySaved, penaltyMissed, shotOnPost }
 
 class MatchEvent {
   final String id;
@@ -10,9 +11,7 @@ class MatchEvent {
   final String period;
   final DateTime timestamp;
   
-  // --- NOVO CAMPO ---
   final String? concededByPlayerId; // ID do goleiro que sofreu o gol
-  // ------------------
 
   MatchEvent({
     required this.id,
@@ -23,7 +22,7 @@ class MatchEvent {
     required this.minute,
     required this.period,
     required this.timestamp,
-    this.concededByPlayerId, // Novo
+    this.concededByPlayerId,
   });
 
   Map<String, dynamic> toMap() {
@@ -35,21 +34,24 @@ class MatchEvent {
       'minute': minute,
       'period': period,
       'timestamp': timestamp,
-      'concededByPlayerId': concededByPlayerId, // Novo
+      'concededByPlayerId': concededByPlayerId, 
     };
   }
 
   factory MatchEvent.fromMap(String id, Map<String, dynamic> map) {
     return MatchEvent(
       id: id,
-      type: MatchEventType.values.firstWhere((e) => e.name == map['type']),
+      type: MatchEventType.values.firstWhere(
+        (e) => e.name == map['type'],
+        orElse: () => MatchEventType.goal, // Fallback de segurança
+      ),
       playerId: map['playerId'] ?? '',
       playerName: map['playerName'] ?? 'Desconhecido',
       teamId: map['teamId'] ?? '',
       minute: map['minute'] ?? 0,
       period: map['period'] ?? '1T',
       timestamp: (map['timestamp'] as dynamic)?.toDate() ?? DateTime.now(),
-      concededByPlayerId: map['concededByPlayerId'], // Novo
+      concededByPlayerId: map['concededByPlayerId'],
     );
   }
 }
