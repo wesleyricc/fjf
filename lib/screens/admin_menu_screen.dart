@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/admin_service.dart';
 import '../services/championship_service.dart'; 
+import 'admin_bolao_screen.dart';
 import 'fantasy_admin_control_screen.dart'; 
 import 'disciplinary_rules_screen.dart';
 import 'tiebreaker_rules_screen.dart';
@@ -294,6 +295,17 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         subtitle: "Painel de Controle",
                         isHighlight: true,
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FantasyAdminControlScreen())),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildBigCard(
+                        icon: Icons.settings_applications,
+                        color: Colors.blue,
+                        title: "Bolão",
+                        subtitle: "Painel de Controle",
+                        isHighlight: true,
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminBolaoScreen())),
                       ),
                     ),
                   ],

@@ -14,6 +14,7 @@ import 'package:firebase_analytics/firebase_analytics.dart';     // 🚨 Adicion
 // Configurações
 import 'firebase_options.dart'; 
 import 'firebase_options_test.dart'; 
+import 'screens/bolao_paywall_screen.dart';
 import 'screens/fantasy_admin_control_screen.dart';
 import 'screens/fantasy_history_screen.dart';
 import 'screens/fantasy_ranking_screen.dart';
@@ -94,6 +95,7 @@ void main() async {
 
     if (environment == 'test') debugPrint("⚠️ AMBIENTE DE TESTE ⚠️");
 
+    // 1. INICIALIZAÇÃO CRÍTICA (Deve ter await, pois é a base de tudo)
     await Firebase.initializeApp(options: firebaseOptions);
 
     // 🚨 1. CRASHLYTICS GLOBAL: Captura erros a nível de plataforma
@@ -104,8 +106,9 @@ void main() async {
       return true;
     };
 
-    // 🚨 ATIVAÇÃO DO FIREBASE APP CHECK (Definitivo)
-    await FirebaseAppCheck.instance.activate(
+    // 🚨 2. INICIALIZAÇÕES EM BACKGROUND (Sem await bloqueando o runApp)
+    // Ao retirar o await, o aplicativo não fica esperando estas configurações para arrancar!
+    FirebaseAppCheck.instance.activate(
       webProvider: ReCaptchaV3Provider('6LfdwM4sAAAAACPNPfvuk5uW_c2FVt93yr1jQ1NH'),
       androidProvider: kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
       appleProvider: AppleProvider.deviceCheck,
@@ -130,10 +133,11 @@ void main() async {
     }
     // ------------------------------------------
 
-    await NotificationService().init();
-    await initializeDateFormatting('pt_BR', null);
+    // 🔥 OTIMIZAÇÃO: Disparados em paralelo, sem travar a thread principal!
+    NotificationService().init();
+    initializeDateFormatting('pt_BR', null);
 
-    // 🚨 2. CRASHLYTICS GLOBAL: Captura erros de UI/Widgets do Flutter
+    // 🚨 3. CRASHLYTICS GLOBAL: Captura erros de UI/Widgets do Flutter
     FlutterError.onError = (FlutterErrorDetails details) {
       if (details.exception.toString().contains('failed-precondition')) {
          _logFirestoreIndexError(details.exception);
@@ -144,12 +148,13 @@ void main() async {
       FlutterError.presentError(details); 
     };
 
+    // 🚀 DESENHA A TELA O MAIS RÁPIDO POSSÍVEL
     runApp(const FjfApp());
   
   }, (error, stack) {
     _logFirestoreIndexError(error);
     debugPrint("Erro assíncrono: $error");
-    // 🚨 3. CRASHLYTICS GLOBAL: Captura erros assíncronos não tratados
+    // 🚨 4. CRASHLYTICS GLOBAL: Captura erros assíncronos não tratados
     if (!kIsWeb) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     }
@@ -249,6 +254,7 @@ class FjfApp extends StatelessWidget {
           '/fantasy-leagues': (ctx) => const FantasyLeaguesScreen(),
           '/free-agents-registration': (ctx) => const FreeAgentRegistrationScreen(),
           '/free-agents-market': (ctx) => const FreeAgentsMarketScreen(),
+          '/wordcup-pool': (ctx) => const BolaoPaywallScreen(),
         },
         // ---> NAVEGAÇÃO DINÂMICA DA VOTAÇÃO AQUI <---
         onGenerateRoute: (settings) {

@@ -32,35 +32,49 @@ const DEFAULT_CONFIG = {
 const db = admin.firestore();
 
 // ==================================================================
-// 🛒 MÓDULO DE PAGAMENTOS (PIX)
+// 🛒 MÓDULO DE PAGAMENTOS (PIX) - FOTOS E BOLÃO
 // ==================================================================
 
 exports.createPixPayment = onCall({ cors: true }, async (request) => {
-  const { photoIds, customerContact } = request.data; 
-
-  if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
-    throw new HttpsError('invalid-argument', 'O carrinho está vazio.');
-  }
+  // 🚨 ADICIONADO: type ('photo' ou 'bolao') e userId
+  const { type, photoIds, customerContact, userId } = request.data; 
 
   const contactInfo = customerContact || "Não informado";
   const payerEmail = contactInfo.includes('@') ? contactInfo : "cliente.anonimo@fjf.app";
 
   try {
     let totalPrice = 0.0;
-    const itemsToSave = [];
-    
-    const promises = photoIds.map(id => db.collection('photo_sales').doc(id).get());
-    const snapshots = await Promise.all(promises);
+    let paymentDescription = "";
+    let itemsToSave = [];
 
-    for (const snap of snapshots) {
-      if (!snap.exists) continue;
-      const data = snap.data();
-      totalPrice += parseFloat(data.price);
-      itemsToSave.push({
-        photo_id: snap.id,
-        original_url: data.original_url,
-        event_name: data.event_name || 'Evento'
-      });
+    // LÓGICA 1: PAGAMENTO DE FOTOS
+    if (type === 'photo' || !type) {
+      if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
+        throw new HttpsError('invalid-argument', 'O carrinho está vazio.');
+      }
+      const promises = photoIds.map(id => db.collection('photo_sales').doc(id).get());
+      const snapshots = await Promise.all(promises);
+
+      for (const snap of snapshots) {
+        if (!snap.exists) continue;
+        const data = snap.data();
+        totalPrice += parseFloat(data.price);
+        itemsToSave.push({
+          photo_id: snap.id,
+          original_url: data.original_url,
+          event_name: data.event_name || 'Evento'
+        });
+      }
+      paymentDescription = `Pack ${itemsToSave.length} Fotos FJF`;
+    } 
+    // LÓGICA 2: PAGAMENTO DO BOLÃO DA COPA
+    else if (type === 'bolao') {
+      if (!userId) throw new HttpsError('invalid-argument', 'User ID não informado.');
+      totalPrice = 1.00; // Valor Fixo da Inscrição do Bolão
+      paymentDescription = `Inscrição Bolão Copa 2026 FJF`;
+    } 
+    else {
+      throw new HttpsError('invalid-argument', 'Tipo de pagamento inválido.');
     }
 
     if (totalPrice <= 0) {
@@ -70,10 +84,14 @@ exports.createPixPayment = onCall({ cors: true }, async (request) => {
     const payment = new Payment(client);
     const paymentData = {
       transaction_amount: totalPrice,
-      description: `Pack ${itemsToSave.length} Fotos FJF`,
+      description: paymentDescription,
       payment_method_id: 'pix',
       payer: { email: payerEmail, first_name: "Cliente FJF" },
-      metadata: { customer_contact: contactInfo, item_count: itemsToSave.length },
+      metadata: { 
+        payment_type: type || 'photo', 
+        user_id: userId || 'anonymous',
+        customer_contact: contactInfo 
+      },
       date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString() 
     };
 
@@ -87,8 +105,11 @@ exports.createPixPayment = onCall({ cors: true }, async (request) => {
     const qrCodeCopyPaste = response.point_of_interaction.transaction_data.qr_code;
     const mpPaymentId = response.id;
 
+    // Salva a ordem de pagamento no banco
     await db.collection('orders').doc(mpPaymentId.toString()).set({
       mp_payment_id: mpPaymentId,
+      type: type || 'photo',
+      user_id: userId || null,
       status: 'pending',
       amount: totalPrice,
       customer_contact: contactInfo,
@@ -132,25 +153,40 @@ exports.handleMpWebhook = onRequest(async (req, res) => {
             approved_at: admin.firestore.FieldValue.serverTimestamp(),
           });
 
-          const itemsListHtml = (orderData.items || []).map(item => 
-              `<li><a href="${item.original_url}">Baixar Foto (${item.event_name})</a></li>`
-          ).join('');
+          // LÓGICA 1: E-MAIL DE FOTOS
+          if (orderData.type === 'photo' || !orderData.type) {
+            const itemsListHtml = (orderData.items || []).map(item => 
+                `<li><a href="${item.original_url}">Baixar Foto (${item.event_name})</a></li>`
+            ).join('');
 
-          await db.collection('mail').add({
-            to: [orderData.customer_contact],
-            message: {
-              subject: 'Sua Compra FJF foi Aprovada! 📸',
-              html: `
-                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                  <h2 style="color: #4CAF50;">Pagamento Confirmado!</h2>
-                  <p>Obrigado por sua compra. Seguem os links para download:</p>
-                  <ul>${itemsListHtml}</ul>
-                  <hr><p>Equipe FJF</p>
-                </div>
-              `,
-            }
-          });
-          console.log("✅ Pedido aprovado e e-mail disparado.");
+            await db.collection('mail').add({
+              to: [orderData.customer_contact],
+              message: {
+                subject: 'Sua Compra FJF foi Aprovada! 📸',
+                html: `
+                  <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #4CAF50;">Pagamento Confirmado!</h2>
+                    <p>Obrigado por sua compra. Seguem os links para download:</p>
+                    <ul>${itemsListHtml}</ul>
+                    <hr><p>Equipe FJF</p>
+                  </div>
+                `,
+              }
+            });
+            console.log("✅ Pedido de fotos aprovado e e-mail disparado.");
+          } 
+          // LÓGICA 2: LIBERAÇÃO DO BOLÃO
+          else if (orderData.type === 'bolao' && orderData.user_id) {
+            const userBolaoRef = db.collection('bolao_users').doc(orderData.user_id);
+            await userBolaoRef.set({
+              has_paid: true,
+              total_points: 0,
+              payment_id: paymentId,
+              approved_at: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            console.log(`✅ Inscrição de BOLÃO aprovada para o usuário ${orderData.user_id}.`);
+          }
         }
       }
     }
@@ -562,11 +598,264 @@ exports.autoCloseMarket = onSchedule({
         is_open: false,
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
-      console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO.`);
+      console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO para a rodada ${currentRound}.`);
     }
 
   } catch (error) {
     console.error("🔥 Erro no autoCloseMarket:", error);
+  }
+});
+
+// ==================================================================
+// 🏆 MÓDULO BOLÃO DA COPA (Cálculo de Pontos e Ranking)
+// ==================================================================
+
+exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
+  // 1. Verificação de Segurança (Apenas Admin)
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Acesso negado. O utilizador precisa de estar logado.');
+  }
+  const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem calcular os resultados do bolão.');
+  }
+
+  const { matchId, realHomeScore, realAwayScore } = request.data;
+
+  if (!matchId || realHomeScore === undefined || realAwayScore === undefined) {
+    throw new HttpsError('invalid-argument', 'Faltam os dados do jogo (matchId, realHomeScore, realAwayScore).');
+  }
+
+  try {
+    const realHome = parseInt(realHomeScore);
+    const realAway = parseInt(realAwayScore);
+    const realDiff = realHome - realAway;
+    
+    // Identifica o desfecho real: 'home_win', 'away_win', ou 'draw'
+    let realOutcome = 'draw';
+    if (realHome > realAway) realOutcome = 'home_win';
+    if (realHome < realAway) realOutcome = 'away_win';
+
+    // 2. Procura todos os utilizadores que estão a participar no bolão
+    const usersSnap = await db.collection('bolao_users').get();
+    const batchHandler = new BatchHandler(db); // Usa a classe BatchHandler que já tem no seu index.js
+
+    for (const userDoc of usersSnap.docs) {
+      const userId = userDoc.id;
+      const userData = userDoc.data();
+      
+      // Procura o palpite deste utilizador para este jogo específico
+      const predDoc = await db.collection('bolao_users').doc(userId).collection('predictions').doc(matchId).get();
+      
+      if (predDoc.exists) {
+        const predData = predDoc.data();
+        const predHome = parseInt(predData.score_home);
+        const predAway = parseInt(predData.score_away);
+        const predDiff = predHome - predAway;
+
+        let predOutcome = 'draw';
+        if (predHome > predAway) predOutcome = 'home_win';
+        if (predHome < predAway) predOutcome = 'away_win';
+
+        let pointsEarned = 0;
+        let isExact = 0;
+        let isGoalDiff = 0;
+        let isWinner = 0;
+
+        // MATEMÁTICA DOS PONTOS
+        if (predHome === realHome && predAway === realAway) {
+          // 1º Critério: Placar Exato na Mosca (+5 pontos)
+          pointsEarned = 5;
+          isExact = 1;
+        } 
+        else if (predOutcome === realOutcome) {
+          if (predDiff === realDiff) {
+            // 2º Critério: Acertou o Vencedor + Saldo de Golos (+3 pontos)
+            pointsEarned = 3;
+            isGoalDiff = 1;
+          } else {
+            // 3º Critério: Acertou apenas o Vencedor/Empate (+2 pontos)
+            pointsEarned = 2;
+            isWinner = 1;
+          }
+        }
+
+        // Se ganhou pontos, atualiza o perfil do utilizador (Ranking)
+        if (pointsEarned > 0) {
+          batchHandler.update(userDoc.ref, {
+            total_points: admin.firestore.FieldValue.increment(pointsEarned),
+            exact_hits: admin.firestore.FieldValue.increment(isExact),
+            goal_difference_hits: admin.firestore.FieldValue.increment(isGoalDiff),
+            winner_hits: admin.firestore.FieldValue.increment(isWinner),
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          // Atualiza o palpite com os pontos que ele rendeu (útil para mostrar na UI depois)
+          batchHandler.update(predDoc.ref, {
+            points_earned: pointsEarned
+          });
+        }
+      }
+    }
+
+    // 3. Atualiza o estado do Jogo para 'finished' com o resultado oficial
+    const matchRef = db.collection('bolao_matches').doc(matchId);
+    batchHandler.update(matchRef, {
+      real_score_home: realHome,
+      real_score_away: realAway,
+      status: 'finished',
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batchHandler.commit();
+
+    return { success: true, message: `Jogo ${matchId} processado com sucesso!` };
+
+  } catch (error) {
+    console.error("🔥 Erro ao calcular bolão:", error);
+    throw new HttpsError('internal', error.message);
+  }
+});
+
+// ==================================================================
+// 🔒 GRAVAÇÃO SEGURA DE PALPITES (Com validação temporal do Servidor)
+// ==================================================================
+
+exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
+  // 1. Verificação de Autenticação
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Precisa de fazer login.');
+  }
+
+  const { matchId, scoreHome, scoreAway } = request.data;
+  const userId = request.auth.uid;
+
+  if (!matchId || scoreHome === undefined || scoreAway === undefined) {
+    throw new HttpsError('invalid-argument', 'Dados incompletos.');
+  }
+
+  try {
+    // 2. Busca o status global e as configurações do Bolão
+    const configDoc = await db.collection('bolao_config').doc('settings').get();
+    const settings = configDoc.data();
+    
+    if (settings && settings.is_predictions_open === false) {
+      throw new HttpsError('permission-denied', 'Mercado Geral encerrado pelo Administrador!');
+    }
+
+    // 3. Busca a hora oficial do jogo na base de dados
+    const matchDoc = await db.collection('bolao_matches').doc(matchId).get();
+    if (!matchDoc.exists) {
+      throw new HttpsError('not-found', 'Jogo não encontrado.');
+    }
+    
+    const matchData = matchDoc.data();
+    if (matchData.status !== 'pending') {
+      throw new HttpsError('permission-denied', 'Este jogo já terminou ou está a decorrer.');
+    }
+
+    // 4. O BLOQUEIO INFALÍVEL DO SERVIDOR: Relógio Oficial Google Cloud
+    const matchDate = matchData.date.toDate(); // Converte o Timestamp do Firestore para Date Javascript
+    const serverNow = new Date(); // Relógio imutável do servidor
+    
+    // Subtrai 30 minutos à data do jogo para achar o prazo limite real
+    const deadlineTime = new Date(matchDate.getTime() - (30 * 60000));
+
+    if (serverNow > deadlineTime) {
+      throw new HttpsError('permission-denied', 'Mercado encerrado! O prazo de 30 min antes do jogo expirou.');
+    }
+
+    // 5. Se passou por todas as barreiras, grava o palpite!
+    const predRef = db.collection('bolao_users').doc(userId).collection('predictions').doc(matchId);
+    
+    await predRef.set({
+      score_home: parseInt(scoreHome),
+      score_away: parseInt(scoreAway),
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    return { success: true, message: 'Palpite gravado em segurança.' };
+
+  } catch (error) {
+    console.error("🔥 Erro de Segurança Bolão:", error);
+    // Preserva o tipo de erro que criamos (se for HttpsError)
+    if (error instanceof HttpsError) {
+        throw error;
+    }
+    throw new HttpsError('internal', 'Erro interno no servidor.');
+  }
+});
+
+// ==================================================================
+// 🏆 GRAVAÇÃO SEGURA DOS BÔNUS EXTRAS (Com Prazo de Validade)
+// ==================================================================
+exports.submitBolaoBonus = onCall({ cors: true }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login obrigatório.');
+
+  const { field, teamName } = request.data;
+  const userId = request.auth.uid;
+
+  // 🚨 HORA ZERO: 11 de Junho de 2026 às 20:30 UTC (30 min antes do jogo de abertura)
+  const deadline = new Date('2026-06-11T20:30:00Z');
+  const serverNow = new Date();
+
+  if (serverNow > deadline) {
+    throw new HttpsError('permission-denied', 'O prazo para salvar Bônus encerrou antes da Copa começar!');
+  }
+
+  try {
+    const userRef = db.collection('bolao_users').doc(userId);
+    await userRef.set({
+      [field]: teamName,
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    return { success: true };
+  } catch (error) {
+    throw new HttpsError('internal', 'Erro ao salvar o bônus.');
+  }
+});
+
+// ==================================================================
+// 🏆 CÁLCULO FINAL DOS BÔNUS (Disparado pelo Admin no fim da Copa)
+// ==================================================================
+exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login obrigatório.');
+  
+  const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
+  if (!adminDoc.exists) throw new HttpsError('permission-denied', 'Apenas admins.');
+
+  const { officialChampion, officialRunnerUp, officialBestOffense, officialWorstDefense, officialDisappointment } = request.data;
+
+  try {
+    const usersSnap = await db.collection('bolao_users').get();
+    const batchHandler = new BatchHandler(db);
+
+    for (const userDoc of usersSnap.docs) {
+      const userData = userDoc.data();
+      let extraPoints = 0;
+
+      // 🚨 REGRAS DE PONTUAÇÃO (O Campeão vale 20, o resto 10)
+      if (userData.bonus_champion === officialChampion) extraPoints += 20;
+      if (userData.bonus_runner_up === officialRunnerUp) extraPoints += 10;
+      if (userData.bonus_best_offense === officialBestOffense) extraPoints += 10;
+      if (userData.bonus_worst_defense === officialWorstDefense) extraPoints += 10;
+      if (userData.bonus_disappointment === officialDisappointment) extraPoints += 10;
+
+      if (extraPoints > 0) {
+        batchHandler.update(userDoc.ref, {
+          total_points: admin.firestore.FieldValue.increment(extraPoints),
+          bonus_points: admin.firestore.FieldValue.increment(extraPoints),
+          updated_at: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    }
+
+    await batchHandler.commit();
+    return { success: true, message: 'Bônus processados e Ranking Final atualizado!' };
+
+  } catch (error) {
+    throw new HttpsError('internal', error.message);
   }
 });
 
@@ -606,4 +895,5 @@ class BatchHandler {
       this.count = 0;
     }
   }
+  
 }

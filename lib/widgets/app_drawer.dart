@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
@@ -71,6 +72,7 @@ class AppDrawer extends StatelessWidget {
                     _buildDrawerItem(context, Icons.emoji_events, 'Resumo da Temporada', '/season-summary', highlight: true), 
                     _buildDrawerItem(context, Icons.sports_soccer, 'Fantasy FJF', '/fantasy-home', highlight: true),
                     _buildDrawerItem(context, Icons.collections, 'Loja de Fotos', '/photo-sales', highlight: true),
+                    _buildDrawerItem(context, FontAwesomeIcons.earthAmericas, 'Bolão da Copa 2026', '/wordcup-pool', highlight: true),
                     
                     _buildSectionHeader(context, "COMPETIÇÃO"),
                     _buildDrawerItem(context, Icons.calendar_month, 'Tabela de Jogos', '/fixtures'),
