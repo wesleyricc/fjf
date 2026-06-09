@@ -1,169 +1,128 @@
-// lib/main.dart
-import 'dart:async'; // Necessário para runZonedGuarded
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:fjf_app/firebase_options.dart'; 
-import 'package:fjf_app/firebase_options_test.dart' as test_options;
-import 'screens/splash_screen.dart';
-import 'services/admin_service.dart';
-import 'services/notification_service.dart';
-import 'package:intl/date_symbol_data_local.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:fjf_app/screens/fixtures_screen.dart';
-import 'package:fjf_app/screens/standings_screen.dart';
-import 'package:fjf_app/screens/teams_list_screen.dart';
-import 'package:fjf_app/screens/player_stats_screen.dart';
-import 'package:fjf_app/screens/suspension_history_screen.dart';
-import 'package:fjf_app/screens/report_bug_screen.dart';
-import 'package:fjf_app/screens/admin_menu_screen.dart';
-import 'package:fjf_app/screens/team_stats_screen.dart';
-import 'package:fjf_app/screens/player_comparison_screen.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
-// Função helper para ambiente
-FirebaseOptions _getFirebaseOptions(String env) {
-  switch (env) {
-    case 'test':
-      debugPrint("--- USANDO AMBIENTE DE TESTE ---");
-      return test_options.DefaultFirebaseOptions.currentPlatform;
-    case 'prod':
-    default:
-      debugPrint("--- USANDO AMBIENTE DE PRODUÇÃO ---");
-      return DefaultFirebaseOptions.currentPlatform;
-  }
+void main() {
+  runApp(const FjfLegacyApp());
 }
 
-Future<void> main() async {
-  // Envolve a inicialização em um ZoneGuard para capturar erros silenciosos (Tela Preta)
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    await initializeDateFormatting('pt_BR', null);
-
-    // 1. Ler a variável de ambiente
-    const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
-    
-    // 2. Obter as opções corretas
-    final FirebaseOptions options = _getFirebaseOptions(environment);
-
-    // 3. Inicializar o Firebase
-    await Firebase.initializeApp(
-      options: options,
-    );
-
-    // 4. DESABILITAR PERSISTÊNCIA OFFLINE (Correção Tela Preta)
-    // Força o app a buscar dados novos sempre, evitando conflito de cache local
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: false,
-    );
-
-    await AdminService.loadDisciplinaryRules();
-    await AdminService.loadTiebreakerOrder();
-    await AdminService.loadPlayoffRules();
-    await AdminService.loadAppSettings();
-    await NotificationService().init();
-
-    runApp(const MyApp());
-    
-  }, (error, stackTrace) {
-    // Se houver erro fatal na inicialização, imprime no console
-    debugPrint("ERRO FATAL NA INICIALIZAÇÃO: $error");
-    debugPrint(stackTrace.toString());
-  });
-}
-
-// Observador do Analytics (Mantido igual)
-class FjfAnalyticsObserver extends NavigatorObserver {
-  final FirebaseAnalytics analytics = FirebaseAnalytics.instance;
-
-  void _logScreenView(Route<dynamic> route) {
-    final String? screenName = route.settings.name;
-    if (screenName != null && screenName.startsWith('/')) {
-      debugPrint('[Analytics] Logando tela: $screenName');
-      analytics.logScreenView(screenName: screenName);
-    }
-  }
-
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPush(route, previousRoute);
-    _logScreenView(route);
-  }
-
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    super.didPop(route, previousRoute);
-    if (previousRoute != null) {
-      _logScreenView(previousRoute);
-    }
-  }
-
-  @override
-  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
-    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
-    if (newRoute != null) {
-      _logScreenView(newRoute);
-    }
-  }
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class FjfLegacyApp extends StatelessWidget {
+  const FjfLegacyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'FJF App',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primaryColor: const Color(0xFFC25F22),
-        colorScheme: ColorScheme.fromSwatch().copyWith(
-          secondary: const Color(0xFF333333),
-          primary: const Color(0xFFC25F22),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF0F0F0),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFC25F22),
-          foregroundColor: Colors.white,
-          titleTextStyle: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+        scaffoldBackgroundColor: Colors.grey[100],
+      ),
+      home: const RedirectScreen(),
+    );
+  }
+}
+
+class RedirectScreen extends StatelessWidget {
+  const RedirectScreen({super.key});
+
+  void _redirectToNewApp() {
+    // Força o redirecionamento direto no navegador/PWA
+    html.window.location.href = 'https://acefjf.web.app';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Ícone de destaque
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC25F22).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.rocket_launch_rounded, 
+                    size: 80, 
+                    color: Color(0xFFC25F22),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                
+                // Título Chamativo
+                const Text(
+                  "O APP DA FJF\nESTÁ DE CASA NOVA!",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFFC25F22),
+                    height: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                
+                // Texto Explicativo focado na curiosidade
+                const Text(
+                  "Preparamos uma versão completamente nova, muito mais rápida e recheada de novidades incríveis que vão transformar a sua experiência!\n\n"
+                  "Para não ficar de fora, desinstale este aplicativo antigo e clique no botão abaixo para mergulhar no novo portal.",
+                  style: TextStyle(
+                    fontSize: 16, 
+                    color: Colors.black87, 
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 40),
+                
+                // Botão de Redirecionamento (Call to Action mais atrativa)
+                SizedBox(
+                  width: double.infinity,
+                  height: 60,
+                  child: ElevatedButton.icon(
+                    onPressed: _redirectToNewApp,
+                    icon: const Icon(Icons.auto_awesome, color: Colors.white),
+                    label: const Text(
+                      "DESCOBRIR O NOVO APP",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold, 
+                        fontSize: 16,
+                        color: Colors.white,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFC25F22),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+                const Text(
+                  "Novo link oficial:\nacefjf.web.app",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14, 
+                    color: Colors.grey, 
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        drawerTheme: const DrawerThemeData(
-          backgroundColor: Color(0xFFC25F22),
-        ),
-        useMaterial3: true,
       ),
-      
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('pt', 'BR'),
-      ],
-      locale: const Locale('pt', 'BR'),
-      
-      initialRoute: '/', 
-
-      navigatorObservers: [
-        FjfAnalyticsObserver(),
-      ],
-
-      routes: {
-        '/': (context) => const SplashScreen(),
-        '/fixtures': (context) => const FixturesScreen(),
-        '/standings': (context) => StandingsScreen(),
-        '/teams': (context) => const TeamsListScreen(),
-        '/team-stats': (context) => const TeamStatsScreen(),
-        '/player-stats': (context) => PlayerStatsScreen(),
-        '/suspension-history': (context) => SuspensionHistoryScreen(),
-        '/report-bug': (context) => const ReportBugScreen(),
-        '/admin-menu': (context) => const AdminMenuScreen(),
-        '/player-comparison': (context) => const PlayerComparisonScreen(),
-      },
     );
   }
 }

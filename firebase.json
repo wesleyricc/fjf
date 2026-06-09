@@ -1,1 +1,41 @@
-{"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"fjfapp","configurations":{"web":"1:211551139323:web:f583360c18907986adc75e"}},"lib/firebase_options_test.dart":{"projectId":"fjfapp-test","configurations":{"web":"1:39829597186:web:76f32b7731916204990b1b"}}}}},"hosting":{"public":"build/web","ignore":["firebase.json","**/.*","**/node_modules/**"],"rewrites":[{"source":"**","destination":"/index.html"}]}}
+{
+    "flutter": {
+        "platforms": {
+            "dart": {
+                "lib/firebase_options.dart": {
+                    "projectId": "fjfapp",
+                    "configurations": {
+                        "web": "1:211551139323:web:f583360c18907986adc75e"
+                    }
+                },
+                "lib/firebase_options_test.dart": {
+                    "projectId": "fjfapp-test",
+                    "configurations": {
+                        "web": "1:39829597186:web:76f32b7731916204990b1b"
+                    }
+                }
+            }
+        }
+    },
+    "hosting": {
+        "public": "build/web",
+        "ignore": [
+            "firebase.json",
+            "**/.*",
+            "**/node_modules/**"
+        ],
+        "rewrites": [
+            {
+                "source": "**",
+                "destination": "/index.html"
+            }
+        ],
+        "redirects": [
+            {
+                "source": "**",
+                "destination": "https://acefjf.web.app",
+                "type": 301
+            }
+        ]
+    }
+}
