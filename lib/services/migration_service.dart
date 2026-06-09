@@ -6,13 +6,10 @@ class MigrationService {
 
   // --- MIGRAR REFERÊNCIAS DE STORAGE (URLS) ---
   Future<String> migrateStorageUrls(String seasonId) async {
-    const String oldBucket = 'acefjf.firebasestorage.app';
-    const String newBucket = 'acefjf-us-storage';
-    
     WriteBatch batch = _firestore.batch();
     int count = 0;
 
-    debugPrint("🚀 [STORAGE MIGRAÇÃO] Iniciando substituição de URLs...");
+    debugPrint("🚀 [STORAGE MIGRAÇÃO] Iniciando conversão de URLs com Tokens...");
 
     // Função interna auxiliar para processar documentos
     Future<int> processDocs(Query query, List<String> fields, int currentCount, WriteBatch currentBatch) async {
@@ -26,9 +23,21 @@ class MigrationService {
         Map<String, dynamic> updates = {};
 
         for (String field in fields) {
-          if (data[field] != null && data[field].toString().contains(oldBucket)) {
-            updates[field] = data[field].toString().replaceAll(oldBucket, newBucket);
-            changed = true;
+          final String? valorAtual = data[field]?.toString();
+          
+          if (valorAtual != null && valorAtual.isNotEmpty) {
+            // Verifica se é uma URL antiga que precisa ser migrada e limpa
+            if (valorAtual.contains('fjfapp.firebasestorage.app') || 
+                valorAtual.contains('acefjf.firebasestorage.app') ||
+                valorAtual.contains('firebasestorage.googleapis.com')) {
+              
+              String novaUrl = _atualizarUrlStorage(valorAtual);
+              
+              if (novaUrl != valorAtual) {
+                updates[field] = novaUrl;
+                changed = true;
+              }
+            }
           }
         }
 
@@ -51,10 +60,7 @@ class MigrationService {
     try {
       // 1. Coleções Globais
       count = await processDocs(_firestore.collection('teams_directory'), ['shield_url'], count, batch);
-      
-      // 🚨 ADICIONADO: team_shield_url na coleção global de players
       count = await processDocs(_firestore.collection('players'), ['photo_url', 'team_shield_url'], count, batch);
-      
       count = await processDocs(_firestore.collection('photo_albums'), ['coverUrl'], count, batch);
       count = await processDocs(_firestore.collection('photo_sales'), ['original_url', 'preview_url'], count, batch);
       count = await processDocs(_firestore.collection('fantasy_teams'), ['custom_logo_url'], count, batch);
@@ -67,26 +73,12 @@ class MigrationService {
       count = await processDocs(seasonRef.collection('player_stats'), ['photo_url', 'team_shield_url'], count, batch);
       count = await processDocs(seasonRef.collection('news'), ['imageUrl'], count, batch);
       count = await processDocs(seasonRef.collection('matches'), ['team_home_shield', 'team_away_shield', 'sumula_url'], count, batch);
-
-      // 🚨 ADICIONADO: Histórico disciplinar (logo do time e foto do jogador)
-      count = await processDocs(
-        seasonRef.collection('disciplinary_log'), 
-        ['teamLogoUrl', 'playerPhotoUrl'], 
-        count, 
-        batch
-      );
-
-      // 🚨 ADICIONADO: Configurações do app (regulamento em PDF)
-      count = await processDocs(
-        seasonRef.collection('settings'), 
-        ['regulation_pdf_url'], 
-        count, 
-        batch
-      );
+      count = await processDocs(seasonRef.collection('disciplinary_log'), ['teamLogoUrl', 'playerPhotoUrl'], count, batch);
+      count = await processDocs(seasonRef.collection('settings'), ['regulation_pdf_url'], count, batch);
 
       // Comita o restante do batch que ficou na memória
       await batch.commit();
-      return "Sucesso: URLs do Storage migradas.";
+      return "Sucesso: URLs do Storage migradas e convertidas para formato público.";
     } catch (e) {
       return "Erro na migração: $e";
     }
@@ -151,9 +143,19 @@ class MigrationService {
         batchCount++;
 
         final partRef = seasonRef.collection('teams_participation').doc(doc.id);
+        
+        // 🚨 NOVO: LIMPEZA DE DESTINO (Apaga histórico de punições/bônus de testes anteriores)
+        final destExtraPoints = await partRef.collection('extra_points_log').get();
+        for (var lixoDoc in destExtraPoints.docs) {
+          batch.delete(lixoDoc.reference);
+          batchCount++;
+        }
+
+        // Salva os dados do time
         batch.set(partRef, data);
         batchCount++;
 
+        // Migra o log original da raiz
         final legacyLogs = await doc.reference.collection('extra_points_log').get();
         for (var logDoc in legacyLogs.docs) {
            final newLogRef = partRef.collection('extra_points_log').doc(logDoc.id);
@@ -169,17 +171,38 @@ class MigrationService {
       }
 
       // --- ETAPA 2: JOGOS + GERAÇÃO DE TIMELINE ---
-      debugPrint("⏳ [MIGRAÇÃO] 2/6 - Jogos e Geração de Timeline (Minuto 0)...");
+      debugPrint("⏳ [MIGRAÇÃO] 2/6 - Jogos e Geração de Timeline...");
       final legacyMatches = await _firestore.collection('matches').get();
       
       for (var doc in legacyMatches.docs) {
         final matchData = doc.data();
         final newMatchRef = seasonRef.collection('matches').doc(doc.id);
         
+        // 🚨 NOVO: LIMPEZA DE DESTINO (Mata os fantasmas de migrações anteriores)
+        final destinationTimeline = await newMatchRef.collection('timeline').get();
+        for (var lixoDoc in destinationTimeline.docs) {
+          batch.delete(lixoDoc.reference);
+          batchCount++;
+        }
+
+        // Salva os metadados do jogo
         batch.set(newMatchRef, matchData);
         batchCount++;
-        
-        if (matchData.containsKey('stats_applied') && matchData['stats_applied']?['player_stats'] != null) {
+
+        // 1. Buscamos a timeline antiga PRIMEIRO na raiz
+        final legacyTimeline = await doc.reference.collection('timeline').get();
+
+        // 2. Se a partida JÁ TEM eventos na timeline, apenas copiamos (EVITA DUPLICAR)
+        if (legacyTimeline.docs.isNotEmpty) {
+          for (var eventDoc in legacyTimeline.docs) {
+            final newEventRef = newMatchRef.collection('timeline').doc(eventDoc.id);
+            batch.set(newEventRef, eventDoc.data());
+            batch.delete(eventDoc.reference); // Limpa da raiz
+            batchCount += 2;
+          }
+        } 
+        // 3. Se a partida NÃO TEM timeline (jogos bem antigos), criamos uma sintética do pStats
+        else if (matchData.containsKey('stats_applied') && matchData['stats_applied']?['player_stats'] != null) {
           final pStats = matchData['stats_applied']['player_stats'];
           
           void generateEvents(Map<String, dynamic>? sourceMap, String eventType) {
@@ -216,14 +239,7 @@ class MigrationService {
           generateEvents(pStats['reds'] as Map<String, dynamic>?, 'redCard');
         }
 
-        final legacyTimeline = await doc.reference.collection('timeline').get();
-        for (var eventDoc in legacyTimeline.docs) {
-          final newEventRef = newMatchRef.collection('timeline').doc(eventDoc.id);
-          batch.set(newEventRef, eventDoc.data());
-          batch.delete(eventDoc.reference);
-          batchCount += 2;
-        }
-
+        // Apaga o jogo antigo da raiz
         batch.delete(doc.reference);
         batchCount++;
         await commitIfNeeded();
@@ -284,5 +300,46 @@ class MigrationService {
       debugPrint("❌ [MIGRAÇÃO] ERRO CRÍTICO: $e\n$stack");
       return "Erro: $e";
     }
+  }
+
+  // =========================================================================
+  // FUNÇÃO AUXILIAR: Decodificador e Limpador de URLs do Firebase Storage
+  // =========================================================================
+  String _atualizarUrlStorage(String urlAntiga) {
+    if (urlAntiga.isEmpty) return urlAntiga;
+    
+    const String newBucket = 'acefjf-us-storage';
+
+    // Se já está no formato correto (Google Cloud Storage público) não faz nada
+    if (urlAntiga.contains('storage.googleapis.com/$newBucket')) {
+      return urlAntiga;
+    }
+
+    try {
+      // 1. É uma URL gerada pelo Firebase Storage (contém /o/) e tem token?
+      if (urlAntiga.contains('/o/')) {
+        String parteDoCaminho = urlAntiga.split('/o/')[1];
+        
+        // Remove os parâmetros de query e o token (tudo a partir do '?')
+        if (parteDoCaminho.contains('?')) {
+          parteDoCaminho = parteDoCaminho.split('?')[0];
+        }
+        
+        // Decodifica os caracteres da web (exemplo: "%2F" volta a ser "/")
+        String caminhoLimpo = Uri.decodeComponent(parteDoCaminho);
+        
+        // Retorna a URL pública, limpa e apontando para o seu bucket gratuito
+        return 'https://storage.googleapis.com/$newBucket/$caminhoLimpo';
+      } 
+      // 2. Fallback: Se for uma URL que apenas contém o nome do bucket, mas sem a estrutura padrão
+      else if (urlAntiga.contains('fjfapp.firebasestorage.app') || urlAntiga.contains('acefjf.firebasestorage.app')) {
+         String temp = urlAntiga.replaceAll('fjfapp.firebasestorage.app', newBucket);
+         return temp.replaceAll('acefjf.firebasestorage.app', newBucket);
+      }
+    } catch (e) {
+      debugPrint('Erro ao converter URL: $e');
+    }
+
+    return urlAntiga;
   }
 }

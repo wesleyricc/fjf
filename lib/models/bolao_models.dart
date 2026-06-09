@@ -53,7 +53,7 @@ class BolaoPrediction {
   final String matchId;
   final int scoreHome;
   final int scoreAway;
-  final int? pointsEarned; // Pontos ganhos nesse palpite (Calculado via backend)
+  final int? pointsEarned; 
 
   BolaoPrediction({
     required this.matchId,
@@ -92,7 +92,7 @@ class BolaoUser {
   final String? phone;
   final String? photoUrl;
   
-  // 🚨 NOVOS CAMPOS DE BÔNUS
+  // BÔNUS
   final String? champion;
   final String? runnerUp;
   final String? bestOffense;
@@ -112,10 +112,38 @@ class BolaoUser {
     this.bestOffense,
     this.worstDefense,
     this.disappointment,
-    this.cpf,         // 🚨 NOVO
-    this.phone,       // 🚨 NOVO
-    this.photoUrl,    // 🚨 NOVO
+    this.cpf,         
+    this.phone,       
+    this.photoUrl,    
   });
+
+  // 🚨 NOVO: VALIDADOR DE CADASTRO COMPLETO 🚨
+  bool get isProfileComplete {
+    return name.trim().isNotEmpty && 
+           name != 'Utilizador' &&
+           cpf != null && cpf!.trim().isNotEmpty && 
+           phone != null && phone!.trim().isNotEmpty;
+  }
+
+  factory BolaoUser.fromMap(String id, Map<String, dynamic> data) {
+    return BolaoUser(
+      userId: id,
+      name: data['name'] ?? 'Utilizador',
+      totalPoints: (data['total_points'] ?? 0).toInt(),
+      exactHits: (data['exact_hits'] ?? 0).toInt(),
+      goalDifferenceHits: (data['goal_difference_hits'] ?? 0).toInt(),
+      winnerHits: (data['winner_hits'] ?? 0).toInt(),
+      bonusPoints: (data['bonus_points'] ?? 0).toInt(),
+      champion: data['bonus_champion'],
+      runnerUp: data['bonus_runner_up'],
+      bestOffense: data['bonus_best_offense'],
+      worstDefense: data['bonus_worst_defense'],
+      disappointment: data['bonus_disappointment'],
+      cpf: data['cpf'],               
+      phone: data['phone'],           
+      photoUrl: data['photo_url'],
+    );
+  }
 
   factory BolaoUser.fromFirestore(DocumentSnapshot doc, String defaultName) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -127,15 +155,14 @@ class BolaoUser {
       goalDifferenceHits: (data['goal_difference_hits'] ?? 0).toInt(),
       winnerHits: (data['winner_hits'] ?? 0).toInt(),
       bonusPoints: (data['bonus_points'] ?? 0).toInt(),
-      // 🚨 MAPEAMENTO DOS NOVOS BÔNUS
       champion: data['bonus_champion'],
       runnerUp: data['bonus_runner_up'],
       bestOffense: data['bonus_best_offense'],
       worstDefense: data['bonus_worst_defense'],
       disappointment: data['bonus_disappointment'],
-      cpf: data['cpf'],               // 🚨 NOVO
-      phone: data['phone'],           // 🚨 NOVO
-      photoUrl: data['photo_url'],    // 🚨 NOVO
+      cpf: data['cpf'],               
+      phone: data['phone'],           
+      photoUrl: data['photo_url'],    
     );
   }
 }

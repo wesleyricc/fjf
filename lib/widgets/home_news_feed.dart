@@ -2,11 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../services/championship_service.dart';
+import '../viewmodels/news_viewmodel.dart';
 import 'sponsor_banner_rotator.dart'; 
 
-class HomeNewsFeed extends StatelessWidget {
+class HomeNewsFeed extends StatefulWidget {
   const HomeNewsFeed({super.key});
+
+  @override
+  State<HomeNewsFeed> createState() => _HomeNewsFeedState();
+}
+
+class _HomeNewsFeedState extends State<HomeNewsFeed> {
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 LAZY LOADING: Dispara a leitura de notícias apenas quando o feed da Home renderizar
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      Provider.of<NewsViewModel>(context, listen: false).loadNews(seasonId);
+    });
+  }
 
   Future<void> _launchURL(String? urlString) async {
     if (urlString == null || urlString.isEmpty) return;
@@ -34,12 +51,13 @@ class HomeNewsFeed extends StatelessWidget {
         
         SizedBox(
           height: 210, 
-          child: Consumer<ChampionshipService>(
-            builder: (context, service, _) {
-              final newsList = service.news;
+          // 🚨 AGORA CONSOME O SEU PRÓPRIO VIEWMODEL
+          child: Consumer<NewsViewModel>(
+            builder: (context, newsVm, _) {
+              final newsList = newsVm.news;
 
               if (newsList.isEmpty) {
-                if (service.isLoading) return const Center(child: CircularProgressIndicator());
+                if (newsVm.isLoading) return const Center(child: CircularProgressIndicator());
                 return const Center(child: Text("Nenhuma notícia publicada.", style: TextStyle(color: Colors.grey)));
               }
 

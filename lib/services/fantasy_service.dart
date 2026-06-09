@@ -76,21 +76,12 @@ class FantasyService {
     });
   }
 
-  Stream<List<FantasyPlayer>> streamMarket({String? positionFilter, String? searchTerm}) {
-    Query query = _fantasyMarketRef.orderBy('current_price', descending: true);
-    if (positionFilter != null && positionFilter != 'Todos') {
-      query = query.where('position', isEqualTo: positionFilter);
-    }
-    query = query.limit(100);
-
-    return query.snapshots().map((snap) {
-      var list = snap.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
-      if (searchTerm != null && searchTerm.isNotEmpty) {
-        final term = searchTerm.toLowerCase();
-        list = list.where((p) => p.name.toLowerCase().contains(term) || p.position.toLowerCase().contains(term)).toList();
-      }
-      return list;
-    });
+  Stream<List<FantasyPlayer>> streamMarket() {
+    return _fantasyMarketRef
+        .orderBy('current_price', descending: true)
+        // Removido o .limit(100) para garantir que a filtragem local (por time/nome) ache todos os jogadores
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList());
   }
 
   Future<String> updateTeamProfile({

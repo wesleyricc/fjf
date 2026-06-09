@@ -25,11 +25,14 @@ class FantasyMarketScreen extends StatefulWidget {
 
 class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
   String _selectedPosition = 'Goleiro'; 
-  String _selectedTeamId = 'Todos'; // 🚨 Usamos o ID no código, mas mostraremos o nome na tela!
+  String _selectedTeamId = 'Todos'; 
   String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
   
   final List<String> _positions = ['Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
+
+  // 🚨 OTIMIZAÇÃO: Stream instanciada apenas UMA vez
+  late Stream<List<FantasyPlayer>> _marketStream;
 
   @override
   void initState() {
@@ -37,6 +40,9 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     if (widget.requiredPosition != null) {
       _selectedPosition = widget.requiredPosition!;
     }
+    
+    // Inicia a conexão com o banco de dados APENAS ao abrir a tela
+    _marketStream = Provider.of<FantasyService>(context, listen: false).streamMarket();
   }
 
   @override
@@ -61,15 +67,10 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final fantasyService = Provider.of<FantasyService>(context, listen: false);
-    
-    // 🚨 1. Pega os times oficiais que já estão na memória do aplicativo
+    // Pegamos apenas o dicionário de times para tradução
     final championshipService = Provider.of<ChampionshipService>(context, listen: false);
-    
-    // 🚨 2. Cria o Dicionário de Tradução: ID do Time -> Nome do Time
     final Map<String, String> teamDictionary = {};
     for (var team in championshipService.teams) {
-      // Ajuste 'team.id' e 'team.name' se as propriedades do seu modelo Team se chamarem diferente
       teamDictionary[team.id] = team.name; 
     }
 
@@ -121,12 +122,25 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
             ),
           ),
           
+          // 🚨 Campo de Busca por Texto (Adicionado)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: "Buscar atleta por nome...",
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+              onChanged: (val) => setState(() => _searchTerm = val), // Aciona setState localmente
+            ),
+          ),
+
           Expanded(
             child: StreamBuilder<List<FantasyPlayer>>(
-              stream: fantasyService.streamMarket(
-                positionFilter: _selectedPosition,
-                searchTerm: _searchTerm,
-              ),
+              // 🚨 Usamos a variável salva, NUNCA chamamos o método do Service diretamente no build
+              stream: _marketStream,
               builder: (context, snapshot) {
 
                 if (snapshot.hasError) {
@@ -145,45 +159,47 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                 
                 var players = List<FantasyPlayer>.from(snapshot.data ?? []);
                 
-                // --- 🚨 LÓGICA DE TRADUÇÃO DOS TIMES PARA O DROPDOWN 🚨 ---
-                
-                // A. Pega apenas os IDs dos times que têm jogadores disponíveis
+                // Construção do Dropdown de Times
                 final Set<String> uniqueTeamIds = {};
                 for (var p in players) {
                   if (p.teamId.isNotEmpty) uniqueTeamIds.add(p.teamId); 
                 }
 
-                // B. Constrói a lista amigável com os nomes
                 final List<Map<String, String>> teamOptions = [
-                  {'id': 'Todos', 'name': 'Todos as Equipes'}
+                  {'id': 'Todos', 'name': 'Todas as Equipes'}
                 ];
 
                 for (var tId in uniqueTeamIds) {
-                  // Traduz o ID. Se por acaso não achar no dicionário, mostra "Equipe Desconhecida"
                   final String teamName = teamDictionary[tId] ?? 'Equipe Desconhecida';
                   teamOptions.add({'id': tId, 'name': teamName});
                 }
 
-                // C. Ordena os times por Ordem Alfabética (pelo Nome, não pelo ID)
-                final todosOption = teamOptions.removeAt(0); // Tira o "Todos" temporariamente
-                teamOptions.sort((a, b) => a['name']!.compareTo(b['name']!)); // Ordena
-                teamOptions.insert(0, todosOption); // Coloca o "Todos" no topo de volta
+                final todosOption = teamOptions.removeAt(0);
+                teamOptions.sort((a, b) => a['name']!.compareTo(b['name']!));
+                teamOptions.insert(0, todosOption);
 
-                // Proteção contra erro se o time sumir do filtro ao mudar a posição
                 if (!teamOptions.any((t) => t['id'] == _selectedTeamId)) {
                    WidgetsBinding.instance.addPostFrameCallback((_) {
                      if (mounted) setState(() => _selectedTeamId = 'Todos');
                    });
                 }
 
-                // --- APLICAÇÃO DOS FILTROS E ORDENAÇÃO ---
+                // ==============================================================
+                // 🚨 MAGIA DO CUSTO ZERO: Filtragem na Memória (Dart)
+                // ==============================================================
+                
+                // 1. Filtro de Texto (Nome)
+                if (_searchTerm.isNotEmpty) {
+                  final term = _searchTerm.toLowerCase();
+                  players = players.where((p) => p.name.toLowerCase().contains(term)).toList();
+                }
 
-                // 2. Filtro Local de Posição
-                if (_selectedPosition.isNotEmpty) {
+                // 2. Filtro de Posição
+                if (_selectedPosition.isNotEmpty && _selectedPosition != 'Todos') {
                   players = players.where((p) => p.position == _selectedPosition).toList();
                 }
 
-                // 3. Filtro Local de Equipe (Usando o ID por baixo dos panos)
+                // 3. Filtro de Equipe
                 if (_selectedTeamId != 'Todos') {
                   players = players.where((p) => p.teamId == _selectedTeamId).toList();
                 }
@@ -193,7 +209,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
 
                 return Column(
                   children: [
-                    // --- DROPDOWN DO FILTRO DE EQUIPES (MOSTRANDO NOMES BONITOS) ---
                     if (teamOptions.length > 1)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
@@ -212,8 +227,8 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                                   icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
                                   items: teamOptions.map((teamData) {
                                     return DropdownMenuItem<String>(
-                                      value: teamData['id'], // Valor técnico
-                                      child: Text(teamData['name']!, overflow: TextOverflow.ellipsis), // Texto para o Usuário
+                                      value: teamData['id'],
+                                      child: Text(teamData['name']!, overflow: TextOverflow.ellipsis),
                                     );
                                   }).toList(),
                                   onChanged: (val) {
@@ -228,7 +243,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                       
                     const Divider(height: 1, thickness: 1),
 
-                    // --- LISTAGEM FINAL DE ATLETAS ---
                     Expanded(
                       child: players.isEmpty 
                         ? CustomEmptyState(
@@ -239,6 +253,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                             onButtonPressed: () => setState(() {
                                _selectedTeamId = 'Todos';
                                _searchTerm = '';
+                               _searchController.clear();
                             }),
                           )
                         : ListView.builder(

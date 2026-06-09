@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import '../services/championship_service.dart';
+import '../viewmodels/sponsor_viewmodel.dart';
 
 class SponsorBannerRotator extends StatefulWidget {
   final String location;
@@ -58,26 +58,19 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
 
   // --- LÓGICA UNIFICADA ---
   void _filterSponsorsFromCache() {
-    final service = Provider.of<ChampionshipService>(context, listen: true);
-    final allSponsors = service.sponsors; // Retorna List<Map<String, dynamic>>
+    // 🚨 Agora consome o SponsorViewModel dedicado!
+    final sponsorVm = Provider.of<SponsorViewModel>(context, listen: true);
+    final allSponsors = sponsorVm.sponsors; 
 
     final filtered = allSponsors.where((data) {
-      // CORREÇÃO: Acesso direto ao Map, sem .data()
-      
-      // 1. Filtra Localização (Obrigatório)
       if (data['location'] != widget.location) return false;
 
-      // 2. Filtra pela Tag Unificada (Campo 'round' no Firestore)
       if (widget.filterTag != null) {
         final docRound = data['round']; 
-
         if (docRound != null && docRound.toString().isNotEmpty) {
-          if (docRound.toString() != widget.filterTag) {
-            return false;
-          }
+          if (docRound.toString() != widget.filterTag) return false;
         }
       } 
-
       return true;
     }).toList();
 

@@ -5,7 +5,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'admin_service.dart';
 import '../models/team_model.dart'; 
 import '../models/player_model.dart'; 
-import '../models/photo_product_model.dart'; 
 import '../models/match_model.dart';
 
 class ChampionshipService with ChangeNotifier {
@@ -15,42 +14,32 @@ class ChampionshipService with ChangeNotifier {
   bool _isOffline = false; 
   String _currentSeasonId = '';
   String _currentSeasonName = 'Carregando...';
-  int _currentSeasonYear = DateTime.now().year; // Valor inicial seguro
+  int _currentSeasonYear = DateTime.now().year; 
   String _currentSeasonHonoree = '';
   
   List<Map<String, dynamic>> _availableSeasons = [];
   bool _isLoading = false; 
   
-  // TRAVAS DE CONCORRÊNCIA
   bool _isFetchingStaticData = false;
   bool _isFetchingPlayers = false;
 
-  // --- CACHE DE DADOS (EM MEMÓRIA) ---
+  // --- CACHE DE DADOS (APENAS DESPORTO E EQUIPES) ---
   List<Team> _cachedTeams = [];
   final Map<String, List<Player>> _cachedPlayersByTeam = {};
   List<Player> _allPlayersCache = [];
-  List<Map<String, dynamic>> _cachedSponsors = []; 
-  List<Map<String, dynamic>> _cachedNews = [];
   List<MatchModel> _cachedMatches = [];
-  List<Map<String, dynamic>> _cachedSuspensions = []; 
-  
-  PhotoProduct? _cachedLatestPhotoProduct;
   Map<String, dynamic>? _cachedAppSettings; 
 
-  // --- CONTROLE DE VALIDADE DE CACHE ---
-  DateTime? _lastTeamsFetch;
   DateTime? _lastMatchesFetch;
-  DateTime? _lastMiscFetch; 
+  DateTime? _lastTeamsFetch;
   DateTime? _lastAllPlayersFetch; 
   final Map<String, DateTime> _lastTeamRosterFetch = {};
 
   static const int TEAMS_CACHE_TTL = 60;   
   static const int MATCHES_CACHE_TTL = 5;  
-  static const int MISC_CACHE_TTL = 30;    
   static const int ROSTER_CACHE_TTL = 30;  
   static const int ALL_PLAYERS_CACHE_TTL = 15; 
 
-  // Getters
   bool get isOffline => _isOffline; 
   String get currentSeasonId => _currentSeasonId;
   String get currentSeasonName => _currentSeasonName;
@@ -60,24 +49,17 @@ class ChampionshipService with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   List<Team> get teams => _cachedTeams;
-  List<Map<String, dynamic>> get sponsors => _cachedSponsors;
-  List<Map<String, dynamic>> get news => _cachedNews;
   List<MatchModel> get matches => _cachedMatches;
+  Map<String, dynamic>? get appSettings => _cachedAppSettings;
   
+  bool get isFantasyEnabled => _cachedAppSettings?['feature_fantasy'] ?? false;
+  bool get isBolaoEnabled => _cachedAppSettings?['feature_bolao'] ?? false;
+  bool get isPhotoStoreEnabled => _cachedAppSettings?['feature_photo_store'] ?? false;
+
   List<Player> get allPlayers {
     if (_allPlayersCache.isNotEmpty) return _allPlayersCache;
     return _cachedPlayersByTeam.values.expand((x) => x).toList();
   }
-
-  List<DocumentSnapshot> _rawSuspensionSnaps = [];
-  List<DocumentSnapshot> get suspensions => _rawSuspensionSnaps; 
-  List<DocumentSnapshot> _rawSponsorsSnaps = [];
-  List<DocumentSnapshot> get sponsorsDocs => _rawSponsorsSnaps;
-
-  PhotoProduct? get latestPhotoProduct => _cachedLatestPhotoProduct;
-  Map<String, dynamic>? get appSettings => _cachedAppSettings;
-
-  ChampionshipService(); 
 
   Future<bool> checkConnectivity() async {
     final result = await Connectivity().checkConnectivity();
@@ -109,7 +91,6 @@ class ChampionshipService with ChangeNotifier {
       _availableSeasons = snapshot.docs.map((doc) {
         final data = doc.data();
         
-        // CORREÇÃO: Parsing robusto para o ano virar inteiro independente do tipo no Firestore
         int parsedYear = DateTime.now().year;
         if (data['year'] != null) {
           parsedYear = int.tryParse(data['year'].toString()) ?? parsedYear;
@@ -124,7 +105,6 @@ class ChampionshipService with ChangeNotifier {
         };
       }).toList();
 
-      // Ordena por ano descendente
       _availableSeasons.sort((a, b) => (b['year'] as int).compareTo(a['year'] as int));
 
       if (_availableSeasons.isNotEmpty) {
@@ -136,7 +116,6 @@ class ChampionshipService with ChangeNotifier {
         if (savedSeasonId != null && _availableSeasons.any((s) => s['id'] == savedSeasonId)) {
            targetId = savedSeasonId;
         } else {
-           // Pega a temporada marcada como ativa, ou a mais recente
            final activeSeason = _availableSeasons.firstWhere(
              (s) => s['isActive'] == true, 
              orElse: () => _availableSeasons.first
@@ -167,9 +146,8 @@ class ChampionshipService with ChangeNotifier {
   }
 
   // ===========================================================================
-  // 📦 FETCH OTIMIZADO
+  // 🚀 FETCH ULTRA ENXUTO E ACELERAÇÃO DO BOOT
   // ===========================================================================
-
   Future<void> fetchStaticData({bool forceRefresh = false, bool refreshMatchesOnly = false}) async {
     if (_currentSeasonId.isEmpty) return;
     if (_isFetchingStaticData) return;
@@ -188,11 +166,9 @@ class ChampionshipService with ChangeNotifier {
         if (forceRefresh || _isExpired(_lastTeamsFetch, TEAMS_CACHE_TTL)) {
           await _fetchTeams();
         }
-        if (forceRefresh || _isExpired(_lastMiscFetch, MISC_CACHE_TTL)) {
-          await _fetchMisc();
-        }
+        await _fetchConfig();
       }
-      debugPrint("📦 [CACHE] Dados atualizados com segurança.");
+      debugPrint("🚀 [FinOps Boot] Sucesso: Apenas dados vitais indexados na inicialização.");
     } catch (e) {
       debugPrint("❌ Erro ao atualizar dados: $e");
     } finally {
@@ -221,40 +197,9 @@ class ChampionshipService with ChangeNotifier {
     _lastTeamsFetch = DateTime.now();
   }
 
-  Future<void> _fetchMisc() async {
-    await _fetchSponsors();
-    await _fetchConfig();
-    await _fetchNews();
-    await _fetchSuspensions();
-    await _fetchLatestPhoto();
-    _lastMiscFetch = DateTime.now();
-  }
-
-  Future<void> _fetchSponsors() async {
-    final snapshot = await _firestore.collection('sponsors').where('isActive', isEqualTo: true).orderBy('order').get();
-    _rawSponsorsSnaps = snapshot.docs;
-    _cachedSponsors = snapshot.docs.map((d) => d.data()).toList();
-  }
-
   Future<void> _fetchConfig() async {
     final doc = await _firestore.collection('championships').doc(_currentSeasonId).collection('settings').doc('app_settings').get();
     if (doc.exists) _cachedAppSettings = doc.data();
-  }
-
-  Future<void> _fetchNews() async {
-    final snapshot = await _firestore.collection('championships').doc(_currentSeasonId).collection('news').where('isActive', isEqualTo: true).orderBy('order', descending: true).limit(10).get();
-    _cachedNews = snapshot.docs.map((d) => d.data()).toList();
-  }
-
-  Future<void> _fetchSuspensions() async {
-    final snapshot = await _firestore.collection('championships').doc(_currentSeasonId).collection('disciplinary_log').orderBy('timestamp', descending: true).get();
-    _rawSuspensionSnaps = snapshot.docs;
-    _cachedSuspensions = snapshot.docs.map((d) => d.data()).toList();
-  }
-
-  Future<void> _fetchLatestPhoto() async {
-    final snapshot = await _firestore.collection('photo_sales').orderBy('taken_at', descending: true).limit(1).get();
-    if (snapshot.docs.isNotEmpty) _cachedLatestPhotoProduct = PhotoProduct.fromFirestore(snapshot.docs.first);
   }
 
   // ===========================================================================
@@ -356,32 +301,24 @@ class ChampionshipService with ChangeNotifier {
     if (season['id'] != '') {
       _currentSeasonId = seasonId;
       _currentSeasonName = season['name'];
-      
-      // DINAMISMO DO ANO: Agora garantimos que o ano seja atualizado na memória
       _currentSeasonYear = season['year'] as int;
       _currentSeasonHonoree = season['honoree'] ?? '';
       
-      // Carrega regras da temporada selecionada
       await AdminService.loadAllRules(seasonId);
 
-      // Limpa caches da temporada anterior
       _cachedTeams = []; 
       _cachedPlayersByTeam.clear(); 
       _allPlayersCache = []; 
       _cachedMatches = [];
-      _cachedSponsors = [];
-      _cachedNews = [];
       
       _lastTeamsFetch = null; 
       _lastMatchesFetch = null; 
-      _lastMiscFetch = null; 
       _lastTeamRosterFetch.clear();
       _lastAllPlayersFetch = null;
       
-      // Força recarga dos dados estáticos da nova temporada
       await fetchStaticData(forceRefresh: true);
     }
-    notifyListeners(); // Notifica a UI (Header, Home, Drawer) para atualizar o ano
+    notifyListeners(); 
   }
 
   Future<String> setGlobalActiveSeason(String seasonId) async {

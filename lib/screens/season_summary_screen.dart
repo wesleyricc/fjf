@@ -10,7 +10,6 @@ import '../services/auth_service.dart';
 import '../models/team_model.dart';
 import '../models/match_model.dart';
 import '../models/award_model.dart';
-import '../utils/standings_calculator.dart';
 
 // Widgets
 import '../widgets/app_drawer.dart';
@@ -97,6 +96,11 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildSectionTitle("Destaques das Equipes"),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "* Todas as estatísticas consideram os dados do campeonato completo.", 
+                        style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)
+                      ),
                       const SizedBox(height: 12),
                       _buildTeamStatsGrid(context, champService),
                     ],
@@ -114,6 +118,11 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildSectionTitle("Destaques Individuais"),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "* Todas as estatísticas consideram os dados do campeonato completo.", 
+                        style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)
+                      ),
                       const SizedBox(height: 12),
                       _buildPlayerStatsGrid(context, champService),
                     ],
@@ -171,23 +180,49 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     final matches = service.matches;
     final teams = service.teams;
     
+    // Encontra a partida final, independente se ela terminou ou não
     final finalMatch = matches.firstWhere(
-      (m) => (m.phase == 'final' || m.phase == 'final_game') && m.isFinished,
+      (m) => (m.phase == 'final' || m.phase == 'final_game'),
       orElse: () => MatchModel(id: '', location: '', round: 0, phase: '', status: '', homeTeamId: '', homeTeamName: '', homeTeamShield: '', awayTeamId: '', awayTeamName: '', awayTeamShield: ''),
     );
 
     Team? champion;
-    if (finalMatch.id.isNotEmpty && finalMatch.winnerTeamId != null) {
-      try {
-        champion = teams.firstWhere((t) => t.id == finalMatch.winnerTeamId);
-      } catch (_) {}
+    
+    // Somente consideramos o campeonato encerrado e com campeão se a final terminou
+    if (finalMatch.id.isNotEmpty && finalMatch.isFinished) {
+      String? champId = finalMatch.winnerTeamId;
+      
+      // Fallback de segurança para achar o campeão se não usaram o botão no painel admin
+      if (champId == null || champId.isEmpty) {
+        final homeScore = finalMatch.scoreHome ?? 0;
+        final awayScore = finalMatch.scoreAway ?? 0;
+        final homePen = finalMatch.penaltyScoreHome ?? 0;
+        final awayPen = finalMatch.penaltyScoreAway ?? 0;
+        
+        if (homeScore > awayScore) {
+          champId = finalMatch.homeTeamId;
+        } else if (awayScore > homeScore) {
+          champId = finalMatch.awayTeamId;
+        } else {
+          if (homePen > awayPen) champId = finalMatch.homeTeamId;
+          else if (awayPen > homePen) champId = finalMatch.awayTeamId;
+        }
+      }
+
+      if (champId != null && champId.isNotEmpty) {
+        try {
+          champion = teams.firstWhere((t) => t.id == champId);
+        } catch (_) {}
+      }
     }
 
-    if (champion == null && teams.isNotEmpty) {
-       return _buildPlaceholderChampion("Campeonato em Andamento");
+    if (finalMatch.id.isEmpty) {
+      return _buildPlaceholderChampion("Fase Final Não Definida");
+    } else if (!finalMatch.isFinished) {
+      return _buildPlaceholderChampion("Campeonato em Andamento");
+    } else if (champion == null) {
+      return _buildPlaceholderChampion("Aguardando Definição Oficial");
     }
-
-    if (champion == null) return _buildPlaceholderChampion("Aguardando Definição");
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -234,23 +269,29 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
     if (teams.isEmpty) return const Center(child: Text("Sem dados."));
 
-    // 1. Melhor Ataque
-    final sortedAttack = [...teams]..sort((a, b) => b.goalsFor.compareTo(a.goalsFor));
+    // 1. Melhor Ataque (Avaliando overallGoalsFor que pega do campeonato inteiro)
+    final sortedAttack = [...teams]..sort((a, b) => b.overallGoalsFor.compareTo(a.overallGoalsFor));
     final bestAttack = sortedAttack.first;
 
-    // 2. Melhor Defesa
-    final sortedDefense = [...teams]..sort((a, b) => a.goalsAgainst.compareTo(b.goalsAgainst));
+    // 2. Melhor Defesa (Avaliando overallGoalsAgainst que pega do campeonato inteiro)
+    final sortedDefense = [...teams]..sort((a, b) => a.overallGoalsAgainst.compareTo(b.overallGoalsAgainst));
     final bestDefense = sortedDefense.first;
 
-    // 3. Fairplay
+    // 3. Fairplay (disciplinaryPoints engloba todos os cartões)
     final sortedFairplay = [...teams]..sort((a, b) => a.disciplinaryPoints.compareTo(b.disciplinaryPoints));
     final bestFairplay = sortedFairplay.first;
 
-    // 4. Troféu Abacaxi
-    final standings = StandingsCalculator.calculate(teams: teams, matches: matches);
-    final lastPlace = standings.isNotEmpty ? standings.last.team : null;
+    // 4. Troféu Abacaxi (Pior time considerando overallPoints, overallWins e overallGoalDifference)
+    final sortedWorst = [...teams]..sort((a, b) {
+      int cmp = a.overallPoints.compareTo(b.overallPoints);
+      if (cmp != 0) return cmp;
+      cmp = a.overallWins.compareTo(b.overallWins);
+      if (cmp != 0) return cmp;
+      return a.overallGoalDifference.compareTo(b.overallGoalDifference);
+    });
+    final lastPlace = sortedWorst.isNotEmpty ? sortedWorst.first : null;
 
-    // 5. Maior Goleada
+    // 5. Maior Goleada (Avaliando todo o array de partidas finalizadas)
     MatchModel? biggestWinMatch;
     int maxDiff = -1;
     for (var m in matches) {
@@ -265,8 +306,8 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
     final List<Widget> cards = [];
 
-    cards.add(_buildStatCard(context, title: "MELHOR ATAQUE", name: bestAttack.name, subtitle: "${bestAttack.goalsFor} Gols", imageUrl: bestAttack.shieldUrl, icon: Icons.add_circle_outline, color: Colors.blue, isTeam: true));
-    cards.add(_buildStatCard(context, title: "MELHOR DEFESA", name: bestDefense.name, subtitle: "${bestDefense.goalsAgainst} Gols Sofridos", imageUrl: bestDefense.shieldUrl, icon: Icons.shield, color: Colors.green, isTeam: true));
+    cards.add(_buildStatCard(context, title: "MELHOR ATAQUE", name: bestAttack.name, subtitle: "${bestAttack.overallGoalsFor} Gols", imageUrl: bestAttack.shieldUrl, icon: Icons.add_circle_outline, color: Colors.blue, isTeam: true));
+    cards.add(_buildStatCard(context, title: "MELHOR DEFESA", name: bestDefense.name, subtitle: "${bestDefense.overallGoalsAgainst} Gols Sofridos", imageUrl: bestDefense.shieldUrl, icon: Icons.shield, color: Colors.green, isTeam: true));
     cards.add(_buildStatCard(context, title: "FAIRPLAY", name: bestFairplay.name, subtitle: "${bestFairplay.disciplinaryPoints} Pts", imageUrl: bestFairplay.shieldUrl, icon: Icons.handshake, color: Colors.teal, isTeam: true));
 
     if (lastPlace != null) {
@@ -292,7 +333,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
   // --- ESTATÍSTICAS DE JOGADORES (WRAP) ---
   Widget _buildPlayerStatsGrid(BuildContext context, ChampionshipService service) {
-    // CORREÇÃO: Agora 'allPlayers' estará populado pois chamamos fetchAllPlayers no init
     final players = service.allPlayers;
 
     if (players.isEmpty) return const Center(child: Text("Sem dados."));

@@ -42,6 +42,10 @@ import 'viewmodels/photo_sales_viewmodel.dart';
 import 'viewmodels/fantasy_home_viewmodel.dart';
 import 'viewmodels/fantasy_lineup_viewmodel.dart';
 import 'viewmodels/fantasy_league_viewmodel.dart';
+import 'viewmodels/sponsor_viewmodel.dart';
+import 'viewmodels/news_viewmodel.dart';
+import 'viewmodels/suspension_viewmodel.dart';
+import 'viewmodels/photo_banner_viewmodel.dart';
 
 // Repositories
 import 'repositories/fantasy_repository.dart';
@@ -176,6 +180,10 @@ class FjfApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ChampionshipService()),
         ChangeNotifierProvider(create: (_) => PhotoSalesViewModel()),
+        ChangeNotifierProvider(create: (_) => SponsorViewModel()),
+        ChangeNotifierProvider(create: (_) => NewsViewModel()), 
+        ChangeNotifierProvider(create: (_) => SuspensionViewModel()),
+        ChangeNotifierProvider(create: (_) => PhotoBannerViewModel()),
 
         Provider<FantasyRepository>(create: (_) => FantasyRepository()),
 

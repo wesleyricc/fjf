@@ -104,6 +104,8 @@ class TeamService {
 
   // --- CÁLCULO ---
 
+  // --- CÁLCULO ---
+
   Future<void> recalculateTeamStats(String teamId, String seasonId) async {
     int p1MatchPoints = 0;
     int p1Games = 0;
@@ -180,7 +182,22 @@ class TeamService {
       final teamSnap = await teamRef.get();
       if (!teamSnap.exists) return;
       
-      final currentExtraPoints = (teamSnap.data() as Map<String, dynamic>)['extra_points'] as int? ?? 0;
+      final currentData = teamSnap.data() as Map<String, dynamic>;
+      final currentExtraPoints = currentData['extra_points'] as int? ?? 0;
+
+      // 🚨 OTIMIZAÇÃO FINOPS: Dirty Check para o Time
+      // Só gasta Write no Firestore se alguma estatística realmente alterou
+      if (currentData['match_points'] == p1MatchPoints &&
+          currentData['games_played'] == p1Games &&
+          currentData['wins'] == p1Wins &&
+          currentData['draws'] == p1Draws &&
+          currentData['losses'] == p1Losses &&
+          currentData['goals_for'] == p1GoalsFor &&
+          currentData['goals_against'] == p1GoalsAgainst &&
+          currentData['overall_match_points'] == ovMatchPoints &&
+          currentData['overall_games_played'] == ovGames) {
+        return; // Aborta gravação e poupa fatura!
+      }
 
       await teamRef.update({
         'match_points': p1MatchPoints,

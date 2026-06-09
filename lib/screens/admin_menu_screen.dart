@@ -150,6 +150,89 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     );
   }
 
+  // 🚨 CONTROLE DE LANÇAMENTOS (FEATURE FLAGS)
+  Future<void> _showFeatureFlagsDialog() async {
+    final champService = Provider.of<ChampionshipService>(context, listen: false);
+    final seasonId = champService.currentSeasonId;
+    
+    // Pega o status atual do cache local
+    bool fantasy = champService.isFantasyEnabled;
+    bool bolao = champService.isBolaoEnabled;
+    bool store = champService.isPhotoStoreEnabled;
+    bool isDialogSaving = false;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Controle de Lançamentos', style: TextStyle(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Ative ou desative as novidades do app em tempo real.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Fantasy FJF'),
+                    value: fantasy,
+                    activeColor: Colors.blue,
+                    onChanged: (v) => setDialogState(() => fantasy = v),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Bolão da Copa'),
+                    value: bolao,
+                    activeColor: Colors.green,
+                    onChanged: (v) => setDialogState(() => bolao = v),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Loja de Fotos'),
+                    value: store,
+                    activeColor: Colors.purple,
+                    onChanged: (v) => setDialogState(() => store = v),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: isDialogSaving ? null : () async {
+                    setDialogState(() => isDialogSaving = true);
+                    try {
+                      await _firestore
+                          .collection('championships')
+                          .doc(seasonId)
+                          .collection('settings')
+                          .doc('app_settings')
+                          .set({
+                            'feature_fantasy': fantasy,
+                            'feature_bolao': bolao,
+                            'feature_photo_store': store,
+                          }, SetOptions(merge: true));
+                      
+                      if (mounted) {
+                        Navigator.of(dialogContext).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Configurações aplicadas! O app será atualizado.'), backgroundColor: Colors.green));
+                        // Força a recarga para atualizar a UI do Admin imediatamente
+                        champService.fetchStaticData(forceRefresh: true);
+                      }
+                    } catch (e) {
+                       ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                    } finally {
+                       if (mounted) setDialogState(() => isDialogSaving = false);
+                    }
+                  },
+                  child: isDialogSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Aplicar Mudanças'),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+
   Future<void> _showSetDefaultViewDialog() async {
     bool isDialogSaving = false;
     
@@ -419,6 +502,14 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                   child: Column(
                     children: [
                       const Divider(height: 1, indent: 56),
+                      // 🚨 NOVO BOTÃO DE LANÇAMENTOS
+                      _buildActionTile(
+                        icon: Icons.rocket_launch,
+                        color: Colors.redAccent,
+                        title: "Lançamento de Funcionalidades",
+                        subtitle: "Ativar Fantasy, Bolão e Loja",
+                        onTap: _showFeatureFlagsDialog,
+                      ),
                       
                       // ---> NOVO BOTÃO: MIGRAÇÃO DE STORAGE <---
                       if (_isProcessingStorage)

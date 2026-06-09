@@ -70,8 +70,14 @@ class AppDrawer extends StatelessWidget {
                     
                     _buildSectionHeader(context, "DESTAQUES"),
                     _buildDrawerItem(context, Icons.emoji_events, 'Resumo da Temporada', '/season-summary', highlight: true), 
+
+                    if (championshipService.isFantasyEnabled)
                     _buildDrawerItem(context, Icons.sports_soccer, 'Fantasy FJF', '/fantasy-home', highlight: true),
+
+                    if (championshipService.isPhotoStoreEnabled)
                     _buildDrawerItem(context, Icons.collections, 'Loja de Fotos', '/photo-sales', highlight: true),
+
+                    if (championshipService.isBolaoEnabled)
                     _buildDrawerItem(context, FontAwesomeIcons.earthAmericas, 'Bolão da Copa 2026', '/wordcup-pool', highlight: true),
                     
                     _buildSectionHeader(context, "COMPETIÇÃO"),
@@ -92,7 +98,7 @@ class AppDrawer extends StatelessWidget {
 
                     _buildSectionHeader(context, "SOBRE A FJF"),
                     _buildDrawerItem(context, Icons.history_edu, 'Nossa História', '/about-history'),
-                    _buildDrawerItem(context, Icons.groups_2, 'Diretoria', '/aboutR-board'),
+                    _buildDrawerItem(context, Icons.groups_2, 'Diretoria', '/about-board'),
 
                     const Divider(height: 30),
                     _buildDrawerItem(context, Icons.bug_report_outlined, 'Reportar Erro', '/report-bug'),

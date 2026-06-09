@@ -10,7 +10,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
 import '../services/voting_service.dart'; // <-- NOVO IMPORT
-import '../models/team_model.dart'; 
 import '../models/poll_model.dart'; // <-- NOVO IMPORT
 
 import '../widgets/app_drawer.dart';
@@ -23,7 +22,7 @@ import '../widgets/ui/shimmer_effect.dart';
 import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
 import '../services/fantasy_auth_service.dart';
-import 'package:provider/provider.dart';
+import '../viewmodels/sponsor_viewmodel.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -531,62 +530,111 @@ class _SplashScreenState extends State<SplashScreen> {
                       HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
                       const SizedBox(height: 4),      
                       // Fantasy Card
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: StreamBuilder<Map<String, dynamic>>(
-                          stream: FantasyService().streamMarketStatus(),
-                          builder: (context, snapshot) {
-                            String statusText = "";
-                            Color statusColor = Colors.transparent;
-                            IconData statusIcon = Icons.hourglass_empty;
-                            bool isDataLoaded = false;
+                      if (championshipService.isFantasyEnabled)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: StreamBuilder<Map<String, dynamic>>(
+                            stream: FantasyService().streamMarketStatus(),
+                            builder: (context, snapshot) {
+                              String statusText = "";
+                              Color statusColor = Colors.transparent;
+                              IconData statusIcon = Icons.hourglass_empty;
+                              bool isDataLoaded = false;
 
-                            if (snapshot.hasData) {
-                              isDataLoaded = true;
-                              final bool isOpen = snapshot.data!['is_open'] ?? true;
-                              if (isOpen) {
-                                statusText = "ABERTO"; statusColor = Colors.greenAccent; statusIcon = Icons.check_circle;
-                              } else {
-                                statusText = "FECHADO"; statusColor = Colors.redAccent; statusIcon = Icons.lock;
+                              if (snapshot.hasData) {
+                                isDataLoaded = true;
+                                final bool isOpen = snapshot.data!['is_open'] ?? true;
+                                if (isOpen) {
+                                  statusText = "ABERTO"; statusColor = Colors.greenAccent; statusIcon = Icons.check_circle;
+                                } else {
+                                  statusText = "FECHADO"; statusColor = Colors.redAccent; statusIcon = Icons.lock;
+                                }
                               }
-                            }
 
-                            return Card(
-                              elevation: 3,
-                              color: Colors.blue[900],
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: ListTile(
-                                leading: const Icon(Icons.sports_soccer, color: Colors.white, size: 32),
-                                title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                subtitle: const Text("Escale seu time agora!", style: TextStyle(color: Colors.white70)),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (isDataLoaded)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(color: statusColor.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.5))),
-                                        child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(statusIcon, color: statusColor, size: 12), const SizedBox(width: 4), Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11))]),
-                                      ),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.arrow_forward, color: Colors.white),
-                                  ],
+                              return Card(
+                                elevation: 3,
+                                color: Colors.blue[900],
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: ListTile(
+                                  leading: const Icon(Icons.sports_soccer, color: Colors.white, size: 32),
+                                  title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  subtitle: const Text("Escale seu time agora!", style: TextStyle(color: Colors.white70)),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isDataLoaded)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(color: statusColor.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.5))),
+                                          child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(statusIcon, color: statusColor, size: 12), const SizedBox(width: 4), Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11))]),
+                                        ),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.arrow_forward, color: Colors.white),
+                                    ],
+                                  ),
+                                  onTap: () => Navigator.pushNamed(context, '/fantasy-home'),
                                 ),
-                                onTap: () => Navigator.pushNamed(context, '/fantasy-home'),
-                              ),
-                            );
-                          }
+                              );
+                            }
+                          ),
                         ),
-                      ),
+
+                      // 🚨 NOVA ADIÇÃO: FEATURE FLAG DO CARD DO BOLÃO DA COPA
+                      if (championshipService.isBolaoEnabled) ...[
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Card(
+                            elevation: 3,
+                            // O clipBehavior garante que o container com gradiente respeite as bordas arredondadas do Card
+                            clipBehavior: Clip.antiAlias, 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [Color.fromARGB(255, 0, 66, 24), Color.fromARGB(255, 197, 168, 20)], // Verde e Amarelo Brasil
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                              ),
+                              child: ListTile(
+                                leading: const Icon(FontAwesomeIcons.earthAmericas, color: Colors.white, size: 32),
+                                title: const Text(
+                                  "BOLÃO DA COPA 2026", 
+                                  style: TextStyle(
+                                    color: Colors.white, 
+                                    fontWeight: FontWeight.bold, 
+                                    shadows: [Shadow(color: Colors.black45, blurRadius: 2)]
+                                  )
+                                ),
+                                subtitle: const Text(
+                                  "Dê seus palpites e concorra a prêmios!", 
+                                  style: TextStyle(
+                                    color: Colors.white, 
+                                    fontWeight: FontWeight.w600,
+                                    shadows: [Shadow(color: Colors.black26, blurRadius: 2)]
+                                  )
+                                ),
+                                trailing: const Icon(Icons.arrow_forward, color: Colors.white),
+                                onTap: () => Navigator.pushNamed(context, '/wordcup-pool'),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       
                       const HomeNewsFeed(),
                       const SizedBox(height: 10),
-                      _buildSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10.0),
-                        child: PhotoStoreBanner(),
-                      ),
-                      const SizedBox(height: 10),
+
+                      if (championshipService.isPhotoStoreEnabled) ...[
+                        _buildSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10.0),
+                          child: PhotoStoreBanner(),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      
                       _buildSectionHeader(context, "Equipes Participantes", Icons.groups),
                     ],
                   ),
@@ -641,23 +689,28 @@ class _SponsorGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ChampionshipService>(
-      builder: (context, service, _) {
+    // Lemos o ChampionshipService apenas para saber o status da conexão/carregamento
+    final champService = Provider.of<ChampionshipService>(context);
 
-        if (service.isOffline && service.currentSeasonId.isEmpty) {
+    // 🚨 AGORA CONSUMIMOS O NOVO VIEWMODEL DE PATROCINADORES
+    return Consumer<SponsorViewModel>(
+      builder: (context, sponsorVm, _) {
+
+        if (champService.isOffline && champService.currentSeasonId.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text('FJF')),
             body: CustomEmptyState.offline(
-              onRetry: () => service.init(), 
+              onRetry: () => champService.init(), 
             ),
           );
         }
 
-        if (service.isLoading && service.currentSeasonId.isEmpty) {
+        if (champService.isLoading && champService.currentSeasonId.isEmpty) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        final sponsors = service.sponsors.where((s) {
+        // 🚨 Lemos a lista de sponsors do novo ViewModel
+        final sponsors = sponsorVm.sponsors.where((s) {
            return s['location'] == 'grid_teams' && s['isActive'] == true;
         }).toList();
 

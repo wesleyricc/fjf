@@ -2,26 +2,28 @@ const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https")
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler"); 
 const admin = require("firebase-admin");
-const { MercadoPagoConfig, Payment } = require("mercadopago");
+const functions = require("firebase-functions");
+const axios = require("axios");
+const https = require("https");
+const fs = require("fs");
+const path = require("path");
 
 admin.initializeApp();
+const db = admin.firestore();
 
 // ==================================================================
 // CONFIGURAÇÕES GERAIS E SCOUTS (PADRÃO CARTOLA FC)
 // ==================================================================
 
-const MP_ACCESS_TOKEN = "APP_USR-3797379599804379-013016-48576b74ed518f25f9190c9c29996f12-146749346"; 
-const client = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
-
 const DEFAULT_CONFIG = {
-  ptsGoal: 8.0,             // Gol
-  ptsAssist: 5.0,           // Assistência
-  ptsYellowCard: -1.0,      // Cartão Amarelo
-  ptsRedCard: -3.0,         // Cartão Vermelho
-  ptsPenaltySaved: 5.0,     // Pênalti Defendido (NOVO)
-  ptsPenaltyMissed: -3.0,   // Pênalti Perdido (NOVO)
-  ptsShotOnPost: 3.0,       // Na Trave (NOVO)
-  ptsCleanSheet: 5.0,       // Saldo de Gols - SG (NOVO)
+  ptsGoal: 8.0,             
+  ptsAssist: 5.0,           
+  ptsYellowCard: -1.0,      
+  ptsRedCard: -3.0,         
+  ptsPenaltySaved: 5.0,     
+  ptsPenaltyMissed: -3.0,   
+  ptsShotOnPost: 3.0,       
+  ptsCleanSheet: 5.0,       
   
   factorExpectation: 0.35, 
   factorVariation: 0.25,
@@ -29,171 +31,270 @@ const DEFAULT_CONFIG = {
   minPrice: 1.0,
 };
 
-const db = admin.firestore();
-
 // ==================================================================
-// 🛒 MÓDULO DE PAGAMENTOS (PIX) - FOTOS E BOLÃO
+// 🔐 CONFIGURAÇÃO mTLS E AUTENTICAÇÃO SICOOB (PRODUÇÃO)
 // ==================================================================
 
-exports.createPixPayment = onCall({ cors: true }, async (request) => {
-  // 🚨 ADICIONADO: type ('photo' ou 'bolao') e userId
-  const { type, photoIds, customerContact, userId } = request.data; 
+const SICOOB_CLIENT_ID = "7b0b3a94-9783-4129-bef6-166eb52370a0";
+const SICOOB_AUTH_URL = "https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token";
+const SICOOB_API_URL = "https://api.sicoob.com.br/pix/api/v2";
 
-  const contactInfo = customerContact || "Não informado";
-  const payerEmail = contactInfo.includes('@') ? contactInfo : "cliente.anonimo@fjf.app";
+// 🚨 Chave PIX vinculada ao Sicoob
+const CHAVE_PIX = "04441635000185"; 
+
+// 🚨 Certificados na pasta functions/
+const httpsAgent = new https.Agent({
+  cert: fs.readFileSync(path.join(__dirname, 'certificado.pem')),
+  key: fs.readFileSync(path.join(__dirname, 'chave.key')),
+});
+
+// Geração de Token Dinâmico (OAuth2)
+async function getSicoobToken(scope) {
+  const params = new URLSearchParams();
+  params.append('grant_type', 'client_credentials');
+  params.append('client_id', SICOOB_CLIENT_ID);
+  params.append('scope', scope); 
 
   try {
-    let totalPrice = 0.0;
-    let paymentDescription = "";
-    let itemsToSave = [];
+    const response = await axios.post(SICOOB_AUTH_URL, params.toString(), {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      httpsAgent: httpsAgent 
+    });
+    return response.data.access_token;
+  } catch (error) {
+    console.error("Erro ao gerar Token OAuth2 Sicoob:", error.response?.data || error.message);
+    throw new HttpsError('internal', 'Falha na autenticação com o Banco (Sicoob).');
+  }
+}
 
-    // LÓGICA 1: PAGAMENTO DE FOTOS
-    if (type === 'photo' || !type) {
-      if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
-        throw new HttpsError('invalid-argument', 'O carrinho está vazio.');
-      }
-      const promises = photoIds.map(id => db.collection('photo_sales').doc(id).get());
-      const snapshots = await Promise.all(promises);
+// ==================================================================
+// 🛒 MÓDULO DE PAGAMENTOS (PIX SICOOB)
+// ==================================================================
 
-      for (const snap of snapshots) {
-        if (!snap.exists) continue;
-        const data = snap.data();
-        totalPrice += parseFloat(data.price);
-        itemsToSave.push({
-          photo_id: snap.id,
-          original_url: data.original_url,
-          event_name: data.event_name || 'Evento'
-        });
-      }
-      paymentDescription = `Pack ${itemsToSave.length} Fotos FJF`;
-    } 
-    // LÓGICA 2: PAGAMENTO DO BOLÃO DA COPA
-    else if (type === 'bolao') {
-      if (!userId) throw new HttpsError('invalid-argument', 'User ID não informado.');
-      totalPrice = 1.00; // Valor Fixo da Inscrição do Bolão
-      paymentDescription = `Inscrição Bolão Copa 2026 FJF`;
-    } 
-    else {
-      throw new HttpsError('invalid-argument', 'Tipo de pagamento inválido.');
+// 1. GERAR COBRANÇA (Cob)
+exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Usuário não autenticado no aplicativo.');
+  }
+
+  const { type, userId, customerContact, photoIds } = request.data;
+  let valorInscricao = "0.00";
+  let itemsToSave = [];
+  let description = "";
+
+  if (type === 'bolao') {
+    valorInscricao = "1.00"; 
+    description = `Inscrição Bolão Copa 2026 - ${userId}`;
+  } else {
+    if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
+      throw new HttpsError('invalid-argument', 'Nenhum item no carrinho.');
     }
-
-    if (totalPrice <= 0) {
-      throw new HttpsError('failed-precondition', 'Erro ao calcular total.');
+    let total = 0.0;
+    for (const id of photoIds) {
+      const snap = await db.collection('photo_sales').doc(id).get();
+      if (snap.exists) {
+        total += parseFloat(snap.data().price);
+        itemsToSave.push({ photo_id: snap.id, original_url: snap.data().original_url });
+      }
     }
+    valorInscricao = total.toFixed(2);
+    description = `Pack de ${itemsToSave.length} Fotos FJF - ${customerContact}`;
+  }
 
-    const payment = new Payment(client);
-    const paymentData = {
-      transaction_amount: totalPrice,
-      description: paymentDescription,
-      payment_method_id: 'pix',
-      payer: { email: payerEmail, first_name: "Cliente FJF" },
-      metadata: { 
-        payment_type: type || 'photo', 
-        user_id: userId || 'anonymous',
-        customer_contact: contactInfo 
-      },
-      date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString() 
+  try {
+    const accessToken = await getSicoobToken('cob.write cob.read');
+
+    const payloadCobranca = {
+      calendario: { expiracao: 3600 },
+      valor: { original: valorInscricao },
+      chave: CHAVE_PIX,
+      solicitacaoPagador: description.substring(0, 140), 
     };
 
-    const response = await payment.create({ body: paymentData });
-    
-    if (!response || !response.point_of_interaction) {
-      throw new HttpsError('internal', 'Erro ao comunicar com Mercado Pago.');
-    }
-
-    const ticketUrl = response.point_of_interaction.transaction_data.ticket_url;
-    const qrCodeCopyPaste = response.point_of_interaction.transaction_data.qr_code;
-    const mpPaymentId = response.id;
-
-    // Salva a ordem de pagamento no banco
-    await db.collection('orders').doc(mpPaymentId.toString()).set({
-      mp_payment_id: mpPaymentId,
-      type: type || 'photo',
-      user_id: userId || null,
-      status: 'pending',
-      amount: totalPrice,
-      customer_contact: contactInfo,
-      items: itemsToSave,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-      qr_code_copy_paste: qrCodeCopyPaste,
-      ticket_url: ticketUrl
+    const responseCob = await axios.post(`${SICOOB_API_URL}/cob`, payloadCobranca, {
+      headers: {
+        "client_id": SICOOB_CLIENT_ID,
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      httpsAgent: httpsAgent
     });
 
-    return { success: true, pix_code: qrCodeCopyPaste, payment_id: mpPaymentId };
+    const cobranca = responseCob.data;
+    let pixCodeCopiaECola = cobranca.pixCopiaECola || cobranca.brcode;
+
+    if (!pixCodeCopiaECola && cobranca.loc && cobranca.loc.id) {
+      const responseQr = await axios.get(`${SICOOB_API_URL}/loc/${cobranca.loc.id}/qrcode`, {
+        headers: { "client_id": SICOOB_CLIENT_ID, "Authorization": `Bearer ${accessToken}` },
+        httpsAgent: httpsAgent
+      });
+      pixCodeCopiaECola = responseQr.data.qrcode || responseQr.data.pixCopiaECola;
+    }
+
+    await db.collection('orders').doc(cobranca.txid).set({
+      user_id: userId || 'anonymous',
+      type: type || 'photo',
+      customer_contact: customerContact || '',
+      status: 'pending',
+      amount: valorInscricao,
+      txid: cobranca.txid,
+      items: itemsToSave,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { success: true, pix_code: pixCodeCopiaECola, payment_id: cobranca.txid };
 
   } catch (error) {
-    console.error("Erro Cart Pix:", error);
-    throw new HttpsError('internal', error.message);
+    console.error("Erro na criação do PIX:", error.response?.data || error.message);
+    throw new HttpsError('internal', 'Erro ao processar integração bancária.');
   }
 });
 
-exports.handleMpWebhook = onRequest(async (req, res) => {
-  try {
-    let paymentId = req.body.data?.id || req.body.data?.id;
-    if (!paymentId && req.query.id) paymentId = req.query.id;
-    if (!paymentId && req.body.type === 'payment' && req.body.id) paymentId = req.body.id;
+// 2. CONSULTA MANUAL DO PIX (Polling - Ideal para recarregar no App)
+exports.checkPixStatus = onCall({ cors: true, enforceAppCheck: false }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
 
-    if (!paymentId || isNaN(paymentId)) {
-      console.warn("Webhook ignorado: ID de pagamento inválido ou ausente.");
-      return res.status(400).send("Bad Request: ID inválido");
+  const { txid, userId, type } = request.data; 
+
+  try {
+    const accessToken = await getSicoobToken('cob.read');
+    
+    const response = await axios.get(`${SICOOB_API_URL}/cob/${txid}`, {
+      headers: { "client_id": SICOOB_CLIENT_ID, "Authorization": `Bearer ${accessToken}` },
+      httpsAgent: httpsAgent
+    });
+
+    const cobranca = response.data;
+    const isPaid = cobranca.status === 'CONCLUIDA';
+
+    if (isPaid) {
+      const orderRef = db.collection('orders').doc(txid);
+      const orderSnap = await orderRef.get();
+
+      if (orderSnap.exists && orderSnap.data().status !== 'approved') {
+        await processOrderApproval(txid, orderSnap.data(), cobranca.pix ? cobranca.pix[0].valor : null);
+      }
+    }
+    
+    return { status: cobranca.status, is_paid: isPaid };
+
+  } catch (error) {
+    console.error("Erro consulta PIX:", error.response?.data || error.message);
+    throw new HttpsError('internal', 'Erro ao verificar o pagamento.');
+  }
+});
+
+// ==================================================================
+// 📡 3. WEBHOOK OFICIAL (Sem Express, direto e à prova de falhas)
+// ==================================================================
+
+exports.sicoobWebhook = onRequest(async (req, res) => {
+  try {
+    const pixList = req.body.pix;
+
+    if (!pixList || !Array.isArray(pixList)) {
+      console.warn(`Webhook Sicoob ignorado (Path: ${req.path}): Payload sem array 'pix'.`);
+      return res.status(400).send("Bad Request");
     }
 
-    const payment = await new Payment(client).get({ id: paymentId });
+    const batchHandler = new BatchHandler(db);
 
-    if (payment.status === 'approved') {
-      const orderRef = db.collection('orders').doc(paymentId.toString());
+    for (const pix of pixList) {
+      const txid = pix.txid;
+      if (!txid) continue;
+
+      const orderRef = db.collection('orders').doc(txid);
       const orderSnap = await orderRef.get();
 
       if (orderSnap.exists) {
         const orderData = orderSnap.data();
         
         if (orderData.status !== 'approved') {
-          await orderRef.update({
+          batchHandler.update(orderRef, {
             status: 'approved',
+            valor_pago: pix.valor,
             approved_at: admin.firestore.FieldValue.serverTimestamp(),
           });
 
-          // LÓGICA 1: E-MAIL DE FOTOS
-          if (orderData.type === 'photo' || !orderData.type) {
-            const itemsListHtml = (orderData.items || []).map(item => 
-                `<li><a href="${item.original_url}">Baixar Foto (${item.event_name})</a></li>`
-            ).join('');
-
-            await db.collection('mail').add({
-              to: [orderData.customer_contact],
-              message: {
-                subject: 'Sua Compra FJF foi Aprovada! 📸',
-                html: `
-                  <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #4CAF50;">Pagamento Confirmado!</h2>
-                    <p>Obrigado por sua compra. Seguem os links para download:</p>
-                    <ul>${itemsListHtml}</ul>
-                    <hr><p>Equipe FJF</p>
-                  </div>
-                `,
-              }
-            });
-            console.log("✅ Pedido de fotos aprovado e e-mail disparado.");
-          } 
-          // LÓGICA 2: LIBERAÇÃO DO BOLÃO
-          else if (orderData.type === 'bolao' && orderData.user_id) {
+          if (orderData.type === 'bolao' && orderData.user_id) {
             const userBolaoRef = db.collection('bolao_users').doc(orderData.user_id);
-            await userBolaoRef.set({
+            batchHandler.set(userBolaoRef, {
               has_paid: true,
               total_points: 0,
-              payment_id: paymentId,
+              payment_id: txid,
               approved_at: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
             
-            console.log(`✅ Inscrição de BOLÃO aprovada para o usuário ${orderData.user_id}.`);
+            console.log(`✅ [WEBHOOK SICOOB] Bolão liberado automaticamente. TXID: ${txid}`);
           }
         }
       }
     }
-    res.status(200).send("OK");
+
+    await batchHandler.commit();
+    res.status(200).send("OK"); 
+
   } catch (error) {
-    console.error("🔥 Erro Webhook:", error);
+    console.error("🔥 Erro Webhook Sicoob:", error);
     res.status(500).send("Internal Server Error");
+  }
+});
+
+// Lógica auxiliar isolada (usada pelo Polling)
+async function processOrderApproval(txid, orderData, valorPago = null) {
+  const batchHandler = new BatchHandler(db);
+  const orderRef = db.collection('orders').doc(txid);
+
+  const updateData = {
+    status: 'approved',
+    approved_at: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  if (valorPago) updateData.valor_pago = valorPago;
+
+  batchHandler.update(orderRef, updateData);
+
+  if (orderData.type === 'bolao' && orderData.user_id) {
+    const userBolaoRef = db.collection('bolao_users').doc(orderData.user_id);
+    batchHandler.set(userBolaoRef, {
+      has_paid: true,
+      total_points: 0,
+      payment_id: txid,
+      approved_at: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    console.log(`✅ [POLLING MANUAL] Bolão liberado. TXID: ${txid}`);
+  } 
+  else if (orderData.type === 'photo') {
+    console.log(`✅ [POLLING MANUAL] Fotos liberadas. TXID: ${txid}`);
+  }
+
+  await batchHandler.commit();
+}
+
+// ==================================================================
+// 🛠️ 4. FUNÇÃO PARA CADASTRAR O WEBHOOK NO BANCO SICOOB
+// ==================================================================
+exports.registerWebhookSicoob = onRequest(async (req, res) => {
+  try {
+    const accessToken = await getSicoobToken('webhook.write');
+    
+    // 🚨 URL exata baseada na imagem do Cloud Run
+    const myWebhookBaseUrl = "https://us-central1-acefjf.cloudfunctions.net/sicoobWebhook"; 
+    
+    const response = await axios.put(`${SICOOB_API_URL}/webhook/${CHAVE_PIX}`, 
+      { webhookUrl: myWebhookBaseUrl }, 
+      {
+        headers: {
+          "client_id": SICOOB_CLIENT_ID,
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        httpsAgent: httpsAgent
+      }
+    );
+
+    res.status(200).send(`Webhook atrelado à chave ${CHAVE_PIX} com sucesso! Resposta: ${JSON.stringify(response.data)}`);
+  } catch (error) {
+    res.status(500).send(`Erro ao cadastrar Webhook: ${error.response?.data ? JSON.stringify(error.response.data) : error.message}`);
   }
 });
 
@@ -231,12 +332,11 @@ exports.closeRound = onCall({
       .collection('matches').where('round', '==', round).get();
 
     const scoresMap = {};
-    const teamCleanSheets = {}; // Mapeamento de SG
+    const teamCleanSheets = {}; 
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
       
-      // Inteligência do Saldo de Gols (Clean Sheet)
       const scoreHome = data.score_home || 0;
       const scoreAway = data.score_away || 0;
       if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
@@ -250,9 +350,9 @@ exports.closeRound = onCall({
         assists: config.ptsAssist,
         yellows: config.ptsYellowCard,
         reds: config.ptsRedCard,
-        penalties_saved: config.ptsPenaltySaved,     // NOVO
-        penalties_missed: config.ptsPenaltyMissed,   // NOVO
-        shots_on_post: config.ptsShotOnPost          // NOVO
+        penalties_saved: config.ptsPenaltySaved,     
+        penalties_missed: config.ptsPenaltyMissed,   
+        shots_on_post: config.ptsShotOnPost          
       };
 
       ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post'].forEach(cat => {
@@ -265,7 +365,6 @@ exports.closeRound = onCall({
       });
     });
 
-    console.log(`--- 🔍 CALCULANDO MÉDIA DOS TÉCNICOS E SG (R${round}) ---`);
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
     
     const teamScores = {};    
@@ -279,7 +378,6 @@ exports.closeRound = onCall({
 
       if (!teamId) return;
 
-      // Adiciona o Saldo de Gols (SG) para Goleiros e Fixos se o time não tomou gol
       if (teamCleanSheets[teamId] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
         scoresMap[pid] = (scoresMap[pid] || 0) + config.ptsCleanSheet;
       }
@@ -409,7 +507,7 @@ exports.closeRound = onCall({
 });
 
 // ==================================================================
-// 📡 MÓDULO FANTASY (Parciais Ao Vivo)
+// 📡 MÓDULO FANTASY (Parciais Ao Vivo) - ULTRA OTIMIZADO
 // ==================================================================
 
 exports.updateLiveScouts = onDocumentWritten({
@@ -417,9 +515,10 @@ exports.updateLiveScouts = onDocumentWritten({
 }, async (event) => {
   const seasonId = event.params.seasonId;
   const matchData = event.data.after.data();
-  const previousData = event.data.before.data();
+  const previousData = event.data.before?.data();
 
   if (!matchData || !matchData.round) return;
+  const round = matchData.round;
 
   if (previousData) {
     const oldStats = JSON.stringify(previousData.stats_applied?.player_stats || {});
@@ -429,28 +528,28 @@ exports.updateLiveScouts = onDocumentWritten({
     const newHome = matchData.score_home;
     const newAway = matchData.score_away;
     
-    // Se nada mudou nas stats nem no placar principal (afeta SG), não faz nada.
     if (oldStats === newStats && oldHome === newHome && oldAway === newAway) {
       return; 
     }
   }
 
-  const round = matchData.round;
-
   try {
+    const liveDocRef = db.collection('championships').doc(seasonId).collection('fantasy_live').doc(`round_${round}`);
+    const liveDocSnap = await liveDocRef.get();
+    
+    let scoresMap = liveDocSnap.exists ? (liveDocSnap.data().scores || {}) : {};
+
     const configSnap = await db.collection('fantasy_config').doc('rules').get();
     const config = configSnap.exists ? { ...DEFAULT_CONFIG, ...configSnap.data() } : DEFAULT_CONFIG;
 
     const matchesSnap = await db.collection('championships').doc(seasonId)
       .collection('matches').where('round', '==', round).get();
 
-    const scoresMap = {};
-    const teamCleanSheets = {}; // Mapeamento de SG
+    const teamCleanSheets = {}; 
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
       
-      // Inteligência do Saldo de Gols (Clean Sheet)
       const scoreHome = data.score_home || 0;
       const scoreAway = data.score_away || 0;
       if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
@@ -464,9 +563,9 @@ exports.updateLiveScouts = onDocumentWritten({
         assists: config.ptsAssist,
         yellows: config.ptsYellowCard,
         reds: config.ptsRedCard,
-        penalties_saved: config.ptsPenaltySaved,     // NOVO
-        penalties_missed: config.ptsPenaltyMissed,   // NOVO
-        shots_on_post: config.ptsShotOnPost          // NOVO
+        penalties_saved: config.ptsPenaltySaved,     
+        penalties_missed: config.ptsPenaltyMissed,   
+        shots_on_post: config.ptsShotOnPost          
       };
 
       ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post'].forEach(cat => {
@@ -474,72 +573,36 @@ exports.updateLiveScouts = onDocumentWritten({
           Object.entries(stats[cat]).forEach(([pid, val]) => {
             if (!scoresMap[pid]) {
               scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0 };
+            } else {
+              scoresMap[pid][cat] = 0;
+              scoresMap[pid].totalScore = 0; 
             }
+            
             const count = Number(val) || 0;
-            scoresMap[pid].totalScore += (count * ptsRules[cat]);
-            scoresMap[pid][cat] += count;
+            scoresMap[pid][cat] = count;
           });
         }
       });
     });
 
-    const allPlayersSnap = await db.collection('fantasy_market_players').get();
-    const teamScores = {};
-    const teamCoaches = {};
-
-    allPlayersSnap.forEach(doc => {
-      const p = doc.data();
-      const pid = doc.id;
-      const teamId = p.team_id;
-
-      if (!teamId) return;
-
-      // Adiciona o SG nas Parciais
-      if (teamCleanSheets[teamId] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
-        if (!scoresMap[pid]) {
-          scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0 };
-        }
-        scoresMap[pid].totalScore += config.ptsCleanSheet;
-        scoresMap[pid].clean_sheets = 1;
-      }
-
-      if (p.position === 'Técnico') {
-        teamCoaches[teamId] = pid;
-      } 
-      
-      if (scoresMap[pid] !== undefined) {
-        if (!teamScores[teamId]) teamScores[teamId] = [];
-        teamScores[teamId].push(scoresMap[pid].totalScore);
-      }
-    });
-
-    Object.entries(teamCoaches).forEach(([tId, coachPid]) => {
-      const scores = teamScores[tId] || [];
-      if (!scoresMap[coachPid]) {
-        scoresMap[coachPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0 };
-      }
-      
-      if (scores.length > 0) {
-        const total = scores.reduce((a, b) => a + b, 0);
-        scoresMap[coachPid].totalScore = Number((total / scores.length).toFixed(2));
-      } else {
-        scoresMap[coachPid].totalScore = 0;
-      }
-    });
-
     Object.keys(scoresMap).forEach(pid => {
-      scoresMap[pid].totalScore = Number(scoresMap[pid].totalScore.toFixed(2));
+       let total = 0;
+       total += (scoresMap[pid].goals || 0) * config.ptsGoal;
+       total += (scoresMap[pid].assists || 0) * config.ptsAssist;
+       total += (scoresMap[pid].yellows || 0) * config.ptsYellowCard;
+       total += (scoresMap[pid].reds || 0) * config.ptsRedCard;
+       total += (scoresMap[pid].penalties_saved || 0) * config.ptsPenaltySaved;
+       total += (scoresMap[pid].penalties_missed || 0) * config.ptsPenaltyMissed;
+       total += (scoresMap[pid].shots_on_post || 0) * config.ptsShotOnPost;
+       
+       scoresMap[pid].totalScore = total;
     });
 
-    await db.collection('championships').doc(seasonId)
-      .collection('fantasy_live').doc(`round_${round}`)
-      .set({
+    await liveDocRef.set({
         updated_at: admin.firestore.FieldValue.serverTimestamp(),
         scores: scoresMap
-      });
+    }, { merge: true });
       
-    console.log(`✅ Parciais com novos scouts geradas para a rodada ${round}.`);
-
   } catch (error) {
     console.error("🔥 Erro ao atualizar Live Scouts:", error);
   }
@@ -611,17 +674,12 @@ exports.autoCloseMarket = onSchedule({
 // ==================================================================
 
 exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
-  // 1. Verificação de Segurança (Apenas Admin)
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Acesso negado. O utilizador precisa de estar logado.');
-  }
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Acesso negado. O utilizador precisa de estar logado.');
+  
   const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
-  if (!adminDoc.exists) {
-    throw new HttpsError('permission-denied', 'Apenas administradores podem calcular os resultados do bolão.');
-  }
+  if (!adminDoc.exists) throw new HttpsError('permission-denied', 'Apenas administradores podem calcular os resultados do bolão.');
 
   const { matchId, realHomeScore, realAwayScore } = request.data;
-
   if (!matchId || realHomeScore === undefined || realAwayScore === undefined) {
     throw new HttpsError('invalid-argument', 'Faltam os dados do jogo (matchId, realHomeScore, realAwayScore).');
   }
@@ -631,20 +689,15 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
     const realAway = parseInt(realAwayScore);
     const realDiff = realHome - realAway;
     
-    // Identifica o desfecho real: 'home_win', 'away_win', ou 'draw'
     let realOutcome = 'draw';
     if (realHome > realAway) realOutcome = 'home_win';
     if (realHome < realAway) realOutcome = 'away_win';
 
-    // 2. Procura todos os utilizadores que estão a participar no bolão
     const usersSnap = await db.collection('bolao_users').get();
-    const batchHandler = new BatchHandler(db); // Usa a classe BatchHandler que já tem no seu index.js
+    const batchHandler = new BatchHandler(db);
 
     for (const userDoc of usersSnap.docs) {
       const userId = userDoc.id;
-      const userData = userDoc.data();
-      
-      // Procura o palpite deste utilizador para este jogo específico
       const predDoc = await db.collection('bolao_users').doc(userId).collection('predictions').doc(matchId).get();
       
       if (predDoc.exists) {
@@ -662,25 +715,17 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
         let isGoalDiff = 0;
         let isWinner = 0;
 
-        // MATEMÁTICA DOS PONTOS
         if (predHome === realHome && predAway === realAway) {
-          // 1º Critério: Placar Exato na Mosca (+5 pontos)
-          pointsEarned = 5;
-          isExact = 1;
+          pointsEarned = 5; isExact = 1;
         } 
         else if (predOutcome === realOutcome) {
           if (predDiff === realDiff) {
-            // 2º Critério: Acertou o Vencedor + Saldo de Golos (+3 pontos)
-            pointsEarned = 3;
-            isGoalDiff = 1;
+            pointsEarned = 3; isGoalDiff = 1;
           } else {
-            // 3º Critério: Acertou apenas o Vencedor/Empate (+2 pontos)
-            pointsEarned = 2;
-            isWinner = 1;
+            pointsEarned = 2; isWinner = 1;
           }
         }
 
-        // Se ganhou pontos, atualiza o perfil do utilizador (Ranking)
         if (pointsEarned > 0) {
           batchHandler.update(userDoc.ref, {
             total_points: admin.firestore.FieldValue.increment(pointsEarned),
@@ -690,15 +735,11 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
             updated_at: admin.firestore.FieldValue.serverTimestamp()
           });
 
-          // Atualiza o palpite com os pontos que ele rendeu (útil para mostrar na UI depois)
-          batchHandler.update(predDoc.ref, {
-            points_earned: pointsEarned
-          });
+          batchHandler.update(predDoc.ref, { points_earned: pointsEarned });
         }
       }
     }
 
-    // 3. Atualiza o estado do Jogo para 'finished' com o resultado oficial
     const matchRef = db.collection('bolao_matches').doc(matchId);
     batchHandler.update(matchRef, {
       real_score_home: realHome,
@@ -712,7 +753,6 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
     return { success: true, message: `Jogo ${matchId} processado com sucesso!` };
 
   } catch (error) {
-    console.error("🔥 Erro ao calcular bolão:", error);
     throw new HttpsError('internal', error.message);
   }
 });
@@ -722,10 +762,7 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
 // ==================================================================
 
 exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
-  // 1. Verificação de Autenticação
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Precisa de fazer login.');
-  }
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Precisa de fazer login.');
 
   const { matchId, scoreHome, scoreAway } = request.data;
   const userId = request.auth.uid;
@@ -735,7 +772,6 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
   }
 
   try {
-    // 2. Busca o status global e as configurações do Bolão
     const configDoc = await db.collection('bolao_config').doc('settings').get();
     const settings = configDoc.data();
     
@@ -743,29 +779,20 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
       throw new HttpsError('permission-denied', 'Mercado Geral encerrado pelo Administrador!');
     }
 
-    // 3. Busca a hora oficial do jogo na base de dados
     const matchDoc = await db.collection('bolao_matches').doc(matchId).get();
-    if (!matchDoc.exists) {
-      throw new HttpsError('not-found', 'Jogo não encontrado.');
-    }
+    if (!matchDoc.exists) throw new HttpsError('not-found', 'Jogo não encontrado.');
     
     const matchData = matchDoc.data();
-    if (matchData.status !== 'pending') {
-      throw new HttpsError('permission-denied', 'Este jogo já terminou ou está a decorrer.');
-    }
+    if (matchData.status !== 'pending') throw new HttpsError('permission-denied', 'Este jogo já terminou ou está a decorrer.');
 
-    // 4. O BLOQUEIO INFALÍVEL DO SERVIDOR: Relógio Oficial Google Cloud
-    const matchDate = matchData.date.toDate(); // Converte o Timestamp do Firestore para Date Javascript
-    const serverNow = new Date(); // Relógio imutável do servidor
-    
-    // Subtrai 30 minutos à data do jogo para achar o prazo limite real
+    const matchDate = matchData.date.toDate(); 
+    const serverNow = new Date(); 
     const deadlineTime = new Date(matchDate.getTime() - (30 * 60000));
 
     if (serverNow > deadlineTime) {
       throw new HttpsError('permission-denied', 'Mercado encerrado! O prazo de 30 min antes do jogo expirou.');
     }
 
-    // 5. Se passou por todas as barreiras, grava o palpite!
     const predRef = db.collection('bolao_users').doc(userId).collection('predictions').doc(matchId);
     
     await predRef.set({
@@ -777,11 +804,7 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
     return { success: true, message: 'Palpite gravado em segurança.' };
 
   } catch (error) {
-    console.error("🔥 Erro de Segurança Bolão:", error);
-    // Preserva o tipo de erro que criamos (se for HttpsError)
-    if (error instanceof HttpsError) {
-        throw error;
-    }
+    if (error instanceof HttpsError) throw error;
     throw new HttpsError('internal', 'Erro interno no servidor.');
   }
 });
@@ -795,7 +818,6 @@ exports.submitBolaoBonus = onCall({ cors: true }, async (request) => {
   const { field, teamName } = request.data;
   const userId = request.auth.uid;
 
-  // 🚨 HORA ZERO: 11 de Junho de 2026 às 20:30 UTC (30 min antes do jogo de abertura)
   const deadline = new Date('2026-06-11T20:30:00Z');
   const serverNow = new Date();
 
@@ -835,7 +857,6 @@ exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async
       const userData = userDoc.data();
       let extraPoints = 0;
 
-      // 🚨 REGRAS DE PONTUAÇÃO (O Campeão vale 20, o resto 10)
       if (userData.bonus_champion === officialChampion) extraPoints += 20;
       if (userData.bonus_runner_up === officialRunnerUp) extraPoints += 10;
       if (userData.bonus_best_offense === officialBestOffense) extraPoints += 10;
@@ -858,7 +879,6 @@ exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async
     throw new HttpsError('internal', error.message);
   }
 });
-
 
 // ==================================================================
 // UTILS: Batch Handler
@@ -895,5 +915,4 @@ class BatchHandler {
       this.count = 0;
     }
   }
-  
 }

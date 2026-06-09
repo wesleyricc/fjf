@@ -3,17 +3,35 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
 import '../models/player_model.dart';
 import '../models/team_model.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
+import '../viewmodels/suspension_viewmodel.dart';
 import '../utils/custom_cache_manager.dart'; 
 import 'player_profile_screen.dart';
 
-class SuspensionHistoryScreen extends StatelessWidget {
+class SuspensionHistoryScreen extends StatefulWidget {
   const SuspensionHistoryScreen({super.key});
+
+  @override
+  State<SuspensionHistoryScreen> createState() => _SuspensionHistoryScreenState();
+}
+
+class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 LAZY LOADING: Carrega as suspensões apenas ao entrar na tela
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+      Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId);
+    });
+  }
 
   Future<void> _showEditReturnDateDialog(BuildContext context, DocumentSnapshot logDoc) async {
     final data = logDoc.data() as Map<String, dynamic>;
@@ -29,19 +47,19 @@ class SuspensionHistoryScreen extends StatelessWidget {
 
     if (pickedDate != null && pickedDate != initialDate) {
       try {
-        // CORREÇÃO: Pega a temporada atual e monta a referência explícita
         final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
         
         await FirebaseFirestore.instance
             .collection('championships')
             .doc(seasonId)
             .collection('disciplinary_log')
-            .doc(logDoc.id) // Usa o ID explícito em vez de logDoc.reference
+            .doc(logDoc.id) 
             .update({'return_date': Timestamp.fromDate(pickedDate)});
             
         if (context.mounted) {
            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data de retorno atualizada.')));
-           Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
+           // 🚨 Atualiza a lista através do ViewModel
+           Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId, force: true);
         }
       } catch (e) { 
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'))); 
@@ -64,7 +82,6 @@ class SuspensionHistoryScreen extends StatelessWidget {
 
      if (confirm == true && context.mounted) {
        try {
-         // CORREÇÃO: Referência explícita
          final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
          
          await FirebaseFirestore.instance
@@ -76,7 +93,8 @@ class SuspensionHistoryScreen extends StatelessWidget {
             
          if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registro excluído.')));
-            Provider.of<ChampionshipService>(context, listen: false).fetchStaticData(forceRefresh: true);
+            // 🚨 Atualiza a lista através do ViewModel
+            Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId, force: true);
          }
        } catch (e) { 
          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'))); 
@@ -86,73 +104,86 @@ class SuspensionHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ChampionshipService>(
-      builder: (context, service, _) {
-        final authService = Provider.of<AuthService>(context);
-        final bool isAdmin = authService.isAuthenticated;
-        final String seasonName = service.currentSeasonName;
-        final logs = service.suspensions; 
+    final authService = Provider.of<AuthService>(context);
+    final bool isAdmin = authService.isAuthenticated;
+    final seasonService = Provider.of<ChampionshipService>(context);
+    final String seasonName = seasonService.currentSeasonName;
+    final String seasonId = seasonService.currentSeasonId;
 
-        logs.sort((a, b) {
-          final dataA = a.data() as Map<String, dynamic>;
-          final dataB = b.data() as Map<String, dynamic>;
-          
-          bool isSuspendedA = _calculateIsSuspended(dataA);
-          bool isSuspendedB = _calculateIsSuspended(dataB);
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, 
+          children: [
+            const Text('Histórico de Suspensões', style: TextStyle(fontWeight: FontWeight.bold)), 
+            Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300))
+          ]
+        ), 
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh), 
+            onPressed: () => Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId, force: true)
+          )
+        ]
+      ),
+      drawer: const AppDrawer(),
+      // 🚨 AGORA CONSOME O SEU PRÓPRIO VIEWMODEL
+      body: Consumer<SuspensionViewModel>(
+        builder: (context, vm, _) {
+          if (vm.isLoading && vm.suspensions.isEmpty) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-          if (isSuspendedA && !isSuspendedB) return -1;
-          if (!isSuspendedA && isSuspendedB) return 1;
+          final logs = List<DocumentSnapshot>.from(vm.suspensions); 
 
-          Timestamp tA = dataA['timestamp'] ?? Timestamp.now();
-          Timestamp tB = dataB['timestamp'] ?? Timestamp.now();
-          return tB.compareTo(tA);
-        });
+          logs.sort((a, b) {
+            final dataA = a.data() as Map<String, dynamic>;
+            final dataB = b.data() as Map<String, dynamic>;
+            
+            bool isSuspendedA = _calculateIsSuspended(dataA);
+            bool isSuspendedB = _calculateIsSuspended(dataB);
 
-        return Scaffold(
-          backgroundColor: const Color(0xFFF5F5F5),
-          appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
-              children: [
-                const Text('Histórico de Suspensões', style: TextStyle(fontWeight: FontWeight.bold)), 
-                Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300))
-              ]
-            ), 
-            actions: [
-              IconButton(icon: const Icon(Icons.refresh), onPressed: () => service.fetchStaticData(forceRefresh: true))
-            ]
-          ),
-          drawer: const AppDrawer(),
-          body: logs.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.history_toggle_off, size: 60, color: Colors.grey[300]),
-                      const SizedBox(height: 16),
-                      Text('Nenhuma suspensão registrada.', style: TextStyle(color: Colors.grey[600])),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: () => service.fetchStaticData(forceRefresh: true),
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(12.0),
-                    itemCount: logs.length,
-                    separatorBuilder: (ctx, i) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      return _SuspensionCard(
-                        logDoc: logs[index],
-                        isAdmin: isAdmin,
-                        onEditDate: () => _showEditReturnDateDialog(context, logs[index]),
-                        onDelete: () => _showDeleteLogDialog(context, logs[index]),
-                      );
-                    },
-                  ),
-                ),
-          bottomNavigationBar: const SponsorBannerRotator(),
-        );
-      }
+            if (isSuspendedA && !isSuspendedB) return -1;
+            if (!isSuspendedA && isSuspendedB) return 1;
+
+            Timestamp tA = dataA['timestamp'] ?? Timestamp.now();
+            Timestamp tB = dataB['timestamp'] ?? Timestamp.now();
+            return tB.compareTo(tA);
+          });
+
+          if (logs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.history_toggle_off, size: 60, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text('Nenhuma suspensão registrada.', style: TextStyle(color: Colors.grey[600])),
+                ],
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () => vm.loadSuspensions(seasonId, force: true),
+            child: ListView.separated(
+              padding: const EdgeInsets.all(12.0),
+              itemCount: logs.length,
+              separatorBuilder: (ctx, i) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                return _SuspensionCard(
+                  logDoc: logs[index],
+                  isAdmin: isAdmin,
+                  onEditDate: () => _showEditReturnDateDialog(context, logs[index]),
+                  onDelete: () => _showDeleteLogDialog(context, logs[index]),
+                );
+              },
+            ),
+          );
+        },
+      ),
+      bottomNavigationBar: const SponsorBannerRotator(),
     );
   }
 
@@ -169,6 +200,9 @@ class SuspensionHistoryScreen extends StatelessWidget {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Componente de Card (_SuspensionCard) permanece o MESMO (apenas copiado abaixo)
+// -----------------------------------------------------------------------------
 class _SuspensionCard extends StatelessWidget {
   final DocumentSnapshot logDoc;
   final bool isAdmin;
@@ -187,7 +221,7 @@ class _SuspensionCard extends StatelessWidget {
     final data = logDoc.data() as Map<String, dynamic>;
     final String playerId = data['playerId'] ?? '';
     
-    // Busca dados visuais do Cache Global
+    // O ChampionshipService ainda é chamado aqui APENAS para ler nomes locais do cache
     final champService = Provider.of<ChampionshipService>(context, listen: false);
     
     Player? pObj;
@@ -230,7 +264,6 @@ class _SuspensionCard extends StatelessWidget {
     final Color statusColor = isSuspended ? Colors.red : Colors.green;
     final String statusLabel = isSuspended ? 'SUSPENSO' : 'CUMPRIDA';
     
-    // Tag Única para a animação do Hero
     final String uniqueHeroTag = 'suspension_player_${logDoc.id}'; 
 
     return Container(
@@ -246,7 +279,6 @@ class _SuspensionCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(width: 6, color: statusColor),
-
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(14.0),
@@ -255,7 +287,6 @@ class _SuspensionCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          // --- HERO AQUI ---
                           GestureDetector(
                             onTap: () {
                               if (playerId.isNotEmpty) {
@@ -264,7 +295,7 @@ class _SuspensionCard extends StatelessWidget {
                                   MaterialPageRoute(
                                     builder: (_) => PlayerProfileScreen(
                                       playerId: playerId, 
-                                      heroTag: uniqueHeroTag // Passando a tag dinâmica
+                                      heroTag: uniqueHeroTag
                                     )
                                   )
                                 );
@@ -272,7 +303,6 @@ class _SuspensionCard extends StatelessWidget {
                             },
                             child: Hero(
                               tag: uniqueHeroTag,
-                              // Remover o wrap de Material na origem ajuda a evitar falhas de transição de entrada
                               child: CircleAvatar(
                                 radius: 24,
                                 backgroundColor: Colors.grey.shade200,
@@ -281,7 +311,6 @@ class _SuspensionCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          // -----------------
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(

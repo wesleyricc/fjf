@@ -32,7 +32,7 @@ class AboutHistoryScreen extends StatelessWidget {
                     const Icon(Icons.history_edu, size: 60, color: Colors.white),
                     const SizedBox(height: 10),
                     Text(
-                      "DESDE 2005", // Exemplo
+                      "DESDE 1988", // Exemplo
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.9),
                         fontWeight: FontWeight.bold,

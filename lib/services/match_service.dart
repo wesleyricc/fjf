@@ -162,7 +162,7 @@ class MatchService {
   }
 
   // ===========================================================================
-  // 🚀 OTIMIZAÇÃO: RECÁLCULO INCREMENTAL (Senior Fix)
+  // 🚀 OTIMIZAÇÃO FINOPS: RECÁLCULO INCREMENTAL SEGURO (DIRTY CHECK)
   // ===========================================================================
 
   Future<void> _recalculateSpecificTeamsAndPlayers(String seasonId, List<String> teamIds) async {
@@ -208,7 +208,6 @@ class MatchService {
         if (pStats['yellows'] is Map) processStat('total_yellow_cards', pStats['yellows'], 1);
         if (pStats['reds'] is Map) processStat('total_red_cards', pStats['reds'], 1);
         
-        // 🚨 AGREGANDO OS NOVOS SCOUTS NOS STATS (Opcional, mas limpo)
         if (pStats['penalties_saved'] is Map) processStat('penalties_saved', pStats['penalties_saved'], 1);
         if (pStats['penalties_missed'] is Map) processStat('penalties_missed', pStats['penalties_missed'], 1);
         if (pStats['shots_on_post'] is Map) processStat('shots_on_post', pStats['shots_on_post'], 1);
@@ -225,29 +224,50 @@ class MatchService {
         
     Set<String> suspendedPlayerIds = activeSuspensionsSnap.docs.map((d) => d['playerId'] as String).toSet();
 
+    int writesSaved = 0;
+
+    // 🚨 DIRTY CHECK DOS JOGADORES: O segredo da poupança
     for (var pDoc in playersQuery.docs) {
       final pid = pDoc.id;
       final stats = playerTotals[pid] ?? {}; 
       
-      final int y = stats['total_yellow_cards'] ?? 0;
-      final int r = stats['total_red_cards'] ?? 0;
+      final int newYellows = stats['total_yellow_cards'] ?? 0;
+      final int newReds = stats['total_red_cards'] ?? 0;
+      final bool newIsSuspended = suspendedPlayerIds.contains(pid);
+      final int newGoals = stats['goals'] ?? 0;
+      final int newAssists = stats['assists'] ?? 0;
+      final int newConceded = stats['goals_conceded'] ?? 0;
+
+      // Obtém os dados que estão atualmente na base de dados
+      final currentData = pDoc.data() as Map<String, dynamic>;
       
-      batch.update(pDoc.reference, {
-        'goals': stats['goals'] ?? 0,
-        'assists': stats['assists'] ?? 0,
-        'goals_conceded': stats['goals_conceded'] ?? 0,
-        'total_yellow_cards': y,
-        'yellow_cards': y % AdminService.suspensionYellowCards, 
-        'total_red_cards': r,
-        'red_cards': r, 
-        'is_suspended': suspendedPlayerIds.contains(pid),
-      });
+      // Só adiciona ao batch se houver diferenças reais
+      if (currentData['goals'] != newGoals ||
+          currentData['assists'] != newAssists ||
+          currentData['goals_conceded'] != newConceded ||
+          currentData['total_yellow_cards'] != newYellows ||
+          currentData['total_red_cards'] != newReds ||
+          currentData['is_suspended'] != newIsSuspended) {
+          
+        batch.update(pDoc.reference, {
+          'goals': newGoals,
+          'assists': newAssists,
+          'goals_conceded': newConceded,
+          'total_yellow_cards': newYellows,
+          'yellow_cards': AdminService.suspensionYellowCards > 0 ? (newYellows % AdminService.suspensionYellowCards) : newYellows, 
+          'total_red_cards': newReds,
+          'red_cards': newReds, 
+          'is_suspended': newIsSuspended,
+        });
+      } else {
+        writesSaved++;
+      }
     }
 
     for (var tid in teamIds) {
       int teamY = 0;
       int teamR = 0;
-      final teamPlayers = playersQuery.docs.where((d) => d['team_id'] == tid);
+      final teamPlayers = playersQuery.docs.where((d) => (d.data() as Map<String, dynamic>)['team_id'] == tid);
       
       for(var p in teamPlayers) {
          final pid = p.id;
@@ -266,6 +286,7 @@ class MatchService {
     }
 
     await batch.commit();
+    debugPrint("✅ FinOps Otimização: $writesSaved gravações desnecessárias foram bloqueadas.");
 
     for (String tid in teamIds) {
       await _teamService.recalculateTeamStats(tid, seasonId);
