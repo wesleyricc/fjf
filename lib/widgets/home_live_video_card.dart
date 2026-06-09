@@ -6,7 +6,6 @@ import '../services/championship_service.dart';
 
 class HomeLiveVideoCard extends StatefulWidget {
   final bool hidePlayer;
-
   const HomeLiveVideoCard({super.key, this.hidePlayer = false});
 
   @override
@@ -15,16 +14,14 @@ class HomeLiveVideoCard extends StatefulWidget {
 
 class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTickerProviderStateMixin {
   late YoutubePlayerController _ytController;
-  
   bool _isPlayerExpanded = false;
-  final String _defaultVideoId = 'ByBvdFS1jko'; 
+  final String _defaultVideoId = 'ByBvdFS1jko';
   late AnimationController _blinkController;
   bool _hasActiveLive = false;
 
   @override
   void initState() {
     super.initState();
-    
     _ytController = YoutubePlayerController.fromVideoId(
       videoId: _defaultVideoId,
       autoPlay: true,
@@ -35,27 +32,21 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
         enableCaption: false,
       ),
     );
-
     _blinkController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..repeat(reverse: true);
-
-    // Carrega do Cache em vez de chamar Firebase
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkLiveFromCache());
   }
 
   void _checkLiveFromCache() {
     final service = Provider.of<ChampionshipService>(context, listen: false);
-    final data = service.appSettings; // Dados cacheados
-
+    final data = service.appSettings;
     if (data != null) {
       final String? remoteId = data['live_video_id'];
       final Timestamp? timestamp = data['live_video_timestamp'];
-
       if (remoteId != null && remoteId.isNotEmpty && timestamp != null) {
         final diff = DateTime.now().difference(timestamp.toDate());
-        // Regra: Mostra a live se foi iniciada nas últimas 24h
         if (diff.inHours < 24) {
           _ytController.loadVideoById(videoId: remoteId);
           setState(() {
@@ -86,22 +77,29 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    // Se não tiver live ativa detectada no cache, nem mostra o widget
-    // (Ou você pode remover essa verificação se quiser mostrar o botão padrão sempre)
-    // if (!_hasActiveLive) return const SizedBox.shrink(); 
-
     if (widget.hidePlayer || !_isPlayerExpanded) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 15.0),
-        child: SizedBox(
+        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        child: Container(
           width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF8B0000), Color(0xFFD32F2F), Color(0xFF8B0000)], // Gradiente Vermelho Sangue
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(8),
+            // Aqui usamos 'border' normalmente, pois estamos num BoxDecoration
+            border: Border.all(color: Colors.red.shade900, width: 2),
+            boxShadow: [BoxShadow(color: Colors.redAccent.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))],
+          ),
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red[700],
+              backgroundColor: Colors.transparent, // Fundo transparente para exibir o gradiente do Container
+              shadowColor: Colors.transparent,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14.0),
-              elevation: 4,
-              shadowColor: Colors.redAccent.withOpacity(0.4),
+              elevation: 0,
             ),
             onPressed: widget.hidePlayer ? null : _togglePlayer,
             child: Row(
@@ -109,9 +107,9 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
               children: [
                 FadeTransition(
                   opacity: _blinkController,
-                  child: const Icon(Icons.circle, size: 14, color: Colors.white),
+                  child: const Icon(Icons.play_arrow, size: 20, color: Colors.white),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 const Text('ASSISTIR AO VIVO / VÍDEO', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
               ],
             ),
@@ -121,12 +119,16 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
       child: Card(
         elevation: 8,
         clipBehavior: Clip.antiAlias,
         margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16), 
+          // CORREÇÃO AQUI: Em Shapes (RoundedRectangleBorder), a propriedade é 'side' e não 'border'
+          side: BorderSide(color: Colors.red.shade900, width: 2),
+        ),
         child: Column(
           children: [
             Container(
@@ -135,11 +137,11 @@ class _HomeLiveVideoCardState extends State<HomeLiveVideoCard> with SingleTicker
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
+                  const Row(
                     children: [
-                      const Icon(Icons.live_tv, color: Colors.red, size: 16),
-                      const SizedBox(width: 8),
-                      const Text("Transmissão FJF TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      Icon(Icons.live_tv, color: Colors.red, size: 16),
+                      SizedBox(width: 8),
+                      Text("Transmissão FJF TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   InkWell(

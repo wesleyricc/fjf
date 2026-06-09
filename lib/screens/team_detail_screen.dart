@@ -5,6 +5,7 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../theme/app_theme.dart';
 import '../models/team_model.dart';
 import '../models/player_model.dart'; 
 import '../services/auth_service.dart';
@@ -47,7 +48,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     final champService = Provider.of<ChampionshipService>(context, listen: false);
     final teamService = Provider.of<TeamService>(context, listen: false);
     
-    // Garante que temos a lista
     List<Player> players = champService.getCachedRoster(widget.team.id);
     if (players.isEmpty) {
        players = await champService.fetchRoster(widget.team.id);
@@ -136,6 +136,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         ],
                       ),
               ),
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))), // <-- CORREÇÃO AQUI (shape em vez de border)
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
                 ElevatedButton(
@@ -293,10 +294,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
-        // Tenta buscar do cache
         List<Player> all = service.getCachedRoster(widget.team.id);
         
-        // Se não tiver em cache, solicita o fetch
         if (all.isEmpty && !service.isLoading) {
            WidgetsBinding.instance.addPostFrameCallback((_) {
               service.fetchRoster(widget.team.id);
@@ -338,7 +337,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                                   builder: (_) => EditPlayerScreen(teamId: widget.team.id, teamName: widget.team.name, player: null),
                                 ),
                               );
-                              // Atualiza o elenco após voltar
                               if (context.mounted) service.fetchRoster(widget.team.id, force: true);
                             },
                           ),
@@ -351,8 +349,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16.0, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
                     ),
                     background: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [primaryColor.withOpacity(0.8), primaryColor]),
+                      // AQUI: Aplicação do Gradiente Verde e Amarelo no fundo das Equipes
+                      decoration: const BoxDecoration(
+                        gradient: AppTheme.brazilGradient,
                       ),
                       child: Center(
                         child: Padding(
@@ -411,7 +410,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
 
                 if (staff.isNotEmpty) ...[
                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                   SliverToBoxAdapter(child: RosterSectionHeader(title: 'Comissão Técnica')),
+                   const SliverToBoxAdapter(child: RosterSectionHeader(title: 'Comissão Técnica')),
                    SliverTeamStaffList(
                      staff: staff, 
                      teamId: widget.team.id, 

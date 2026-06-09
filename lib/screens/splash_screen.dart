@@ -7,10 +7,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart'; 
 import 'package:url_launcher/url_launcher.dart'; 
 
+import '../theme/app_theme.dart';
 import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
-import '../services/voting_service.dart'; // <-- NOVO IMPORT
-import '../models/poll_model.dart'; // <-- NOVO IMPORT
+import '../services/voting_service.dart'; 
+import '../models/poll_model.dart'; 
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart'; 
@@ -160,9 +161,10 @@ class _SplashScreenState extends State<SplashScreen> {
             shrinkWrap: true,
             itemCount: allSeasons.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (ctx, index) {
+            itemBuilder: (context, index) {
               final season = allSeasons[index];
               final bool isSelected = season['id'] == currentId;
+              
               return ListTile(
                 selected: isSelected,
                 leading: Icon(isSelected ? Icons.check_circle : Icons.history, color: isSelected ? Colors.green : Colors.grey),
@@ -179,37 +181,35 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 
-  // --- COMPONENTE DO BANNER DE VOTAÇÃO (CENÁRIO ÚNICO) ---
   Widget _buildVotingBanner(BuildContext context, Poll poll, String seasonId) {
     final user = Provider.of<FantasyAuthService>(context, listen: false).user;
 
-    return FutureBuilder<bool>(
-      // Verifica no banco se este usuário já votou
-      future: user != null ? VotingService().hasUserVoted(seasonId, poll.id, user.uid) : Future.value(false),
-      builder: (context, snapshot) {
-        final hasVoted = snapshot.data ?? false;
-
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              // Quando volta da tela de votação, atualiza a Home para checar o novo status
-              onTap: () => Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {})),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {})),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.purple.shade900, Colors.deepPurpleAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               borderRadius: BorderRadius.circular(12),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.purple.shade900, Colors.deepPurpleAccent],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(color: Colors.purple.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
-                  ],
-                ),
-                child: ListTile(
+              border: Border.all(color: const Color(0xFFC5A814), width: 1.5),
+              boxShadow: [
+                BoxShadow(color: Colors.purple.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+              ],
+            ),
+            child: FutureBuilder<bool>(
+              future: user != null ? VotingService().hasUserVoted(seasonId, poll.id, user.uid) : Future.value(false),
+              builder: (context, snapshot) {
+                final hasVoted = snapshot.data ?? false;
+
+                return ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   leading: Container(
                     padding: const EdgeInsets.all(8),
@@ -229,9 +229,9 @@ class _SplashScreenState extends State<SplashScreen> {
                       ? Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(color: Colors.green.shade500, borderRadius: BorderRadius.circular(20)),
-                          child: Row(
+                          child: const Row(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
+                            children: [
                               Icon(Icons.check_circle, color: Colors.white, size: 16),
                               SizedBox(width: 4),
                               Text("VOTADO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11)),
@@ -243,12 +243,35 @@ class _SplashScreenState extends State<SplashScreen> {
                           decoration: BoxDecoration(color: Colors.amber, borderRadius: BorderRadius.circular(20)),
                           child: Text("VOTAR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Colors.purple.shade900)),
                         ),
-                ),
-              ),
+                );
+              }
             ),
           ),
-        );
-      }
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThemedSectionHeader(BuildContext context, String title, IconData icon) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 16, 10, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFC5A814), Color(0xFF00873E)], 
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2))],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.white),
+          const SizedBox(width: 8),
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 0.5)),
+        ],
+      ),
     );
   }
 
@@ -299,16 +322,17 @@ class _SplashScreenState extends State<SplashScreen> {
       onDrawerChanged: (isOpen) => setState(() => _isDrawerOpen = isOpen),
       body: Stack(
         children: [
+          // Fundo levemente texturizado global
+          Container(color: const Color(0xFFF0F2F5)),
           CustomScrollView(
             slivers: [
               SliverAppBar(
-                expandedHeight: 240.0,
+                expandedHeight: 280.0, 
                 floating: false,
                 pinned: true,
                 backgroundColor: primaryColor,
                 elevation: 0,
                 stretch: true,
-                // 🚨 O NOVO BOTÃO DE TEMPORADAS AQUI 🚨
                 actions: [
                   Padding(
                     padding: const EdgeInsets.only(right: 12.0, top: 8.0, bottom: 8.0),
@@ -317,18 +341,14 @@ class _SplashScreenState extends State<SplashScreen> {
                       icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
                       label: Text(
                         "Temporada $displayYear",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                       style: TextButton.styleFrom(
                         backgroundColor: Colors.white.withOpacity(0.15),
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(color: Colors.white.withOpacity(0.3), width: 1),
+                          side: const BorderSide(color: Colors.white30, width: 1), // Corrigido (apesar de já estar certo no original)
                         ),
                       ),
                     ),
@@ -350,42 +370,47 @@ class _SplashScreenState extends State<SplashScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                            colors: [primaryColor, Color.lerp(primaryColor, Colors.black, 0.4)!],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: -50, top: -50,
-                        child: Icon(Icons.sports_soccer, size: 250, color: Colors.white.withOpacity(0.05)),
-                      ),
+                      // Fundo Verde e Amarelo
+                      Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+                      
                       SafeArea(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                             const SizedBox(height: 10),
                              Hero(
                                tag: 'app_logo',
                                child: Container(
-                                 decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))]),
-                                 child: CircleAvatar(
-                                   radius: 40,
+                                 decoration: const BoxDecoration(
+                                   shape: BoxShape.circle, 
+                                   boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 15, offset: Offset(0, 5))]
+                                 ),
+                                 child: const CircleAvatar(
+                                   radius: 45,
                                    backgroundColor: Colors.white,
-                                   backgroundImage: const AssetImage('assets/logo3_fjf.png'),
-                                   onBackgroundImageError: (_, __) {},
+                                   backgroundImage: AssetImage('assets/logo3_fjf.png'),
                                  ),
                                ),
                              ),
                              const SizedBox(height: 12),
-                             Text("FJF $displayYear", style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 1.5, shadows: [Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))])),
-                             const SizedBox(height: 6),
+                             Text(
+                               "FJF $displayYear", 
+                               style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: 1.5, shadows: [Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 2))])
+                             ),
+                             const SizedBox(height: 12),
+                             
+                             // Ribbon "Homenageado"
                              Container(
-                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                               decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.2))),
-                               child: Text(championshipService.currentSeasonHonoree.isNotEmpty ? championshipService.currentSeasonHonoree : "Bem-vindo", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
+                               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 6),
+                               decoration: BoxDecoration(
+                                 color: Colors.white.withOpacity(0.95),
+                                 borderRadius: BorderRadius.circular(4),
+                                 border: Border.all(color: const Color(0xFFC5A814), width: 1.5),
+                                 boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))]
+                               ),
+                               child: Text(
+                                 championshipService.currentSeasonHonoree.isNotEmpty ? championshipService.currentSeasonHonoree : "Homenageado $displayYear", 
+                                 style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.5)
+                               ),
                              ),
                           ],
                         ),
@@ -418,30 +443,21 @@ class _SplashScreenState extends State<SplashScreen> {
 
                       const SizedBox(height: 10),
                       
-                      // --- BANNER DE VOTAÇÃO (INTELIGENTE: ÚNICO OU MÚLTIPLO) ---
                       if (seasonId.isNotEmpty)
                         StreamBuilder<List<Poll>>(
                           stream: VotingService().streamActivePolls(seasonId),
                           builder: (context, snapshot) {
-                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                              return const SizedBox.shrink(); // Fica invisível se não tiver votação
-                            }
-                            
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
                             final activePolls = snapshot.data!;
+                            if (activePolls.length == 1) return _buildVotingBanner(context, activePolls.first, seasonId);
                             
-                            // CENÁRIO 1: Apenas 1 votação ativa (Banner Gigante Clássico)
-                            if (activePolls.length == 1) {
-                              return _buildVotingBanner(context, activePolls.first, seasonId);
-                            }
-                            
-                            // CENÁRIO 2: Múltiplas votações (Painel de Premiações Fixo com Checklist)
                             return Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.purple.shade900.withOpacity(0.3)),
-                                boxShadow: [BoxShadow(color: Colors.purple.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 4))],
+                                border: Border.all(color: const Color(0xFFC5A814), width: 1.5),
+                                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: const Offset(0, 4))],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -449,13 +465,13 @@ class _SplashScreenState extends State<SplashScreen> {
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(colors: [Colors.purple.shade900, Colors.deepPurpleAccent]),
-                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+                                    decoration: const BoxDecoration(
+                                      gradient: LinearGradient(colors: [Color(0xFF002776), Color(0xFF001133)]),
+                                      borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
                                     ),
                                     child: Row(
                                       children: [
-                                        const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
+                                        const Icon(Icons.emoji_events, color: Color(0xFFC5A814), size: 24),
                                         const SizedBox(width: 8),
                                         Text(
                                           "PREMIAÇÕES ABERTAS (${activePolls.length})", 
@@ -464,13 +480,12 @@ class _SplashScreenState extends State<SplashScreen> {
                                       ],
                                     ),
                                   ),
-                                  
                                   ListView.separated(
                                     shrinkWrap: true,
                                     physics: const NeverScrollableScrollPhysics(),
                                     padding: EdgeInsets.zero,
                                     itemCount: activePolls.length,
-                                    separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade200),
+                                    separatorBuilder: (_, __) => const Divider(height: 1),
                                     itemBuilder: (context, index) {
                                       final poll = activePolls[index];
                                       final user = Provider.of<FantasyAuthService>(context, listen: false).user;
@@ -479,38 +494,19 @@ class _SplashScreenState extends State<SplashScreen> {
                                         future: user != null ? VotingService().hasUserVoted(seasonId, poll.id, user.uid) : Future.value(false),
                                         builder: (context, voteSnapshot) {
                                           final hasVoted = voteSnapshot.data ?? false;
-
                                           return ListTile(
                                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                             leading: CircleAvatar(
                                               radius: 18,
-                                              backgroundColor: hasVoted ? Colors.green.withOpacity(0.1) : Colors.amber.withOpacity(0.2),
-                                              child: Icon(hasVoted ? Icons.check : Icons.how_to_vote, color: hasVoted ? Colors.green : Colors.amber, size: 18),
+                                              backgroundColor: hasVoted ? Colors.green.withOpacity(0.1) : const Color(0xFFC5A814).withOpacity(0.2),
+                                              child: Icon(hasVoted ? Icons.check : Icons.how_to_vote, color: hasVoted ? Colors.green : const Color(0xFFC5A814), size: 18),
                                             ),
                                             title: Text(poll.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: hasVoted ? Colors.grey : Colors.black87)),
                                             subtitle: Text(poll.category.replaceAll('_', ' ').toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
                                             trailing: hasVoted
-                                                ? Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                                    decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: const [
-                                                        Icon(Icons.check_circle, color: Colors.green, size: 14),
-                                                        SizedBox(width: 4),
-                                                        Text("VOTADO", style: TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 10)),
-                                                      ],
-                                                    ),
-                                                  )
+                                                ? const Icon(Icons.check_circle, color: Colors.green)
                                                 : ElevatedButton(
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: Colors.amber,
-                                                      foregroundColor: Colors.purple.shade900,
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                                                      minimumSize: const Size(60, 32),
-                                                      elevation: 0,
-                                                    ),
+                                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC5A814), foregroundColor: Colors.black87, elevation: 0),
                                                     onPressed: () => Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {})),
                                                     child: const Text("VOTAR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
                                                   ),
@@ -528,7 +524,7 @@ class _SplashScreenState extends State<SplashScreen> {
                       // ------------------------------------------------
 
                       HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
-                      const SizedBox(height: 4),      
+                      const SizedBox(height: 10),      
                       // Fantasy Card
                       if (championshipService.isFantasyEnabled)
                         Padding(
@@ -552,12 +548,16 @@ class _SplashScreenState extends State<SplashScreen> {
                               }
 
                               return Card(
-                                elevation: 3,
-                                color: Colors.blue[900],
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 4,
+                                color: const Color(0xFF002776), // Azul Seleção
+                                // CORRIGIDO AQUI: side: BorderSide(...)
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12), 
+                                  side: const BorderSide(color: Color(0xFFC5A814), width: 1.5)
+                                ),
                                 child: ListTile(
                                   leading: const Icon(Icons.sports_soccer, color: Colors.white, size: 32),
-                                  title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
                                   subtitle: const Text("Escale seu time agora!", style: TextStyle(color: Colors.white70)),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -579,23 +579,21 @@ class _SplashScreenState extends State<SplashScreen> {
                           ),
                         ),
 
-                      // 🚨 NOVA ADIÇÃO: FEATURE FLAG DO CARD DO BOLÃO DA COPA
                       if (championshipService.isBolaoEnabled) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 10),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           child: Card(
-                            elevation: 3,
-                            // O clipBehavior garante que o container com gradiente respeite as bordas arredondadas do Card
+                            elevation: 4,
                             clipBehavior: Clip.antiAlias, 
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            // CORRIGIDO AQUI: side: BorderSide(...)
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12), 
+                              side: const BorderSide(color: Color(0xFFC5A814), width: 1.5)
+                            ),
                             child: Container(
                               decoration: const BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [Color.fromARGB(255, 0, 66, 24), Color.fromARGB(255, 197, 168, 20)], // Verde e Amarelo Brasil
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
+                                gradient: AppTheme.brazilGradient,
                               ),
                               child: ListTile(
                                 leading: const Icon(FontAwesomeIcons.earthAmericas, color: Colors.white, size: 32),
@@ -603,7 +601,7 @@ class _SplashScreenState extends State<SplashScreen> {
                                   "BOLÃO DA COPA 2026", 
                                   style: TextStyle(
                                     color: Colors.white, 
-                                    fontWeight: FontWeight.bold, 
+                                    fontWeight: FontWeight.w900, 
                                     shadows: [Shadow(color: Colors.black45, blurRadius: 2)]
                                   )
                                 ),
@@ -623,27 +621,51 @@ class _SplashScreenState extends State<SplashScreen> {
                         ),
                       ],
                       
-                      const HomeNewsFeed(),
+                      const SizedBox(height: 16),
+                      const HomeNewsFeed(), 
                       const SizedBox(height: 10),
 
                       if (championshipService.isPhotoStoreEnabled) ...[
-                        _buildSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 10.0),
-                          child: PhotoStoreBanner(),
+                        _buildThemedSectionHeader(context, "Loja de Fotos", Icons.camera_enhance),
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
+                            border: Border.all(color: Colors.grey.shade200)
+                          ),
+                          child: const PhotoStoreBanner(),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 16),
                       ],
                       
-                      _buildSectionHeader(context, "Equipes Participantes", Icons.groups),
+                      _buildThemedSectionHeader(context, "Equipes Participantes", Icons.groups),
                     ],
                   ),
                 ),
               ),
 
-              const SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                sliver: _TeamsSliverGrid(),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
+                      border: Border.all(color: Colors.grey.shade200)
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: const CustomScrollView(
+                      shrinkWrap: true,
+                      physics: NeverScrollableScrollPhysics(),
+                      slivers: [
+                        _TeamsSliverGrid(),
+                      ],
+                    ),
+                  ),
+                ),
               ),
 
               SliverToBoxAdapter(
@@ -664,23 +686,6 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
     );
   }
-
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 1.0),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: Theme.of(context).primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-            child: Icon(icon, size: 20, color: Theme.of(context).primaryColor),
-          ),
-          const SizedBox(width: 10),
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)),
-        ],
-      ),
-    );
-  }
 }
 
 class _SponsorGridCard extends StatelessWidget {
@@ -689,10 +694,8 @@ class _SponsorGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Lemos o ChampionshipService apenas para saber o status da conexão/carregamento
     final champService = Provider.of<ChampionshipService>(context);
 
-    // 🚨 AGORA CONSUMIMOS O NOVO VIEWMODEL DE PATROCINADORES
     return Consumer<SponsorViewModel>(
       builder: (context, sponsorVm, _) {
 
@@ -709,7 +712,6 @@ class _SponsorGridCard extends StatelessWidget {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // 🚨 Lemos a lista de sponsors do novo ViewModel
         final sponsors = sponsorVm.sponsors.where((s) {
            return s['location'] == 'grid_teams' && s['isActive'] == true;
         }).toList();
@@ -724,7 +726,7 @@ class _SponsorGridCard extends StatelessWidget {
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFC5A814), width: 1.5)),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: CachedNetworkImage(
@@ -746,19 +748,37 @@ class _SponsorGridCard extends StatelessWidget {
       onTap: () => launchUrl(Uri.parse(_partnerContactUrl), mode: LaunchMode.externalApplication),
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF002776), Color(0xFF001133)], 
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12), 
+          border: Border.all(color: const Color(0xFFC5A814), width: 1.5) 
+        ),
+        child: Stack(
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15), shape: BoxShape.circle),
-              child: const Icon(FontAwesomeIcons.handshake, color: Colors.amber, size: 28),
+            Positioned(
+              right: -20, bottom: -20,
+              child: Icon(Icons.all_inclusive, size: 100, color: Colors.white.withOpacity(0.05)),
             ),
-            const SizedBox(height: 8),
-            const Text("SEJA PARCEIRO", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Color(0xFFC25F22), letterSpacing: 0.5)),
-            const SizedBox(height: 4),
-            const Text("Anuncie aqui", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Colors.grey)),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: const Color(0xFFC5A814).withOpacity(0.2), shape: BoxShape.circle),
+                    child: const Icon(FontAwesomeIcons.handshake, color: Color(0xFFC5A814), size: 24),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text("SEJA PARCEIRO", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Color(0xFFC5A814), letterSpacing: 0.5)),
+                  const SizedBox(height: 2),
+                  const Text("Anuncie aqui", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Colors.white70)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -829,8 +849,8 @@ class _TeamsSliverGrid extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade100),
-                      boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 3))],
+                      border: Border.all(color: const Color(0xFFC5A814), width: 1.5), 
+                      boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 3))],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -873,12 +893,12 @@ class _TeamsSliverGrid extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFC5A814), width: 1.5),
       ),
       padding: const EdgeInsets.all(12),
-      child: Column(
+      child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
+        children: [
           Expanded(child: ShimmerEffect.circular(size: 60)),
           SizedBox(height: 10),
           ShimmerEffect.rectangular(height: 10, width: 60),

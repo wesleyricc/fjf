@@ -83,7 +83,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
   let description = "";
 
   if (type === 'bolao') {
-    valorInscricao = "1.00"; 
+    valorInscricao = "20.00"; 
     description = `Inscrição Bolão Copa 2026 - ${userId}`;
   } else {
     if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {

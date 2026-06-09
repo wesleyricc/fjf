@@ -207,7 +207,7 @@ class FjfApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'FJF 2025',
+        title: 'FJF App - Força Jovem Fumacense',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme, 
         

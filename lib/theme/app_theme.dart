@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Paleta de Cores FJF
-  static const Color primaryColor = Color(0xFFC25F22); // Laranja FJF
-  static const Color secondaryColor = Colors.black87;
+  // Paleta de Cores Oficial da Seleção Brasileira (Tema Copa do Mundo)
+  static const Color primaryColor = Color(0xFF00873E);      // Verde Bandeira Oficial
+  static const Color secondaryColor = Color(0xFF002776);    // Azul Anil para Contrastes
+  static const Color yellowColor = Color(0xFFFFDF00);       // Amarelo Canarinho para Destaques
   static const Color scaffoldBackground = Color(0xFFFAFAFA); // Cinza muito suave
   static const Color errorColor = Color(0xFFD32F2F);
+
+  // Gradiente Global para Botões Especiais e Cards de Destaque
+  // Pode ser acessado em qualquer tela chamando: AppTheme.brazilGradient
+  static const LinearGradient brazilGradient = LinearGradient(
+    colors: [
+      Color(0xFF00873E), // Verde Bandeira
+      Color(0xFFC5A814), // Ouro/Amarelo Canarinho
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
 
   static ThemeData get lightTheme {
     return ThemeData(
@@ -17,17 +29,18 @@ class AppTheme {
       // --- Esquema de Cores ---
       colorScheme: const ColorScheme.light(
         primary: primaryColor,
-        secondary: secondaryColor,
+        secondary: yellowColor,
         surface: Colors.white,
         error: errorColor,
         onPrimary: Colors.white,
+        onSecondary: secondaryColor,
       ),
 
-      // --- AppBar (ALTERADO AQUI) ---
+      // --- AppBar ---
       appBarTheme: const AppBarTheme(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
-        centerTitle: false, // <-- Títulos alinhados à ESQUERDA
+        centerTitle: false,
         elevation: 0,
         titleTextStyle: TextStyle(
           fontSize: 20,
@@ -68,6 +81,13 @@ class AppTheme {
           side: const BorderSide(color: primaryColor),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
+      ),
+
+      // --- Botão de Ação Flutuante (FAB) ---
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: yellowColor,
+        foregroundColor: secondaryColor,
+        elevation: 4,
       ),
 
       // --- Inputs (TextField) ---
@@ -111,7 +131,7 @@ class AppTheme {
       // --- SnackBar ---
       snackBarTheme: const SnackBarThemeData(
         backgroundColor: secondaryColor,
-        contentTextStyle: TextStyle(color: Colors.white),
+        contentTextStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
