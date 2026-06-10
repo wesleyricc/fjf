@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../services/support_service.dart'; // <-- Novo Serviço
+import '../services/support_service.dart'; 
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class ReportBugScreen extends StatefulWidget {
   const ReportBugScreen({super.key});
@@ -32,7 +33,6 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
 
     setState(() => _isSending = true);
 
-    // Chama o serviço para lidar com a lógica externa
     final String? error = await _supportService.sendBugReport(
       reportType: _reportType,
       title: _titleController.text.trim(),
@@ -43,15 +43,12 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
       setState(() => _isSending = false);
 
       if (error == null) {
-        // Sucesso (O App abriu o WhatsApp)
-        // Opcional: Limpar campos
         _titleController.clear();
         _descriptionController.clear();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Redirecionando para o WhatsApp...'), backgroundColor: Colors.green),
         );
       } else {
-        // Erro
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(error), backgroundColor: Colors.red),
         );
@@ -64,6 +61,12 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reportar via WhatsApp'),
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
       ),
       drawer: const AppDrawer(),
       body: Form(
@@ -134,7 +137,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
                       : const Icon(Icons.send),
                   label: Text(_isSending ? 'Abrindo WhatsApp...' : 'Enviar Mensagem'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green, // Cor oficial do WhatsApp
+                    backgroundColor: Colors.green, 
                     foregroundColor: Colors.white,
                     textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

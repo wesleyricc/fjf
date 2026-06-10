@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/bolao_service.dart';
 import 'bolao_predictions_screen.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class BolaoPaywallScreen extends StatefulWidget {
   const BolaoPaywallScreen({super.key});
@@ -59,7 +60,12 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
         backgroundColor: Colors.white,
         appBar: AppBar(
           title: const Text("Bolão da Copa 2026", style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: const Color(0xFF1B5E20),
+          // 🚨 NOVO: Gradiente da Copa aplicado
+          flexibleSpace: Container(
+            decoration: const BoxDecoration(
+              gradient: AppTheme.brazilGradient,
+            ),
+          ),
           foregroundColor: Colors.white,
         ),
         body: Center(
@@ -82,7 +88,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                 ),
                 const SizedBox(height: 40),
                 auth.isLoading 
-                  ? const CircularProgressIndicator(color: Color(0xFF1B5E20))
+                  ? const CircularProgressIndicator(color: AppTheme.primaryColor)
                   : ElevatedButton.icon(
                       onPressed: () async {
                         final error = await auth.signInWithGoogle();
@@ -129,7 +135,12 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
         return Scaffold(
           backgroundColor: Colors.grey[100],
           appBar: AppBar(
-            backgroundColor: const Color(0xFF1B5E20),
+            // 🚨 NOVO: Gradiente da Copa aplicado
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.brazilGradient,
+              ),
+            ),
             elevation: 0,
             title: const Text("Bolão FJF - Copa 2026", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             iconTheme: const IconThemeData(color: Colors.white),
@@ -137,12 +148,11 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
           body: SingleChildScrollView(
             child: Column(
               children: [
-                // 🚨 BANNER COMPACTO: PREMIAÇÃO + PREÇO REUNIDOS
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                   decoration: const BoxDecoration(
-                    gradient: LinearGradient(colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)]),
+                    gradient: AppTheme.brazilGradient,
                     borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
                   ),
                   child: Column(
@@ -156,7 +166,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text("PREMIAÇÃO DO BOLÃO", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                              Text("30% DE TODO O ARRECADADO", style: TextStyle(color: Colors.amber[400], fontSize: 16, fontWeight: FontWeight.w900)),
+                              Text("30% DE TODO O ARRECADADO", style: TextStyle(color: AppTheme.yellowColor, fontSize: 16, fontWeight: FontWeight.w900)),
                             ],
                           )
                         ],
@@ -183,7 +193,6 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 🚨 BOTÃO DE CHAMADA PARA AÇÃO (CTA) - AGORA NO TOPO DA DOBRA DA TELA!
                       if (_pixCode == null) ...[
                         _isLoadingPix 
                             ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()))
@@ -192,7 +201,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                                 icon: const Icon(Icons.pix, color: Colors.tealAccent, size: 22),
                                 label: const Text("GERAR PIX PARA ENTRAR AGORA", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.teal.shade700, 
+                                  backgroundColor: AppTheme.secondaryColor, 
                                   padding: const EdgeInsets.symmetric(vertical: 14), 
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                   elevation: 2,
@@ -222,7 +231,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                                 },
                                 icon: const Icon(Icons.copy, size: 18),
                                 label: const Text("COPIAR CÓDIGO PIX"),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal.shade700, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 44)),
+                                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.secondaryColor, foregroundColor: Colors.white, minimumSize: const Size(double.infinity, 44)),
                               )
                             ],
                           ),
@@ -233,20 +242,19 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                       const Text("Dúvidas sobre o funcionamento?", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54)),
                       const SizedBox(height: 8),
 
-                      // 🚨 REGRAS COMPACTADAS DENTRO DE MENUS RETRÁTEIS (EXPANSION TILES)
                       Card(
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
                         child: ExpansionTile(
-                          leading: const Icon(Icons.sports_soccer, color: Colors.blue),
-                          title: const Text("Como pontuar nos Jogos?", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue)),
-                          children: const [
+                          leading: const Icon(Icons.sports_soccer, color: AppTheme.secondaryColor),
+                          title: const Text("Como pontuar nos Jogos?", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.secondaryColor)),
+                          children: [
                             Padding(
                               padding: EdgeInsets.only(left: 16, right: 16, bottom: 16),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Divider(),
+                                  Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
                                   SizedBox(height: 4),
                                   Text("🎯 Na Mosca (Placar Exato): +5 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("⚖️ Acerto de Vencedor + Saldo: +3 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
@@ -267,13 +275,13 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                         child: ExpansionTile(
                           leading: const Icon(Icons.star, color: Colors.purple),
                           title: const Text("Quais são as Regras dos Bônus?", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.purple)),
-                          children: const [
+                          children: [
                             Padding(
                               padding: EdgeInsets.only(left: 16, right: 16, bottom: 16),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Divider(),
+                                  Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
                                   SizedBox(height: 4),
                                   Text("🏆 O Grande Campeão: +20 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("🥈 O Vice-Campeão: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
@@ -281,7 +289,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                                   Text("🛡️ Pior Defesa da Copa: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("📉 A Grande Decepção: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   SizedBox(height: 8),
-                                  Text("*Os bônus extras trancam 30 minutos antes da abertura da Copa do Mundo.", style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.grey)),
+                                  Text("*Os palpites para os bônus extras trancam no dia 17/06/2026 às 23h59.", style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.grey)),
                                 ],
                               ),
                             )

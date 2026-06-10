@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:ui'; // 🚨 Necessário para o PlatformDispatcher do Crashlytics
+import 'dart:ui'; 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- NOVO: Necessário para a StatusBar
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:provider/provider.dart';
@@ -8,8 +9,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart'; 
 import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart'; // 🚨 Adicionado Crashlytics
-import 'package:firebase_analytics/firebase_analytics.dart';     // 🚨 Adicionado Analytics
+import 'package:firebase_crashlytics/firebase_crashlytics.dart'; 
+import 'package:firebase_analytics/firebase_analytics.dart';     
 
 // Configurações
 import 'firebase_options.dart'; 
@@ -92,6 +93,12 @@ void main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
+    // 🚨 NOVO: Força a barra de status do celular a ficar transparente com ícones claros
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent, // Deixa o gradiente da AppBar aparecer
+      statusBarIconBrightness: Brightness.light, // Ícones brancos (hora/bateria)
+    ));
+
     const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
     FirebaseOptions firebaseOptions = (environment == 'test')
         ? TestFirebaseOptions.currentPlatform
@@ -99,10 +106,8 @@ void main() async {
 
     if (environment == 'test') debugPrint("⚠️ AMBIENTE DE TESTE ⚠️");
 
-    // 1. INICIALIZAÇÃO CRÍTICA (Deve ter await, pois é a base de tudo)
     await Firebase.initializeApp(options: firebaseOptions);
 
-    // 🚨 1. CRASHLYTICS GLOBAL: Captura erros a nível de plataforma
     PlatformDispatcher.instance.onError = (error, stack) {
       if (!kIsWeb) {
         FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
@@ -110,8 +115,6 @@ void main() async {
       return true;
     };
 
-    // 🚨 2. INICIALIZAÇÕES EM BACKGROUND (Sem await bloqueando o runApp)
-    // Ao retirar o await, o aplicativo não fica esperando estas configurações para arrancar!
     FirebaseAppCheck.instance.activate(
       webProvider: ReCaptchaV3Provider('6LfdwM4sAAAAACPNPfvuk5uW_c2FVt93yr1jQ1NH'),
       androidProvider: kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
@@ -124,7 +127,6 @@ void main() async {
       );
     }
     
-    // --- LÓGICA DE PERSISTÊNCIA INTELIGENTE ---
     const bool enablePersistence = !kIsWeb || kReleaseMode;
 
     FirebaseFirestore.instance.settings = const Settings(
@@ -135,30 +137,25 @@ void main() async {
     if (kIsWeb && !kReleaseMode) {
       debugPrint("⚠️ Web Debug: Persistência do Firestore DESATIVADA para evitar conflitos.");
     }
-    // ------------------------------------------
 
-    // 🔥 OTIMIZAÇÃO: Disparados em paralelo, sem travar a thread principal!
     NotificationService().init();
     initializeDateFormatting('pt_BR', null);
 
-    // 🚨 3. CRASHLYTICS GLOBAL: Captura erros de UI/Widgets do Flutter
     FlutterError.onError = (FlutterErrorDetails details) {
       if (details.exception.toString().contains('failed-precondition')) {
          _logFirestoreIndexError(details.exception);
       }
       if (!kIsWeb) {
-        FirebaseCrashlytics.instance.recordFlutterFatalError(details); // Envia pro Firebase
+        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
       }
       FlutterError.presentError(details); 
     };
 
-    // 🚀 DESENHA A TELA O MAIS RÁPIDO POSSÍVEL
     runApp(const FjfApp());
   
   }, (error, stack) {
     _logFirestoreIndexError(error);
     debugPrint("Erro assíncrono: $error");
-    // 🚨 4. CRASHLYTICS GLOBAL: Captura erros assíncronos não tratados
     if (!kIsWeb) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     }
@@ -168,7 +165,6 @@ void main() async {
 class FjfApp extends StatelessWidget {
   const FjfApp({super.key});
 
-  // 🚨 4. Instância única do Analytics para o App inteiro
   static FirebaseAnalytics analytics = FirebaseAnalytics.instance;
 
   @override
@@ -211,8 +207,6 @@ class FjfApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme, 
         
-        // 🚨 5. ANALYTICS GLOBAL (O Radar de Telas)
-        // Registra automaticamente no painel do Firebase toda vez que o usuário navegar.
         navigatorObservers: [
           FirebaseAnalyticsObserver(analytics: analytics),
         ],
@@ -264,7 +258,6 @@ class FjfApp extends StatelessWidget {
           '/free-agents-market': (ctx) => const FreeAgentsMarketScreen(),
           '/wordcup-pool': (ctx) => const BolaoPaywallScreen(),
         },
-        // ---> NAVEGAÇÃO DINÂMICA DA VOTAÇÃO AQUI <---
         onGenerateRoute: (settings) {
           if (settings.name == '/voting') {
             final pollArgs = settings.arguments as Poll;
@@ -274,7 +267,6 @@ class FjfApp extends StatelessWidget {
           }
           return null; 
         },
-        // ---------------------------------------------
       ),
     );
   }

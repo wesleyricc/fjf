@@ -136,7 +136,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         ],
                       ),
               ),
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))), // <-- CORREÇÃO AQUI (shape em vez de border)
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
                 ElevatedButton(
@@ -290,7 +290,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
-    final primaryColor = Theme.of(context).primaryColor;
 
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
@@ -323,7 +322,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   expandedHeight: 200.0,
                   floating: false,
                   pinned: true,
-                  backgroundColor: primaryColor,
+                  backgroundColor: Colors.transparent, // 🚨 Deixa o Gradiente aparecer sempre
+                  elevation: 0,
                   actions: authService.isAuthenticated
                       ? [
                           IconButton(icon: const Icon(Icons.add_circle_outline), tooltip: 'Pontos Extras', onPressed: _showAddExtraPointsDialog),
@@ -342,18 +342,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           ),
                         ]
                       : null,
-                  flexibleSpace: FlexibleSpaceBar(
-                    centerTitle: true,
-                    title: Text(
-                      widget.team.name,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16.0, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
+                  // 🚨 NOVO: Gradiente da Copa aplicado
+                  flexibleSpace: Container(
+                    decoration: const BoxDecoration(
+                      gradient: AppTheme.brazilGradient,
                     ),
-                    background: Container(
-                      // AQUI: Aplicação do Gradiente Verde e Amarelo no fundo das Equipes
-                      decoration: const BoxDecoration(
-                        gradient: AppTheme.brazilGradient,
+                    child: FlexibleSpaceBar(
+                      centerTitle: true,
+                      title: Text(
+                        widget.team.name,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16.0, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
                       ),
-                      child: Center(
+                      background: Center(
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 40.0),
                           child: Hero(

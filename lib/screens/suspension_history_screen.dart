@@ -13,6 +13,7 @@ import '../services/auth_service.dart';
 import '../viewmodels/suspension_viewmodel.dart';
 import '../utils/custom_cache_manager.dart'; 
 import 'player_profile_screen.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class SuspensionHistoryScreen extends StatefulWidget {
   const SuspensionHistoryScreen({super.key});
@@ -26,7 +27,6 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    // 🚨 LAZY LOADING: Carrega as suspensões apenas ao entrar na tela
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
       Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId);
@@ -58,7 +58,6 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
             
         if (context.mounted) {
            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data de retorno atualizada.')));
-           // 🚨 Atualiza a lista através do ViewModel
            Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId, force: true);
         }
       } catch (e) { 
@@ -93,7 +92,6 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
             
          if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registro excluído.')));
-            // 🚨 Atualiza a lista através do ViewModel
             Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId, force: true);
          }
        } catch (e) { 
@@ -113,6 +111,12 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start, 
           children: [
@@ -128,7 +132,6 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
         ]
       ),
       drawer: const AppDrawer(),
-      // 🚨 AGORA CONSOME O SEU PRÓPRIO VIEWMODEL
       body: Consumer<SuspensionViewModel>(
         builder: (context, vm, _) {
           if (vm.isLoading && vm.suspensions.isEmpty) {
@@ -200,9 +203,6 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
   }
 }
 
-// -----------------------------------------------------------------------------
-// Componente de Card (_SuspensionCard) permanece o MESMO (apenas copiado abaixo)
-// -----------------------------------------------------------------------------
 class _SuspensionCard extends StatelessWidget {
   final DocumentSnapshot logDoc;
   final bool isAdmin;
@@ -220,8 +220,6 @@ class _SuspensionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final data = logDoc.data() as Map<String, dynamic>;
     final String playerId = data['playerId'] ?? '';
-    
-    // O ChampionshipService ainda é chamado aqui APENAS para ler nomes locais do cache
     final champService = Provider.of<ChampionshipService>(context, listen: false);
     
     Player? pObj;

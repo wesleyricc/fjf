@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:url_launcher/url_launcher.dart';
+import '../../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class BolaoPredictionsScreen extends StatefulWidget {
   const BolaoPredictionsScreen({super.key});
@@ -248,7 +249,12 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
               backgroundColor: Colors.grey[100],
               appBar: AppBar(
                 title: const Text("Bolão Copa do Mundo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                backgroundColor: const Color(0xFF1B5E20),
+                // 🚨 NOVO: Gradiente da Copa aplicado
+                flexibleSpace: Container(
+                  decoration: const BoxDecoration(
+                    gradient: AppTheme.brazilGradient,
+                  ),
+                ),
                 iconTheme: const IconThemeData(color: Colors.white),
                 actions: [
                   IconButton(
@@ -804,7 +810,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
   // ABA 2: BÔNUS EXTRAS
   // ===========================================================================
   Widget _buildBonusTab(String userId, bool isGlobalLocked, BolaoUser? currentUser) {
-    final deadline = DateTime.utc(2026, 6, 11, 20, 30, 00); 
+    final deadline = DateTime.utc(2026, 6, 18, 2, 59, 59); 
     final bool isTimeOver = DateTime.now().toUtc().isAfter(deadline);
     final bool isBonusLocked = isTimeOver; 
 
@@ -818,7 +824,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(color: isBonusLocked ? Colors.red.shade50 : Colors.amber.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: isBonusLocked ? Colors.red.shade200 : Colors.amber.shade300)),
           child: Text(
-            isBonusLocked ? "🔒 Opções Extras Trancadas Definitivamente!" : "Atenção: Estes palpites trancam 30 minutos antes do 1º jogo da Copa (11/06/2026). Pense bem!", 
+            isBonusLocked ? "🔒 Opções Extras Trancadas Definitivamente!" : "Atenção: Estes palpites trancam no dia 17/06/2026 às 23h59. Pense bem!", 
             style: TextStyle(color: isBonusLocked ? Colors.red[800] : Colors.orange[800], fontWeight: FontWeight.bold), textAlign: TextAlign.center
           ),
         ),

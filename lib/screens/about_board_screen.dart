@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/sponsor_banner_rotator.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class AboutBoardScreen extends StatelessWidget {
   const AboutBoardScreen({super.key});
@@ -9,6 +10,12 @@ class AboutBoardScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Diretoria Atual'),
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),

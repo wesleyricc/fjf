@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/free_agent_model.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class FreeAgentRegistrationScreen extends StatefulWidget {
   const FreeAgentRegistrationScreen({super.key});
@@ -19,36 +20,27 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // Imagem
   Uint8List? _imageBytes;
   final ImagePicker _picker = ImagePicker();
 
-  // Controladores
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
 
-  // Estado Pessoal/Esportivo
   DateTime? _birthDate;
   String _position = 'Ala'; 
   String _preferredFoot = 'Destro'; 
   String _selfEvaluation = 'Comum'; 
   bool _isProfessional = false;
 
-  // --- NOVO MOTOR DE ELEGIBILIDADE (ART. 10º) ---
-  String? _isBornInCity; // 'Sim' ou 'Não'
-  
-  // Variáveis se for Nascido
+  String? _isBornInCity; 
   String? _natoHistory; 
   bool _natoGracePeriodMet = false;
 
-  // Variáveis se NÃO for Nascido
   String? _nonNatoLink; 
   bool _nonNatoRequirementsMet = false;
 
-
-  // --- LÓGICA DE IMAGEM ---
   Future<void> _pickImage() async {
     try {
       final XFile? image = await _picker.pickImage(
@@ -73,7 +65,6 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
     return await snapshot.ref.getDownloadURL();
   }
 
-  // --- LÓGICA DO ESTATUTO (VALIDAÇÕES) ---
   void _resetEligibilityFields() {
     _natoHistory = null;
     _natoGracePeriodMet = false;
@@ -98,9 +89,9 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
       if (_natoHistory == null) return "Por favor, selecione seu histórico de moradia.";
       
       if (_natoHistory == 'Mais de 2 anos fora' && !_natoGracePeriodMet) {
-        return "REGRA BLOQUEADA:\nO Art 10º § 1º, b, I determina que atletas nascidos que moraram no exterior por mais de 2 anos devem cumprir obrigatoriamente 6 meses de carência residindo na cidade antes de se inscreverem.";
+        return "REGRA BLOQUEADA:\nO Art 10º § 1º, b, I determina que atletas nascidos que moraram no exterior por mais de 2 anos devem cumpri obrigatoriamente 6 meses de carência residindo na cidade antes de se inscreverem.";
       }
-      return null; // Aprovado
+      return null;
     } else {
       if (_nonNatoLink == null) return "Por favor, selecione qual é o seu principal vínculo com a cidade.";
       
@@ -113,7 +104,7 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
           return "REGRA BLOQUEADA:\nA elegibilidade por relacionamento exige comprovação de pelo menos 3 anos de união estável/casamento/namoro público com um residente local (Art 10º § 4º).";
         }
       }
-      return null; // Aprovado
+      return null;
     }
   }
 
@@ -165,7 +156,6 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
       return;
     }
 
-    // Validação de Idade e Profissional
     final age = _calculateAge(_birthDate!);
     if (age < 16 || age > 30) {
       _showRuleErrorDialog("Idade Incompatível", "O Art. 10º exige que os atletas tenham entre 16 e 30 anos no ano vigente. Sua idade calculada hoje é de $age anos.");
@@ -177,7 +167,6 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
       return;
     }
 
-    // 🚨 A MÁGICA DO PM ACONTECE AQUI: Validador do Estatuto 🚨
     final ruleError = _validateEligibilityRules();
     if (ruleError != null) {
       _showRuleErrorDialog("Inscrição Barrada", ruleError);
@@ -206,7 +195,7 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
         weight: double.tryParse(_weightController.text.replaceAll(',', '.')) ?? 0.0,
         preferredFoot: _preferredFoot,
         selfEvaluation: _selfEvaluation,
-        eligibilityType: _getFinalEligibilityString(), // Atribui o título gerado pelas respostas
+        eligibilityType: _getFinalEligibilityString(), 
         status: 'Aguardando Ética', 
         createdAt: DateTime.now(),
       );
@@ -257,12 +246,18 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
-
     return Scaffold(
-      appBar: AppBar(title: const Text("Draft FJF - Inscrição")),
+      appBar: AppBar(
+        title: const Text("Draft FJF - Inscrição"),
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
+      ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+        ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryColor))
         : SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Form(
@@ -302,8 +297,8 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
                             bottom: 0, right: 0,
                             child: Container(
                               padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
-                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                              decoration: const BoxDecoration(color: AppTheme.yellowColor, shape: BoxShape.circle),
+                              child: const Icon(Icons.camera_alt, color: AppTheme.secondaryColor, size: 20),
                             ),
                           )
                         ],
@@ -391,7 +386,6 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
                   ),
                   const SizedBox(height: 24),
 
-                  // 🚨 ENTREVISTA INTELIGENTE DO ESTATUTO AQUI 🚨
                   _buildSectionHeader(Icons.gavel, "Entrevista de Elegibilidade (Art. 10º)"),
                   Card(
                     child: Padding(
@@ -406,7 +400,6 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
                             onChanged: (val) => setState(() { _isBornInCity = val; _resetEligibilityFields(); }),
                           ),
                           
-                          // SE FOR NASCIDO:
                           if (_isBornInCity == 'Sim') ...[
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
@@ -434,7 +427,6 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
                             ]
                           ],
 
-                          // SE NÃO FOR NASCIDO:
                           if (_isBornInCity == 'Não') ...[
                             const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
@@ -479,7 +471,7 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
                   const SizedBox(height: 32),
                   ElevatedButton(
                     onPressed: _submitForm,
-                    style: ElevatedButton.styleFrom(backgroundColor: primaryColor, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                     child: const Text("VALIDAR INSCRIÇÃO", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                   const SizedBox(height: 30),

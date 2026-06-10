@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+import '../theme/app_theme.dart'; // <-- NOVO: Import do Tema
 import '../services/team_service.dart';
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
@@ -96,6 +97,12 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
         return Scaffold(
           backgroundColor: Colors.grey[100],
           appBar: AppBar(
+            // 🚨 NOVO: Gradiente da Copa aplicado
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.brazilGradient,
+              ),
+            ),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -205,8 +212,6 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
                       ? CachedNetworkImage(
                           imageUrl: team.shieldUrl,
                           fit: BoxFit.contain,
-                          // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
-                          // Escudos muito grandes agora são reduzidos para não travar o Scroll do Grid
                           memCacheHeight: 300, 
                           memCacheWidth: 300,
                           placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),

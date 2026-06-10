@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../services/championship_service.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../services/championship_service.dart';
-import '../widgets/player_selection_modal.dart'; // <-- Novo Widget
+import '../widgets/player_selection_modal.dart'; 
 import '../utils/custom_cache_manager.dart';
 
 class PlayerComparisonScreen extends StatefulWidget {
@@ -16,12 +19,10 @@ class PlayerComparisonScreen extends StatefulWidget {
 }
 
 class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
-  // Estado local apenas para os documentos selecionados
   DocumentSnapshot? _player1;
   DocumentSnapshot? _player2;
 
   Future<void> _openSelectionModal(int slot) async {
-    // Abre o modal refatorado e aguarda o resultado
     final DocumentSnapshot? selected = await showDialog<DocumentSnapshot>(
       context: context,
       builder: (ctx) => const PlayerSelectionModal(),
@@ -41,6 +42,12 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -52,7 +59,6 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
       drawer: const AppDrawer(),
       body: Column(
         children: [
-          // Banner de Contexto
           Container(
             width: double.infinity,
             color: Colors.amber[50],
@@ -64,7 +70,6 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
             ),
           ),
           
-          // Área de Seleção (Face a Face)
           Container(
             padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
             decoration: BoxDecoration(
@@ -84,7 +89,6 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
             ),
           ),
 
-          // Área de Dados
           Expanded(
             child: (_player1 == null || _player2 == null)
                 ? _buildEmptyState()
@@ -99,7 +103,6 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                          _buildComparisonRow('Cartões Vermelhos', 'total_red_cards', higherIsBetter: false),
                          _buildComparisonRow('Craque do Jogo', 'man_of_the_match_awards', higherIsBetter: true),
                          
-                         // Exibe Gols Sofridos se pelo menos um for goleiro
                          if ((_isGoalkeeper(_player1)) || (_isGoalkeeper(_player2)))
                            _buildComparisonRow('Gols Sofridos', 'goals_conceded', higherIsBetter: false),
                       ],
@@ -211,7 +214,6 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
     FontWeight weight1 = FontWeight.normal;
     FontWeight weight2 = FontWeight.normal;
 
-    // Lógica de Destaque
     if (val1 != val2) {
       if (higherIsBetter) {
         if (val1 > val2) { color1 = Colors.green[700]!; weight1 = FontWeight.bold; }

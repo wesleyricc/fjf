@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/sponsor_banner_rotator.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class AboutHistoryScreen extends StatelessWidget {
   const AboutHistoryScreen({super.key});
@@ -9,6 +10,12 @@ class AboutHistoryScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nossa História'),
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
       ),
       body: SingleChildScrollView(
         child: Column(

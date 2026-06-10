@@ -13,6 +13,7 @@ import '../widgets/rank_highlight_card.dart';
 import '../widgets/ui/shimmer_effect.dart';     
 import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class TeamStatsScreen extends StatefulWidget {
   const TeamStatsScreen({super.key});
@@ -50,8 +51,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                   const TextSpan(text: 'Ranking de equipes com menos Pontos Disciplinares (ordem ascendente). Este é o critério de desempate na classificação.\n\n'),
                   const TextSpan(text: 'Regra Geral de Suspensão:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextSpan(text: '- Um atleta é suspenso quando toma 1 CV ou ${AdminService.suspensionYellowCards} CA em jogos diferentes (2 CA no mesmo joga contabiliza-se apenas um para regra de Suspensão);\n'),
-                  const TextSpan(text: '- Se um atleta vem para o jogo com 1 CA acumulado e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão pelo CV, e seus CA seguem acumulados;\n'),
-                  TextSpan(text: '- Se um atleta vem para o jogo pendurado (${AdminService.pendingYellowCards} CA) e levar 2CA e 1CV no jogo, ele irá cumprimir suspensão dobrada, pelo CV e pelos CA acumulados.\n\n'),
+                  const TextSpan(text: '- Se um atleta vem para o jogo com 1 CA acumulado e levar 2CA e 1CV no jogo, ele irá cumprir suspensão pelo CV, e seus CA seguem acumulados;\n'),
+                  TextSpan(text: '- Se um atleta vem para o jogo pendurado (${AdminService.pendingYellowCards} CA) e levar 2CA e 1CV no jogo, ele irá cumprir suspensão dobrada, pelo CV e pelos CA acumulados.\n\n'),
                   const TextSpan(text: 'Regra Geral de Zeramento de Cartões:\n', style: TextStyle(fontWeight: FontWeight.bold)),
                   const TextSpan(text: 'Um atleta tem seus CA zerados apenas quando cumpre suspensão por levar 3CA.\n'),
                 ],
@@ -81,6 +82,12 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
           length: 6,
           child: Scaffold(
             appBar: AppBar(
+              // 🚨 NOVO: Gradiente da Copa aplicado
+              flexibleSpace: Container(
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.brazilGradient,
+                ),
+              ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -268,7 +275,6 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                         imageUrl: team.shieldUrl, 
                         width: 25, height: 25, 
                         fit: BoxFit.contain,
-                        // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
                         memCacheWidth: 100,
                         memCacheHeight: 100,
                         placeholder: (_,__) => Container(color: Colors.transparent),

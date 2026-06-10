@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/player_service.dart'; 
@@ -83,11 +84,11 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
       future: _playerFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+          return Scaffold(appBar: AppBar(flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient))), body: const Center(child: CircularProgressIndicator()));
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-          return Scaffold(appBar: AppBar(title: const Text("Perfil")), body: const Center(child: Text('Jogador não encontrado.')));
+          return Scaffold(appBar: AppBar(title: const Text("Perfil"), flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient))), body: const Center(child: Text('Jogador não encontrado.')));
         }
 
         final Player player = snapshot.data!;
@@ -135,13 +136,10 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
+                      // 🚨 NOVO: Gradiente da Copa aplicado
                       Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.grey.shade800, primaryColor],
-                          ),
+                        decoration: const BoxDecoration(
+                          gradient: AppTheme.brazilGradient,
                         ),
                       ),
                       Center(
@@ -157,7 +155,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                                   ? CachedNetworkImageProvider(
                                       player.photoUrl, 
                                       cacheManager: PlayerCacheManager.instance,
-                                      // ---> OTIMIZAÇÃO DE MEMÓRIA AQUI <---
                                       maxWidth: 400, 
                                       maxHeight: 400,
                                     )
@@ -181,7 +178,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                               child: CachedNetworkImage(
                                 imageUrl: player.teamShieldUrl, 
                                 fit: BoxFit.contain,
-                                // ---> OTIMIZAÇÃO DE MEMÓRIA AQUI <---
                                 memCacheHeight: 150,
                                 memCacheWidth: 150,
                               ),
@@ -334,7 +330,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                     width: 28, 
                     height: 28, 
                     fit: BoxFit.contain,
-                    // ---> OTIMIZAÇÃO AQUI <---
                     memCacheHeight: 100,
                     memCacheWidth: 100,
                   ),

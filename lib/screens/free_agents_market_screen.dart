@@ -8,6 +8,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../models/free_agent_model.dart';
 import '../widgets/ui/custom_empty_state.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class FreeAgentsMarketScreen extends StatefulWidget {
   const FreeAgentsMarketScreen({super.key});
@@ -65,10 +66,10 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.amber.withOpacity(0.5))),
+                decoration: BoxDecoration(color: AppTheme.yellowColor.withOpacity(0.15), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.yellowColor.withOpacity(0.5))),
                 child: Row(
                   children: [
-                    const Icon(Icons.star, color: Colors.amber, size: 28),
+                    const Icon(Icons.star, color: AppTheme.yellowColor, size: 28),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -163,6 +164,12 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Mercado de Atletas"),
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
@@ -243,7 +250,6 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
                           ],
                         ),
                         trailing: Icon(Icons.chevron_right, color: Colors.grey.shade400),
-                        // 🚨 AGORA SIM! O BOTÃO ESTÁ DESCOMENTADO E FUNCIONANDO! 🚨
                         onTap: () => _showPlayerDetails(context, agent), 
                       ),
                     );
@@ -259,7 +265,15 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
 
   Widget _buildAccessDenied(BuildContext context, String title, String msg, {bool showLoginButton = false}) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Mercado de Atletas")),
+      appBar: AppBar(
+        title: const Text("Mercado de Atletas"),
+        // 🚨 NOVO: Gradiente da Copa aplicado
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32.0),

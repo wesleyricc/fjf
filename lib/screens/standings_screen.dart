@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 
+import '../theme/app_theme.dart'; // <-- NOVO: Import do Tema
 import '../services/championship_service.dart';
 import '../services/admin_service.dart';
 import '../utils/standings_calculator.dart'; 
@@ -26,15 +27,11 @@ class StandingsScreen extends StatefulWidget {
 class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Estado Local (Simulador)
   final Map<String, Map<String, int>> _userSimulations = {}; 
   
-  // Cache de referência para o build
   List<Team> _cachedTeams = [];
   List<MatchModel> _cachedMatches = [];
 
-  // 🚨 OTIMIZAÇÃO DE PERFORMANCE: MEMOIZATION
-  // Evita que o app calcule a tabela oficial toda vez que o usuário digita no simulador
   List<TeamStanding>? _memoizedOfficialStandings;
   Map<String, Map<String, dynamic>>? _memoizedLiveScores;
   int _lastDataHash = 0;
@@ -53,7 +50,6 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
 
-    // 🚨 EVENTO DE NEGÓCIO: Adiciona um ouvinte para ver quando ele abre a aba do Simulador
     _tabController.addListener(() {
       if (_tabController.index == 1 && !_tabController.indexIsChanging) {
         AnalyticsService.logSimulatorUsed();
@@ -67,15 +63,10 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
     super.dispose();
   }
 
-  // 🚨 LÓGICA DO MEMOIZATION
   void _updateMemoization() {
-    // Cria uma assinatura única para os dados atuais do banco
     int currentHash = Object.hash(_cachedTeams, _cachedMatches);
     
-    // Só processa matemática pesada se a assinatura mudou (dados novos chegaram)
     if (_memoizedOfficialStandings == null || _lastDataHash != currentHash) {
-      debugPrint("🧮 [MEMOIZATION] Calculando Tabela Oficial...");
-      
       _memoizedOfficialStandings = StandingsCalculator.calculate(
         teams: _cachedTeams,
         matches: _cachedMatches,
@@ -93,7 +84,7 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
             _memoizedLiveScores![m.awayTeamId] = {'score': '[$sA-$sH]', 'color': cA};
          }
       }
-      _lastDataHash = currentHash; // Salva a nova assinatura
+      _lastDataHash = currentHash; 
     }
   }
 
@@ -103,16 +94,19 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
       builder: (context, service, _) {
         final seasonName = service.currentSeasonName;
         
-        // Pega do Cache do Provider
         _cachedTeams = service.teams;
-        // Filtra apenas jogos da 1ª Fase para classificação
         _cachedMatches = service.matches.where((m) => m.phase == 'first').toList();
 
-        // 🚨 Atualiza a tabela oficial APENAS se houver dados novos do servidor
         _updateMemoization();
 
         return Scaffold(
           appBar: AppBar(
+            // 🚨 NOVO: Gradiente da Copa aplicado
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.brazilGradient,
+              ),
+            ),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -159,9 +153,9 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
         slivers: [
           SliverToBoxAdapter(
             child: StandingsTableWidget(
-              standings: _memoizedOfficialStandings!, // Usa o cache inteligente
+              standings: _memoizedOfficialStandings!, 
               allMatches: _cachedMatches,
-              liveScores: _memoizedLiveScores!, // Usa o cache inteligente
+              liveScores: _memoizedLiveScores!, 
             ),
           ),
           SliverToBoxAdapter(
@@ -182,7 +176,6 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
     }
     final rounds = groupedMatches.keys.toList()..sort();
 
-    // 🚨 O Simulador é a única aba que roda o cálculo em tempo real a cada digitação
     final simulatedStandings = StandingsCalculator.calculate(
       teams: _cachedTeams,
       matches: _cachedMatches,
@@ -235,8 +228,6 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
   Widget _buildSimulationMatchRow(MatchModel match) {
     final id = match.id;
     
-    // 🚨 CORREÇÃO: Se o jogo está em andamento, o valor padrão do simulador 
-    // deve ser o placar atual da partida. Caso contrário, fica vazio (-1).
     int defaultH = (match.isInProgress && match.scoreHome != null) ? match.scoreHome! : -1;
     int defaultA = (match.isInProgress && match.scoreAway != null) ? match.scoreAway! : -1;
 

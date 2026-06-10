@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 
+import '../theme/app_theme.dart'; // <-- NOVO: Import do Tema
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
 import '../models/match_model.dart'; 
@@ -37,17 +38,15 @@ class _FixturesScreenState extends State<FixturesScreen> {
   
   final int TOTAL_RODADAS = 7; 
   
-  // Controles de Estado
   String _lastSeasonId = '';
   bool _isLoadingSettings = true;
-  bool _isModel2 = false; // Formato do torneio
+  bool _isModel2 = false; 
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final service = Provider.of<ChampionshipService>(context);
     
-    // MÁGICA AQUI: Se a temporada mudou, buscamos as configurações exclusivas dela!
     if (service.currentSeasonId.isNotEmpty && service.currentSeasonId != _lastSeasonId) {
       _lastSeasonId = service.currentSeasonId;
       _loadSeasonSettings(service.currentSeasonId);
@@ -57,7 +56,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
   Future<void> _loadSeasonSettings(String seasonId) async {
     setState(() => _isLoadingSettings = true);
     try {
-      // Vai direto na fonte que você mencionou
       final doc = await FirebaseFirestore.instance
           .collection('championships')
           .doc(seasonId)
@@ -77,7 +75,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
           
           if (_selectedPhase == TournamentPhase.first) {
             _selectedRound = int.tryParse(stage) ?? 1;
-            // Se for model_2 começa nas quartas, senão semi
             _selectedPlayoffStage = _isModel2 ? PlayoffStage.quarter_final : PlayoffStage.semifinal; 
           } else {
             _selectedRound = 1;
@@ -100,7 +97,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
     return PlayoffStage.semifinal;
   }
 
-  // ... (Restante dos métodos _handleMatchTap e _showAdminOptions continuam iguais)
   Future<void> _handleMatchTap(MatchModel match, bool isAdmin, String seasonId) async {
     final matchRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(match.id);
     if (isAdmin || !match.isFinished) {
@@ -135,7 +131,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
         final seasonName = service.currentSeasonName;
         final seasonId = service.currentSeasonId;
 
-        // Filtro Local
         String? phaseFilter = (_selectedPhase == TournamentPhase.first) ? 'first' : null;
         if (_selectedPhase == TournamentPhase.second) {
            switch (_selectedPlayoffStage) {
@@ -152,7 +147,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
           return true;
         }).toList();
 
-        // Configuração de Banner
         String sponsorTitle = "Patrocinador Oficial";
         String? bannerFilterTag;
 
@@ -178,6 +172,12 @@ class _FixturesScreenState extends State<FixturesScreen> {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F5),
           appBar: AppBar(
+            // 🚨 NOVO: Gradiente da Copa aplicado
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.brazilGradient,
+              ),
+            ),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start, 
               children: [
@@ -194,7 +194,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
             ? const Center(child: CircularProgressIndicator()) 
             : Column(
                 children: [
-                  // HEADER DE NAVEGAÇÃO
                   Container(
                     color: Colors.white,
                     child: Column(
@@ -217,7 +216,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
                     ),
                   ),
                   
-                  // BANNER
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
                     child: Column(
@@ -240,7 +238,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
                     )
                   ),
                   
-                  // LISTA DE JOGOS
                   Expanded(
                     child: _buildMatchesContent(service.isLoading, matches, service, authService, seasonId),
                   ),
@@ -253,7 +250,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
     );
   }
 
-  // --- CARDS E SKELETON (MANTIDOS) ---
   Widget _buildMatchesContent(bool isLoading, List<MatchModel> matches, ChampionshipService service, AuthService authService, String seasonId) {
     if (service.isOffline && matches.isEmpty) {
       return CustomEmptyState.offline(

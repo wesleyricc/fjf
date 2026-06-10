@@ -7,8 +7,9 @@ import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/generic_player_rank_list.dart'; 
 import '../widgets/total_cards_rank_list.dart';    
 import '../models/player_model.dart';
-import '../widgets/ui/shimmer_effect.dart';     // <-- NOVO
-import '../widgets/ui/custom_empty_state.dart';  // <-- NOVO
+import '../widgets/ui/shimmer_effect.dart';     
+import '../widgets/ui/custom_empty_state.dart';  
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class PlayerStatsScreen extends StatefulWidget {
   const PlayerStatsScreen({super.key});
@@ -58,13 +59,14 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
         final seasonName = service.currentSeasonName;
-        // Clona a lista para processamento
         final List<Player> allPlayers = List.from(service.allPlayers);
 
-        // --- ESTADO OFFLINE ---
         if (service.isOffline && allPlayers.isEmpty) {
            return Scaffold(
-            appBar: AppBar(title: const Text("Estatísticas")),
+            appBar: AppBar(
+              title: const Text("Estatísticas"),
+              flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+            ),
             drawer: const AppDrawer(),
             body: CustomEmptyState.offline(
               onRetry: () {
@@ -77,10 +79,12 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
            );
         }
 
-        // --- LÓGICA DE LOADING VISUAL ---
         if (_isFetching && allPlayers.isEmpty) {
            return Scaffold(
-            appBar: AppBar(title: const Text("Estatísticas")),
+            appBar: AppBar(
+              title: const Text("Estatísticas"),
+              flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+            ),
             drawer: const AppDrawer(),
             body: ListView.separated(
               padding: const EdgeInsets.all(16),
@@ -99,7 +103,6 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
            );
         }
 
-        // Processamento das Listas
         final scorers = allPlayers.where((p) => !p.isStaff && p.goals > 0).toList()..sort((a, b) => b.goals.compareTo(a.goals));
         final assists = allPlayers.where((p) => !p.isStaff && p.assists > 0).toList()..sort((a, b) => b.assists.compareTo(a.assists));
         final goalkeepers = allPlayers.where((p) => p.isGoalkeeper).toList()..sort((a, b) => a.goalsConceded.compareTo(b.goalsConceded));
@@ -113,6 +116,12 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> {
           length: 9,
           child: Scaffold(
             appBar: AppBar(
+              // 🚨 NOVO: Gradiente da Copa aplicado
+              flexibleSpace: Container(
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.brazilGradient,
+                ),
+              ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

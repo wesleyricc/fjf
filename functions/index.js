@@ -818,11 +818,11 @@ exports.submitBolaoBonus = onCall({ cors: true }, async (request) => {
   const { field, teamName } = request.data;
   const userId = request.auth.uid;
 
-  const deadline = new Date('2026-06-11T20:30:00Z');
+  const deadline = new Date('2026-06-18T02:59:59Z');
   const serverNow = new Date();
 
   if (serverNow > deadline) {
-    throw new HttpsError('permission-denied', 'O prazo para salvar Bônus encerrou antes da Copa começar!');
+    throw new HttpsError('permission-denied', 'O prazo para salvar Bônus encerrou no dia 17/06/2026 às 23h59!');
   }
 
   try {

@@ -16,6 +16,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/award_card.dart';
 import 'edit_award_screen.dart';
+import '../theme/app_theme.dart'; // <-- NOVO IMPORT
 
 class SeasonSummaryScreen extends StatefulWidget {
   const SeasonSummaryScreen({super.key});
@@ -29,7 +30,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
   @override
   void initState() {
     super.initState();
-    // 1. CORREÇÃO: Garante que os dados globais (necessários para estatísticas) sejam carregados
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ChampionshipService>(context, listen: false).fetchAllPlayers();
     });
@@ -43,7 +43,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
         final authService = Provider.of<AuthService>(context);
         final isAdmin = authService.isAuthenticated;
 
-        // Se a lista global de jogadores estiver vazia (ainda carregando lazy), mostra loading
         if (champService.allPlayers.isEmpty && champService.isLoading) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
@@ -51,6 +50,12 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('Resumo da Temporada'),
+            // 🚨 NOVO: Gradiente da Copa aplicado
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.brazilGradient,
+              ),
+            ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh),
@@ -62,7 +67,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
           body: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              // 1. HEADER
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -78,7 +82,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
                 ),
               ),
 
-              // 2. O GRANDE CAMPEÃO
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -88,7 +91,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
               const SliverToBoxAdapter(child: SizedBox(height: 32)),
               
-              // 3. ESTATÍSTICAS DE EQUIPES (GRID)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -110,7 +112,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
               const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
-              // 4. ESTATÍSTICAS DE JOGADORES (GRID)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -132,7 +133,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
               const SliverToBoxAdapter(child: SizedBox(height: 32)),
               
-              // 5. PREMIAÇÕES HEADER
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -153,7 +153,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-              // 6. PREMIAÇÕES GRID (SLIVER)
               _buildAwardsSliverGrid(context, champService.currentSeasonId, isAdmin),
 
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -175,12 +174,10 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     );
   }
 
-  // --- SEÇÃO DO CAMPEÃO ---
   Widget _buildChampionSection(BuildContext context, ChampionshipService service) {
     final matches = service.matches;
     final teams = service.teams;
     
-    // Encontra a partida final, independente se ela terminou ou não
     final finalMatch = matches.firstWhere(
       (m) => (m.phase == 'final' || m.phase == 'final_game'),
       orElse: () => MatchModel(id: '', location: '', round: 0, phase: '', status: '', homeTeamId: '', homeTeamName: '', homeTeamShield: '', awayTeamId: '', awayTeamName: '', awayTeamShield: ''),
@@ -188,11 +185,9 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
 
     Team? champion;
     
-    // Somente consideramos o campeonato encerrado e com campeão se a final terminou
     if (finalMatch.id.isNotEmpty && finalMatch.isFinished) {
       String? champId = finalMatch.winnerTeamId;
       
-      // Fallback de segurança para achar o campeão se não usaram o botão no painel admin
       if (champId == null || champId.isEmpty) {
         final homeScore = finalMatch.scoreHome ?? 0;
         final awayScore = finalMatch.scoreAway ?? 0;
@@ -262,26 +257,21 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     );
   }
 
-  // --- ESTATÍSTICAS DE EQUIPES (WRAP) ---
   Widget _buildTeamStatsGrid(BuildContext context, ChampionshipService service) {
     final teams = service.teams;
     final matches = service.matches;
 
     if (teams.isEmpty) return const Center(child: Text("Sem dados."));
 
-    // 1. Melhor Ataque (Avaliando overallGoalsFor que pega do campeonato inteiro)
     final sortedAttack = [...teams]..sort((a, b) => b.overallGoalsFor.compareTo(a.overallGoalsFor));
     final bestAttack = sortedAttack.first;
 
-    // 2. Melhor Defesa (Avaliando overallGoalsAgainst que pega do campeonato inteiro)
     final sortedDefense = [...teams]..sort((a, b) => a.overallGoalsAgainst.compareTo(b.overallGoalsAgainst));
     final bestDefense = sortedDefense.first;
 
-    // 3. Fairplay (disciplinaryPoints engloba todos os cartões)
     final sortedFairplay = [...teams]..sort((a, b) => a.disciplinaryPoints.compareTo(b.disciplinaryPoints));
     final bestFairplay = sortedFairplay.first;
 
-    // 4. Troféu Abacaxi (Pior time considerando overallPoints, overallWins e overallGoalDifference)
     final sortedWorst = [...teams]..sort((a, b) {
       int cmp = a.overallPoints.compareTo(b.overallPoints);
       if (cmp != 0) return cmp;
@@ -291,7 +281,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     });
     final lastPlace = sortedWorst.isNotEmpty ? sortedWorst.first : null;
 
-    // 5. Maior Goleada (Avaliando todo o array de partidas finalizadas)
     MatchModel? biggestWinMatch;
     int maxDiff = -1;
     for (var m in matches) {
@@ -331,7 +320,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     );
   }
 
-  // --- ESTATÍSTICAS DE JOGADORES (WRAP) ---
   Widget _buildPlayerStatsGrid(BuildContext context, ChampionshipService service) {
     final players = service.allPlayers;
 
@@ -367,7 +355,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     );
   }
 
-  // --- CARD DE ESTATÍSTICA ---
   Widget _buildStatCard(BuildContext context, {
     required String title,
     required String name,
@@ -444,7 +431,6 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     );
   }
 
-  // --- GRID DE PREMIAÇÕES (OTIMIZADO COM SLIVER) ---
   Widget _buildAwardsSliverGrid(BuildContext context, String seasonId, bool isAdmin) {
     final awardService = Provider.of<AwardService>(context);
 
