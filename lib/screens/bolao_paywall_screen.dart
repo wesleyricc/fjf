@@ -6,7 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/bolao_service.dart';
 import 'bolao_predictions_screen.dart';
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../theme/app_theme.dart';
 
 class BolaoPaywallScreen extends StatefulWidget {
   const BolaoPaywallScreen({super.key});
@@ -60,7 +60,6 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
         backgroundColor: Colors.white,
         appBar: AppBar(
           title: const Text("Bolão da Copa 2026", style: TextStyle(fontWeight: FontWeight.bold)),
-          // 🚨 NOVO: Gradiente da Copa aplicado
           flexibleSpace: Container(
             decoration: const BoxDecoration(
               gradient: AppTheme.brazilGradient,
@@ -135,7 +134,6 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
         return Scaffold(
           backgroundColor: Colors.grey[100],
           appBar: AppBar(
-            // 🚨 NOVO: Gradiente da Copa aplicado
             flexibleSpace: Container(
               decoration: const BoxDecoration(
                 gradient: AppTheme.brazilGradient,
@@ -166,7 +164,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text("PREMIAÇÃO DO BOLÃO", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                              Text("30% DE TODO O ARRECADADO", style: TextStyle(color: AppTheme.yellowColor, fontSize: 16, fontWeight: FontWeight.w900)),
+                              Text("50% DE TODO O ARRECADADO", style: TextStyle(color: AppTheme.yellowColor, fontSize: 16, fontWeight: FontWeight.w900)),
                             ],
                           )
                         ],
@@ -246,6 +244,33 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
                         child: ExpansionTile(
+                          leading: const Icon(Icons.timer, color: Colors.redAccent),
+                          title: const Text("Prazos de Encerramento", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                          children: [
+                            Padding(
+                              padding: EdgeInsets.only(left: 16, right: 16, bottom: 16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
+                                  SizedBox(height: 4),
+                                  Text("⏳ Palpites das Partidas:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  Text("O palpite de cada confronto fecha individualmente 30 minutos antes do início programado daquela partida. Fique atento para não perder o prazo do dia!", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  SizedBox(height: 8),
+                                  Text("🔒 Bônus Extras (O Grande Campeão, etc):", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  Text("Serão trancados definitivamente no dia 17/06/2026 às 23h59. Após isso, não será possível alterar suas escolhas.", style: TextStyle(fontSize: 13, height: 1.5)),
+                                ],
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
+                        child: ExpansionTile(
                           leading: const Icon(Icons.sports_soccer, color: AppTheme.secondaryColor),
                           title: const Text("Como pontuar nos Jogos?", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.secondaryColor)),
                           children: [
@@ -256,10 +281,15 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                                 children: [
                                   Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
                                   SizedBox(height: 4),
-                                  Text("🎯 Na Mosca (Placar Exato): +5 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("⚖️ Acerto de Vencedor + Saldo: +3 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("✔️ Acerto Simples (Apenas Vencedor): +1 Ponto", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("💡 Dica de Empate: Se apostar 0x0 e o jogo terminar 1x1, você ganha 3 pontos! (Acertou o empate e o saldo de gols, que é zero).", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54)),
+                                  Text("🎯 Na Mosca (Placar Exato): +5 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  Text("Acertou o vencedor e o placar exato. (Ex: Palpitou 2x1, jogo terminou 2x1).", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  SizedBox(height: 8),
+                                  Text("⚖️ Acerto de Vencedor + Saldo: +3 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  Text("Acertou o vencedor e a diferença de gols, mas errou o placar. (Ex: Palpitou 2x0, jogo terminou 3x1).", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  Text("💡 Dica de Empate: Se apostar 0x0 e o jogo terminar 1x1, você ganha 3 pontos! (Acertou o empate e o saldo, que é sempre zero).", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54)),
+                                  SizedBox(height: 8),
+                                  Text("✔️ Acerto Simples: +1 Ponto", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  Text("Acertou apenas quem venceu a partida. (Ex: Palpitou 1x0, jogo terminou 3x0).", style: TextStyle(fontSize: 13, height: 1.5)),
                                 ],
                               ),
                             )
@@ -274,7 +304,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Colors.black12)),
                         child: ExpansionTile(
                           leading: const Icon(Icons.star, color: Colors.purple),
-                          title: const Text("Quais são as Regras dos Bônus?", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.purple)),
+                          title: const Text("Regras dos Bônus Extras", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.purple)),
                           children: [
                             Padding(
                               padding: EdgeInsets.only(left: 16, right: 16, bottom: 16),
@@ -283,13 +313,13 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                                 children: [
                                   Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
                                   SizedBox(height: 4),
+                                  Text("Esses pontos serão calculados apenas no fim da Copa do Mundo:", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                  SizedBox(height: 8),
                                   Text("🏆 O Grande Campeão: +20 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("🥈 O Vice-Campeão: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("⚽ Melhor Ataque da Copa: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("🛡️ Pior Defesa da Copa: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("📉 A Grande Decepção: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  SizedBox(height: 8),
-                                  Text("*Os palpites para os bônus extras trancam no dia 17/06/2026 às 23h59.", style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.grey)),
                                 ],
                               ),
                             )

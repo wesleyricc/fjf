@@ -11,7 +11,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:url_launcher/url_launcher.dart';
-import '../../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../../theme/app_theme.dart';
+
+enum SyncStatus { idle, syncing, saved }
 
 class BolaoPredictionsScreen extends StatefulWidget {
   const BolaoPredictionsScreen({super.key});
@@ -20,7 +22,8 @@ class BolaoPredictionsScreen extends StatefulWidget {
   State<BolaoPredictionsScreen> createState() => _BolaoPredictionsScreenState();
 }
 
-class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with SingleTickerProviderStateMixin {
+// ADICIONADO: WidgetsBindingObserver para monitorar quando o app é minimizado
+class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final BolaoService _bolaoService = BolaoService();
   late TabController _tabController;
 
@@ -31,16 +34,18 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
   Timer? _debounce;
   late String _userId;
 
-  // 🚨 VARIÁVEIS DE CACHE (Evita que a tela pisque ao trocar de abas)
   late Stream<DocumentSnapshot> _settingsStream;
   late Stream<BolaoUser?> _userStream;
   late Future<List<BolaoMatch>> _matchesFuture;
   late Future<List<BolaoPrediction>> _predictionsFuture;
 
-  // VARIÁVEIS DE ESTADO DOS FILTROS E PAGINAÇÃO
   String _selectedStatusFilter = "Todos";
   String _selectedPhaseFilter = "Todas as Fases";
-  int _matchDisplayLimit = 20; // <-- 🚨 LIMITE INICIAL DE PARTIDAS RENDERIZADAS
+  int _matchDisplayLimit = 20;
+  
+  // Controle de Feedback Visual
+  SyncStatus _syncStatus = SyncStatus.idle;
+  Timer? _syncDebounce;
 
   final List<String> _phaseOptions = [
     "Todas as Fases", "Grupo A", "Grupo B", "Grupo C", "Grupo D", "Grupo E", "Grupo F",
@@ -65,12 +70,14 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
   @override
   void initState() {
     super.initState();
+    // Registra este Widget para ouvir os eventos do ciclo de vida do app
+    WidgetsBinding.instance.addObserver(this);
+    
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
-      setState(() {}); // Atualiza a tela para ocultar/mostrar filtros na aba correta
+      setState(() {}); 
     });
 
-    // 🚨 INICIALIZAÇÃO ÚNICA DOS STREAMS (Impede os "piscos" na tela)
     final authService = Provider.of<FantasyAuthService>(context, listen: false);
     _userId = authService.user?.uid ?? '';
     
@@ -80,24 +87,31 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
     _predictionsFuture = _bolaoService.getMyPredictions(_userId);
   }
 
+  // ADICIONADO: Gatilho disparado pelo Flutter quando o App muda de estado (ex: é minimizado)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Força o envio imediato se o usuário minimizar o app ou receber uma ligação
+      BolaoService.commitPendingPredictions();
+    }
+  }
+
   @override
   void dispose() {
+    // Remove o observer ao destruir a tela
+    WidgetsBinding.instance.removeObserver(this);
+    
     BolaoService.commitPendingPredictions(); 
     _tabController.dispose();
     _nameController.dispose();
     _debounce?.cancel();
+    _syncDebounce?.cancel();
     for (var c in _homeControllers.values) c.dispose();
     for (var c in _awayControllers.values) c.dispose();
     super.dispose();
   }
 
-  // ===========================================================================
-  // 🚨 ALERTAS, MODAIS E SUPORTE
-  // ===========================================================================
-  
-  // 🚨 NOVA FUNÇÃO: Redirecionamento para o WhatsApp
   Future<void> _contactSupport() async {
-    // Utilizando o mesmo número de suporte configurado no app
     final Uri url = Uri.parse("https://wa.me/5548996381626?text=Ol%C3%A1%2C%20preciso%20de%20suporte%20no%20Bol%C3%A3o%20da%20FJF");
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       debugPrint("Não foi possível abrir o WhatsApp.");
@@ -111,10 +125,10 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
       backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
           decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.only(top: 24, left: 24, right: 24),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -130,45 +144,89 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
                   IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                 ],
               ),
-              const SizedBox(height: 20),
-              const Text("💰 PREMIAÇÃO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.orange)),
-              const SizedBox(height: 4),
-              const Text("O grande vencedor (1º Lugar do Ranking) leva 30% de TODO o valor arrecadado com as inscrições!", style: TextStyle(fontSize: 14)),
-              const Divider(height: 30),
-              const Text("⚽ PALPITES DOS JOGOS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
-              const SizedBox(height: 4),
-              const Text("• Na Mosca (Placar Exato): +5 Pontos\n• Vencedor + Saldo de Gols: +3 Pontos\n• Acerto Simples (Vencedor): +1 Ponto", style: TextStyle(fontSize: 14, height: 1.5)),
-              const Text("💡 Dica de Empate: Se apostar 0x0 e o jogo terminar 1x1, você ganha 3 pontos!", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54)),
-              const Divider(height: 30),
-              const Text("🏆 BÔNUS EXTRAS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purple)),
-              const SizedBox(height: 4),
-              const Text("• O Grande Campeão: +20 Pontos\n• Vice-Campeão: +10 Pontos\n• Melhor Ataque: +10 Pontos\n• Pior Defesa: +10 Pontos\n• A Grande Decepção: +10 Pontos", style: TextStyle(fontSize: 14, height: 1.5)),
-              const SizedBox(height: 30),
-              
-              SizedBox(
-                width: double.infinity, height: 50,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF1B5E20),
-                    side: const BorderSide(color: Color(0xFF1B5E20), width: 1.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+              const SizedBox(height: 10),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("💰 PREMIAÇÃO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.orange)),
+                      const SizedBox(height: 4),
+                      const Text("O grande vencedor (1º Lugar do Ranking) leva 50% de TODO o valor arrecadado com as inscrições!", style: TextStyle(fontSize: 14)),
+                      
+                      const Divider(height: 30),
+                      
+                      const Text("⏳ PRAZOS DE ENCERRAMENTO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red)),
+                      const SizedBox(height: 4),
+                      const Text("• Palpites das Partidas: O palpite de cada confronto fecha individualmente 30 minutos antes do início programado daquela partida.", style: TextStyle(fontSize: 14, height: 1.5)),
+                      const Text("• Bônus Extras: Serão trancados definitivamente no dia 17/06/2026 às 23h59. Faça suas escolhas com antecedência!", style: TextStyle(fontSize: 14, height: 1.5)),
+
+                      const Divider(height: 30),
+                      
+                      const Text("⚽ PONTUAÇÃO DOS JOGOS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                      const SizedBox(height: 8),
+                      const Text("🎯 Na Mosca (+5 Pontos)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const Text("Acertou o vencedor e o placar exato.\nExemplo: Palpitou 2x1, jogo terminou 2x1.", style: TextStyle(fontSize: 14, height: 1.5)),
+                      const SizedBox(height: 8),
+                      const Text("⚖️ Acerto de Vencedor + Saldo (+3 Pontos)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const Text("Acertou quem venceu e a diferença de gols, mas errou o placar exato.\nExemplo: Palpitou 2x0, jogo terminou 3x1 (diferença de 2 gols).", style: TextStyle(fontSize: 14, height: 1.5)),
+                      const Text("Dica de Empate: Se apostar 0x0 e o jogo terminar 1x1, você ganha 3 pontos! (Acertou o empate e o saldo de gols, que é sempre zero).", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54)),
+                      const SizedBox(height: 8),
+                      const Text("✔️ Acerto Simples (+1 Ponto)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const Text("Acertou apenas quem venceu a partida.\nExemplo: Palpitou 1x0, jogo terminou 3x0.", style: TextStyle(fontSize: 14, height: 1.5)),
+
+                      const Divider(height: 30),
+                      
+                      const Text("🏆 PONTUAÇÃO DOS BÔNUS EXTRAS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purple)),
+                      const SizedBox(height: 4),
+                      const Text("• O Grande Campeão: +20 Pontos\n• O Vice-Campeão: +10 Pontos\n• Melhor Ataque da Copa: +10 Pontos\n• Pior Defesa da Copa: +10 Pontos\n• A Grande Decepção: +10 Pontos", style: TextStyle(fontSize: 14, height: 1.5)),
+
+                      const Divider(height: 30),
+                      
+                      const Text("⚖️ CRITÉRIOS DE DESEMPATE (RANKING)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal)),
+                      const SizedBox(height: 4),
+                      const Text("Em caso de empate na pontuação total, o sistema utilizará a seguinte ordem para definir a posição final:\n\n1º Maior número de placares exatos (Na Mosca)\n2º Maior número de acertos de saldo\n3º Maior número de acertos simples\n4º Maior pontuação ganha com Bônus Extras", style: TextStyle(fontSize: 14, height: 1.5)),
+                      
+                      const SizedBox(height: 30),
+                    ],
                   ),
-                  icon: const Icon(Icons.support_agent),
-                  label: const Text("PRECISO DE SUPORTE", style: TextStyle(fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    Navigator.pop(context); // Fecha o modal
-                    _contactSupport();      // Abre o WhatsApp
-                  },
                 ),
               ),
-              const SizedBox(height: 12),
               
-              SizedBox(
-                width: double.infinity, height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1B5E20), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("ENTENDI, VAMOS JOGAR!", style: TextStyle(fontWeight: FontWeight.bold)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF1B5E20),
+                          side: const BorderSide(color: Color(0xFF1B5E20), width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        ),
+                        icon: const Icon(Icons.support_agent),
+                        label: const Text("SUPORTE", style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _contactSupport();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1B5E20), 
+                          foregroundColor: Colors.white, 
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text("ENTENDI!", style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
                 ),
               )
             ],
@@ -199,7 +257,6 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
     );
   }
 
-  // --- AUTO-SAVE DOS PALPITES ---
   void _onScoreChanged(String matchId, String userId, BolaoPrediction? currentPred) {
     final homeStr = _homeControllers[matchId]?.text ?? '';
     final awayStr = _awayControllers[matchId]?.text ?? '';
@@ -211,6 +268,22 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
       if (currentPred != null && currentPred.scoreHome == newHomeScore && currentPred.scoreAway == newAwayScore) return; 
 
       _bolaoService.savePrediction(userId, matchId, newHomeScore, newAwayScore);
+
+      // Feedback Visual de Sincronização
+      setState(() => _syncStatus = SyncStatus.syncing);
+      _syncDebounce?.cancel();
+      // Aguarda 3.5 segundos (tempo do debounce do service + latência de rede) para mostrar "Salvo"
+      _syncDebounce = Timer(const Duration(milliseconds: 3500), () {
+        if (mounted) {
+          setState(() => _syncStatus = SyncStatus.saved);
+          // Oculta o card de sucesso após 3 segundos
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted && _syncStatus == SyncStatus.saved) {
+              setState(() => _syncStatus = SyncStatus.idle);
+            }
+          });
+        }
+      });
     }
   }
 
@@ -249,12 +322,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
               backgroundColor: Colors.grey[100],
               appBar: AppBar(
                 title: const Text("Bolão Copa do Mundo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                // 🚨 NOVO: Gradiente da Copa aplicado
-                flexibleSpace: Container(
-                  decoration: const BoxDecoration(
-                    gradient: AppTheme.brazilGradient,
-                  ),
-                ),
+                flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
                 iconTheme: const IconThemeData(color: Colors.white),
                 actions: [
                   IconButton(
@@ -275,27 +343,64 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
                   ],
                 ),
               ),
-              body: Column(
+              // Envolvendo o corpo em um Stack para sobrepor o aviso de sincronização
+              body: Stack(
                 children: [
-                  if (isGlobalLocked && _tabController.index != 2)
-                    Container(
-                      width: double.infinity, color: Colors.red[800], padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                      child: const Row(children: [Icon(Icons.lock, color: Colors.white, size: 20), SizedBox(width: 12), Expanded(child: Text("MERCADO GERAL FECHADO PELO ADMIN!", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)))]),
-                    ),
-                  
-                  if (_tabController.index == 0) 
-                    _buildFilterBar(),
-                  
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildMatchesTab(_userId, isGlobalLocked, currentUser),
-                        _buildBonusTab(_userId, isGlobalLocked, currentUser),
-                        _BolaoRankingTab(currentUserId: _userId),
-                      ],
-                    ),
+                  Column(
+                    children: [
+                      if (isGlobalLocked && _tabController.index != 2)
+                        Container(
+                          width: double.infinity, color: Colors.red[800], padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                          child: const Row(children: [Icon(Icons.lock, color: Colors.white, size: 20), SizedBox(width: 12), Expanded(child: Text("MERCADO GERAL FECHADO PELO ADMIN!", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)))]),
+                        ),
+                      
+                      if (_tabController.index == 0) 
+                        _buildFilterBar(),
+                      
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _buildMatchesTab(_userId, isGlobalLocked, currentUser),
+                            _buildBonusTab(_userId, isGlobalLocked, currentUser),
+                            _BolaoRankingTab(currentUserId: _userId),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
+                  
+                  // Componente de Feedback Visual de Sincronização (A Pílula Flutuante)
+                  if (_syncStatus != SyncStatus.idle)
+                    Positioned(
+                      bottom: 24,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _syncStatus == SyncStatus.syncing ? Colors.orange.shade700 : Colors.green.shade700,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _syncStatus == SyncStatus.syncing 
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Icon(Icons.check_circle, color: Colors.white, size: 18),
+                              const SizedBox(width: 10),
+                              Text(
+                                _syncStatus == SyncStatus.syncing ? "Sincronizando palpites..." : "Palpites salvos na nuvem!",
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             );
@@ -304,10 +409,6 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
       },
     );
   }
-
-  // ===========================================================================
-  // WIDGETS DA TELA E FILTROS
-  // ===========================================================================
 
   Widget _buildFilterBar() {
     return Container(
@@ -318,7 +419,6 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
-            // 🚨 Reseta o _matchDisplayLimit sempre que um filtro é alterado
             _buildFilterChip("Todos", _selectedStatusFilter == "Todos", (selected) { if (selected) setState(() { _selectedStatusFilter = "Todos"; _matchDisplayLimit = 20; }); }),
             _buildFilterChip("Em Aberto", _selectedStatusFilter == "Em Aberto", (selected) { if (selected) setState(() { _selectedStatusFilter = "Em Aberto"; _matchDisplayLimit = 20; }); }),
             _buildFilterChip("Encerrados", _selectedStatusFilter == "Encerrados", (selected) { if (selected) setState(() { _selectedStatusFilter = "Encerrados"; _matchDisplayLimit = 20; }); }),
@@ -338,7 +438,6 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _selectedPhaseFilter != "Todas as Fases" ? const Color(0xFF1B5E20) : Colors.black87),
                 icon: Icon(Icons.arrow_drop_down, color: _selectedPhaseFilter != "Todas as Fases" ? const Color(0xFF1B5E20) : Colors.black54),
                 items: _phaseOptions.map((phase) => DropdownMenuItem(value: phase, child: Text(phase))).toList(),
-                // 🚨 Reseta o _matchDisplayLimit sempre que um filtro de grupo é alterado
                 onChanged: (val) { if (val != null) setState(() { _selectedPhaseFilter = val; _matchDisplayLimit = 20; }); },
               ),
             ),
@@ -360,9 +459,6 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
     );
   }
 
-  // ===========================================================================
-  // 🚨 MODAL DE EDIÇÃO DE PERFIL
-  // ===========================================================================
   Future<void> _showEditProfileModal(BolaoUser bUser, String userId) async {
     final nameCtrl = TextEditingController(text: bUser.name == 'Utilizador' ? '' : bUser.name);
     final cpfCtrl = TextEditingController(text: bUser.cpf);
@@ -468,9 +564,6 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
     );
   }
 
-  // ===========================================================================
-  // ABA 1: PARTIDAS (COM PAGINAÇÃO APLICADA)
-  // ===========================================================================
   Widget _buildMatchesTab(String userId, bool isGlobalLocked, BolaoUser? currentUser) {
     return FutureBuilder<List<BolaoMatch>>(
       future: _matchesFuture, 
@@ -489,22 +582,19 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
             final predictions = predSnapshot.data ?? [];
             final Map<String, BolaoPrediction> predMap = { for (var p in predictions) p.matchId: p };
 
-            // Filtragem
             List<BolaoMatch> filteredMatches = rawMatches.where((match) {
               if (_selectedPhaseFilter != "Todas as Fases" && match.group != _selectedPhaseFilter) return false;
 
               final bool isFinished = match.status == 'finished';
               final now = DateTime.now();
-              final earliestMatch = match.date; 
-              final bool isDayLockedLocally = now.isAfter(earliestMatch.subtract(const Duration(minutes: 30)));
-              final bool isLocked = isGlobalLocked || isDayLockedLocally || isFinished;
+              final bool isMatchLockedLocally = now.isAfter(match.date.subtract(const Duration(minutes: 30)));
+              final bool isLocked = isGlobalLocked || isMatchLockedLocally || isFinished;
 
               if (_selectedStatusFilter == "Em Aberto" && isLocked) return false;
               if (_selectedStatusFilter == "Encerrados" && !isLocked) return false;
               return true;
             }).toList();
 
-            // Agrupamento por data
             final Map<String, List<BolaoMatch>> matchesByDate = {};
             for (var match in filteredMatches) {
               final dateKey = "${match.date.day.toString().padLeft(2, '0')}/${match.date.month.toString().padLeft(2, '0')}/${match.date.year}";
@@ -512,18 +602,17 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
               matchesByDate[dateKey]!.add(match);
             }
 
-            // Achatar (Flatten) para a ListView (Cabeçalhos + Matches)
             final List<dynamic> listItems = [];
             final now = DateTime.now();
 
             for (var dateKey in matchesByDate.keys) {
               final matchesForDay = matchesByDate[dateKey]!;
-              final earliestMatch = matchesForDay.first.date;
-              final bool isDayLockedLocally = now.isAfter(earliestMatch.subtract(const Duration(minutes: 30)));
 
-              listItems.add({'type': 'header', 'title': dateKey, 'isDayLocked': isDayLockedLocally});
+              listItems.add({'type': 'header', 'title': dateKey});
+              
               for (var match in matchesForDay) {
-                listItems.add({'type': 'match', 'match': match, 'isDayLocked': isDayLockedLocally});
+                final bool isMatchLockedLocally = now.isAfter(match.date.subtract(const Duration(minutes: 30)));
+                listItems.add({'type': 'match', 'match': match, 'isMatchLocked': isMatchLockedLocally});
               }
             }
 
@@ -538,18 +627,15 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
               );
             }
 
-            // 🚨 CÁLCULO DE PAGINAÇÃO: Limita o número de itens na tela para melhorar o FPS
             final bool hasMore = listItems.length > _matchDisplayLimit;
             final int displayCount = hasMore ? _matchDisplayLimit : listItems.length;
-            
-            // Quantidade de itens no ListView = 1 (Cabeçalho do Usuário) + displayCount + 1 (Botão Carregar Mais se aplicável)
             final int itemCount = 1 + displayCount + (hasMore ? 1 : 0);
 
             return RefreshIndicator(
               color: const Color(0xFF1B5E20),
               onRefresh: () async {
                 setState(() {
-                  _matchDisplayLimit = 20; // Reseta a paginação no refresh manual
+                  _matchDisplayLimit = 20; 
                   _matchesFuture = _bolaoService.getMatches(forceRefresh: true);
                   _predictionsFuture = _bolaoService.getMyPredictions(userId, forceRefresh: true);
                 });
@@ -558,10 +644,8 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
                 padding: const EdgeInsets.all(12),
                 itemCount: itemCount,
                 itemBuilder: (context, index) {
-                  // Primeiro item: Cabeçalho do Utilizador
                   if (index == 0) return _buildUserHeader(currentUser);
 
-                  // Último item (se houver mais para carregar): Botão de Paginação
                   if (hasMore && index == itemCount - 1) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
@@ -577,23 +661,36 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
                     );
                   }
 
-                  // O array listItems reflete o conteúdo começando do índice 0 real
                   final item = listItems[index - 1];
 
                   if (item['type'] == 'header') {
-                    final bool locked = item['isDayLocked'] || isGlobalLocked;
-                    return Container(
-                      margin: const EdgeInsets.only(top: 20, bottom: 10, left: 4, right: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(color: locked ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: locked ? Colors.red.shade200 : Colors.green.shade200, width: 1)),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(locked ? "Dia ${item['title']} - TRANCADO" : "Dia ${item['title']} - PALPITES ABERTOS", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: locked ? Colors.red[800] : const Color(0xFF1B5E20))),
-                          Icon(locked ? Icons.lock : Icons.lock_open, size: 18, color: locked ? Colors.red[800] : const Color(0xFF1B5E20))
-                        ],
-                      ),
-                    );
+                    if (isGlobalLocked) {
+                      return Container(
+                        margin: const EdgeInsets.only(top: 20, bottom: 10, left: 4, right: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red.shade200, width: 1)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text("Dia ${item['title']} - MERCADO FECHADO", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.red[800])),
+                            Icon(Icons.lock, size: 18, color: Colors.red[800])
+                          ],
+                        ),
+                      );
+                    } else {
+                      return Container(
+                        margin: const EdgeInsets.only(top: 20, bottom: 10, left: 4, right: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300, width: 1)),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text("Jogos do dia ${item['title']}", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.black87)),
+                            const Icon(Icons.calendar_today, size: 18, color: Colors.black54)
+                          ],
+                        ),
+                      );
+                    }
                   }
 
                   final match = item['match'] as BolaoMatch;
@@ -609,7 +706,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
                     if (_awayControllers[match.id]!.text.isEmpty) _awayControllers[match.id]!.text = myPred.scoreAway.toString();
                   }
 
-                  final bool isMatchLocked = isGlobalLocked || item['isDayLocked'] || match.status != 'pending';
+                  final bool isMatchLocked = isGlobalLocked || item['isMatchLocked'] || match.status != 'pending';
                   return _buildMatchCard(match, userId, isMatchLocked, myPred, currentUser);
                 },
               ),
@@ -810,6 +907,8 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
   // ABA 2: BÔNUS EXTRAS
   // ===========================================================================
   Widget _buildBonusTab(String userId, bool isGlobalLocked, BolaoUser? currentUser) {
+    // 🚨 NOVO PRAZO DE ENCERRAMENTO ATUALIZADO 🚨
+    // 17/06/2026 às 23:59 (BRT, GMT-3) corresponde a 18/06/2026 às 02:59 UTC
     final deadline = DateTime.utc(2026, 6, 18, 2, 59, 59); 
     final bool isTimeOver = DateTime.now().toUtc().isAfter(deadline);
     final bool isBonusLocked = isTimeOver; 
@@ -917,9 +1016,6 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Si
   }
 }
 
-// ===========================================================================
-// 🚨 ABA 3: RANKING GERAL (CORRIGIDO TEXTFIELD E BLINK)
-// ===========================================================================
 class _BolaoRankingTab extends StatefulWidget {
   final String currentUserId;
   const _BolaoRankingTab({required this.currentUserId});
@@ -929,10 +1025,7 @@ class _BolaoRankingTab extends StatefulWidget {
 }
 
 class _BolaoRankingTabState extends State<_BolaoRankingTab> {
-  // 🚨 Usar TextEditingController mantém o texto fixo mesmo se a tela redesenhar
   final TextEditingController _searchController = TextEditingController();
-  
-  // 🚨 Variável isolada para o Stream não reiniciar durante o setState
   late Stream<List<BolaoUser>> _leaderboardStream;
 
   String _searchQuery = '';
@@ -953,33 +1046,30 @@ class _BolaoRankingTabState extends State<_BolaoRankingTab> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<BolaoUser>>(
-      stream: _leaderboardStream, // Usa o cache para não piscar
+      stream: _leaderboardStream, 
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("Nenhum participante pontuou ainda."));
 
         final allUsers = snapshot.data!;
 
-        // 1. Aplica o filtro de pesquisa
         final filteredUsers = allUsers.where((u) {
           return u.name.toLowerCase().contains(_searchQuery.toLowerCase());
         }).toList();
 
-        // 2. Aplica a paginação
         final bool hasMore = filteredUsers.length > _displayLimit;
         final displayCount = hasMore ? _displayLimit : filteredUsers.length;
         final int itemCount = displayCount + (hasMore ? 1 : 0);
 
         return Column(
           children: [
-            // --- CAMPO DE BUSCA ---
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: TextField(
-                controller: _searchController, // Adicionado o controller
+                controller: _searchController, 
                 onChanged: (value) => setState(() {
                   _searchQuery = value;
-                  _displayLimit = 10; // Reseta a paginação ao pesquisar
+                  _displayLimit = 10; 
                 }),
                 decoration: InputDecoration(
                   hintText: 'Pesquisar participante...',
@@ -992,13 +1082,11 @@ class _BolaoRankingTabState extends State<_BolaoRankingTab> {
               ),
             ),
 
-            // --- LISTA DO RANKING ---
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 itemCount: itemCount,
                 itemBuilder: (context, index) {
-                  // --- BOTÃO CARREGAR MAIS ---
                   if (index == displayCount) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
@@ -1013,7 +1101,6 @@ class _BolaoRankingTabState extends State<_BolaoRankingTab> {
                   final participant = filteredUsers[index];
                   final bool isMe = participant.userId == widget.currentUserId;
                   
-                  // Se tivermos pesquisando, a posição real dele é o index da lista global.
                   final int realRank = _searchQuery.isEmpty ? (index + 1) : (allUsers.indexOf(participant) + 1);
 
                   return Card(
@@ -1024,7 +1111,6 @@ class _BolaoRankingTabState extends State<_BolaoRankingTab> {
                         borderRadius: BorderRadius.circular(12),
                         side: isMe ? const BorderSide(color: Color(0xFF1B5E20), width: 1.5) : BorderSide.none),
                     child: ExpansionTile(
-                      // 🚨 POSIÇÃO ANTES DO NOME E FOTO
                       leading: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

@@ -1,6 +1,6 @@
 # fjf_app
 
-A new Flutter project.
+FJF App.
 
 ## Getting Started
 
