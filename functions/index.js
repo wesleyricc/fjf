@@ -2,7 +2,6 @@ const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https")
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler"); 
 const admin = require("firebase-admin");
-const functions = require("firebase-functions");
 const axios = require("axios");
 const https = require("https");
 const fs = require("fs");
@@ -39,16 +38,13 @@ const SICOOB_CLIENT_ID = "7b0b3a94-9783-4129-bef6-166eb52370a0";
 const SICOOB_AUTH_URL = "https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token";
 const SICOOB_API_URL = "https://api.sicoob.com.br/pix/api/v2";
 
-// 🚨 Chave PIX vinculada ao Sicoob
 const CHAVE_PIX = "04441635000185"; 
 
-// 🚨 Certificados na pasta functions/
 const httpsAgent = new https.Agent({
   cert: fs.readFileSync(path.join(__dirname, 'certificado.pem')),
   key: fs.readFileSync(path.join(__dirname, 'chave.key')),
 });
 
-// Geração de Token Dinâmico (OAuth2)
 async function getSicoobToken(scope) {
   const params = new URLSearchParams();
   params.append('grant_type', 'client_credentials');
@@ -71,13 +67,12 @@ async function getSicoobToken(scope) {
 // 🛒 MÓDULO DE PAGAMENTOS (PIX SICOOB)
 // ==================================================================
 
-// 1. GERAR COBRANÇA (Cob)
 exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Usuário não autenticado no aplicativo.');
   }
 
-  const { type, userId, customerContact, photoIds } = request.data;
+  const { type, userId, customerContact, photoIds, miniBolaoId } = request.data;
   let valorInscricao = "0.00";
   let itemsToSave = [];
   let description = "";
@@ -85,7 +80,30 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
   if (type === 'bolao') {
     valorInscricao = "20.00"; 
     description = `Inscrição Bolão Copa 2026 - ${userId}`;
-  } else {
+  } 
+  else if (type === 'mini_bolao') {
+    if (!miniBolaoId) throw new HttpsError('invalid-argument', 'ID do Mini Bolão não informado.');
+    
+    const mbSnap = await db.collection('bolao_mini_leagues').doc(miniBolaoId).get();
+    if (!mbSnap.exists) throw new HttpsError('not-found', 'Mini Bolão não encontrado.');
+    
+    const mbData = mbSnap.data();
+
+    // 🚨 BLOQUEIO POR DATA LIMITE: Ninguém gera PIX depois que a sala trancou
+    if (mbData.deadline) {
+      const deadlineTime = mbData.deadline.toDate();
+      if (new Date() > deadlineTime) {
+        throw new HttpsError('permission-denied', 'O prazo de inscrição para este Mini Bolão já encerrou!');
+      }
+    }
+    
+    const entryFee = parseFloat(mbData.entry_fee || 0);
+    if (entryFee <= 0) throw new HttpsError('invalid-argument', 'Valor do Mini Bolão é inválido.');
+    
+    valorInscricao = entryFee.toFixed(2);
+    description = `Mini Bolão: ${mbData.title}`.substring(0, 140);
+  } 
+  else {
     if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
       throw new HttpsError('invalid-argument', 'Nenhum item no carrinho.');
     }
@@ -139,6 +157,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
       amount: valorInscricao,
       txid: cobranca.txid,
       items: itemsToSave,
+      mini_bolao_id: miniBolaoId || null, 
       created_at: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -150,7 +169,6 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
   }
 });
 
-// 2. CONSULTA MANUAL DO PIX (Polling - Ideal para recarregar no App)
 exports.checkPixStatus = onCall({ cors: true, enforceAppCheck: false }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
 
@@ -183,10 +201,6 @@ exports.checkPixStatus = onCall({ cors: true, enforceAppCheck: false }, async (r
     throw new HttpsError('internal', 'Erro ao verificar o pagamento.');
   }
 });
-
-// ==================================================================
-// 📡 3. WEBHOOK OFICIAL (Sem Express, direto e à prova de falhas)
-// ==================================================================
 
 exports.sicoobWebhook = onRequest(async (req, res) => {
   try {
@@ -224,8 +238,22 @@ exports.sicoobWebhook = onRequest(async (req, res) => {
               payment_id: txid,
               approved_at: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+          }
+          else if (orderData.type === 'mini_bolao' && orderData.user_id && orderData.mini_bolao_id) {
+            const miniBolaoRef = db.collection('bolao_mini_leagues').doc(orderData.mini_bolao_id);
+            const participantRef = miniBolaoRef.collection('participants').doc(orderData.user_id);
             
-            console.log(`✅ [WEBHOOK SICOOB] Bolão liberado automaticamente. TXID: ${txid}`);
+            batchHandler.set(participantRef, {
+              joined_at: admin.firestore.FieldValue.serverTimestamp(),
+              points: 0
+            });
+
+            batchHandler.update(miniBolaoRef, {
+              prize_pool: admin.firestore.FieldValue.increment(parseFloat(orderData.amount || 0)),
+              participants_count: admin.firestore.FieldValue.increment(1)
+            });
+
+            console.log(`✅ [WEBHOOK SICOOB] Mini Bolão liberado automaticamente. TXID: ${txid}`);
           }
         }
       }
@@ -240,7 +268,6 @@ exports.sicoobWebhook = onRequest(async (req, res) => {
   }
 });
 
-// Lógica auxiliar isolada (usada pelo Polling)
 async function processOrderApproval(txid, orderData, valorPago = null) {
   const batchHandler = new BatchHandler(db);
   const orderRef = db.collection('orders').doc(txid);
@@ -261,8 +288,23 @@ async function processOrderApproval(txid, orderData, valorPago = null) {
       payment_id: txid,
       approved_at: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-    console.log(`✅ [POLLING MANUAL] Bolão liberado. TXID: ${txid}`);
   } 
+  else if (orderData.type === 'mini_bolao' && orderData.user_id && orderData.mini_bolao_id) {
+    const miniBolaoRef = db.collection('bolao_mini_leagues').doc(orderData.mini_bolao_id);
+    const participantRef = miniBolaoRef.collection('participants').doc(orderData.user_id);
+    
+    batchHandler.set(participantRef, {
+      joined_at: admin.firestore.FieldValue.serverTimestamp(),
+      points: 0
+    });
+
+    batchHandler.update(miniBolaoRef, {
+      prize_pool: admin.firestore.FieldValue.increment(parseFloat(orderData.amount || 0)),
+      participants_count: admin.firestore.FieldValue.increment(1)
+    });
+
+    console.log(`✅ [POLLING MANUAL] Mini Bolão liberado. TXID: ${txid}`);
+  }
   else if (orderData.type === 'photo') {
     console.log(`✅ [POLLING MANUAL] Fotos liberadas. TXID: ${txid}`);
   }
@@ -270,14 +312,9 @@ async function processOrderApproval(txid, orderData, valorPago = null) {
   await batchHandler.commit();
 }
 
-// ==================================================================
-// 🛠️ 4. FUNÇÃO PARA CADASTRAR O WEBHOOK NO BANCO SICOOB
-// ==================================================================
 exports.registerWebhookSicoob = onRequest(async (req, res) => {
   try {
     const accessToken = await getSicoobToken('webhook.write');
-    
-    // 🚨 URL exata baseada na imagem do Cloud Run
     const myWebhookBaseUrl = "https://us-central1-acefjf.cloudfunctions.net/sicoobWebhook"; 
     
     const response = await axios.put(`${SICOOB_API_URL}/webhook/${CHAVE_PIX}`, 
@@ -608,7 +645,6 @@ exports.updateLiveScouts = onDocumentWritten({
   }
 });
 
-
 // ==================================================================
 // ⏰ PILOTO AUTOMÁTICO (Fechar Mercado Sozinho - CRON)
 // ==================================================================
@@ -726,12 +762,24 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
           }
         }
 
-        if (pointsEarned > 0) {
+        const oldPoints = predData.points_earned || 0;
+        let oldExact = 0; let oldGoalDiff = 0; let oldWinner = 0;
+        
+        if (oldPoints === 5) oldExact = 1;
+        else if (oldPoints === 3) oldGoalDiff = 1;
+        else if (oldPoints === 2) oldWinner = 1;
+
+        const diffPoints = pointsEarned - oldPoints;
+        const diffExact = isExact - oldExact;
+        const diffGoalDiff = isGoalDiff - oldGoalDiff;
+        const diffWinner = isWinner - oldWinner;
+
+        if (diffPoints !== 0 || diffExact !== 0 || diffGoalDiff !== 0 || diffWinner !== 0) {
           batchHandler.update(userDoc.ref, {
-            total_points: admin.firestore.FieldValue.increment(pointsEarned),
-            exact_hits: admin.firestore.FieldValue.increment(isExact),
-            goal_difference_hits: admin.firestore.FieldValue.increment(isGoalDiff),
-            winner_hits: admin.firestore.FieldValue.increment(isWinner),
+            total_points: admin.firestore.FieldValue.increment(diffPoints),
+            exact_hits: admin.firestore.FieldValue.increment(diffExact),
+            goal_difference_hits: admin.firestore.FieldValue.increment(diffGoalDiff),
+            winner_hits: admin.firestore.FieldValue.increment(diffWinner),
             updated_at: admin.firestore.FieldValue.serverTimestamp()
           });
 
@@ -750,7 +798,27 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
 
     await batchHandler.commit();
 
-    return { success: true, message: `Jogo ${matchId} processado com sucesso!` };
+    try {
+      await admin.database().ref(`live_ranking/${matchId}`).remove();
+      
+      const liveMatchesSnap = await db.collection('bolao_matches')
+                                      .where('status', '==', 'in_progress')
+                                      .get();
+      
+      if (!liveMatchesSnap.empty) {
+        const touchBatch = db.batch();
+        liveMatchesSnap.forEach(liveDoc => {
+          if (liveDoc.id !== matchId) {
+            touchBatch.update(liveDoc.ref, { updated_at: admin.firestore.FieldValue.serverTimestamp() });
+          }
+        });
+        await touchBatch.commit();
+      }
+    } catch (e) {
+      console.error("Erro ao limpar RTDB:", e);
+    }
+
+    return { success: true, message: `Jogo ${matchId} processado e corrigido com sucesso!` };
 
   } catch (error) {
     throw new HttpsError('internal', error.message);
@@ -806,6 +874,59 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     throw new HttpsError('internal', 'Erro interno no servidor.');
+  }
+});
+
+// 🚨 NOVA FUNÇÃO PROTEGIDA: PALPITES DO MINI BOLÃO VIP 🚨
+exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Login obrigatório.');
+  
+  const { miniBolaoId, scoreHome, scoreAway, goalScorers, lastGoalTeam } = request.data;
+  const userId = request.auth.uid;
+
+  if (!miniBolaoId || scoreHome === undefined || scoreAway === undefined || !lastGoalTeam) {
+    throw new HttpsError('invalid-argument', 'Dados incompletos para o palpite VIP.');
+  }
+
+  try {
+    const mbSnap = await db.collection('bolao_mini_leagues').doc(miniBolaoId).get();
+    if (!mbSnap.exists) throw new HttpsError('not-found', 'Mini Bolão não encontrado.');
+    
+    const mbData = mbSnap.data();
+    
+    if (mbData.status === 'finished') {
+      throw new HttpsError('permission-denied', 'Esta sala VIP já foi encerrada.');
+    }
+
+    // 🚨 VALIDAÇÃO IMUTÁVEL DE HORA DO SERVIDOR DO GOOGLE
+    if (mbData.deadline) {
+      const deadlineTime = mbData.deadline.toDate();
+      const serverNow = new Date();
+      if (serverNow > deadlineTime) {
+        throw new HttpsError('permission-denied', 'O prazo para salvar palpites nesta sala VIP já encerrou!');
+      }
+    }
+
+    const participantRef = db.collection('bolao_mini_leagues').doc(miniBolaoId).collection('participants').doc(userId);
+    
+    // Confirma que o usuário pagou o PIX antes de deixar ele salvar um palpite
+    const pSnap = await participantRef.get();
+    if (!pSnap.exists) {
+      throw new HttpsError('permission-denied', 'Você não está participando desta sala VIP.');
+    }
+
+    await participantRef.set({
+      pred_score_home: parseInt(scoreHome),
+      pred_score_away: parseInt(scoreAway),
+      pred_goal_scorers: goalScorers || [],
+      pred_last_goal_team: lastGoalTeam,
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    return { success: true, message: 'Palpites VIP salvos com segurança.' };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError('internal', 'Erro interno no servidor ao salvar palpite VIP.');
   }
 });
 
@@ -874,6 +995,283 @@ exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async
 
     await batchHandler.commit();
     return { success: true, message: 'Bônus processados e Ranking Final atualizado!' };
+
+  } catch (error) {
+    throw new HttpsError('internal', error.message);
+  }
+});
+
+// ==================================================================
+// 🔴 MOTOR DO RANKING AO VIVO MULTI-PARTIDA (RTDB) - OTIMIZADO C/ DESEMPATES
+// ==================================================================
+
+exports.updateLiveBolaoRanking = onDocumentWritten({
+  document: "bolao_matches/{matchId}",
+}, async (event) => {
+  const triggeringMatchData = event.data.after.data();
+
+  if (!triggeringMatchData || triggeringMatchData.status !== 'in_progress') {
+    return;
+  }
+
+  try {
+    const liveMatchesSnap = await db.collection('bolao_matches')
+                                    .where('status', '==', 'in_progress')
+                                    .get();
+    
+    if (liveMatchesSnap.empty) return;
+
+    const liveMatchesData = {};
+    const liveMatchIds = [];
+    liveMatchesSnap.forEach(doc => {
+      liveMatchesData[doc.id] = doc.data();
+      liveMatchIds.push(doc.id);
+    });
+
+    const usersSnap = await db.collection('bolao_users').get();
+    
+    const predMap = {};
+    const predictionPromises = [];
+
+    usersSnap.forEach(userDoc => {
+      const uid = userDoc.id;
+      predMap[uid] = {};
+      
+      liveMatchIds.forEach(mId => {
+        const p = db.collection('bolao_users').doc(uid).collection('predictions').doc(mId).get()
+          .then(snap => {
+            if (snap.exists) {
+              predMap[uid][mId] = {
+                home: parseInt(snap.data().score_home),
+                away: parseInt(snap.data().score_away)
+              };
+            }
+          });
+        predictionPromises.push(p);
+      });
+    });
+
+    await Promise.all(predictionPromises);
+
+    const usersLiveState = {};
+
+    usersSnap.forEach(userDoc => {
+      const uid = userDoc.id;
+      const userData = userDoc.data();
+      
+      const basePoints = userData.total_points || 0;
+      const baseExactHits = userData.exact_hits || 0;
+      const baseGoalDiffHits = userData.goal_difference_hits || 0;
+      const baseWinnerHits = userData.winner_hits || 0;
+      const bonusPoints = userData.bonus_points || 0;
+
+      const userMatchesPoints = {};
+      let totalLivePoints = 0;
+      
+      let liveExactHits = 0;
+      let liveGoalDiffHits = 0;
+      let liveWinnerHits = 0;
+
+      liveMatchIds.forEach(mId => {
+        const mData = liveMatchesData[mId];
+        const liveHome = parseInt(mData.real_score_home) || 0;
+        const liveAway = parseInt(mData.real_score_away) || 0;
+        const liveDiff = liveHome - liveAway;
+        let liveOutcome = 'draw';
+        if (liveHome > liveAway) liveOutcome = 'home_win';
+        if (liveHome < liveAway) liveOutcome = 'away_win';
+
+        let points = 0;
+        if (predMap[uid] && predMap[uid][mId]) {
+          const pHome = predMap[uid][mId].home;
+          const pAway = predMap[uid][mId].away;
+          const pDiff = pHome - pAway;
+          let pOutcome = 'draw';
+          if (pHome > pAway) pOutcome = 'home_win';
+          if (pHome < pAway) pOutcome = 'away_win';
+
+          if (pHome === liveHome && pAway === liveAway) {
+            points = 5; 
+            liveExactHits++;
+          } else if (pOutcome === liveOutcome) {
+            if (pDiff === liveDiff) {
+              points = 3; 
+              liveGoalDiffHits++;
+            } else {
+              points = 2; 
+              liveWinnerHits++;
+            }
+          }
+        }
+        
+        userMatchesPoints[mId] = points;
+        totalLivePoints += points;
+      });
+
+      usersLiveState[uid] = {
+        name: userData.name || 'Treinador',
+        photoUrl: userData.photo_url || '',
+        basePoints: basePoints,
+        globalTotalPoints: basePoints + totalLivePoints, 
+        globalExactHits: baseExactHits + liveExactHits,
+        globalGoalDiffHits: baseGoalDiffHits + liveGoalDiffHits,
+        globalWinnerHits: baseWinnerHits + liveWinnerHits,
+        bonusPoints: bonusPoints,
+        userMatchesPoints: userMatchesPoints,
+        predictions: predMap[uid] || {}
+      };
+    });
+
+    const rtdbUpdates = {};
+
+    liveMatchIds.forEach(mId => {
+      const mData = liveMatchesData[mId];
+      let rankingList = [];
+
+      Object.keys(usersLiveState).forEach(uid => {
+        const state = usersLiveState[uid];
+        const pHome = state.predictions[mId]?.home;
+        const pAway = state.predictions[mId]?.away;
+        const predText = (pHome !== undefined && pAway !== undefined) ? `${pHome}x${pAway}` : "Sem palpite";
+
+        rankingList.push({
+          userId: uid,
+          name: state.name,
+          photoUrl: state.photoUrl,
+          basePoints: state.basePoints,
+          matchPoints: state.userMatchesPoints[mId], 
+          totalPoints: state.globalTotalPoints,      
+          exactHits: state.globalExactHits,          
+          goalDiffHits: state.globalGoalDiffHits,    
+          winnerHits: state.globalWinnerHits,        
+          bonusPoints: state.bonusPoints,            
+          prediction: predText
+        });
+      });
+
+      rankingList.sort((a, b) => 
+        (b.totalPoints - a.totalPoints) ||         
+        (b.exactHits - a.exactHits) ||             
+        (b.goalDiffHits - a.goalDiffHits) ||       
+        (b.winnerHits - a.winnerHits) ||           
+        (b.bonusPoints - a.bonusPoints) ||         
+        a.name.localeCompare(b.name)               
+      );
+
+      rankingList.forEach((u, index) => u.rank = index + 1);
+
+      rtdbUpdates[`live_ranking/${mId}`] = {
+        matchId: mId,
+        homeTeam: mData.home_team,
+        awayTeam: mData.away_team,
+        scoreHome: parseInt(mData.real_score_home) || 0,
+        scoreAway: parseInt(mData.real_score_away) || 0,
+        timestamp: admin.database.ServerValue.TIMESTAMP,
+        ranking: rankingList
+      };
+    });
+
+    await admin.database().ref().update(rtdbUpdates);
+
+  } catch (error) {
+    console.error("🔥 Erro Crítico no Motor Multi-Partida do Live Ranking:", error);
+  }
+});
+
+// ==================================================================
+// 🏆 ENCERRAMENTO E CÁLCULO DE MINI BOLÕES VIP
+// ==================================================================
+exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Acesso negado.');
+  
+  const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
+  if (!adminDoc.exists) throw new HttpsError('permission-denied', 'Apenas administradores podem calcular resultados.');
+
+  const { miniBolaoId, realHomeScore, realAwayScore, realScorers, realLastGoalTeam } = request.data;
+  
+  if (!miniBolaoId || realHomeScore === undefined || realAwayScore === undefined) {
+    throw new HttpsError('invalid-argument', 'Faltam dados da partida real.');
+  }
+
+  try {
+    const realHome = parseInt(realHomeScore);
+    const realAway = parseInt(realAwayScore);
+    const realDiff = realHome - realAway;
+    
+    let realOutcome = 'draw';
+    if (realHome > realAway) realOutcome = 'home_win';
+    if (realHome < realAway) realOutcome = 'away_win';
+
+    const batchHandler = new BatchHandler(db);
+    const participantsSnap = await db.collection('bolao_mini_leagues').doc(miniBolaoId).collection('participants').get();
+
+    participantsSnap.forEach(partDoc => {
+      const pData = partDoc.data();
+      let points = 0;
+      
+      // 1. Cálculo de Placar
+      if (pData.pred_score_home !== undefined && pData.pred_score_away !== undefined) {
+        const pHome = parseInt(pData.pred_score_home);
+        const pAway = parseInt(pData.pred_score_away);
+        const pDiff = pHome - pAway;
+        let pOutcome = 'draw';
+        if (pHome > pAway) pOutcome = 'home_win';
+        if (pHome < pAway) pOutcome = 'away_win';
+
+        if (pHome === realHome && pAway === realAway) {
+          points += 5; // Na Mosca
+        } else if (pOutcome === realOutcome) {
+          if (pDiff === realDiff) points += 3; // Saldo
+          else points += 2; // Vencedor
+        }
+      }
+
+      // 2. Cálculo de Artilheiros (Com checagem de frequência)
+      let scorersPoints = 0;
+      if (pData.pred_goal_scorers && Array.isArray(pData.pred_goal_scorers)) {
+        let realList = [...(realScorers || [])];
+        let predList = [...pData.pred_goal_scorers];
+        
+        for (const pred of predList) {
+          const idx = realList.indexOf(pred);
+          if (idx !== -1) {
+            scorersPoints += 2;
+            realList.splice(idx, 1); 
+          }
+        }
+      }
+      points += scorersPoints;
+
+      // 3. Cálculo de Último Gol
+      let lastGoalPoints = 0;
+      if (pData.pred_last_goal_team && pData.pred_last_goal_team === realLastGoalTeam) {
+        lastGoalPoints = 2;
+        points += lastGoalPoints;
+      }
+
+      // Atualiza o participante
+      batchHandler.update(partDoc.ref, {
+        points: points,
+        breakdown_scorers: scorersPoints,
+        breakdown_last_goal: lastGoalPoints,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // Atualiza o status da Sala VIP
+    const mbRef = db.collection('bolao_mini_leagues').doc(miniBolaoId);
+    batchHandler.update(mbRef, {
+      status: 'finished',
+      is_active: false,
+      real_score_home: realHome,
+      real_score_away: realAway,
+      real_scorers: realScorers || [],
+      real_last_goal_team: realLastGoalTeam || '',
+      finished_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    await batchHandler.commit();
+    return { success: true, message: 'Ranking do Mini Bolão calculado com sucesso!' };
 
   } catch (error) {
     throw new HttpsError('internal', error.message);

@@ -366,6 +366,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         color: Colors.orange,
                         title: "Temporadas",
                         subtitle: "Criar/Editar Anos",
+                        isHighlight: true,
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (ctx) => const ManageSeasonsScreen())),
                       ),
                     ),
@@ -393,7 +394,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                     ),
                   ],
                 ),
-
+                
                 const SizedBox(height: 24),
                 _buildSectionHeader("Mídia e Conteúdo"),
                 Card(

@@ -21,25 +21,13 @@ class TestFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        throw UnsupportedError(
-          'TestFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'TestFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'TestFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'TestFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'TestFirebaseOptions have not been configured for linux - '
@@ -58,8 +46,50 @@ class TestFirebaseOptions {
     messagingSenderId: '39829597186',
     projectId: 'fjfapp-test',
     authDomain: 'fjfapp-test.firebaseapp.com',
+    databaseURL: 'https://fjfapp-test-default-rtdb.firebaseio.com',
     storageBucket: 'fjfapp-test.firebasestorage.app',
     measurementId: 'G-0RBH0ZJ4SW',
   );
 
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyBtibvFfLtu3OlbaGZFZlHxzWrJx_FIvDg',
+    appId: '1:39829597186:ios:e5568d0e7b85d4bd990b1b',
+    messagingSenderId: '39829597186',
+    projectId: 'fjfapp-test',
+    databaseURL: 'https://fjfapp-test-default-rtdb.firebaseio.com',
+    storageBucket: 'fjfapp-test.firebasestorage.app',
+    iosClientId: '39829597186-690dgslnockk20c8rrfbqsvvj82pq2rs.apps.googleusercontent.com',
+    iosBundleId: 'com.example.fjfApp',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyBtibvFfLtu3OlbaGZFZlHxzWrJx_FIvDg',
+    appId: '1:39829597186:ios:e5568d0e7b85d4bd990b1b',
+    messagingSenderId: '39829597186',
+    projectId: 'fjfapp-test',
+    databaseURL: 'https://fjfapp-test-default-rtdb.firebaseio.com',
+    storageBucket: 'fjfapp-test.firebasestorage.app',
+    iosClientId: '39829597186-690dgslnockk20c8rrfbqsvvj82pq2rs.apps.googleusercontent.com',
+    iosBundleId: 'com.example.fjfApp',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyDyNWeDo7vtNd9wAYvtfrvZt7OL86D1mxM',
+    appId: '1:39829597186:android:c71362eda04547c1990b1b',
+    messagingSenderId: '39829597186',
+    projectId: 'fjfapp-test',
+    databaseURL: 'https://fjfapp-test-default-rtdb.firebaseio.com',
+    storageBucket: 'fjfapp-test.firebasestorage.app',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCMMpPUDFQi2c0VJQkWMMBdk5tm1wPNtbU',
+    appId: '1:39829597186:web:fcc2bddebeb950bd990b1b',
+    messagingSenderId: '39829597186',
+    projectId: 'fjfapp-test',
+    authDomain: 'fjfapp-test.firebaseapp.com',
+    databaseURL: 'https://fjfapp-test-default-rtdb.firebaseio.com',
+    storageBucket: 'fjfapp-test.firebasestorage.app',
+    measurementId: 'G-0PQ04F8QFH',
+  );
 }

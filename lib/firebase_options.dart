@@ -21,25 +21,13 @@ class DefaultFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -58,7 +46,50 @@ class DefaultFirebaseOptions {
     messagingSenderId: '893803829585',
     projectId: 'acefjf',
     authDomain: 'acefjf.firebaseapp.com',
-    storageBucket: 'acefjf-us-storage',
+    databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
+    storageBucket: 'acefjf.firebasestorage.app',
     measurementId: 'G-GHY5150MH5',
+  );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyALO2-bRhdu7tTMm-Ixo2kXvLZ4JXCy-8c',
+    appId: '1:893803829585:ios:26c74ac532b809d2f9db70',
+    messagingSenderId: '893803829585',
+    projectId: 'acefjf',
+    databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
+    storageBucket: 'acefjf.firebasestorage.app',
+    iosClientId: '893803829585-gug1mrkak51qgcsg19s732k38g91iv5j.apps.googleusercontent.com',
+    iosBundleId: 'com.example.fjfApp',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyALO2-bRhdu7tTMm-Ixo2kXvLZ4JXCy-8c',
+    appId: '1:893803829585:ios:26c74ac532b809d2f9db70',
+    messagingSenderId: '893803829585',
+    projectId: 'acefjf',
+    databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
+    storageBucket: 'acefjf.firebasestorage.app',
+    iosClientId: '893803829585-gug1mrkak51qgcsg19s732k38g91iv5j.apps.googleusercontent.com',
+    iosBundleId: 'com.example.fjfApp',
+  );
+
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBe_mP6DGidEAewkcObDinERnAEe2-nipY',
+    appId: '1:893803829585:android:4f9e3135170694b1f9db70',
+    messagingSenderId: '893803829585',
+    projectId: 'acefjf',
+    databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
+    storageBucket: 'acefjf.firebasestorage.app',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCAe8_uy2W7Wyo88jAZGixaPLvjkV2nesY',
+    appId: '1:893803829585:web:4dbfd5f8a377e49af9db70',
+    messagingSenderId: '893803829585',
+    projectId: 'acefjf',
+    authDomain: 'acefjf.firebaseapp.com',
+    databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
+    storageBucket: 'acefjf.firebasestorage.app',
+    measurementId: 'G-6YV4NEVGWC',
   );
 }

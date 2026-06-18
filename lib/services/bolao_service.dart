@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,6 +11,7 @@ import '../models/bolao_models.dart';
 class BolaoService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final FirebaseDatabase _rtdb = FirebaseDatabase.instance;
 
   List<BolaoMatch>? _cachedMatches;
   DateTime? _lastMatchesFetch;
@@ -258,4 +260,131 @@ class BolaoService {
   Future<void> saveUserName(String userId, String name) async {
     await _firestore.collection('bolao_users').doc(userId).set({'name': name, 'updated_at': FieldValue.serverTimestamp()}, SetOptions(merge: true));
   }
+
+  
+   // ===========================================================================
+  //   CHAT DA RESENHA E PALPITES DA GALERA (RTDB e FIRESTORE)
+  // ===========================================================================
+
+  /// Escuta as mensagens de chat para um jogo em tempo real (Realtime Database)
+  Stream<DatabaseEvent> streamMatchChat(String matchId) {
+    return _rtdb.ref('match_chats/$matchId').orderByChild('timestamp').limitToLast(100).onValue;
+  }
+
+  /// Envia mensagem (RTDB) - Com suporte a Respostas (Reply)
+  Future<void> sendChatMessage(
+    String matchId, String userId, String userName, String photoUrl, String text,
+    {String? replyToUserName, String? replyToText} // 🚨 NOVOS PARÂMETROS
+  ) async {
+    if (text.trim().isEmpty || text.length > 50) return;
+    
+    final Map<String, dynamic> payload = {
+      'userId': userId,
+      'userName': userName,
+      'photoUrl': photoUrl,
+      'text': text.trim(),
+      'timestamp': ServerValue.timestamp,
+    };
+
+    // Só adiciona os campos de resposta se existirem
+    if (replyToUserName != null && replyToText != null) {
+      payload['replyToUserName'] = replyToUserName;
+      payload['replyToText'] = replyToText;
+    }
+
+    await _rtdb.ref('match_chats/$matchId').push().set(payload);
+  }
+
+  /// Escuta as reações de emoji para os palpites de um jogo (RTDB)
+  Stream<DatabaseEvent> streamMatchReactions(String matchId) {
+    return _rtdb.ref('match_reactions/$matchId').onValue;
+  }
+
+  /// Liga ou desliga uma reação de emoji (RTDB)
+  Future<void> toggleReaction(String matchId, String targetUserId, String reactorUserId, String emoji) async {
+    final ref = _rtdb.ref('match_reactions/$matchId/$targetUserId/$reactorUserId');
+    final snap = await ref.get();
+    if (snap.exists && snap.value == emoji) {
+      await ref.remove(); // Desmarca se já tinha clicado
+    } else {
+      await ref.set(emoji); // Marca
+    }
+  }
+
+  /// Puxa do Firestore todos os palpites dos usuários para uma partida
+  Future<List<Map<String, dynamic>>> getMatchPredictions(String matchId) async {
+    try {
+      // 1. Busca todos os usuários do Bolão de uma vez
+      final usersSnap = await _firestore.collection('bolao_users').get();
+      
+      List<Map<String, dynamic>> results = [];
+      
+      // 2. Dispara a busca do palpite específico desse jogo para cada usuário SIMULTANEAMENTE.
+      // O Future.wait faz as requisições acontecerem em paralelo, deixando a leitura ultra-rápida.
+      await Future.wait(usersSnap.docs.map((userDoc) async {
+        final predDoc = await userDoc.reference.collection('predictions').doc(matchId).get();
+        
+        if (predDoc.exists) {
+          final userData = userDoc.data();
+          final predData = predDoc.data()!;
+          
+          results.add({
+            'userId': userDoc.id,
+            'userName': userData['name'] ?? 'Treinador',
+            'photoUrl': userData['photo_url'] ?? '',
+            'scoreHome': predData['score_home'],
+            'scoreAway': predData['score_away'],
+            // 🚨 AQUI ESTÁ A CORREÇÃO! Repassando os pontos para a UI
+            'points_earned': predData['points_earned'] ?? 0, 
+          });
+        }
+      }));
+
+      return results;
+    } catch (e) {
+      debugPrint("Erro ao buscar palpites do jogo: $e");
+      return [];
+    }
+  }
+
+  // ===========================================================================
+  //   SISTEMA DE DUELOS PARTICULARES (X1)
+  // ===========================================================================
+
+  Future<void> sendDuelChallenge(String challengerId, String challengerName, String challengerPhoto, String challengedId, String challengedName, String challengedPhoto) async {
+    // 1. Verifica se já existe duelo entre eles (ida ou volta) para não duplicar
+    final query1 = await _firestore.collection('bolao_duels').where('challengerId', isEqualTo: challengerId).where('challengedId', isEqualTo: challengedId).get();
+    final query2 = await _firestore.collection('bolao_duels').where('challengerId', isEqualTo: challengedId).where('challengedId', isEqualTo: challengerId).get();
+    
+    final allDocs = [...query1.docs, ...query2.docs];
+    if (allDocs.any((d) => d['status'] != 'declined')) {
+      throw Exception("Já existe um duelo ativo ou pendente com este treinador!");
+    }
+
+    // 2. Grava o desafio
+    await _firestore.collection('bolao_duels').add({
+      'challengerId': challengerId,
+      'challengerName': challengerName,
+      'challengerPhoto': challengerPhoto,
+      'challengedId': challengedId,
+      'challengedName': challengedName,
+      'challengedPhoto': challengedPhoto,
+      'status': 'pending', // pending, accepted, declined
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateDuelStatus(String duelId, String status) async {
+    await _firestore.collection('bolao_duels').doc(duelId).update({'status': status});
+  }
+
+  // Lemos separadamente para garantir compatibilidade com qualquer versão do Flutter
+  Stream<List<Map<String, dynamic>>> streamMySentDuels(String userId) {
+    return _firestore.collection('bolao_duels').where('challengerId', isEqualTo: userId).snapshots().map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Stream<List<Map<String, dynamic>>> streamMyReceivedDuels(String userId) {
+    return _firestore.collection('bolao_duels').where('challengedId', isEqualTo: userId).snapshots().map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
 }

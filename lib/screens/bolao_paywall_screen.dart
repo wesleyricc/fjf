@@ -288,7 +288,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                                   Text("Acertou o vencedor e a diferença de gols, mas errou o placar. (Ex: Palpitou 2x0, jogo terminou 3x1).", style: TextStyle(fontSize: 13, height: 1.5)),
                                   Text("💡 Dica de Empate: Se apostar 0x0 e o jogo terminar 1x1, você ganha 3 pontos! (Acertou o empate e o saldo, que é sempre zero).", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54)),
                                   SizedBox(height: 8),
-                                  Text("✔️ Acerto Simples: +1 Ponto", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  Text("✔️ Acerto Simples: +2 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
                                   Text("Acertou apenas quem venceu a partida. (Ex: Palpitou 1x0, jogo terminou 3x0).", style: TextStyle(fontSize: 13, height: 1.5)),
                                 ],
                               ),

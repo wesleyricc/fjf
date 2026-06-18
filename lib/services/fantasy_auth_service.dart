@@ -5,14 +5,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'fantasy_service.dart';
 
+const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
+
 class FantasyAuthService with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   
-  // ---> COLE O SEU WEB CLIENT ID AQUI <---
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: kIsWeb ? '893803829585-jp8uuugt42m2qknabm4lene03mimllai.apps.googleusercontent.com' : null,
-  );
+  // Chaves mantidas e seguras
+  final String _prodWebClientId = '893803829585-jp8uuugt42m2qknabm4lene03mimllai.apps.googleusercontent.com';
+  final String _testWebClientId = '39829597186-27ckegqg46o1e825k19drdsdfdgtu99u.apps.googleusercontent.com';
 
+  late final GoogleSignIn _googleSignIn;
   final FantasyService _fantasyService; 
 
   User? _user;
@@ -23,20 +25,69 @@ class FantasyAuthService with ChangeNotifier {
   bool get isAuthenticated => _user != null;
 
   FantasyAuthService(this._fantasyService) {
+    // Inicialização correta com as chaves para Web
+    _googleSignIn = GoogleSignIn(
+      clientId: kIsWeb 
+          ? (environment == 'test' ? _testWebClientId : _prodWebClientId) 
+          : null,
+    );
+    
     _auth.authStateChanges().listen((User? user) {
       _user = user;
       notifyListeners();
     });
   }
 
+  Future<void> _handlePostLoginLogic(User user) async {
+    try {
+      await user.getIdToken(true);
+      
+      bool isTokenPropagated = false;
+      int attempts = 0;
+      
+      while (!isTokenPropagated && attempts < 5) {
+        attempts++;
+        try {
+          await Future.delayed(Duration(milliseconds: 600 * attempts));
+          
+          final docSnap = await FirebaseFirestore.instance
+              .collection('fantasy_teams')
+              .doc(user.uid)
+              .get(const GetOptions(source: Source.server));
+
+          if (!docSnap.exists) {
+            await _fantasyService.createUserTeam(
+              userId: user.uid,
+              userName: user.displayName ?? 'Treinador',
+              teamName: 'Time de ${user.displayName?.split(' ').first ?? 'Treinador'}',
+            );
+          }
+          
+          isTokenPropagated = true; 
+        } catch (e) {
+          final errorStr = e.toString().toLowerCase();
+          if (errorStr.contains('permission') || errorStr.contains('insufficient')) {
+            if (attempts == 5) rethrow; 
+          } else {
+            rethrow; 
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Erro no pós-login do Fantasy: $e");
+    }
+  }
+
   Future<String?> signInWithGoogle() async {
     try {
       _setLoading(true);
 
+      // Fluxo direto e limpo usando o pacote Google Sign In
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      
       if (googleUser == null) {
         _setLoading(false);
-        return "Login cancelado pelo usuário."; 
+        return "Login cancelado.";
       }
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
@@ -45,56 +96,14 @@ class FantasyAuthService with ChangeNotifier {
         idToken: googleAuth.idToken,
       );
 
-      // 1. Faz o login no Firebase
       final UserCredential userCredential = await _auth.signInWithCredential(credential);
-      final User? user = userCredential.user;
-
-      if (user != null) {
-        // 🚨 TRUQUE SÊNIOR V2: RETRY LOOP PARA LATÊNCIA DE REDE 🚨
-        // Força a renovação e propagação do Token de Acesso
-        await user.getIdToken(true);
-        
-        bool isTokenPropagated = false;
-        int attempts = 0;
-        
-        while (!isTokenPropagated && attempts < 5) {
-          attempts++;
-          try {
-            // Tempo progressivo: 600ms, 1200ms, 1800ms... 
-            // Dá o tempo exato que a rede do usuário precisar!
-            await Future.delayed(Duration(milliseconds: 600 * attempts));
-            
-            // 2. Garante que o time existe no banco
-            final docSnap = await FirebaseFirestore.instance
-                .collection('fantasy_teams')
-                .doc(user.uid)
-                .get(const GetOptions(source: Source.server)); // 🚨 FORÇA BUSCAR NO SERVIDOR E IGNORAR CACHE CORROMPIDO DA WEB
-
-            // Se chegou aqui, a permissão foi concedida pelo Firestore!
-            if (!docSnap.exists) {
-              await _fantasyService.createUserTeam(
-                userId: user.uid,
-                userName: user.displayName ?? 'Treinador',
-                teamName: 'Time de ${user.displayName?.split(' ').first ?? 'Treinador'}',
-              );
-            }
-            
-            isTokenPropagated = true; // Sucesso! Sai do loop.
-          } catch (e) {
-            final errorStr = e.toString().toLowerCase();
-            // Se for erro de permissão e ainda tiver tentativas, tenta de novo
-            if (errorStr.contains('permission') || errorStr.contains('insufficient')) {
-              debugPrint('Aguardando token propagar no Firestore... (Tentativa $attempts)');
-              if (attempts == 5) rethrow; // Falhou definitivamente
-            } else {
-              rethrow; // Erro de conexão / offline, devolve pra tela
-            }
-          }
-        }
+      
+      if (userCredential.user != null) {
+        await _handlePostLoginLogic(userCredential.user!);
       }
 
       _setLoading(false);
-      return null; // Retorna nulo indicando Sucesso Absoluto
+      return null;
       
     } on FirebaseAuthException catch (e) {
       _setLoading(false);
@@ -106,7 +115,9 @@ class FantasyAuthService with ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
+    if (!kIsWeb) {
+      await _googleSignIn.signOut();
+    }
     await _auth.signOut();
   }
 

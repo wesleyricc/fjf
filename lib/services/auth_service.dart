@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
 
 class AuthService with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  
+  // Chaves mantidas e seguras
+  final String _prodWebClientId = '893803829585-jp8uuugt42m2qknabm4lene03mimllai.apps.googleusercontent.com';
+  final String _testWebClientId = '39829597186-27ckegqg46o1e825k19drdsdfdgtu99u.apps.googleusercontent.com';
+
+  late final GoogleSignIn _googleSignIn;
   
   bool _isAuthenticated = false;
   bool _isAdmin = false;
@@ -21,10 +29,15 @@ class AuthService with ChangeNotifier {
   bool get isLoading => _isLoading;
 
   AuthService() {
+    // Inicialização correta com as chaves para Web
+    _googleSignIn = GoogleSignIn(
+      clientId: kIsWeb 
+          ? (environment == 'test' ? _testWebClientId : _prodWebClientId) 
+          : null,
+    );
     _initAuthListener();
   }
 
-  // Monitora o estado da autenticação em tempo real
   void _initAuthListener() {
     _auth.authStateChanges().listen((User? user) async {
       if (user != null) {
@@ -37,7 +50,6 @@ class AuthService with ChangeNotifier {
     });
   }
 
-  // Valida as permissões nas coleções do Firestore
   Future<void> _validateUserRoles(User user) async {
     try {
       final uid = user.uid;
@@ -56,7 +68,6 @@ class AuthService with ChangeNotifier {
         _isAuthenticated = false;
       }
     } catch (e) {
-      // 🚨 ADICIONE ESTA LINHA PARA O CONSOLE TE CONTAR O MOTIVO DO ERRO
       debugPrint("🔥 ERRO DE PERMISSÃO AO LER CARGOS: $e"); 
       _clearAuthData();
     }
@@ -69,13 +80,14 @@ class AuthService with ChangeNotifier {
     _adminEmail = null;
   }
 
-  // --- O NOVO LOGIN COM GMAIL ---
   Future<String?> signInWithGoogle() async {
     try {
       _isLoading = true;
       notifyListeners();
 
+      // Fluxo direto e limpo usando o pacote Google Sign In
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      
       if (googleUser == null) {
         _isLoading = false;
         notifyListeners();
@@ -112,7 +124,9 @@ class AuthService with ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _googleSignIn.signOut();
+    if (!kIsWeb) {
+      await _googleSignIn.signOut();
+    }
     await _auth.signOut();
     _clearAuthData();
     notifyListeners();
