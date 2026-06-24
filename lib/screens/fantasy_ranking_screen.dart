@@ -3,9 +3,10 @@ import 'package:provider/provider.dart';
 import '../services/fantasy_service.dart';
 import '../models/fantasy_models.dart';
 import '../services/fantasy_auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../widgets/ui/shimmer_effect.dart';     
 import '../widgets/ui/custom_empty_state.dart';  
-import '../widgets/team_logo_widget.dart'; // 🚨 Nosso componente inteligente importado
+import '../widgets/team_logo_widget.dart';
 
 class FantasyRankingScreen extends StatefulWidget {
   const FantasyRankingScreen({super.key});
@@ -21,6 +22,23 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen> with Single
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    
+    // 🚨 Analytics: Acesso inicial ao ranking (Aba da Rodada como Padrão)
+    AnalyticsService.logCustomScreenView('Fantasy_Ranking_Tab_Rodada');
+
+    // 🚨 Analytics: Monitora qual ranking os usuários mais olham
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        final tabName = _tabController.index == 0 ? 'Rodada' : 'Geral';
+        AnalyticsService.logCustomScreenView('Fantasy_Ranking_Tab_$tabName');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
@@ -174,12 +192,10 @@ class _RankingListState extends State<_RankingList> {
             ),
             const SizedBox(width: 8),
             
-            // 🔥 MAGIA APLICADA AQUI: Delegando a interface para o Widget Centralizado 🔥
             TeamLogoWidget(
               logoUrl: team.customLogoUrl,
               radius: 20,
             ),
-
           ],
         ),
         title: Text(team.teamName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),

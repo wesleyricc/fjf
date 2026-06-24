@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter/services.dart';
 import '../viewmodels/fantasy_league_viewmodel.dart';
 import '../services/fantasy_auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/fantasy_league_model.dart';
 import 'fantasy_league_ranking_screen.dart';
 
@@ -17,7 +18,10 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicializa o ViewModel com o ID do utilizador atual
+    
+    // 🚨 Analytics: Acesso à tela de gerenciamento de ligas privadas
+    AnalyticsService.logCustomScreenView('Fantasy_Leagues_Screen');
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userId = Provider.of<FantasyAuthService>(context, listen: false).user?.uid;
       if (userId != null) {
@@ -46,6 +50,10 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
               final success = await vm.createLeague(nameController.text);
               if (mounted && success) {
                 Navigator.pop(ctx);
+                
+                // 🚨 Analytics: Sucesso ao criar liga
+                AnalyticsService.logCustomScreenView('Fantasy_League_Created', parameters: {'league_name': nameController.text});
+                
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Liga criada com sucesso!")));
               }
             },
@@ -74,13 +82,16 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
             onPressed: () async {
               if (codeController.text.trim().isEmpty) return;
               
-              // 🚨 FIX: Força o teclado a fechar antes de mostrar o SnackBar
               FocusManager.instance.primaryFocus?.unfocus();
               
               final success = await vm.joinLeague(codeController.text);
               if (mounted) {
                 if (success) {
                   Navigator.pop(ctx);
+                  
+                  // 🚨 Analytics: Sucesso ao entrar via código
+                  AnalyticsService.logCustomScreenView('Fantasy_League_Joined', parameters: {'invite_code': codeController.text});
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Agora fazes parte da liga!"))
                   );
@@ -89,7 +100,6 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
                     SnackBar(
                       content: Text(vm.errorMessage ?? "Erro"), 
                       backgroundColor: Colors.red,
-                      // 🚨 FIX: Força o aviso a ficar colado na base para não bugar com a caixa de diálogo
                       behavior: SnackBarBehavior.fixed, 
                     )
                   );
@@ -143,7 +153,6 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
                   subtitle: Text("${league.members.length} participantes"),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
-                    // Navega para a tela de Ranking passando a liga selecionada
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -152,8 +161,11 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
                     );
                   },
                   onLongPress: () {
-                    // Atalho rápido para copiar o código
                     Clipboard.setData(ClipboardData(text: league.inviteCode));
+                    
+                    // 🚨 Analytics: Rastreia a viralidade (O usuário está convidando amigos para a liga)
+                    AnalyticsService.logShare('league_invite_code', league.id);
+                    
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Código ${league.inviteCode} copiado!")));
                   },
                 ),
@@ -162,7 +174,6 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
           );
         },
       ),
-      // --- BOTÕES DE AÇÃO ---
       floatingActionButton: Consumer<FantasyLeagueViewModel>(
         builder: (context, vm, child) => Column(
           mainAxisAlignment: MainAxisAlignment.end,

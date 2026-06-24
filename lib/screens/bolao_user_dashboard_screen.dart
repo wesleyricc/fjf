@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import '../../models/bolao_models.dart';
 import '../../services/bolao_service.dart';
+import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../theme/app_theme.dart';
 
 class BolaoUserDashboardScreen extends StatefulWidget {
@@ -16,6 +17,17 @@ class BolaoUserDashboardScreen extends StatefulWidget {
 
 class _BolaoUserDashboardScreenState extends State<BolaoUserDashboardScreen> {
   final BolaoService _bolaoService = BolaoService();
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreando qual perfil de usuário do bolão está sendo visitado
+    AnalyticsService.logViewItem(
+      contentType: 'bolao_user_dashboard',
+      itemId: widget.user.userId,
+      itemName: widget.user.name,
+    );
+  }
 
   // Função Sênior: Junta Partidas, Palpites e Calcula a Curva de Evolução
   Future<List<Map<String, dynamic>>> _getEvolutionHistory() async {

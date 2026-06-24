@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -11,6 +10,7 @@ import '../models/player_model.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/team_service.dart'; 
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 import 'extra_points_log_screen.dart';
 import 'edit_player_screen.dart';
@@ -38,13 +38,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   @override
   void initState() {
     super.initState();
-    try {
-      FirebaseAnalytics.instance.logScreenView(screenName: '/team/detail/${widget.team.name}');
-    } catch (_) {}
+    // 🚨 Analytics: Registra a visualização do perfil detalhado deste Time
+    AnalyticsService.logViewItem(
+      contentType: 'team_profile',
+      itemId: widget.team.id,
+      itemName: widget.team.name,
+    );
   }
 
-  // --- LÓGICA: DEFINIR TITULARES ---
   Future<void> _showDefineStartersDialog() async {
+    // 🚨 Analytics: Ação Admin - Definir Titulares
+    AnalyticsService.logCustomScreenView('Admin_Modal_Team_Starters', parameters: {'team_name': widget.team.name});
+
     final champService = Provider.of<ChampionshipService>(context, listen: false);
     final teamService = Provider.of<TeamService>(context, listen: false);
     
@@ -54,7 +59,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     }
 
     final seasonId = champService.currentSeasonId;
-    
     List<String> selectedIds = [];
     bool isLoading = true;
 
@@ -173,6 +177,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   }
 
   Future<void> _showAddExtraPointsDialog() async {
+    // 🚨 Analytics: Ação Admin - Dar Pontos Extras
+    AnalyticsService.logCustomScreenView('Admin_Modal_Team_Extra_Points', parameters: {'team_name': widget.team.name});
+
     String? selectedReason;
     final pointsController = TextEditingController();
     bool isLoading = false;
@@ -322,7 +329,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   expandedHeight: 200.0,
                   floating: false,
                   pinned: true,
-                  backgroundColor: Colors.transparent, // 🚨 Deixa o Gradiente aparecer sempre
+                  backgroundColor: Colors.transparent, 
                   elevation: 0,
                   actions: authService.isAuthenticated
                       ? [
@@ -342,7 +349,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                           ),
                         ]
                       : null,
-                  // 🚨 NOVO: Gradiente da Copa aplicado
                   flexibleSpace: Container(
                     decoration: const BoxDecoration(
                       gradient: AppTheme.brazilGradient,

@@ -8,6 +8,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../../services/auth_service.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/bolao_service.dart';
+import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../models/bolao_models.dart';
 import 'dart:typed_data'; 
 import 'package:image_picker/image_picker.dart';
@@ -57,7 +58,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
   ];
 
   final Map<String, String> _teamsFlagsMap = {
-    'México': '🇲🇽', 'África do Sul': '🇿🇦', 'Coreia do Sul': '🇰🇷', 'República Tcheca': '🇨🇿',
+    'México': '🇲🇽', 'África do Sul': '🇿🇦', 'Coreia do Sul': '🇰🇷', 'Tchéquia': '🇨🇿',
     'Canadá': '🇨🇦', 'Bósnia e Herzegovina': '🇧🇦', 'Estados Unidos': '🇺🇸', 'Paraguai': '🇵🇾',
     'Espanha': '🇪🇸', 'Camboja': '🇰🇭', 'França': '🇫🇷', 'Irã': '🇮🇷', 'Brasil': '🇧🇷',
     'Marrocos': '🇲🇦', 'Escócia': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Haiti': '🇭🇹', 'Argentina': '🇦🇷', 'Senegal': '🇸🇳',
@@ -75,11 +76,19 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
+    // 🚨 Analytics: Visualizou a tela principal do Bolão
+    AnalyticsService.logCustomScreenView('Bolao_Predictions_Screen_Tab_Palpites');
+
     final authService = Provider.of<FantasyAuthService>(context, listen: false);
     _userId = authService.user?.uid ?? '';
     
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
+      // 🚨 Analytics: Rastreia mudanças de Aba no Bolão
+      if (!_tabController.indexIsChanging) {
+        final tabs = ['Palpites', 'Bonus', 'Ranking'];
+        AnalyticsService.logCustomScreenView('Bolao_Predictions_Screen_Tab_${tabs[_tabController.index]}');
+      }
       setState(() {}); 
     });
 
@@ -213,7 +222,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
                       const Divider(height: 30),
                       const Text("⚖️ CRITÉRIOS DE DESEMPATE (RANKING)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal)),
                       const SizedBox(height: 4),
-                      const Text("Em caso de empate na pontuação total, o sistema utilizará a seguinte ordem para definir a posição final:\n\n1º Maior número de placares exatos (Na Mosca)\n2º Maior número de acertos de saldo\n3º Maior número de acertos simples\n4º Maior pontuação ganha com Bônus Extras\n5º Ordem alfabética do nome do Treinador", style: TextStyle(fontSize: 14, height: 1.5)),
+                      const Text("Em caso de empate na pontuação total, o sistema utilizará a seguinte ordem para definir a posição final:\n\n1º Maior número de placares exatos (Na Mosca)\n2º Maior número de acertos de saldo\n3º Maior número de acertos simples\n4º Maior pontuação ganha com Bônus Extras", style: TextStyle(fontSize: 14, height: 1.5)),
                       const SizedBox(height: 30),
                     ],
                   ),

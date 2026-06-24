@@ -2,9 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/fantasy_auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
-class FantasyHistoryScreen extends StatelessWidget {
+class FantasyHistoryScreen extends StatefulWidget {
   const FantasyHistoryScreen({super.key});
+
+  @override
+  State<FantasyHistoryScreen> createState() => _FantasyHistoryScreenState();
+}
+
+class _FantasyHistoryScreenState extends State<FantasyHistoryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia a visualização do histórico do usuário no Fantasy
+    AnalyticsService.logCustomScreenView('Fantasy_History_Screen');
+  }
 
   @override
   Widget build(BuildContext context) {

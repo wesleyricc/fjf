@@ -5,6 +5,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/bolao_service.dart';
+import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import 'bolao_predictions_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -23,6 +24,13 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
   Stream<DocumentSnapshot>? _bolaoUserStream;
   String? _lastInitializedUid;
 
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Mapeia visualização da tela de Paywall (Barreira de Pagamento)
+    AnalyticsService.logCustomScreenView('Bolao_Paywall_Screen');
+  }
+
   void _initUserStream(String uid) {
     if (_lastInitializedUid == uid && _bolaoUserStream != null) return;
     _lastInitializedUid = uid;
@@ -34,6 +42,15 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
 
   Future<void> _generatePix(String userId, String email) async {
     setState(() => _isLoadingPix = true);
+    
+    // 🚨 Analytics: Iniciou o funil de compra do Bolão VIP
+    AnalyticsService.logBeginCheckout(
+      type: 'bolao_copa',
+      itemCount: 1,
+      totalValue: 20.00,
+      itemName: 'Inscrição Bolão VIP',
+    );
+
     try {
       final result = await _bolaoService.generatePixForBolao(userId, email);
       setState(() {

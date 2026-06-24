@@ -42,11 +42,18 @@ class _AdminUploadPhotoScreenState extends State<AdminUploadPhotoScreen> {
     });
   }
 
-  // Gera a URL de preview (com qualidade reduzida/tamanho menor).
-  // Isso economiza banda do Firebase e do usuário na hora de listar as fotos na loja.
+ // 🚨 SEGURANÇA MÁXIMA (MALHA ANTI-IA): Gera a URL de preview com marcas repetidas!
   String _generatePreviewUrl(String originalUrl) {
     if (originalUrl.contains('/upload/')) {
-      return originalUrl.replaceFirst('/upload/', '/upload/q_auto,f_auto,w_800/');
+      // O que está acontecendo aqui:
+      // 1. q_30,w_600: Baixa qualidade e resolução menor.
+      // 2. l_text:Arial_35_bold:FJF%20PREVIEW%20%20%20%20 : O texto "FJF PREVIEW" (com espaços no fim para dar um respiro entre as repetições).
+      // 3. co_white,o_50,a_-30: Cor branca, opacidade em 50%, inclinado a -30 graus.
+      // 4. fl_tiled: 🚨 O MÁGICO! Ele clona esse texto e forra a imagem inteira com ele.
+      return originalUrl.replaceFirst(
+        '/upload/', 
+        '/upload/q_30,w_600/l_text:Arial_35_bold:FJF%20PREVIEW%20%20%20%20,co_white,o_50,a_-30,fl_tiled/'
+      );
     }
     return originalUrl;
   }

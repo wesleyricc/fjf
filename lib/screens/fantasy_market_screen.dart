@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/fantasy_service.dart';
 import '../services/championship_service.dart'; 
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/fantasy_models.dart';
 import '../widgets/fantasy_player_card.dart';
 import '../widgets/ui/shimmer_effect.dart';     
@@ -40,6 +41,9 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     if (widget.requiredPosition != null) {
       _selectedPosition = widget.requiredPosition!;
     }
+
+    // 🚨 Analytics: Rastreia acesso ao Mercado
+    AnalyticsService.logCustomScreenView('Fantasy_Market_Screen');
     
     // Inicia a conexão com o banco de dados APENAS ao abrir a tela
     _marketStream = Provider.of<FantasyService>(context, listen: false).streamMarket();
@@ -107,7 +111,11 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                   child: FilterChip(
                     label: Text(pos),
                     selected: isSelected,
-                    onSelected: isDisabled ? null : (_) => setState(() => _selectedPosition = pos),
+                    onSelected: isDisabled ? null : (_) {
+                      setState(() => _selectedPosition = pos);
+                      // 🚨 Analytics: Quais posições são as mais buscadas?
+                      AnalyticsService.logCustomScreenView('Fantasy_Market_Filter_Pos', parameters: {'position': pos});
+                    },
                     backgroundColor: Colors.white,
                     selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
                     labelStyle: TextStyle(
@@ -122,7 +130,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
             ),
           ),
           
-          // 🚨 Campo de Busca por Texto (Adicionado)
+          // Campo de Busca por Texto
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             child: TextField(
@@ -133,7 +141,13 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
               ),
-              onChanged: (val) => setState(() => _searchTerm = val), // Aciona setState localmente
+              onChanged: (val) {
+                setState(() => _searchTerm = val);
+                // 🚨 Analytics: Pega as letras chave para saber quem a galera procura pelo nome
+                if (val.length >= 3) {
+                   AnalyticsService.logCustomScreenView('Fantasy_Market_Search', parameters: {'term': val.toLowerCase()});
+                }
+              }, 
             ),
           ),
 
@@ -232,7 +246,10 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                                     );
                                   }).toList(),
                                   onChanged: (val) {
-                                    if (val != null) setState(() => _selectedTeamId = val);
+                                    if (val != null) {
+                                      setState(() => _selectedTeamId = val);
+                                      AnalyticsService.logCustomScreenView('Fantasy_Market_Filter_Team', parameters: {'team_id': val});
+                                    }
                                   },
                                 ),
                               ),

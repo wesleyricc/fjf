@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:intl/intl.dart'; // 🚨 IMPORTANTE PARA FORMATAR A DATA
+import 'package:intl/intl.dart'; 
 import '../../models/bolao_seed_data.dart';
 import '../../models/bolao_models.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 class AdminBolaoScreen extends StatefulWidget {
   const AdminBolaoScreen({super.key});
@@ -29,7 +31,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   String? _officialDisappointment;
 
   final Map<String, String> _teamsFlagsMap = {
-    'México': '🇲🇽', 'África do Sul': '🇿🇦', 'Coreia do Sul': '🇰🇷', 'República Tcheca': '🇨🇿',
+    'México': '🇲🇽', 'África do Sul': '🇿🇦', 'Coreia do Sul': '🇰🇷', 'Tchéquia': '🇨🇿',
     'Canadá': '🇨🇦', 'Bósnia e Herzegovina': '🇧🇦', 'Estados Unidos': '🇺🇸', 'Paraguai': '🇵🇾',
     'Espanha': '🇪🇸', 'Camboja': '🇰🇭', 'França': '🇫🇷', 'Irã': '🇮🇷',
     'Brasil': '🇧🇷', 'Marrocos': '🇲🇦', 'Escócia': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Haiti': '🇭🇹',
@@ -47,6 +49,8 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Acesso ao Painel Admin do Bolão
+    AnalyticsService.logCustomScreenView('Admin_Bolao_Screen');
     _fetchSettings();
   }
 
@@ -56,6 +60,37 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
       setState(() {
         _isPredictionsOpen = doc.data()!['is_predictions_open'];
       });
+    }
+  }
+
+  Future<void> _confirmTogglePredictions(bool newValue) async {
+    final String acao = newValue ? "ABRIR" : "FECHAR";
+    final Color corBotao = newValue ? Colors.green : Colors.red;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: corBotao, size: 28),
+            const SizedBox(width: 8),
+            Text("$acao Mercado?"),
+          ],
+        ),
+        content: Text("Tem certeza que deseja $acao o mercado de palpites para todos os usuários do Bolão?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: corBotao, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text("Sim, $acao"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _togglePredictionsStatus(newValue);
     }
   }
 
@@ -79,6 +114,33 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   }
 
   Future<void> _seedMatches() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.sync_problem, color: Colors.red, size: 28),
+            SizedBox(width: 8),
+            Text("Regerar Jogos?"),
+          ],
+        ),
+        content: const Text(
+          "Tem certeza que deseja forçar a atualização dos 104 jogos?\n\n"
+          "Esta ação aplicará as configurações padrão para os times, mas NÃO apagará os placares de jogos encerrados, pois o sistema de mesclagem (merge) de segurança está ativado."
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancelar")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Sim, Regerar / Atualizar"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
     setState(() => _isLoading = true);
     try {
       final batch = _firestore.batch();
@@ -87,10 +149,12 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
         final matchDate = DateTime.parse(matchMap['date']);
         final data = Map<String, dynamic>.from(matchMap);
         data['date'] = Timestamp.fromDate(matchDate); 
-        batch.set(docRef, data);
+        batch.set(docRef, data, SetOptions(merge: true)); 
       }
       await batch.commit();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tabela de 104 jogos sincronizada! ⚽")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tabela de 104 jogos sincronizada com segurança! ⚽"), backgroundColor: Colors.green));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
     } finally {
       setState(() => _isLoading = false);
     }
@@ -119,17 +183,69 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
     }
   }
 
-  // ==========================================================
-  // 🚀 MÓDULO MINI BOLÃO VIP (Criação, Edição, Encerramento e Exclusão)
-  // ==========================================================
-  
+  Future<void> _showPlayerSearchModal(BuildContext context, List<String> players, Function(String) onSelected) async {
+    String localSearch = "";
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocalState) {
+            final filtered = players.where((p) => p.toLowerCase().contains(localSearch.toLowerCase())).toList();
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 16),
+                  const Text("Selecionar Atleta", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: "Pesquisar nome...",
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                    onChanged: (val) => setLocalState(() => localSearch = val),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (c, i) => ListTile(
+                        leading: const Icon(Icons.person, color: Colors.grey),
+                        title: Text(filtered[i], style: const TextStyle(fontWeight: FontWeight.bold)),
+                        onTap: () {
+                          onSelected(filtered[i]);
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ),
+                  )
+                ],
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
   Future<void> _showCreateMiniBolaoModal() async {
+    // 🚨 Analytics: Registra abertura do Modal de Criação de Mini Bolão
+    AnalyticsService.logCustomScreenView('Admin_Modal_Create_Mini_Bolao');
+
     final titleCtrl = TextEditingController();
     final feeCtrl = TextEditingController(text: "10.00");
-    final feePercentCtrl = TextEditingController(text: "30"); // 🚨 Taxa do App
+    final feePercentCtrl = TextEditingController(text: "30"); 
     final playersCtrl = TextEditingController();
     BolaoMatch? selectedMatch;
-    DateTime? selectedDeadline; // 🚨 VARIÁVEL DO PRAZO LIMITE
+    DateTime? selectedDeadline; 
     bool isSaving = false;
 
     final matchesSnap = await _firestore.collection('bolao_matches')
@@ -138,6 +254,8 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
     
     final List<BolaoMatch> availableMatches = matchesSnap.docs.map((d) => BolaoMatch.fromFirestore(d)).toList();
     availableMatches.sort((a, b) => a.date.compareTo(b.date));
+
+    if (!mounted) return;
 
     await showModalBottomSheet(
       context: context,
@@ -230,7 +348,6 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 🚨 BOTÃO DE DEFINIR PRAZO LIMITE
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 50),
@@ -274,7 +391,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text("💡 Equipes do Último Gol Geradas Automaticamente:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                            const Text("💡 Equipes do Primeiro Gol Geradas Automaticamente:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
                             const SizedBox(height: 4),
                             Text("1. ${selectedMatch!.homeTeam}\n2. ${selectedMatch!.awayTeam}\n3. Sem Gols", style: const TextStyle(color: Colors.black87)),
                           ],
@@ -309,7 +426,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                               'match_ids': [selectedMatch!.id], 
                               'entry_fee': double.tryParse(feeCtrl.text.replaceAll(',', '.')) ?? 10.0,
                               'admin_fee_percentage': double.tryParse(feePercentCtrl.text.replaceAll(',', '.')) ?? 30.0,
-                              'deadline': Timestamp.fromDate(selectedDeadline!), // 🚨 SALVA O PRAZO NO BANCO
+                              'deadline': Timestamp.fromDate(selectedDeadline!), 
                               'prize_pool': 0.0,
                               'participants_count': 0,
                               'is_active': true,
@@ -344,6 +461,9 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   }
 
   Future<void> _showEditMiniBolaoModal(DocumentSnapshot doc) async {
+    // 🚨 Analytics: Registra abertura do Modal
+    AnalyticsService.logCustomScreenView('Admin_Modal_Edit_Mini_Bolao');
+
     final data = doc.data() as Map<String, dynamic>;
     final titleCtrl = TextEditingController(text: data['title']);
     final feeCtrl = TextEditingController(text: data['entry_fee']?.toString());
@@ -351,11 +471,12 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
     final players = List<String>.from(data['available_players'] ?? []);
     final playersCtrl = TextEditingController(text: players.join(', '));
     
-    // Recupera a data limite se já existir
     final Timestamp? initialTs = data['deadline'] as Timestamp?;
     DateTime? selectedDeadline = initialTs?.toDate();
     
     bool isSaving = false;
+
+    if (!mounted) return;
 
     await showModalBottomSheet(
       context: context,
@@ -411,7 +532,6 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 🚨 BOTÃO DE DEFINIR PRAZO LIMITE
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 50),
@@ -463,7 +583,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                               'title': titleCtrl.text.trim(),
                               'entry_fee': double.tryParse(feeCtrl.text.replaceAll(',', '.')) ?? 10.0,
                               'admin_fee_percentage': double.tryParse(feePercentCtrl.text.replaceAll(',', '.')) ?? 30.0,
-                              'deadline': Timestamp.fromDate(selectedDeadline!), // 🚨 ATUALIZA O PRAZO
+                              'deadline': Timestamp.fromDate(selectedDeadline!), 
                               'available_players': playersList,
                             });
                             if (mounted) {
@@ -489,24 +609,81 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
     );
   }
 
-  // 🚨 MODAL DE ENCERRAMENTO COM MATEMÁTICA FANTASY
-  Future<void> _showEndMiniBolaoModal(DocumentSnapshot doc) async {
+  Future<void> _showControlMiniBolaoModal(DocumentSnapshot doc) async {
+    // 🚨 Analytics: Registra abertura do Modal de Fechamento de Sala
+    AnalyticsService.logCustomScreenView('Admin_Modal_Control_Mini_Bolao');
+
     final data = doc.data() as Map<String, dynamic>;
     final List<String> availableTeams = List<String>.from(data['available_teams'] ?? []);
     final List<String> availablePlayers = List<String>.from(data['available_players'] ?? []);
     
-    final homeCtrl = TextEditingController();
-    final awayCtrl = TextEditingController();
-    String? selectedLastGoal;
-    String? selectedScorerToAdd;
-    List<String> realScorers = [];
+    String homeTeam = availableTeams.isNotEmpty ? availableTeams[0] : "Casa";
+    String awayTeam = availableTeams.length > 1 ? availableTeams[1] : "Visitante";
+    String homeFlag = _teamsFlagsMap[homeTeam] ?? '❓';
+    String awayFlag = _teamsFlagsMap[awayTeam] ?? '❓';
+
+    final homeCtrl = TextEditingController(text: data['real_score_home']?.toString() ?? '');
+    final awayCtrl = TextEditingController(text: data['real_score_away']?.toString() ?? '');
+    List<String> realScorers = List<String>.from(data['real_scorers'] ?? []);
+    
+    String? selectedFirstGoal = data['real_first_goal_team']?.toString().isNotEmpty == true ? data['real_first_goal_team'] : null;
+    if (selectedFirstGoal != null && !availableTeams.contains(selectedFirstGoal)) selectedFirstGoal = null;
+    
+    final firstGoalMinuteCtrl = TextEditingController(text: data['real_first_goal_minute']?.toString() ?? '');
+    bool? realHalfTimeDraw = data['real_half_time_draw'];
+    String? realHighestScoringHalf = data['real_highest_scoring_half']?.toString().isNotEmpty == true ? data['real_highest_scoring_half'] : null;
+
+    String? selectedPlayerToAdd;
     bool isSaving = false;
+
+    if (!mounted) return;
 
     await showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+
+            Future<void> _processRanking(bool isPartial) async {
+               if (homeCtrl.text.isEmpty || awayCtrl.text.isEmpty || selectedFirstGoal == null || firstGoalMinuteCtrl.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha o placar, o primeiro gol e o MINUTO do gol."), backgroundColor: Colors.orange));
+                  return;
+               }
+               
+               if (!isPartial) {
+                  if (realHalfTimeDraw == null || realHighestScoringHalf == null) {
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Para encerrar, preencha os dados de tempo e empate."), backgroundColor: Colors.orange));
+                     return;
+                  }
+               }
+
+               setModalState(() => isSaving = true);
+               try {
+                 await _functions.httpsCallable('calculateMiniBolaoPoints').call({
+                   'miniBolaoId': doc.id,
+                   'realHomeScore': int.parse(homeCtrl.text),
+                   'realAwayScore': int.parse(awayCtrl.text),
+                   'realScorers': realScorers, 
+                   'realFirstGoalTeam': selectedFirstGoal,
+                   'realFirstGoalMinute': int.parse(firstGoalMinuteCtrl.text), 
+                   'realHalfTimeDraw': realHalfTimeDraw,         
+                   'realHighestScoringHalf': realHighestScoringHalf, 
+                   'isPartial': isPartial, 
+                 });
+                 if (mounted) {
+                   Navigator.pop(context);
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                       content: Text(isPartial ? "Ranking parcial atualizado no App!" : "Ranking Finalizado com Sucesso! 🏆"), 
+                       backgroundColor: Colors.green
+                   ));
+                 }
+               } catch (e) {
+                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+               } finally {
+                 if (mounted) setModalState(() => isSaving = false);
+               }
+            }
+
             return Container(
               height: MediaQuery.of(context).size.height * 0.9,
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
@@ -518,7 +695,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("Encerrar Mini Bolão", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange)),
+                        const Text("Controle do Mini Bolão", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange)),
                         IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                       ],
                     ),
@@ -526,7 +703,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       color: Colors.orange.shade50,
-                      child: const Text("Atenção: Ao processar, o sistema calculará os pontos de todos os participantes e travará o ranking da sala definitivamente.", style: TextStyle(color: Colors.orange)),
+                      child: const Text("Atenção: Você pode ATUALIZAR PARCIALMENTE para exibir o ranking ao vivo. Apenas o botão ENCERRAR travará a sala.", style: TextStyle(color: Colors.orange)),
                     ),
                     const SizedBox(height: 16),
 
@@ -534,93 +711,219 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Expanded(child: TextField(controller: homeCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Gols Casa", border: OutlineInputBorder()))),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(homeFlag, style: const TextStyle(fontSize: 32)),
+                              Text(homeTeam, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 
+                              const SizedBox(height: 8), 
+                              TextField(
+                                controller: homeCtrl, keyboardType: TextInputType.number, 
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                textAlign: TextAlign.center, decoration: const InputDecoration(border: OutlineInputBorder())
+                              )
+                            ]
+                          )
+                        ),
                         const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text("X", style: TextStyle(fontWeight: FontWeight.bold))),
-                        Expanded(child: TextField(controller: awayCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Gols Fora", border: OutlineInputBorder()))),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(awayFlag, style: const TextStyle(fontSize: 32)),
+                              Text(awayTeam, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 
+                              const SizedBox(height: 8), 
+                              TextField(
+                                controller: awayCtrl, keyboardType: TextInputType.number, 
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                textAlign: TextAlign.center, decoration: const InputDecoration(border: OutlineInputBorder())
+                              )
+                            ]
+                          )
+                        ),
                       ],
                     ),
                     const SizedBox(height: 24),
 
-                    const Text("Autores dos Gols (Adicione todos que marcaram)", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("Autores dos Gols da Partida:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("Informe quem marcou gol neste jogo (Toque para pesquisar).", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 12),
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    _showPlayerSearchModal(context, availablePlayers, (selected) {
+                                      setModalState(() => selectedPlayerToAdd = selected);
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      border: Border.all(color: Colors.grey.shade400),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            selectedPlayerToAdd ?? "🔍 Pesquisar...", 
+                                            style: TextStyle(color: selectedPlayerToAdd == null ? Colors.grey.shade600 : Colors.black87, fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
+                                          )
+                                        ),
+                                        const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle, color: Colors.green, size: 36),
+                                onPressed: () {
+                                  if (selectedPlayerToAdd != null) {
+                                    setModalState(() {
+                                      realScorers.add(selectedPlayerToAdd!);
+                                      selectedPlayerToAdd = null;
+                                    });
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Selecione um atleta."), backgroundColor: Colors.orange));
+                                  }
+                                },
+                              )
+                            ],
+                          ),
+                          const Divider(height: 24),
+
+                          const Text("Gols Confirmados Reais:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          if (realScorers.isEmpty)
+                            const Text("Nenhum gol associado ainda.", style: TextStyle(color: Colors.grey, fontSize: 12))
+                          else
+                            Wrap(
+                              spacing: 8.0, runSpacing: 8.0,
+                              children: realScorers.asMap().entries.map((entry) {
+                                int idx = entry.key;
+                                String player = entry.value;
+                                return Chip(
+                                  label: Text(player, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  backgroundColor: Colors.orange.shade100,
+                                  deleteIconColor: Colors.red,
+                                  onDeleted: () {
+                                    setModalState(() {
+                                      realScorers.removeAt(idx);
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                        ]
+                      )
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    const Text("Primeiro Gol (Time e Minuto)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
+                          flex: 2,
                           child: DropdownButtonFormField<String>(
-                            value: selectedScorerToAdd,
+                            value: selectedFirstGoal,
                             decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
-                            items: availablePlayers.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                            onChanged: (val) => setModalState(() => selectedScorerToAdd = val),
+                            items: availableTeams.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                            onChanged: (val) => setModalState(() => selectedFirstGoal = val),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle, color: Colors.green, size: 36),
-                          onPressed: () {
-                            if (selectedScorerToAdd != null) {
-                              setModalState(() {
-                                realScorers.add(selectedScorerToAdd!);
-                                selectedScorerToAdd = null; 
-                              });
-                            }
-                          },
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 1,
+                          child: TextField(
+                            controller: firstGoalMinuteCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: const InputDecoration(labelText: "Minuto (Ex: 12)", border: OutlineInputBorder()),
+                          ),
                         )
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8.0,
-                      children: realScorers.asMap().entries.map((entry) {
-                        int idx = entry.key;
-                        String scorer = entry.value;
-                        return Chip(
-                          label: Text(scorer),
-                          onDeleted: () => setModalState(() => realScorers.removeAt(idx)),
-                          backgroundColor: Colors.green.shade100,
-                          deleteIconColor: Colors.red,
-                        );
-                      }).toList(),
-                    ),
                     const SizedBox(height: 24),
 
-                    const Text("Equipe do Último Gol", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("Empatou no Intervalo?", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setModalState(() => realHalfTimeDraw = true),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(color: realHalfTimeDraw == true ? Colors.blue.shade100 : Colors.white, border: Border.all(color: realHalfTimeDraw == true ? Colors.blue : Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                              child: Center(child: Text("SIM", style: TextStyle(fontWeight: FontWeight.bold, color: realHalfTimeDraw == true ? Colors.blue.shade800 : Colors.black87))),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setModalState(() => realHalfTimeDraw = false),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(color: realHalfTimeDraw == false ? Colors.blue.shade100 : Colors.white, border: Border.all(color: realHalfTimeDraw == false ? Colors.blue : Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                              child: Center(child: Text("NÃO", style: TextStyle(fontWeight: FontWeight.bold, color: realHalfTimeDraw == false ? Colors.blue.shade800 : Colors.black87))),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    const Text("Metade com Mais Gols", style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: selectedLastGoal,
+                      value: realHighestScoringHalf,
                       decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
-                      items: availableTeams.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                      onChanged: (val) => setModalState(() => selectedLastGoal = val),
+                      items: const [
+                        DropdownMenuItem(value: "1º Tempo", child: Text("1º Tempo")),
+                        DropdownMenuItem(value: "2º Tempo", child: Text("2º Tempo")),
+                        DropdownMenuItem(value: "Empate (Mesma Qtde)", child: Text("Empate (Mesma Qtde de Gols)")),
+                      ],
+                      onChanged: (val) => setModalState(() => realHighestScoringHalf = val),
                     ),
+
                     const SizedBox(height: 32),
 
-                    SizedBox(
-                      width: double.infinity, height: 50,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
-                        icon: isSaving ? const SizedBox() : const Icon(Icons.calculate),
-                        label: isSaving ? const CircularProgressIndicator(color: Colors.white) : const Text("PROCESSAR RANKING VIP", style: TextStyle(fontWeight: FontWeight.bold)),
-                        onPressed: isSaving ? null : () async {
-                          if (homeCtrl.text.isEmpty || awayCtrl.text.isEmpty || selectedLastGoal == null) return;
-                          setModalState(() => isSaving = true);
-                          try {
-                            await _functions.httpsCallable('calculateMiniBolaoPoints').call({
-                              'miniBolaoId': doc.id,
-                              'realHomeScore': int.parse(homeCtrl.text),
-                              'realAwayScore': int.parse(awayCtrl.text),
-                              'realScorers': realScorers,
-                              'realLastGoalTeam': selectedLastGoal,
-                            });
-                            if (mounted) {
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ranking Finalizado com Sucesso! 🏆"), backgroundColor: Colors.green));
-                            }
-                          } catch (e) {
-                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
-                          } finally {
-                            if (mounted) setModalState(() => isSaving = false);
-                          }
-                        },
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                            icon: isSaving ? const SizedBox() : const Icon(Icons.sync),
+                            label: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("ATUALIZAR PARCIAL", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            onPressed: isSaving ? null : () => _processRanking(true),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade800, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                            icon: isSaving ? const SizedBox() : const Icon(Icons.flag),
+                            label: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("ENCERRAR SALA", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            onPressed: isSaving ? null : () => _processRanking(false),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 30),
                   ],
@@ -685,7 +988,6 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
               final isActive = data['is_active'] ?? false;
               final isFinished = data['status'] == 'finished'; 
 
-              // 🚨 EXIBE A DATA LIMITE NA LISTA
               final Timestamp? deadlineTs = data['deadline'] as Timestamp?;
               final String deadlineStr = deadlineTs != null 
                   ? DateFormat('dd/MM/yyyy HH:mm').format(deadlineTs.toDate()) 
@@ -703,29 +1005,32 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     style: TextStyle(fontSize: 12, color: isFinished ? Colors.orange : Colors.grey)
                   ),
                   isThreeLine: !isFinished,
-                  trailing: isFinished 
-                    ? IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteMiniBolao(doc.id, title))
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Switch(
-                            value: isActive,
-                            activeColor: Colors.green,
-                            onChanged: (val) {
-                              _firestore.collection('bolao_mini_leagues').doc(doc.id).update({'is_active': val});
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => _showEditMiniBolaoModal(doc),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.flag, color: Colors.orange),
-                            tooltip: "Encerrar e Calcular",
-                            onPressed: () => _showEndMiniBolaoModal(doc),
-                          ),
-                        ],
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Switch(
+                        value: isActive,
+                        activeColor: Colors.green,
+                        onChanged: (val) {
+                          _firestore.collection('bolao_mini_leagues').doc(doc.id).update({'is_active': val});
+                        },
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        onPressed: () => _showEditMiniBolaoModal(doc),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.flag, color: Colors.orange),
+                        tooltip: "Gerenciar / Encerrar",
+                        onPressed: () => _showControlMiniBolaoModal(doc),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        tooltip: "Excluir",
+                        onPressed: () => _deleteMiniBolao(doc.id, title),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -747,6 +1052,8 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
 
     String selectedHome = match.homeTeam;
     String selectedAway = match.awayTeam;
+
+    if (!mounted) return;
 
     await showDialog(
       context: context,
@@ -830,7 +1137,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     } catch (e) {
                       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
                     } finally {
-                      setState(() => _isLoading = false);
+                      if (mounted) setState(() => _isLoading = false);
                     }
                   },
                   child: const Text("Confirmar Confronto"),
@@ -1055,6 +1362,12 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                         if (confirmacao == true) {
                           setModalState(() => isUpdating = true);
                           try {
+                            // 🚨 Rastreamento do Reprocessamento ou Fechamento Admin
+                            AnalyticsService.logCustomScreenView(
+                              'Admin_Bolao_Match_Process', 
+                              parameters: {'match_id': match.id, 'action': isFinished ? 'reprocess' : 'close'}
+                            );
+
                             final callable = _functions.httpsCallable('calculateBolaoMatchPoints');
                             await callable.call({
                               'matchId': match.id,
@@ -1132,7 +1445,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                   subtitle: Text(_isPredictionsOpen ? "MERCADO ABERTO" : "MERCADO FECHADO"),
                   value: _isPredictionsOpen,
                   activeColor: Colors.green,
-                  onChanged: _isLoading ? null : _togglePredictionsStatus,
+                  onChanged: _isLoading ? null : _confirmTogglePredictions,
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
@@ -1175,9 +1488,8 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
             ],
           ),
           
-          // 🚀 ABA PARA O ADMIN CRIAR E GERENCIAR MINI BOLÕES
           ExpansionTile(
-            title: const Text("🎯 Mini Bolões VIP (Tiro Curto)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+            title: const Text("🎯 Mini Bolões (Tiro Curto)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
             leading: const Icon(Icons.rocket_launch, color: Colors.blue),
             backgroundColor: Colors.blue.shade50,
             children: [

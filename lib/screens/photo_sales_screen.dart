@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/photo_product_model.dart';
 import '../viewmodels/photo_sales_viewmodel.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../widgets/ui/shimmer_effect.dart';     
 import '../widgets/ui/custom_empty_state.dart';  
 
@@ -36,39 +37,6 @@ Widget _buildResponsiveImage({required String url, BoxFit fit = BoxFit.cover}) {
   );
 }
 
-class _WatermarkOverlay extends StatelessWidget {
-  const _WatermarkOverlay();
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Container(color: Colors.black.withOpacity(0.1)),
-          ClipRect(
-            child: OverflowBox(
-              maxWidth: double.infinity, maxHeight: double.infinity,
-              child: Transform.rotate(
-                angle: -0.5,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(8, (_) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20.0),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (__) => const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20.0),
-                      child: Text("PROIBIDO REPRODUÇÃO", style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w900, fontSize: 14, decoration: TextDecoration.none)),
-                    ))),
-                  )),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ==========================================
 // TELA 1: EXIBIÇÃO DAS PASTAS (Custo Leve)
 // ==========================================
@@ -83,6 +51,9 @@ class _PhotoSalesScreenState extends State<PhotoSalesScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Rastreia abertura da tela inicial de vendas
+    AnalyticsService.logCustomScreenView('Photo_Sales_Albums_Screen');
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<PhotoSalesViewModel>(context, listen: false).loadAlbums();
     });
@@ -209,6 +180,12 @@ class _FolderGalleryScreenState extends State<_FolderGalleryScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Rastreia qual pasta específica foi aberta
+    AnalyticsService.logCustomScreenView(
+      'Photo_Sales_Gallery_Screen', 
+      parameters: {'folder_name': widget.folderName}
+    );
+
     // 1. Carrega os primeiros 30 itens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<PhotoSalesViewModel>(context, listen: false).loadPhotosByFolder(widget.folderName, isRefresh: true);
@@ -229,6 +206,9 @@ class _FolderGalleryScreenState extends State<_FolderGalleryScreen> {
   }
 
   void _showCheckoutModal(BuildContext context) {
+    // 🚨 Analytics: Iniciou o painel de checkout (o generatePix lança o evento begin_checkout real)
+    AnalyticsService.logCustomScreenView('Photo_Checkout_Modal_Opened');
+
     Provider.of<PhotoSalesViewModel>(context, listen: false).initCheckout();
     
     showModalBottomSheet(
@@ -340,6 +320,15 @@ class _FolderGalleryScreenState extends State<_FolderGalleryScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto indisponível")));
                               return;
                            }
+                           
+                           // 🚨 Analytics: Adicionar/Remover do Carrinho
+                           if (!isSelected) {
+                             AnalyticsService.logCustomScreenView(
+                               'Photo_Added_To_Cart', 
+                               parameters: {'photo_id': photo.id}
+                             );
+                           }
+
                            vm.toggleCartItem(photo);
                         },
                         child: ClipRRect(
@@ -348,7 +337,6 @@ class _FolderGalleryScreenState extends State<_FolderGalleryScreen> {
                             fit: StackFit.expand,
                             children: [
                               _buildResponsiveImage(url: photo.previewUrl),
-                              const _WatermarkOverlay(),
                               if (isSelected) Container(
                                 decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), border: Border.all(color: const Color(0xFF32BCAD), width: 3), borderRadius: BorderRadius.circular(4)),
                                 child: const Center(child: Icon(Icons.check_circle, color: Colors.white, size: 40))
@@ -540,18 +528,38 @@ class _CheckoutModalMVVMState extends State<_CheckoutModalMVVM> {
 // ==========================================
 // TELA ZOOM
 // ==========================================
-class _PhotoDetailView extends StatelessWidget {
+class _PhotoDetailView extends StatefulWidget {
   final PhotoProduct photo;
   const _PhotoDetailView({required this.photo});
+
+  @override
+  State<_PhotoDetailView> createState() => _PhotoDetailViewState();
+}
+
+class _PhotoDetailViewState extends State<_PhotoDetailView> {
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia exatamente a visualização detalhada de uma foto
+    AnalyticsService.logViewItem(
+      contentType: 'photo_zoom',
+      itemId: widget.photo.id,
+      itemName: widget.photo.previewUrl,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
-      body: Center(child: InteractiveViewer(minScale: 1.0, maxScale: 4.0, child: Stack(fit: StackFit.loose, children: [
-        _buildResponsiveImage(url: photo.previewUrl, fit: BoxFit.contain),
-        const Positioned.fill(child: _WatermarkOverlay()),
-      ]))),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 1.0, 
+          maxScale: 4.0, 
+          child: _buildResponsiveImage(url: widget.photo.previewUrl, fit: BoxFit.contain)
+        )
+      ),
     );
   }
 }

@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PhotoProduct {
   final String id;
-  final String previewUrl; // Usaremos a original_url tratada
-  final String highResUrl; // A mesma, para download
+  final String previewUrl; 
+  final String highResUrl; 
   final double price;
   final String eventName;
   final DateTime takenAt;
@@ -20,23 +20,26 @@ class PhotoProduct {
   factory PhotoProduct.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
 
-    // 1. TENTA PEGAR A URL CORRETA BASEADA NA SUA IMAGEM DO BANCO
-    String rawUrl = data['original_url'] ?? data['url'] ?? '';
+    String rawOriginal = data['original_url'] ?? data['url'] ?? '';
+    // 🚨 SEGURANÇA: Lê a prévia destruída. Se for uma foto antiga sem prévia, usa a original.
+    String rawPreview = data['preview_url'] ?? rawOriginal;
 
-    // 2. CORREÇÃO PARA CLOUDINARY (Evita EncodingError)
-    // Se a URL vem do Cloudinary sem extensão, o Flutter Web às vezes falha ao detectar o tipo.
-    // Forçamos .jpg se não houver extensão.
-    if (rawUrl.isNotEmpty && rawUrl.contains('cloudinary.com')) {
-      if (!rawUrl.endsWith('.jpg') && !rawUrl.endsWith('.png') && !rawUrl.endsWith('.webp')) {
-        rawUrl = '$rawUrl.jpg';
+    // Tratamento para Cloudinary (evitar erro de encoding sem extensão)
+    if (rawOriginal.isNotEmpty && rawOriginal.contains('cloudinary.com')) {
+      if (!rawOriginal.endsWith('.jpg') && !rawOriginal.endsWith('.png') && !rawOriginal.endsWith('.webp')) {
+        rawOriginal = '$rawOriginal.jpg';
+      }
+    }
+    if (rawPreview.isNotEmpty && rawPreview.contains('cloudinary.com')) {
+      if (!rawPreview.endsWith('.jpg') && !rawPreview.endsWith('.png') && !rawPreview.endsWith('.webp')) {
+        rawPreview = '$rawPreview.jpg';
       }
     }
 
     return PhotoProduct(
       id: doc.id,
-      // Como seu banco só tem 'original_url', usamos ela para o preview também.
-      previewUrl: rawUrl, 
-      highResUrl: rawUrl, 
+      previewUrl: rawPreview, // 🔒 Agora a loja vai carregar a imagem já com marca e baixa resolução
+      highResUrl: rawOriginal, // 🔓 Link original liberado apenas após a compra e enviado no email
       price: (data['price'] ?? 0.0).toDouble(),
       eventName: data['event_name'] ?? 'Evento Geral',
       takenAt: (data['taken_at'] as Timestamp?)?.toDate() ?? DateTime.now(),

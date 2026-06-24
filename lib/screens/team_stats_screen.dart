@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../services/championship_service.dart';
 import '../services/admin_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/team_model.dart'; 
 
 import '../widgets/app_drawer.dart';
@@ -13,7 +14,7 @@ import '../widgets/rank_highlight_card.dart';
 import '../widgets/ui/shimmer_effect.dart';     
 import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../theme/app_theme.dart'; 
 
 class TeamStatsScreen extends StatefulWidget {
   const TeamStatsScreen({super.key});
@@ -22,8 +23,31 @@ class TeamStatsScreen extends StatefulWidget {
   State<TeamStatsScreen> createState() => _TeamStatsScreenState();
 }
 
-class _TeamStatsScreenState extends State<TeamStatsScreen> {
+class _TeamStatsScreenState extends State<TeamStatsScreen> with SingleTickerProviderStateMixin {
   bool _showOverall = false; 
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // 🚨 Analytics: Inicialização Dinâmica
+    _tabController = TabController(length: 6, vsync: this);
+    AnalyticsService.logCustomScreenView('Team_Stats_Screen_Tab_Melhor_Ataque'); // Padrão
+    
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        final tabs = ['Melhor_Ataque', 'Melhor_Defesa', 'Amarelos', 'Vermelhos', 'Total_Cartoes', 'Fair_Play'];
+        AnalyticsService.logCustomScreenView('Team_Stats_Screen_Tab_${tabs[_tabController.index]}');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Future<void> _showHelp(BuildContext context) async {
     return showDialog<void>(
@@ -78,79 +102,80 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
         final allTeams = champService.teams; 
         final bool isLoading = champService.isLoading;
 
-        return DefaultTabController(
-          length: 6,
-          child: Scaffold(
-            appBar: AppBar(
-              // 🚨 NOVO: Gradiente da Copa aplicado
-              flexibleSpace: Container(
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.brazilGradient,
-                ),
-              ),
-              title: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Estatísticas das Equipes'),
-                  Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
-                ],
-              ),
-              actions: [
-                Row(
-                  children: [
-                    Text(
-                      _showOverall ? "Geral" : "1ª Fase",
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    Switch(
-                      value: _showOverall,
-                      activeColor: Colors.white,
-                      activeTrackColor: Colors.greenAccent,
-                      inactiveThumbColor: Colors.white,
-                      inactiveTrackColor: Colors.white24,
-                      onChanged: (val) {
-                        setState(() {
-                          _showOverall = val;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-                IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
-                IconButton(
-                  icon: const Icon(Icons.refresh), 
-                  tooltip: "Atualizar Dados",
-                  onPressed: () => champService.fetchStaticData(forceRefresh: true),
-                ),
-              ],
-              bottom: const TabBar(
-                isScrollable: true,
-                indicatorColor: Colors.white,
-                tabs: [
-                  Tab(text: 'Melhor Ataque'),
-                  Tab(text: 'Melhor Defesa'),
-                  Tab(text: 'Amarelos'),
-                  Tab(text: 'Vermelhos'),
-                  Tab(text: 'Total Cartões'),
-                  Tab(text: 'Fair Play (PD)'),
-                ],
+        return Scaffold(
+          appBar: AppBar(
+            flexibleSpace: Container(
+              decoration: const BoxDecoration(
+                gradient: AppTheme.brazilGradient,
               ),
             ),
-            drawer: const AppDrawer(),
-            
-            body: TabBarView(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 'GP', Icons.sports_soccer, descending: true, champService: champService),
-                _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 'GC', Icons.gpp_good, descending: false, champService: champService), 
-                _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800], champService: champService),
-                _buildRankingList(context, allTeams, isLoading, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red, champService: champService),
-                _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true, champService: champService),
-                _buildRankingList(context, allTeams, isLoading, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true, champService: champService), 
+                const Text('Estatísticas das Equipes'),
+                Text(seasonName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300)),
               ],
             ),
-            
-            bottomNavigationBar: const SponsorBannerRotator(),
+            actions: [
+              Row(
+                children: [
+                  Text(
+                    _showOverall ? "Geral" : "1ª Fase",
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  Switch(
+                    value: _showOverall,
+                    activeColor: Colors.white,
+                    activeTrackColor: Colors.greenAccent,
+                    inactiveThumbColor: Colors.white,
+                    inactiveTrackColor: Colors.white24,
+                    onChanged: (val) {
+                      setState(() => _showOverall = val);
+                      // 🚨 Analytics: Registra o uso do filtro (Geral vs 1ª Fase)
+                      AnalyticsService.logCustomScreenView(
+                        'Team_Stats_Screen_Toggle',
+                        parameters: {'mode': val ? 'Geral' : '1a_Fase'}
+                      );
+                    },
+                  ),
+                ],
+              ),
+              IconButton(icon: const Icon(Icons.help_outline), onPressed: () => _showHelp(context)),
+              IconButton(
+                icon: const Icon(Icons.refresh), 
+                tooltip: "Atualizar Dados",
+                onPressed: () => champService.fetchStaticData(forceRefresh: true),
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              indicatorColor: Colors.white,
+              tabs: const [
+                Tab(text: 'Melhor Ataque'),
+                Tab(text: 'Melhor Defesa'),
+                Tab(text: 'Amarelos'),
+                Tab(text: 'Vermelhos'),
+                Tab(text: 'Total Cartões'),
+                Tab(text: 'Fair Play (PD)'),
+              ],
+            ),
           ),
+          drawer: const AppDrawer(),
+          
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 'GP', Icons.sports_soccer, descending: true, champService: champService),
+              _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 'GC', Icons.gpp_good, descending: false, champService: champService), 
+              _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800], champService: champService),
+              _buildRankingList(context, allTeams, isLoading, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red, champService: champService),
+              _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true, champService: champService),
+              _buildRankingList(context, allTeams, isLoading, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true, champService: champService), 
+            ],
+          ),
+          
+          bottomNavigationBar: const SponsorBannerRotator(),
         );
       },
     );
@@ -181,10 +206,10 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       return ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: 6,
-        itemBuilder: (_, __) => Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
+        itemBuilder: (_, __) => const Padding(
+          padding: EdgeInsets.only(bottom: 12.0),
           child: Row(
-            children: const [
+            children: [
               ShimmerEffect.circular(size: 40),
               SizedBox(width: 16),
               Expanded(child: ShimmerEffect.rectangular(height: 16)),

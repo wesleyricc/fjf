@@ -8,7 +8,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../models/free_agent_model.dart';
 import '../widgets/ui/custom_empty_state.dart';
 import '../services/auth_service.dart';
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
+import '../theme/app_theme.dart'; 
 
 class FreeAgentsMarketScreen extends StatefulWidget {
   const FreeAgentsMarketScreen({super.key});
@@ -20,7 +21,20 @@ class FreeAgentsMarketScreen extends StatefulWidget {
 class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
   String _selectedPositionFilter = 'Todos';
 
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia o acesso ao Mercado de Agentes Livres
+    AnalyticsService.logCustomScreenView('Free_Agents_Market_Screen');
+  }
+
   Future<void> _openWhatsApp(String phone, String name) async {
+    // 🚨 Analytics: Mapeamento de Geração de Lead/Contato
+    AnalyticsService.logCustomScreenView(
+      'Contact_Free_Agent_WhatsApp',
+      parameters: {'agent_name': name}
+    );
+
     final message = "Olá $name! Vi seu perfil no Mercado de Atletas da FJF e tenho interesse em conversar sobre a nossa equipe.";
     final encodedMessage = Uri.encodeComponent(message);
     final url = Uri.parse('https://wa.me/$phone?text=$encodedMessage');
@@ -33,6 +47,13 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
   }
 
   void _showPlayerDetails(BuildContext context, FreeAgent agent) {
+    // 🚨 Analytics: Visualização do perfil do Atleta Livre
+    AnalyticsService.logViewItem(
+      contentType: 'free_agent_profile',
+      itemId: agent.id,
+      itemName: agent.name,
+    );
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -164,7 +185,6 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Mercado de Atletas"),
-        // 🚨 NOVO: Gradiente da Copa aplicado
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppTheme.brazilGradient,
@@ -173,7 +193,14 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
-            onSelected: (val) => setState(() => _selectedPositionFilter = val),
+            onSelected: (val) {
+              setState(() => _selectedPositionFilter = val);
+              // 🚨 Analytics: Rastreia quais posições os presidentes mais procuram
+              AnalyticsService.logCustomScreenView(
+                'Free_Agents_Filter',
+                parameters: {'position': val}
+              );
+            },
             itemBuilder: (context) => ['Todos', 'Linha', 'Goleiro', 'Comissão']
                 .map((pos) => PopupMenuItem(value: pos, child: Text(pos)))
                 .toList(),
@@ -267,7 +294,6 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Mercado de Atletas"),
-        // 🚨 NOVO: Gradiente da Copa aplicado
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppTheme.brazilGradient,

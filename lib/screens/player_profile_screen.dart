@@ -3,11 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../theme/app_theme.dart'; 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/player_service.dart'; 
 import '../models/player_model.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 import '../widgets/sponsor_banner_rotator.dart';
 import 'edit_player_screen.dart';
@@ -32,6 +33,12 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 REGISTRA VISUALIZAÇÃO DESTE ATLETA ESPECÍFICO
+    AnalyticsService.logViewItem(
+      contentType: 'player_profile',
+      itemId: widget.playerId,
+      itemName: 'Visualização de Perfil de Atleta',
+    );
   }
 
   @override
@@ -107,6 +114,12 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                       icon: const Icon(Icons.edit),
                       tooltip: 'Editar Jogador',
                       onPressed: () async {
+                        // 🚨 Analytics: Ação de Editar Jogador pelo Administrador
+                        AnalyticsService.logCustomScreenView(
+                          'Admin_Edit_Player_Action', 
+                          parameters: {'player_id': player.id}
+                        );
+
                         await Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (ctx) => EditPlayerScreen(
@@ -136,7 +149,6 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // 🚨 NOVO: Gradiente da Copa aplicado
                       Container(
                         decoration: const BoxDecoration(
                           gradient: AppTheme.brazilGradient,

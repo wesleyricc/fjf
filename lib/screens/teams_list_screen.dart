@@ -3,10 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-import '../theme/app_theme.dart'; // <-- NOVO: Import do Tema
+import '../theme/app_theme.dart'; 
 import '../services/team_service.dart';
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/team_model.dart'; 
 
 import '../widgets/app_drawer.dart';
@@ -25,6 +26,13 @@ class TeamsListScreen extends StatefulWidget {
 
 class _TeamsListScreenState extends State<TeamsListScreen> {
   
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia a visualização do Grid Geral de Equipes
+    AnalyticsService.logCustomScreenView('Teams_List_Screen');
+  }
+
   Future<void> _handleDelete(BuildContext context, Team team, String seasonId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -97,7 +105,6 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
         return Scaffold(
           backgroundColor: Colors.grey[100],
           appBar: AppBar(
-            // 🚨 NOVO: Gradiente da Copa aplicado
             flexibleSpace: Container(
               decoration: const BoxDecoration(
                 gradient: AppTheme.brazilGradient,

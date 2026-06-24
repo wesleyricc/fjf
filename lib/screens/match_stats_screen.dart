@@ -3,13 +3,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:provider/provider.dart'; 
 
 // Services
 import '../services/championship_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 // Widgets
 import '../widgets/sponsor_banner_rotator.dart';
@@ -46,15 +46,28 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     
-    // Usamos addPostFrameCallback para garantir acesso seguro ao Provider
+    // 🚨 Analytics: Rastreia a navegação nas abas dentro dos detalhes da partida
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        final tabName = _tabController.index == 0 ? 'Estatisticas' : 'Midias';
+        AnalyticsService.logCustomScreenView(
+          'Match_Stats_Tab_$tabName',
+          parameters: {'match_id': widget.match.id}
+        );
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadDataSafe();
     });
     
     try {
       final data = widget.match.data() as Map<String, dynamic>? ?? {};
-      FirebaseAnalytics.instance.logScreenView(
-        screenName: '/match/stats/${data['team_home_name']}-vs-${data['team_away_name']}',
+      // 🚨 REGISTRA O ACESSO AO JOGO EXATO
+      AnalyticsService.logViewItem(
+        contentType: 'match',
+        itemId: widget.match.id,
+        itemName: "${data['team_home_name']} vs ${data['team_away_name']}",
       );
     } catch (_) {}
   }
@@ -65,22 +78,18 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
     super.dispose();
   }
 
-  // --- LÓGICA DE CARREGAMENTO SEGURA ---
   Future<void> _loadDataSafe() async {
     try {
-      // 1. Extração segura dos dados do Snapshot
       final data = widget.match.data();
       if (data == null || data is! Map<String, dynamic>) {
         throw Exception("Dados da partida inválidos ou corrompidos.");
       }
 
-      // 2. Extrai Links de Mídia
       if (data['stats_applied']?['media_links'] != null) {
         final links = data['stats_applied']['media_links'] as List<dynamic>;
         _mediaLinks = List<Map<String, dynamic>>.from(links.map((i) => Map<String, dynamic>.from(i)));
       }
 
-      // 3. Extrai Estatísticas
       final Map<String, dynamic> playerStats = data['stats_applied']?['player_stats'] ?? {};
       _manOfTheMatchId = data['stats_applied']?['man_of_the_match'];
 
@@ -89,14 +98,12 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
       _yellows = _safeCastStatMap(playerStats['yellows']);
       _reds = _safeCastStatMap(playerStats['reds']);
 
-      // 4. Identifica IDs necessários
       final Set<String> playerIds = {
         ..._goals.keys, ..._assists.keys, ..._yellows.keys, ..._reds.keys,
         if (_manOfTheMatchId != null) _manOfTheMatchId!
       };
       playerIds.removeWhere((id) => id.isEmpty);
 
-      // 5. Garante que os jogadores estejam carregados no Service
       if (playerIds.isNotEmpty) {
         await _ensurePlayersLoaded(data['team_home_id'], data['team_away_id']);
         _populatePlayerCache(playerIds);
@@ -126,26 +133,15 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
 
   Future<void> _ensurePlayersLoaded(String? homeId, String? awayId) async {
     final service = Provider.of<ChampionshipService>(context, listen: false);
-    
     final futures = <Future>[];
-    
-    // Verifica se precisa carregar Home
-    if (homeId != null && service.getCachedRoster(homeId).isEmpty) {
-      futures.add(service.fetchRoster(homeId));
-    }
-    // Verifica se precisa carregar Away
-    if (awayId != null && service.getCachedRoster(awayId).isEmpty) {
-      futures.add(service.fetchRoster(awayId));
-    }
-
-    if (futures.isNotEmpty) {
-      await Future.wait(futures);
-    }
+    if (homeId != null && service.getCachedRoster(homeId).isEmpty) futures.add(service.fetchRoster(homeId));
+    if (awayId != null && service.getCachedRoster(awayId).isEmpty) futures.add(service.fetchRoster(awayId));
+    if (futures.isNotEmpty) await Future.wait(futures);
   }
 
   void _populatePlayerCache(Set<String> playerIds) {
     final service = Provider.of<ChampionshipService>(context, listen: false);
-    final allPlayers = service.allPlayers; // Pega do cache atualizado
+    final allPlayers = service.allPlayers; 
     
     Map<String, Map<String, dynamic>> tempCache = {};
 
@@ -160,8 +156,6 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
           'is_staff': player.isStaff,
         };
       } catch (e) {
-        // Jogador não encontrado no cache da temporada atual
-        // Isso acontece se a partida referenciar um jogador que foi deletado ou é de outra temporada (erro de dados)
         tempCache[id] = {'name': 'Desconhecido', 'team_id': ''};
       }
     }
@@ -238,7 +232,9 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
                 final bytes = await _screenshotController.capture(pixelRatio: 3.0);
                 if (bytes != null && mounted) {
                   Navigator.pop(ctx);
-                  await Share.shareXFiles([XFile.fromData(bytes, mimeType: 'image/png', name: 'match_result.png')], text: 'Confira o resultado! #FJF2025');
+                  // 🚨 REGISTRA O ENGAJAMENTO VIRAL (COMPARTILHAMENTO)
+                  AnalyticsService.logShare('match_result_card', widget.match.id);
+                  await Share.shareXFiles([XFile.fromData(bytes, mimeType: 'image/png', name: 'match_result.png')], text: 'Confira o resultado! #FJF');
                 }
               },
             )

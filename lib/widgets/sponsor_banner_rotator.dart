@@ -1,26 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart'; // Removido, não usamos mais Snapshot aqui
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../viewmodels/sponsor_viewmodel.dart';
+import '../services/analytics_service.dart'; // 🚨 IMPORT ANALYTICS
 
 class SponsorBannerRotator extends StatefulWidget {
   final String location;
   final bool isStatic;
-  final double? height; 
-  
-  // Parâmetro único de filtro (ex: "1", "5", "semifinal", "final")
-  final String? filterTag; 
+  final double? height;
+  final String? filterTag;
 
   const SponsorBannerRotator({
-    super.key, 
-    this.location = 'footer_home', 
+    super.key,
+    this.location = 'footer_home',
     this.isStatic = false,
-    this.height, 
-    this.filterTag, 
+    this.height,
+    this.filterTag,
   });
 
   @override
@@ -28,12 +26,12 @@ class SponsorBannerRotator extends StatefulWidget {
 }
 
 class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
-  // CORREÇÃO: Agora é uma lista de Maps, pois o Service entrega dados puros
   List<Map<String, dynamic>> _filteredSponsors = [];
   int _currentIndex = 0;
   Timer? _timer;
-
   static const String _partnerContactUrl = "https://wa.me/5548996381626?text=Quero%20anunciar%20no%20App%20FJF";
+  
+  bool _firstImpressionLogged = false;
 
   @override
   void initState() {
@@ -50,34 +48,36 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   @override
   void didUpdateWidget(covariant SponsorBannerRotator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.location != oldWidget.location || 
-        widget.filterTag != oldWidget.filterTag) {
+    if (widget.location != oldWidget.location || widget.filterTag != oldWidget.filterTag) {
       _filterSponsorsFromCache();
     }
   }
 
-  // --- LÓGICA UNIFICADA ---
   void _filterSponsorsFromCache() {
-    // 🚨 Agora consome o SponsorViewModel dedicado!
     final sponsorVm = Provider.of<SponsorViewModel>(context, listen: true);
-    final allSponsors = sponsorVm.sponsors; 
+    final allSponsors = sponsorVm.sponsors;
 
     final filtered = allSponsors.where((data) {
       if (data['location'] != widget.location) return false;
-
       if (widget.filterTag != null) {
-        final docRound = data['round']; 
+        final docRound = data['round'];
         if (docRound != null && docRound.toString().isNotEmpty) {
           if (docRound.toString() != widget.filterTag) return false;
         }
-      } 
+      }
       return true;
     }).toList();
 
     setState(() {
       _filteredSponsors = filtered;
-      _currentIndex = 0; 
+      _currentIndex = 0;
     });
+
+    // Registra a impressão do primeiro banner assim que os dados carregam
+    if (_filteredSponsors.isNotEmpty && !_firstImpressionLogged) {
+      _firstImpressionLogged = true;
+      _logImpression(_filteredSponsors[_currentIndex]);
+    }
   }
 
   void _startTimer() {
@@ -88,16 +88,23 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         setState(() {
           _currentIndex = (_currentIndex + 1) % _filteredSponsors.length;
         });
+        
+        // 🚨 RASTREIA A IMPRESSÃO A CADA GIRO DO BANNER
+        _logImpression(_filteredSponsors[_currentIndex]);
         _precacheNextImage();
       }
     });
+  }
+
+  void _logImpression(Map<String, dynamic> sponsorData) {
+    final name = sponsorData['name'] ?? 'sponsor_unknown';
+    AnalyticsService.logAdImpression(name, widget.location);
   }
 
   void _precacheNextImage() {
     if (_filteredSponsors.isEmpty) return;
     try {
       final int nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
-      // CORREÇÃO: Acesso direto ao Map
       final nextData = _filteredSponsors[nextIndex];
       final String? url = nextData['imageUrl'];
       if (url != null && url.isNotEmpty) {
@@ -112,8 +119,12 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     super.dispose();
   }
 
-  Future<void> _launchURL(String? urlString) async {
+  Future<void> _launchURL(String? urlString, String sponsorName) async {
     final target = (urlString == null || urlString.isEmpty) ? _partnerContactUrl : urlString;
+    
+    // 🚨 RASTREIA O CLIQUE NO ANÚNCIO!
+    AnalyticsService.logAdClick(sponsorName, widget.location, target);
+
     final Uri url = Uri.parse(target);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
       debugPrint("Erro ao abrir: $target");
@@ -128,13 +139,11 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       return _buildHouseAd(height: effectiveHeight);
     }
 
-    // CORREÇÃO: Acesso direto ao Map
     final data = _filteredSponsors[_currentIndex];
     final imageUrl = data['imageUrl'] ?? '';
     final targetUrl = data['targetUrl'] ?? '';
-    
-    // Usamos a URL como chave única, já que o ID do documento pode não estar no Map otimizado
-    final String uniqueKey = imageUrl.isNotEmpty ? imageUrl : (data['name'] ?? 'sponsor_$_currentIndex');
+    final sponsorName = data['name'] ?? 'sponsor_$_currentIndex';
+    final String uniqueKey = imageUrl.isNotEmpty ? imageUrl : sponsorName;
 
     return Container(
       color: Colors.white,
@@ -144,9 +153,9 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         duration: const Duration(milliseconds: 800),
         child: InkWell(
           key: ValueKey<String>(uniqueKey),
-          onTap: () => _launchURL(targetUrl),
+          onTap: () => _launchURL(targetUrl, sponsorName), // 🚨 Repassa o nome do patrocinador
           child: imageUrl.isEmpty
-              ? _buildHouseAd(title: data['name'], height: effectiveHeight)
+              ? _buildHouseAd(title: sponsorName, height: effectiveHeight)
               : CachedNetworkImage(
                   imageUrl: imageUrl,
                   fit: BoxFit.cover,
@@ -161,7 +170,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
 
   Widget _buildHouseAd({String? title, required double height}) {
     return InkWell(
-      onTap: () => _launchURL(null),
+      onTap: () => _launchURL(null, title ?? "Seja Parceiro (House Ad)"),
       child: Container(
         width: double.infinity,
         height: height,
@@ -189,22 +198,12 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                 children: [
                   Text(
                     title ?? "SEJA PARCEIRO",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: Color(0xFFC25F22),
-                      letterSpacing: 0.5,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFFC25F22), letterSpacing: 0.5),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    "Anuncie aqui",
-                    style: TextStyle(color: Colors.grey, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  const Text("Anuncie aqui", style: TextStyle(color: Colors.grey, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),

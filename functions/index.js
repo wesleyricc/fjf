@@ -89,7 +89,6 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
     
     const mbData = mbSnap.data();
 
-    // 🚨 BLOQUEIO POR DATA LIMITE: Ninguém gera PIX depois que a sala trancou
     if (mbData.deadline) {
       const deadlineTime = mbData.deadline.toDate();
       if (new Date() > deadlineTime) {
@@ -303,7 +302,7 @@ async function processOrderApproval(txid, orderData, valorPago = null) {
       participants_count: admin.firestore.FieldValue.increment(1)
     });
 
-    console.log(`✅ [POLLING MANUAL] Mini Bolão liberado. TXID: ${txid}`);
+     console.log(`✅ [POLLING MANUAL] Mini Bolão liberado. TXID: ${txid}`);
   }
   else if (orderData.type === 'photo') {
     console.log(`✅ [POLLING MANUAL] Fotos liberadas. TXID: ${txid}`);
@@ -877,14 +876,14 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
   }
 });
 
-// 🚨 NOVA FUNÇÃO PROTEGIDA: PALPITES DO MINI BOLÃO VIP 🚨
+// 🚨 PALPITES DO MINI BOLÃO VIP (ATUALIZADO COM MINUTO DO 1º GOL) 🚨
 exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Login obrigatório.');
   
-  const { miniBolaoId, scoreHome, scoreAway, goalScorers, lastGoalTeam } = request.data;
+  const { miniBolaoId, scoreHome, scoreAway, goalScorers, firstGoalTeam, firstGoalMinute, halfTimeDraw, highestScoringHalf } = request.data;
   const userId = request.auth.uid;
 
-  if (!miniBolaoId || scoreHome === undefined || scoreAway === undefined || !lastGoalTeam) {
+  if (!miniBolaoId || scoreHome === undefined || scoreAway === undefined || !firstGoalTeam || firstGoalMinute === undefined || halfTimeDraw === undefined || !highestScoringHalf) {
     throw new HttpsError('invalid-argument', 'Dados incompletos para o palpite VIP.');
   }
 
@@ -898,7 +897,6 @@ exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
       throw new HttpsError('permission-denied', 'Esta sala VIP já foi encerrada.');
     }
 
-    // 🚨 VALIDAÇÃO IMUTÁVEL DE HORA DO SERVIDOR DO GOOGLE
     if (mbData.deadline) {
       const deadlineTime = mbData.deadline.toDate();
       const serverNow = new Date();
@@ -909,7 +907,6 @@ exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
 
     const participantRef = db.collection('bolao_mini_leagues').doc(miniBolaoId).collection('participants').doc(userId);
     
-    // Confirma que o usuário pagou o PIX antes de deixar ele salvar um palpite
     const pSnap = await participantRef.get();
     if (!pSnap.exists) {
       throw new HttpsError('permission-denied', 'Você não está participando desta sala VIP.');
@@ -919,7 +916,10 @@ exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
       pred_score_home: parseInt(scoreHome),
       pred_score_away: parseInt(scoreAway),
       pred_goal_scorers: goalScorers || [],
-      pred_last_goal_team: lastGoalTeam,
+      pred_first_goal_team: firstGoalTeam,
+      pred_first_goal_minute: parseInt(firstGoalMinute), // 🚨 NOVO CAMPO
+      pred_half_time_draw: halfTimeDraw,         
+      pred_highest_scoring_half: highestScoringHalf, 
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
@@ -1179,7 +1179,7 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
 });
 
 // ==================================================================
-// 🏆 ENCERRAMENTO E CÁLCULO DE MINI BOLÕES VIP
+// 🏆 ENCERRAMENTO E CÁLCULO DE MINI BOLÕES VIP (COM ATUALIZAÇÃO PARCIAL E DESEMPATE)
 // ==================================================================
 exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Acesso negado.');
@@ -1187,7 +1187,7 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
   const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
   if (!adminDoc.exists) throw new HttpsError('permission-denied', 'Apenas administradores podem calcular resultados.');
 
-  const { miniBolaoId, realHomeScore, realAwayScore, realScorers, realLastGoalTeam } = request.data;
+  const { miniBolaoId, realHomeScore, realAwayScore, realScorers, realFirstGoalTeam, realFirstGoalMinute, realHalfTimeDraw, realHighestScoringHalf, isPartial } = request.data;
   
   if (!miniBolaoId || realHomeScore === undefined || realAwayScore === undefined) {
     throw new HttpsError('invalid-argument', 'Faltam dados da partida real.');
@@ -1203,13 +1203,14 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
     if (realHome < realAway) realOutcome = 'away_win';
 
     const batchHandler = new BatchHandler(db);
-    const participantsSnap = await db.collection('bolao_mini_leagues').doc(miniBolaoId).collection('participants').get();
+    const mbRef = db.collection('bolao_mini_leagues').doc(miniBolaoId);
+    const participantsSnap = await mbRef.collection('participants').get();
 
     participantsSnap.forEach(partDoc => {
       const pData = partDoc.data();
       let points = 0;
       
-      // 1. Cálculo de Placar
+      // 1. Cálculo de Placar 
       if (pData.pred_score_home !== undefined && pData.pred_score_away !== undefined) {
         const pHome = parseInt(pData.pred_score_home);
         const pAway = parseInt(pData.pred_score_away);
@@ -1219,14 +1220,14 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
         if (pHome < pAway) pOutcome = 'away_win';
 
         if (pHome === realHome && pAway === realAway) {
-          points += 5; // Na Mosca
+          points += 50; 
         } else if (pOutcome === realOutcome) {
-          if (pDiff === realDiff) points += 3; // Saldo
-          else points += 2; // Vencedor
+          if (pDiff === realDiff) points += 30; 
+          else points += 15; 
         }
       }
 
-      // 2. Cálculo de Artilheiros (Com checagem de frequência)
+      // 2. Cálculo de Artilheiros
       let scorersPoints = 0;
       if (pData.pred_goal_scorers && Array.isArray(pData.pred_goal_scorers)) {
         let realList = [...(realScorers || [])];
@@ -1242,36 +1243,61 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
       }
       points += scorersPoints;
 
-      // 3. Cálculo de Último Gol
-      let lastGoalPoints = 0;
-      if (pData.pred_last_goal_team && pData.pred_last_goal_team === realLastGoalTeam) {
-        lastGoalPoints = 2;
-        points += lastGoalPoints;
+      // 3. Cálculo de Primeiro Gol
+      let firstGoalPoints = 0;
+      if (pData.pred_first_goal_team && pData.pred_first_goal_team === realFirstGoalTeam) {
+        firstGoalPoints = 2;
+        points += firstGoalPoints;
       }
 
-      // Atualiza o participante
+      // 🚨 3.1. CÁLCULO DE DESEMPATE DO MINUTO (Aproximação) 🚨
+      let minuteDiff = 999;
+      if (pData.pred_first_goal_minute !== undefined) {
+         minuteDiff = Math.abs(parseInt(pData.pred_first_goal_minute) - (parseInt(realFirstGoalMinute) || 0));
+      }
+
+      // 4. Cálculo de Perguntas Extras
+      let extrasPoints = 0;
+      if (pData.pred_half_time_draw !== undefined && pData.pred_half_time_draw === realHalfTimeDraw) {
+        extrasPoints += 1;
+      }
+      if (pData.pred_highest_scoring_half && pData.pred_highest_scoring_half === realHighestScoringHalf) {
+        extrasPoints += 1;
+      }
+      points += extrasPoints;
+
+      // Atualiza o participante com o fator de desempate
       batchHandler.update(partDoc.ref, {
         points: points,
         breakdown_scorers: scorersPoints,
-        breakdown_last_goal: lastGoalPoints,
+        breakdown_first_goal: firstGoalPoints,
+        breakdown_extras: extrasPoints, 
+        first_goal_minute_diff: minuteDiff, // 🚨 GRAVADO NO PARTICIPANTE PARA O APP PODER ORDENAR
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
     });
 
-    // Atualiza o status da Sala VIP
-    const mbRef = db.collection('bolao_mini_leagues').doc(miniBolaoId);
-    batchHandler.update(mbRef, {
-      status: 'finished',
-      is_active: false,
+    const mbUpdatePayload = {
       real_score_home: realHome,
       real_score_away: realAway,
       real_scorers: realScorers || [],
-      real_last_goal_team: realLastGoalTeam || '',
-      finished_at: admin.firestore.FieldValue.serverTimestamp()
-    });
+      real_first_goal_team: realFirstGoalTeam || '',
+      real_first_goal_minute: parseInt(realFirstGoalMinute) || 0, // 🚨 GRAVA NO CABEÇALHO DA SALA
+      real_half_time_draw: realHalfTimeDraw,                 
+      real_highest_scoring_half: realHighestScoringHalf || '', 
+      updated_at: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (!isPartial) {
+      mbUpdatePayload.status = 'finished';
+      mbUpdatePayload.is_active = false;
+      mbUpdatePayload.finished_at = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    batchHandler.update(mbRef, mbUpdatePayload);
 
     await batchHandler.commit();
-    return { success: true, message: 'Ranking do Mini Bolão calculado com sucesso!' };
+    return { success: true, message: isPartial ? 'Ranking parcial atualizado!' : 'Ranking do Mini Bolão calculado com sucesso!' };
 
   } catch (error) {
     throw new HttpsError('internal', error.message);

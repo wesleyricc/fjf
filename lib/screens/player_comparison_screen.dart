@@ -4,8 +4,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../theme/app_theme.dart'; 
 import '../services/championship_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
+
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/player_selection_modal.dart'; 
@@ -22,7 +24,17 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
   DocumentSnapshot? _player1;
   DocumentSnapshot? _player2;
 
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia a visualização da tela de Comparação
+    AnalyticsService.logCustomScreenView('Player_Comparison_Screen');
+  }
+
   Future<void> _openSelectionModal(int slot) async {
+    // 🚨 Analytics: Rastreia a intenção de comparar um atleta
+    AnalyticsService.logCustomScreenView('Player_Comparison_Select_Modal_Slot_$slot');
+
     final DocumentSnapshot? selected = await showDialog<DocumentSnapshot>(
       context: context,
       builder: (ctx) => const PlayerSelectionModal(),
@@ -33,6 +45,16 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
         if (slot == 1) _player1 = selected;
         else _player2 = selected;
       });
+      
+      // 🚨 Analytics: Mapeia especificamente quais atletas a torcida anda comparando
+      if (_player1 != null && _player2 != null) {
+         final p1Name = (_player1!.data() as Map<String, dynamic>)['name'] ?? 'P1';
+         final p2Name = (_player2!.data() as Map<String, dynamic>)['name'] ?? 'P2';
+         AnalyticsService.logCustomScreenView(
+           'Player_Comparison_Executed', 
+           parameters: {'player_1': p1Name, 'player_2': p2Name}
+         );
+      }
     }
   }
 
@@ -42,7 +64,6 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        // 🚨 NOVO: Gradiente da Copa aplicado
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppTheme.brazilGradient,

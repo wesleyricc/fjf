@@ -10,10 +10,11 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../viewmodels/suspension_viewmodel.dart';
 import '../utils/custom_cache_manager.dart'; 
 import 'player_profile_screen.dart';
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../theme/app_theme.dart'; 
 
 class SuspensionHistoryScreen extends StatefulWidget {
   const SuspensionHistoryScreen({super.key});
@@ -27,6 +28,9 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Regista o acesso à grelha disciplinar / histórico de suspensões
+    AnalyticsService.logCustomScreenView('Suspension_History_Screen');
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
       Provider.of<SuspensionViewModel>(context, listen: false).loadSuspensions(seasonId);
@@ -111,7 +115,6 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        // 🚨 NOVO: Gradiente da Copa aplicado
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppTheme.brazilGradient,

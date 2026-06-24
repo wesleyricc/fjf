@@ -1,16 +1,29 @@
 import 'package:flutter/material.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../theme/app_theme.dart'; 
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
-class AboutHistoryScreen extends StatelessWidget {
+class AboutHistoryScreen extends StatefulWidget {
   const AboutHistoryScreen({super.key});
+
+  @override
+  State<AboutHistoryScreen> createState() => _AboutHistoryScreenState();
+}
+
+class _AboutHistoryScreenState extends State<AboutHistoryScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Registra a visualização da tela de História
+    AnalyticsService.logCustomScreenView('About_History_Screen');
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nossa História'),
-        // 🚨 NOVO: Gradiente da Copa aplicado
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppTheme.brazilGradient,

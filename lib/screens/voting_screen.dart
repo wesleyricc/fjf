@@ -8,6 +8,7 @@ import '../models/player_model.dart';
 import '../services/championship_service.dart';
 import '../services/voting_service.dart';
 import '../services/fantasy_auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import 'draft_selection_screen.dart';
 
 class VotingScreen extends StatefulWidget {
@@ -35,6 +36,16 @@ class _VotingScreenState extends State<VotingScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // 🚨 Analytics: Acesso à tela de Votação/Enquetes Específicas
+    AnalyticsService.logCustomScreenView(
+      'Voting_Screen', 
+      parameters: {
+        'poll_id': widget.poll.id, 
+        'poll_category': widget.poll.category
+      }
+    );
+
     _initializeVideo();
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -88,11 +99,16 @@ class _VotingScreenState extends State<VotingScreen> {
 
   // Voto em Lista Fechada
   Future<void> _handleVote(Nominee nominee) async {
+    // 🚨 Analytics: Tentativa de voto em lista fechada
+    AnalyticsService.logCustomScreenView('Voting_Action_Vote_Cast', parameters: {'poll_id': widget.poll.id});
     await _processVote(nomineeId: nominee.id);
   }
 
   // Voto Livre (Busca)
   Future<void> _handleFreeVote(Player player) async {
+    // 🚨 Analytics: Tentativa de voto aberto
+    AnalyticsService.logCustomScreenView('Voting_Action_Vote_Cast', parameters: {'poll_id': widget.poll.id});
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -146,6 +162,10 @@ class _VotingScreenState extends State<VotingScreen> {
           _hasVoted = true;
           _userVotedNomineeId = nomineeId ?? freePlayerPick?.id;
         });
+        
+        // 🚨 Analytics: Voto computado com Sucesso!
+        AnalyticsService.logCustomScreenView('Vote_Cast_Success', parameters: {'poll_id': widget.poll.id});
+
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Voto registrado com sucesso! Obrigado.', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.green));
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result), backgroundColor: Colors.red));

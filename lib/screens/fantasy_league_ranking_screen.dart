@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/fantasy_league_model.dart';
 import '../services/fantasy_league_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../widgets/team_logo_widget.dart';
 
 class FantasyLeagueRankingScreen extends StatefulWidget {
@@ -22,6 +23,14 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
   @override
   void initState() {
     super.initState();
+    
+    // 🚨 Analytics: Registro da visualização do ranking de UMA liga privada específica
+    AnalyticsService.logViewItem(
+      contentType: 'fantasy_private_league',
+      itemId: widget.league.id,
+      itemName: widget.league.name,
+    );
+
     _loadLeagueRanking(forceRefresh: false);
   }
 
@@ -95,7 +104,6 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
       return const Center(child: Text("Nenhum time encontrado nesta liga."));
     }
 
-    // 🚨 RefreshIndicator permite que o usuário atualize o ranking voluntariamente
     return RefreshIndicator(
       onRefresh: () => _loadLeagueRanking(forceRefresh: true),
       color: primaryColor,

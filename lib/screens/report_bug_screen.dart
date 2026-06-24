@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../services/support_service.dart'; 
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
+import '../theme/app_theme.dart'; 
 
 class ReportBugScreen extends StatefulWidget {
   const ReportBugScreen({super.key});
@@ -20,6 +21,13 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
   
   String _reportType = 'Erro de Estatística'; 
   bool _isSending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Regista o acesso ao ecrã de suporte/report
+    AnalyticsService.logCustomScreenView('Report_Bug_Screen');
+  }
 
   @override
   void dispose() {
@@ -43,6 +51,12 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
       setState(() => _isSending = false);
 
       if (error == null) {
+        // 🚨 Analytics: Regista o envio de um report com sucesso e a sua categoria
+        AnalyticsService.logCustomScreenView(
+          'Report_Bug_Submitted', 
+          parameters: {'type': _reportType}
+        );
+
         _titleController.clear();
         _descriptionController.clear();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -61,7 +75,6 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reportar via WhatsApp'),
-        // 🚨 NOVO: Gradiente da Copa aplicado
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppTheme.brazilGradient,

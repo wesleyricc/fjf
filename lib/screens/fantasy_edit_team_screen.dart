@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../viewmodels/fantasy_home_viewmodel.dart';
 import '../widgets/team_logo_widget.dart'; // 🚨 Importando nosso novo widget
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 class FantasyEditTeamScreen extends StatefulWidget {
   const FantasyEditTeamScreen({super.key});
@@ -30,6 +31,9 @@ class _FantasyEditTeamScreenState extends State<FantasyEditTeamScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Rastreia a intenção de personalizar o time
+    AnalyticsService.logCustomScreenView('Fantasy_Edit_Team_Screen');
+
     final team = Provider.of<FantasyHomeViewModel>(context, listen: false).team;
     _nameController = TextEditingController(text: team?.teamName ?? '');
   }
@@ -48,6 +52,9 @@ class _FantasyEditTeamScreenState extends State<FantasyEditTeamScreen> {
 
     if (mounted) {
       if (success) {
+        // 🚨 Analytics: Sucesso ao editar perfil (maior retenção)
+        AnalyticsService.logCustomScreenView('Fantasy_Edit_Team_Success');
+
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil atualizado!'), backgroundColor: Colors.green));
         Navigator.pop(context);
       } else {

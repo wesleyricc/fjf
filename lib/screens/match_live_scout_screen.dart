@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../services/championship_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/match_event.dart';
 import '../models/player_model.dart'; 
 
@@ -25,6 +26,12 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Rastreia a utilização da ferramenta de Scout ao vivo pelo Admin
+    AnalyticsService.logCustomScreenView(
+      'Match_Live_Scout_Screen',
+      parameters: {'match_id': widget.match.id}
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
     });

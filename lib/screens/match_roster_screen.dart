@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/team_service.dart'; 
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/player_model.dart'; 
 
 import '../widgets/player_display_card.dart';
@@ -67,7 +68,27 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Rastreia a visualização da prancheta tática do jogo
+    AnalyticsService.logCustomScreenView(
+      'Match_Roster_Screen',
+      parameters: {'match_id': widget.matchId}
+    );
+
     _tabController = TabController(length: 2, vsync: this);
+    
+    // 🚨 Analytics: Rastreia qual dos dois times o usuário está focando
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        AnalyticsService.logCustomScreenView(
+          'Match_Roster_Tab',
+          parameters: {
+            'match_id': widget.matchId,
+            'team_viewed': _tabController.index == 0 ? widget.team1Name : widget.team2Name
+          }
+        );
+      }
+    });
+
     _loadData();
   }
 

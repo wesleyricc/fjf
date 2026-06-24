@@ -4,9 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 
-import '../theme/app_theme.dart'; // <-- NOVO: Import do Tema
+import '../theme/app_theme.dart'; 
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/match_model.dart'; 
 
 import '../widgets/app_drawer.dart';
@@ -41,6 +42,13 @@ class _FixturesScreenState extends State<FixturesScreen> {
   String _lastSeasonId = '';
   bool _isLoadingSettings = true;
   bool _isModel2 = false; 
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia o acesso à Tabela de Jogos
+    AnalyticsService.logCustomScreenView('Fixtures_Screen');
+  }
 
   @override
   void didChangeDependencies() {
@@ -98,6 +106,13 @@ class _FixturesScreenState extends State<FixturesScreen> {
   }
 
   Future<void> _handleMatchTap(MatchModel match, bool isAdmin, String seasonId) async {
+    // 🚨 Analytics: Rastreia qual partida específica o usuário clicou na tabela
+    AnalyticsService.logViewItem(
+      contentType: 'match_from_fixtures',
+      itemId: match.id,
+      itemName: '${match.homeTeamName} vs ${match.awayTeamName}',
+    );
+
     final matchRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(match.id);
     if (isAdmin || !match.isFinished) {
        final docSnap = await matchRef.get();
@@ -172,7 +187,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F5F5),
           appBar: AppBar(
-            // 🚨 NOVO: Gradiente da Copa aplicado
             flexibleSpace: Container(
               decoration: const BoxDecoration(
                 gradient: AppTheme.brazilGradient,

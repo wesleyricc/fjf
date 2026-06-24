@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/fantasy_auth_service.dart';
 import '../services/championship_service.dart';
 import '../services/fantasy_service.dart'; 
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/fantasy_models.dart';
 import '../viewmodels/fantasy_home_viewmodel.dart'; 
 import '../widgets/team_logo_widget.dart';
@@ -22,6 +23,13 @@ class FantasyHomeScreen extends StatefulWidget {
 
 class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
   
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Acesso ao Dashboard do Fantasy
+    AnalyticsService.logCustomScreenView('Fantasy_Home_Screen');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<FantasyAuthService>(
@@ -208,6 +216,12 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
 
   // --- DETALHAMENTO SCOUT NO MODAL ---
   void _showScoutDetails(BuildContext context, FantasyPlayer player, LiveScoreData score, FantasyGameConfig config) {
+    // 🚨 Analytics: Rastreia o clique para ver detalhes de um jogador da rodada
+    AnalyticsService.logCustomScreenView(
+      'Fantasy_Scout_Details_Modal',
+      parameters: {'player_id': player.playerId, 'player_name': player.name}
+    );
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),

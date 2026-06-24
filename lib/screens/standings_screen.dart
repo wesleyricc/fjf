@@ -3,14 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 
-import '../theme/app_theme.dart'; // <-- NOVO: Import do Tema
+import '../theme/app_theme.dart'; 
 import '../services/championship_service.dart';
 import '../services/admin_service.dart';
 import '../utils/standings_calculator.dart'; 
 import '../utils/standings_sorter.dart';     
 import '../models/match_model.dart';
 import '../models/team_model.dart';
-import '../services/analytics_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
@@ -48,11 +48,18 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    // 🚨 Analytics: Rastreia a visualização da Tabela Oficial
+    AnalyticsService.logCustomScreenView('Standings_Screen_Tab_Official');
 
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (_tabController.index == 1 && !_tabController.indexIsChanging) {
-        AnalyticsService.logSimulatorUsed();
+      if (!_tabController.indexIsChanging) {
+        if (_tabController.index == 1) {
+          // 🚨 Analytics: Dispara quando o usuário entra na aba do Simulador
+          AnalyticsService.logCustomScreenView('Standings_Screen_Tab_Simulator');
+        } else {
+          AnalyticsService.logCustomScreenView('Standings_Screen_Tab_Official');
+        }
       }
     });
   }
@@ -101,7 +108,6 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
 
         return Scaffold(
           appBar: AppBar(
-            // 🚨 NOVO: Gradiente da Copa aplicado
             flexibleSpace: Container(
               decoration: const BoxDecoration(
                 gradient: AppTheme.brazilGradient,

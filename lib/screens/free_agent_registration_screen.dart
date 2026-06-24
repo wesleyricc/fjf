@@ -7,7 +7,8 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/free_agent_model.dart';
 import '../services/auth_service.dart';
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
+import '../theme/app_theme.dart'; 
 
 class FreeAgentRegistrationScreen extends StatefulWidget {
   const FreeAgentRegistrationScreen({super.key});
@@ -40,6 +41,13 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
 
   String? _nonNatoLink; 
   bool _nonNatoRequirementsMet = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia acesso à tela de Inscrição no Draft
+    AnalyticsService.logCustomScreenView('Free_Agent_Registration_Screen');
+  }
 
   Future<void> _pickImage() async {
     try {
@@ -204,6 +212,8 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
 
       if (mounted) {
         setState(() => _isLoading = false);
+        // 🚨 Analytics: Confirmação de inscrição enviada com sucesso!
+        AnalyticsService.logCustomScreenView('Free_Agent_Registration_Success');
         _showSuccessDialog();
       }
 
@@ -214,6 +224,12 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
   }
 
   void _showRuleErrorDialog(String title, String message) {
+    // 🚨 Analytics: Rastreia a Regra Específica que bloqueou o usuário
+    AnalyticsService.logCustomScreenView(
+      'Free_Agent_Eligibility_Blocked',
+      parameters: {'reason': title}
+    );
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -249,7 +265,6 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
     return Scaffold(
       appBar: AppBar(
         title: const Text("Draft FJF - Inscrição"),
-        // 🚨 NOVO: Gradiente da Copa aplicado
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: AppTheme.brazilGradient,

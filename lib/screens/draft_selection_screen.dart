@@ -7,6 +7,7 @@ import '../models/player_model.dart';
 import '../services/championship_service.dart';
 import '../services/voting_service.dart';
 import '../services/fantasy_auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 class DraftSelectionScreen extends StatefulWidget {
   final Poll poll;
@@ -31,6 +32,16 @@ class _DraftSelectionScreenState extends State<DraftSelectionScreen> {
 
   bool get _isTeamComplete {
     return !_team.values.contains(null);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia o acesso à tela de Draft (Seleção do Campeonato)
+    AnalyticsService.logCustomScreenView(
+      'Draft_Selection_Screen',
+      parameters: {'poll_id': widget.poll.id}
+    );
   }
 
   Future<void> _submitTeam() async {
@@ -58,6 +69,12 @@ class _DraftSelectionScreenState extends State<DraftSelectionScreen> {
     if (mounted) {
       setState(() => _isSaving = false);
       if (result == "Sucesso") {
+        // 🚨 Analytics: Rastreia quando o usuário conclui e salva a seleção
+        AnalyticsService.logCustomScreenView(
+          'Draft_Team_Submitted', 
+          parameters: {'poll_id': widget.poll.id}
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seleção enviada com sucesso!'), backgroundColor: Colors.green));
         Navigator.pop(context, true); 
       } else {
@@ -213,6 +230,16 @@ class _DraftSearchModalState extends State<_DraftSearchModal> {
   String _searchQuery = '';
   String? _selectedTeamFilter;
   bool _forceShowAll = false; 
+
+  @override
+  void initState() {
+    super.initState();
+    // 🚨 Analytics: Rastreia qual posição (slot) o usuário está tentando preencher
+    AnalyticsService.logCustomScreenView(
+      'Draft_Search_Modal',
+      parameters: {'slot_name': widget.slotName}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

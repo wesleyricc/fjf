@@ -7,6 +7,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/championship_service.dart';
 import '../services/award_service.dart';
 import '../services/auth_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/team_model.dart';
 import '../models/match_model.dart';
 import '../models/award_model.dart';
@@ -16,7 +17,7 @@ import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/award_card.dart';
 import 'edit_award_screen.dart';
-import '../theme/app_theme.dart'; // <-- NOVO IMPORT
+import '../theme/app_theme.dart'; 
 
 class SeasonSummaryScreen extends StatefulWidget {
   const SeasonSummaryScreen({super.key});
@@ -30,6 +31,9 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Rastreia visualização do Resumo da Temporada (Hall da Fama)
+    AnalyticsService.logCustomScreenView('Season_Summary_Screen');
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<ChampionshipService>(context, listen: false).fetchAllPlayers();
     });
@@ -43,14 +47,15 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
         final authService = Provider.of<AuthService>(context);
         final isAdmin = authService.isAuthenticated;
 
-        if (champService.allPlayers.isEmpty && champService.isLoading) {
+        if (champService.isLoading && champService.matches.isEmpty) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+
+        final hasFinishedMatches = champService.matches.any((m) => m.isFinished);
 
         return Scaffold(
           appBar: AppBar(
             title: const Text('Resumo da Temporada'),
-            // 🚨 NOVO: Gradiente da Copa aplicado
             flexibleSpace: Container(
               decoration: const BoxDecoration(
                 gradient: AppTheme.brazilGradient,
@@ -64,103 +69,140 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
             ],
           ),
           drawer: const AppDrawer(),
-          body: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Text(seasonName.toUpperCase(), style: const TextStyle(fontSize: 12, letterSpacing: 2.0, color: Colors.grey)),
-                        const SizedBox(height: 4),
-                        Text("HALL DA FAMA", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Theme.of(context).primaryColor)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: _buildChampionSection(context, champService),
-                ),
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 32)),
-              
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionTitle("Destaques das Equipes"),
-                      const SizedBox(height: 4),
-                      const Text(
-                        "* Todas as estatísticas consideram os dados do campeonato completo.", 
-                        style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)
-                      ),
-                      const SizedBox(height: 12),
-                      _buildTeamStatsGrid(context, champService),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 32)),
-
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionTitle("Destaques Individuais"),
-                      const SizedBox(height: 4),
-                      const Text(
-                        "* Todas as estatísticas consideram os dados do campeonato completo.", 
-                        style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPlayerStatsGrid(context, champService),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 32)),
-              
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildSectionTitle("Premiações Oficiais"),
-                      if (isAdmin)
-                        IconButton(
-                          icon: const Icon(Icons.add_circle, color: Colors.green),
-                          tooltip: "Adicionar Prêmio",
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditAwardScreen())),
+          body: !hasFinishedMatches
+              ? _buildEmptyState(seasonName) 
+              : CustomScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Text(seasonName.toUpperCase(), style: const TextStyle(fontSize: 12, letterSpacing: 2.0, color: Colors.grey)),
+                              const SizedBox(height: 4),
+                              Text("HALL DA FAMA", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Theme.of(context).primaryColor)),
+                            ],
+                          ),
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
+
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: _buildChampionSection(context, champService),
+                      ),
+                    ),
+
+                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                    
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionTitle("Destaques das Equipes"),
+                            const SizedBox(height: 4),
+                            const Text(
+                              "* Todas as estatísticas consideram os dados do campeonato completo.", 
+                              style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)
+                            ),
+                            const SizedBox(height: 12),
+                            _buildTeamStatsGrid(context, champService),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
+
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionTitle("Destaques Individuais"),
+                            const SizedBox(height: 4),
+                            const Text(
+                              "* Todas as estatísticas consideram os dados do campeonato completo.", 
+                              style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic)
+                            ),
+                            const SizedBox(height: 12),
+                            _buildPlayerStatsGrid(context, champService),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                    
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildSectionTitle("Premiações Oficiais"),
+                            if (isAdmin)
+                              IconButton(
+                                icon: const Icon(Icons.add_circle, color: Colors.green),
+                                tooltip: "Adicionar Prêmio",
+                                onPressed: () {
+                                  // 🚨 Analytics: Ação Admin - Criar Prêmio Oficial
+                                  AnalyticsService.logCustomScreenView('Admin_Create_Award_Action');
+                                  Navigator.push(context, MaterialPageRoute(builder: (_) => const EditAwardScreen()));
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+                    _buildAwardsSliverGrid(context, champService.currentSeasonId, isAdmin),
+
+                    const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                  ],
                 ),
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
-
-              _buildAwardsSliverGrid(context, champService.currentSeasonId, isAdmin),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 40)),
-            ],
-          ),
           bottomNavigationBar: const SponsorBannerRotator(),
         );
       },
+    );
+  }
+
+  Widget _buildEmptyState(String seasonName) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.query_stats, size: 80, color: Colors.grey.shade300),
+            const SizedBox(height: 24),
+            Text(
+              seasonName.toUpperCase(),
+              style: const TextStyle(fontSize: 12, letterSpacing: 2.0, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "A temporada acabou de começar!",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "Os destaques das equipes, artilheiros e o resumo geral aparecerão aqui assim que as primeiras partidas forem finalizadas.",
+              style: TextStyle(fontSize: 14, color: Colors.grey, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -6,6 +7,7 @@ import '../services/fantasy_auth_service.dart';
 import '../services/championship_service.dart';
 import '../models/fantasy_models.dart';
 import '../services/fantasy_scout_service.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../viewmodels/fantasy_lineup_viewmodel.dart'; 
 import 'fantasy_market_screen.dart'; 
 
@@ -21,6 +23,9 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
   @override
   void initState() {
     super.initState();
+    // 🚨 Analytics: Acesso à prancheta de escalação
+    AnalyticsService.logCustomScreenView('Fantasy_Lineup_Screen');
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = Provider.of<FantasyAuthService>(context, listen: false);
       final champ = Provider.of<ChampionshipService>(context, listen: false);

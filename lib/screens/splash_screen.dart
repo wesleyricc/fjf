@@ -12,6 +12,7 @@ import '../services/championship_service.dart';
 import '../services/fantasy_service.dart';
 import '../services/voting_service.dart';
 import '../models/poll_model.dart';
+import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 import '../widgets/app_drawer.dart';
 import '../widgets/sponsor_banner_rotator.dart';
@@ -44,12 +45,15 @@ class _SplashScreenState extends State<SplashScreen> {
   bool _hasError = false;
   String _debugStatus = "Iniciando...";
   
-  // 🚨 NOVA TRAVA: Garante que o loading nunca será infinito no iOS
   bool _isCacheResolved = false; 
 
   @override
   void initState() {
     super.initState();
+    
+    // 🚨 Analytics: App Aberto (Sessão Iniciada na Home)
+    AnalyticsService.logCustomScreenView('App_Home_Dashboard');
+
     if (kIsWeb) {
       html.window.addEventListener('beforeinstallprompt', (html.Event e) {
         e.preventDefault();
@@ -67,7 +71,6 @@ class _SplashScreenState extends State<SplashScreen> {
       _checkAndShowStartupAds();
     });
 
-    // 🚨 FALLBACK DE SEGURANÇA: Se o iOS travar o Future, após 2.5s forçamos a leitura do Cache
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (mounted && !_isCacheResolved) {
         setState(() {
@@ -159,7 +162,7 @@ class _SplashScreenState extends State<SplashScreen> {
         if (service.availableSeasons.isNotEmpty) {
           setState(() {
             _debugStatus = "Sucesso!";
-            _isCacheResolved = true; // Liberado via servidor
+            _isCacheResolved = true; 
           });
         } else {
           setState(() {
@@ -180,6 +183,10 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _triggerInstallPrompt() {
     if (_installPromptEvent == null) return;
+    
+    // 🚨 Analytics: Rastreia a intenção de instalação do App (PWA)
+    AnalyticsService.logCustomScreenView('Home_PWA_Install_Clicked');
+    
     (_installPromptEvent as dynamic).prompt();
     setState(() {
       _installPromptEvent = null;
@@ -241,8 +248,12 @@ class _SplashScreenState extends State<SplashScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => Navigator.pushNamed(context, '/voting', arguments: poll)
-              .then((_) => setState(() {})),
+          onTap: () {
+            // 🚨 Analytics: Click no Banner de Votação
+            AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
+            Navigator.pushNamed(context, '/voting', arguments: poll)
+                .then((_) => setState(() {}));
+          },
           borderRadius: BorderRadius.circular(12),
           child: Container(
             decoration: BoxDecoration(
@@ -372,9 +383,6 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     final championshipService = Provider.of<ChampionshipService>(context);
     final seasonId = championshipService.currentSeasonId;
-    
-    final authService = Provider.of<AuthService>(context);
-    final bool isAdmin = authService.isAdmin;
 
     if (seasonId.isEmpty) {
       return Scaffold(
@@ -751,14 +759,10 @@ class _SplashScreenState extends State<SplashScreen> {
                                                                   Colors
                                                                       .black87,
                                                               elevation: 0),
-                                                      onPressed: () => Navigator
-                                                              .pushNamed(
-                                                                  context,
-                                                                  '/voting',
-                                                                  arguments:
-                                                                      poll)
-                                                          .then((_) =>
-                                                              setState(() {})),
+                                                      onPressed: () {
+                                                          AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
+                                                          Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {}));
+                                                      },
                                                       child: const Text("VOTAR",
                                                           style: TextStyle(
                                                               fontWeight:
@@ -766,10 +770,10 @@ class _SplashScreenState extends State<SplashScreen> {
                                                                       .w900,
                                                               fontSize: 11)),
                                                     ),
-                                              onTap: () => Navigator.pushNamed(
-                                                      context, '/voting',
-                                                      arguments: poll)
-                                                  .then((_) => setState(() {})),
+                                              onTap: () {
+                                                  AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
+                                                  Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {}));
+                                              },
                                             );
                                           });
                                     },
@@ -782,10 +786,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
                       HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
 
-                      // 🚨 NOVO BLOCO CONSUMER: PROTEÇÃO CONTRA SHIMMER INFINITO NO IOS
                       Consumer<ChampionshipService>(
                         builder: (context, service, child) {
-                          // Se já temos a info ou se o timer de segurança estourou, ignoramos o Shimmer
                           final bool hasActiveFlags = service.isFantasyEnabled || service.isBolaoEnabled;
 
                           if (service.isLoading && !hasActiveFlags && !_isCacheResolved) {
@@ -866,7 +868,10 @@ class _SplashScreenState extends State<SplashScreen> {
                                               const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
                                             ],
                                           ),
-                                          onTap: () => Navigator.pushNamed(context, '/fantasy-home'),
+                                          onTap: () {
+                                            AnalyticsService.logCustomScreenView('Home_Click_Fantasy');
+                                            Navigator.pushNamed(context, '/fantasy-home');
+                                          },
                                         ),
                                       );
                                     }
@@ -910,52 +915,54 @@ class _SplashScreenState extends State<SplashScreen> {
                                           )
                                         ),
                                         trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-                                        onTap: () => Navigator.pushNamed(context, '/wordcup-pool'),
+                                        onTap: () {
+                                          AnalyticsService.logCustomScreenView('Home_Click_Bolao_VIP');
+                                          Navigator.pushNamed(context, '/wordcup-pool');
+                                        },
                                       ),
                                     ),
                                   ),
                                 ),
                                 
-                                // CARD: Mini Bolão VIP (FAST PASS) - VISÍVEL APENAS PARA ADMINS
-                                if (isAdmin) ...[
-                                  const SizedBox(height: 10),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                                    child: Card(
-                                      elevation: 6,
-                                      clipBehavior: Clip.antiAlias,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        side: BorderSide(color: Colors.orange.shade300, width: 1.5),
+                                // CARD: Mini Bolão (FAST PASS)
+                                const SizedBox(height: 10),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  child: Card(
+                                    elevation: 6,
+                                    clipBehavior: Clip.antiAlias,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: BorderSide(color: Colors.orange.shade300, width: 1.5),
+                                    ),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [Colors.orange.shade900, Colors.deepOrange.shade700],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
                                       ),
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [Colors.orange.shade900, Colors.deepOrange.shade700],
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                          ),
+                                      child: ListTile(
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                        leading: const Icon(Icons.rocket_launch, color: Colors.white, size: 32),
+                                        title: const Text(
+                                          "MINI BOLÃO FJF",
+                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
                                         ),
-                                        child: ListTile(
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                          leading: const Icon(Icons.rocket_launch, color: Colors.white, size: 32),
-                                          title: const Text(
-                                            "MINI BOLÃO VIP",
-                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
-                                          ),
-                                          subtitle: const Text(
-                                            "Tiro curto! Salas com prêmios em dinheiro.",
-                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black26, blurRadius: 2)]),
-                                          ),
-                                          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-                                          onTap: () {
-                                            Navigator.push(context, MaterialPageRoute(builder: (_) => const MiniBolaoHomeScreen()));
-                                          },
+                                        subtitle: const Text(
+                                          "Tiro curto! Salas com prêmios em dinheiro.",
+                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black26, blurRadius: 2)]),
                                         ),
+                                        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
+                                        onTap: () {
+                                          AnalyticsService.logCustomScreenView('Home_Click_Mini_Bolao');
+                                          Navigator.push(context, MaterialPageRoute(builder: (_) => const MiniBolaoHomeScreen()));
+                                        },
                                       ),
                                     ),
                                   ),
-                                ],
+                                ),
                               ],
                             ],
                           );
@@ -982,7 +989,12 @@ class _SplashScreenState extends State<SplashScreen> {
                                     offset: Offset(0, 3))
                               ],
                               border: Border.all(color: Colors.grey.shade200)),
-                          child: const PhotoStoreBanner(),
+                          child: InkWell(
+                            onTap: () {
+                              AnalyticsService.logCustomScreenView('Home_Click_Photo_Store');
+                            },
+                            child: const PhotoStoreBanner(),
+                          ),
                         ),
                         const SizedBox(height: 16),
                       ],
@@ -1014,7 +1026,6 @@ class _SplashScreenState extends State<SplashScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       slivers: [
-                        // Repassamos a flag para proteger também a lista de times!
                         _TeamsSliverGrid(isCacheResolved: _isCacheResolved),
                       ],
                     ),
@@ -1158,14 +1169,13 @@ class _SponsorGridCard extends StatelessWidget {
 }
 
 class _TeamsSliverGrid extends StatelessWidget {
-  final bool isCacheResolved; // 🚨 Recebe a flag de fallback do widget pai
+  final bool isCacheResolved; 
   const _TeamsSliverGrid({required this.isCacheResolved});
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ChampionshipService>(
       builder: (context, service, _) {
-        // Se estiver carregando, vazio, E o timeout ainda não bateu, mostra os Shimmers
         if (service.isLoading && service.teams.isEmpty && !isCacheResolved) {
           return SliverGrid(
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1183,7 +1193,6 @@ class _TeamsSliverGrid extends StatelessWidget {
 
         final teams = service.teams;
 
-        // Se o timeout bateu e os times continuam vazios, exibe a mensagem amigável (sem girar pra sempre)
         if (teams.isEmpty) {
           return SliverToBoxAdapter(
               child: CustomEmptyState(

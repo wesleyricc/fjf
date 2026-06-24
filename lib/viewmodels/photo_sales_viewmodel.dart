@@ -214,9 +214,13 @@ class PhotoSalesViewModel extends ChangeNotifier {
       if (_paymentId.isNotEmpty && _pixCode.isNotEmpty) {
         _checkoutStep = CheckoutStep.pix;
         
-        // 🚨 EVENTO DE NEGÓCIO: Tentativa de Compra (Início do Checkout)
-        // Dispara para o Analytics a quantidade de itens e o valor total gerado no PIX
-        AnalyticsService.logPhotoPackCheckout(_cart.length, totalPrice);
+        // 🚨 EVENTO DE NEGÓCIO CORRIGIDO: Tentativa de Compra (Início do Checkout)
+        AnalyticsService.logBeginCheckout(
+          type: 'photo_pack',
+          itemCount: _cart.length,
+          totalValue: totalPrice,
+          itemName: 'Compra de Fotos Individuais',
+        );
 
         _listenToPaymentStatus();
       } else {

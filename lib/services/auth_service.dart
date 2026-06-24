@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'analytics_service.dart';
 
 const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
 
@@ -61,14 +62,22 @@ class AuthService with ChangeNotifier {
       _isAdmin = results[0].exists;
       _isPresident = results[1].exists;
 
+      String userRole = 'user';
+
       if (_isAdmin || _isPresident) {
         _isAuthenticated = true;
         _adminEmail = user.email;
+        if (_isAdmin) userRole = 'admin';
+        else if (_isPresident) userRole = 'president';
       } else {
         _isAuthenticated = false;
       }
+
+      // 🚨 MANDA A TAG PARA O GOOGLE ANALYTICS
+      AnalyticsService.setUserProperties(userId: uid, role: userRole);
+
     } catch (e) {
-      debugPrint("🔥 ERRO DE PERMISSÃO AO LER CARGOS: $e"); 
+      debugPrint("⛔ ERRO DE PERMISSÃO AO LER CARGOS: $e");
       _clearAuthData();
     }
   }

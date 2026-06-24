@@ -47,7 +47,7 @@ class DefaultFirebaseOptions {
     projectId: 'acefjf',
     authDomain: 'acefjf.firebaseapp.com',
     databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
-    storageBucket: 'acefjf.firebasestorage.app',
+    storageBucket: 'acefjf-us-storage',
     measurementId: 'G-GHY5150MH5',
   );
 
@@ -57,7 +57,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '893803829585',
     projectId: 'acefjf',
     databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
-    storageBucket: 'acefjf.firebasestorage.app',
+    storageBucket: 'acefjf-us-storage',
     iosClientId: '893803829585-gug1mrkak51qgcsg19s732k38g91iv5j.apps.googleusercontent.com',
     iosBundleId: 'com.example.fjfApp',
   );
@@ -68,7 +68,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '893803829585',
     projectId: 'acefjf',
     databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
-    storageBucket: 'acefjf.firebasestorage.app',
+    storageBucket: 'acefjf-us-storage',
     iosClientId: '893803829585-gug1mrkak51qgcsg19s732k38g91iv5j.apps.googleusercontent.com',
     iosBundleId: 'com.example.fjfApp',
   );
@@ -79,7 +79,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '893803829585',
     projectId: 'acefjf',
     databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
-    storageBucket: 'acefjf.firebasestorage.app',
+    storageBucket: 'acefjf-us-storage',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
@@ -89,7 +89,7 @@ class DefaultFirebaseOptions {
     projectId: 'acefjf',
     authDomain: 'acefjf.firebaseapp.com',
     databaseURL: 'https://acefjf-default-rtdb.firebaseio.com',
-    storageBucket: 'acefjf.firebasestorage.app',
+    storageBucket: 'acefjf-us-storage',
     measurementId: 'G-6YV4NEVGWC',
   );
 }
