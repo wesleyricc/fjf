@@ -68,7 +68,7 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
         children: [
           _buildThemedHeader(),
           SizedBox(
-            height: 220, // Altura ajustada
+            height: 245, // Altura ajustada para acomodar a proporção 16:9 + textos
             child: Consumer<NewsViewModel>(
               builder: (context, newsVm, _) {
                 final newsList = newsVm.news;
@@ -120,16 +120,19 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                height: 120,
-                width: double.infinity,
-                child: imageUrl.isEmpty
-                    ? Container(color: Colors.grey[200], child: const Icon(Icons.image, color: Colors.grey))
-                    : CachedNetworkImage(
-                        imageUrl: imageUrl, fit: BoxFit.cover,
-                        placeholder: (c, u) => Container(color: Colors.grey[200]),
-                        errorWidget: (c, u, e) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
-                      ),
+              AspectRatio(
+                aspectRatio: 16 / 9, // Força a proporção exata de 1920x1080 px
+                child: SizedBox(
+                  width: double.infinity,
+                  child: imageUrl.isEmpty
+                      ? Container(color: Colors.grey[200], child: const Icon(Icons.image, color: Colors.grey))
+                      : CachedNetworkImage(
+                          imageUrl: imageUrl, 
+                          fit: BoxFit.cover,
+                          placeholder: (c, u) => Container(color: Colors.grey[200]),
+                          errorWidget: (c, u, e) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
+                        ),
+                ),
               ),
               Expanded(
                 child: Padding(

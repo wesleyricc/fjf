@@ -23,33 +23,77 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   String _searchQuery = "";
   
   String _adminMatchStatusFilter = 'pending_live'; 
+  String _selectedPhaseFilter = "Todas as Fases"; // 🚨 NOVO: Estado do Filtro de Fase
 
+  // Variáveis para Bônus Final
   String? _officialChampion;
   String? _officialRunnerUp;
-  String? _officialBestOffense;
-  String? _officialWorstDefense;
+  List<String> _officialBestOffense = []; 
+  List<String> _officialWorstDefense = []; 
   String? _officialDisappointment;
 
+  // 🚨 NOVO: Opções do Filtro de Fase
+  final List<String> _phaseOptions = [
+    "Todas as Fases", "Grupo A", "Grupo B", "Grupo C", "Grupo D", "Grupo E", "Grupo F",
+    "Grupo G", "Grupo H", "Grupo I", "Grupo J", "Grupo K", "Grupo L", "16 Avos de Final",
+    "Oitavas de Final", "Quartas de Final", "Semifinal", "Disputa 3º Lugar", "Final"
+  ];
+
   final Map<String, String> _teamsFlagsMap = {
-    'México': '🇲🇽', 'África do Sul': '🇿🇦', 'Coreia do Sul': '🇰🇷', 'Tchéquia': '🇨🇿',
-    'Canadá': '🇨🇦', 'Bósnia e Herzegovina': '🇧🇦', 'Estados Unidos': '🇺🇸', 'Paraguai': '🇵🇾',
-    'Espanha': '🇪🇸', 'Camboja': '🇰🇭', 'França': '🇫🇷', 'Irã': '🇮🇷',
-    'Brasil': '🇧🇷', 'Marrocos': '🇲🇦', 'Escócia': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Haiti': '🇭🇹',
-    'Argentina': '🇦🇷', 'Senegal': '🇸🇳', 'Gana': '🇬🇭', 'Croácia': '🇭🇷',
-    'Bélgica': '🇧🇪', 'Egito': '🇪🇬', 'Tunísia': '🇹🇳', 'Japão': '🇯🇵',
-    'Suíça': '🇨🇭', 'Catar': '🇶🇦', 'Nigéria': '🇳🇬', 'Uruguai': '🇺🇾',
-    'Colômbia': '🇨🇴', 'Portugal': '🇵🇹', 'Cabo Verde': '🇨🇻', 'Gales': '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
-    'Panamá': '🇵🇦', 'Inglaterra': '🇬🇧', 'Nova Zelândia': '🇳🇿', 'Itália': '🇮🇹',
-    'Argélia': '🇩🇿', 'Jamaica': '🇯🇲', 'Equador': '🇪🇨', 'Holanda': '🇳🇱',
-    'Alemanha': '🇩🇪', 'Curaçau': '🇨🇼', 'Costa do Marfim': '🇨🇮', 'Austrália': '🇦🇺',
-    'Arábia Saudita': '🇸🇦', 'Honduras': '🇭🇳', 'Peru': '🇵🇪', 'Venezuela': '🇻🇪',
-    'A Definir': '❓'
-  };
+  'A Definir': '❓',
+  'África do Sul': '🇿🇦',
+  'Alemanha': '🇩🇪',
+  'Arábia Saudita': '🇸🇦',
+  'Argélia': '🇩🇿',
+  'Argentina': '🇦🇷',
+  'Austrália': '🇦🇺',
+  'Áustria': '🇦🇹',
+  'Bélgica': '🇧🇪',
+  'Bósnia e Herzegovina': '🇧🇦',
+  'Brasil': '🇧🇷',
+  'Cabo Verde': '🇨🇻',
+  'Canadá': '🇨🇦',
+  'Catar': '🇶🇦',
+  'Colômbia': '🇨🇴',
+  'Coreia do Sul': '🇰🇷',
+  'Costa do Marfim': '🇨🇮',
+  'Croácia': '🇭🇷',
+  'Curaçao': '🇨🇼',
+  'Egito': '🇪🇬',
+  'Equador': '🇪🇨',
+  'Escócia': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  'Espanha': '🇪🇸',
+  'Estados Unidos': '🇺🇸',
+  'França': '🇫🇷',
+  'Gana': '🇬🇭',
+  'Haiti': '🇭🇹',
+  'Holanda': '🇳🇱',
+  'Inglaterra': '🇬🇧',
+  'Irã': '🇮🇷',
+  'Iraque': '🇮🇶',
+  'Japão': '🇯🇵',
+  'Jordânia': '🇯🇴',
+  'Marrocos': '🇲🇦',
+  'México': '🇲🇽',
+  'Noruega': '🇳🇴',
+  'Nova Zelândia': '🇳🇿',
+  'Panamá': '🇵🇦',
+  'Paraguai': '🇵🇾',
+  'Portugal': '🇵🇹',
+  'RD Congo': '🇨🇩',
+  'Senegal': '🇸🇳',
+  'Suécia': '🇸🇪',
+  'Suíça': '🇨🇭',
+  'Tchéquia': '🇨🇿',
+  'Tunísia': '🇹🇳',
+  'Turquia': '🇹🇷',
+  'Uruguai': '🇺🇾',
+  'Uzbequistão': '🇺🇿',
+};
 
   @override
   void initState() {
     super.initState();
-    // 🚨 Analytics: Acesso ao Painel Admin do Bolão
     AnalyticsService.logCustomScreenView('Admin_Bolao_Screen');
     _fetchSettings();
   }
@@ -161,7 +205,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   }
 
   Future<void> _processFinalBonuses() async {
-    if (_officialChampion == null || _officialRunnerUp == null || _officialBestOffense == null || _officialWorstDefense == null || _officialDisappointment == null) {
+    if (_officialChampion == null || _officialRunnerUp == null || _officialBestOffense.isEmpty || _officialWorstDefense.isEmpty || _officialDisappointment == null) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha todos os prêmios antes de processar!"), backgroundColor: Colors.red));
        return;
     }
@@ -237,7 +281,6 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   }
 
   Future<void> _showCreateMiniBolaoModal() async {
-    // 🚨 Analytics: Registra abertura do Modal de Criação de Mini Bolão
     AnalyticsService.logCustomScreenView('Admin_Modal_Create_Mini_Bolao');
 
     final titleCtrl = TextEditingController();
@@ -461,7 +504,6 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   }
 
   Future<void> _showEditMiniBolaoModal(DocumentSnapshot doc) async {
-    // 🚨 Analytics: Registra abertura do Modal
     AnalyticsService.logCustomScreenView('Admin_Modal_Edit_Mini_Bolao');
 
     final data = doc.data() as Map<String, dynamic>;
@@ -610,7 +652,6 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
   }
 
   Future<void> _showControlMiniBolaoModal(DocumentSnapshot doc) async {
-    // 🚨 Analytics: Registra abertura do Modal de Fechamento de Sala
     AnalyticsService.logCustomScreenView('Admin_Modal_Control_Mini_Bolao');
 
     final data = doc.data() as Map<String, dynamic>;
@@ -1468,8 +1509,19 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                   children: [
                     _buildAdminBonusDropdown("O Grande Campeão", _officialChampion, (val) => setState(() => _officialChampion = val)),
                     _buildAdminBonusDropdown("O Vice-Campeão", _officialRunnerUp, (val) => setState(() => _officialRunnerUp = val)),
-                    _buildAdminBonusDropdown("Melhor Ataque (Mais Gols)", _officialBestOffense, (val) => setState(() => _officialBestOffense = val)),
-                    _buildAdminBonusDropdown("Pior Defesa (Saco de Pancadas)", _officialWorstDefense, (val) => setState(() => _officialWorstDefense = val)),
+                    
+                    // 🚨 BOTÕES DE MÚLTIPLA ESCOLHA PARA ATAQUE/DEFESA
+                    _buildAdminMultiBonusSelector(
+                      label: "Melhor Ataque (Mais Gols)",
+                      currentValues: _officialBestOffense,
+                      onChanged: (vals) => setState(() => _officialBestOffense = vals),
+                    ),
+                    _buildAdminMultiBonusSelector(
+                      label: "Pior Defesa (Saco de Pancadas)",
+                      currentValues: _officialWorstDefense,
+                      onChanged: (vals) => setState(() => _officialWorstDefense = vals),
+                    ),
+
                     _buildAdminBonusDropdown("A Grande Decepção", _officialDisappointment, (val) => setState(() => _officialDisappointment = val)),
                     
                     const SizedBox(height: 16),
@@ -1512,40 +1564,50 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
           
           const Divider(height: 1, thickness: 2),
 
+          // 🚨 NOVO LAYOUT DE FILTROS 🚨
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      labelText: "Buscar jogo...",
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val.toLowerCase();
-                      });
-                    },
+                TextField(
+                  decoration: const InputDecoration(
+                    labelText: "Buscar jogo...",
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
                   ),
+                  onChanged: (val) {
+                    setState(() {
+                      _searchQuery = val.toLowerCase();
+                    });
+                  },
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<String>(
-                    value: _adminMatchStatusFilter,
-                    decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
-                    items: const [
-                      DropdownMenuItem(value: 'Todos', child: Text('Todos', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'pending_live', child: Text('Pendentes/Ao Vivo', style: TextStyle(fontSize: 12))),
-                      DropdownMenuItem(value: 'finished', child: Text('Encerrados', style: TextStyle(fontSize: 12))),
-                    ],
-                    onChanged: (val) => setState(() => _adminMatchStatusFilter = val!),
-                  ),
-                )
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedPhaseFilter,
+                        decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                        items: _phaseOptions.map((phase) => DropdownMenuItem(value: phase, child: Text(phase, style: const TextStyle(fontSize: 12)))).toList(),
+                        onChanged: (val) => setState(() => _selectedPhaseFilter = val!),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _adminMatchStatusFilter,
+                        decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                        items: const [
+                          DropdownMenuItem(value: 'Todos', child: Text('Todos', style: TextStyle(fontSize: 12))),
+                          DropdownMenuItem(value: 'pending_live', child: Text('Pendentes/Ao Vivo', style: TextStyle(fontSize: 12))),
+                          DropdownMenuItem(value: 'finished', child: Text('Encerrados', style: TextStyle(fontSize: 12))),
+                        ],
+                        onChanged: (val) => setState(() => _adminMatchStatusFilter = val!),
+                      ),
+                    )
+                  ],
+                ),
               ],
             ),
           ),
@@ -1559,7 +1621,7 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
 
                 final docs = snapshot.data!.docs.where((d) {
                   final data = d.data() as Map<String, dynamic>;
-                  final group = data['group']?.toString().toLowerCase() ?? '';
+                  final group = data['group']?.toString() ?? ''; // Comparação exata para a Fase
                   final home = data['home_team']?.toString().toLowerCase() ?? '';
                   final away = data['away_team']?.toString().toLowerCase() ?? '';
                   final status = data['status'] ?? '';
@@ -1571,9 +1633,15 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
                     matchStatus = (status == 'finished');
                   }
 
-                  bool matchSearch = group.contains(_searchQuery) || home.contains(_searchQuery) || away.contains(_searchQuery);
+                  // 🚨 NOVO: Filtro de Fase
+                  bool phaseMatch = true;
+                  if (_selectedPhaseFilter != "Todas as Fases") {
+                    phaseMatch = group == _selectedPhaseFilter;
+                  }
+
+                  bool matchSearch = group.toLowerCase().contains(_searchQuery) || home.contains(_searchQuery) || away.contains(_searchQuery);
                   
-                  return matchStatus && matchSearch;
+                  return matchStatus && phaseMatch && matchSearch;
                 }).toList();
 
                 if (docs.isEmpty) return const Center(child: Text("Nenhum jogo corresponde ao filtro."));
@@ -1674,6 +1742,102 @@ class _AdminBolaoScreenState extends State<AdminBolaoScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // 🚨 NOVO WIDGET PARA SELEÇÃO MÚLTIPLA DE TIMES (Pior Defesa / Melhor Ataque)
+  Widget _buildAdminMultiBonusSelector({
+    required String label,
+    required List<String> currentValues,
+    required Function(List<String>) onChanged,
+  }) {
+    final List<String> availableTeams = _teamsFlagsMap.keys.where((k) => k != 'A Definir' && !k.contains('Grupo')).toList()..sort();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: InkWell(
+        onTap: () async {
+          List<String> tempSelection = List.from(currentValues);
+          await showDialog(
+            context: context,
+            builder: (ctx) {
+              return StatefulBuilder(
+                builder: (context, setStateDialog) {
+                  return AlertDialog(
+                    title: Text(label),
+                    content: SizedBox(
+                      width: double.maxFinite,
+                      height: 400,
+                      child: ListView.builder(
+                        itemCount: availableTeams.length,
+                        itemBuilder: (context, index) {
+                          final team = availableTeams[index];
+                          final isChecked = tempSelection.contains(team);
+                          return CheckboxListTile(
+                            title: Row(
+                              children: [
+                                Text(_teamsFlagsMap[team] ?? '❓', style: const TextStyle(fontSize: 18)),
+                                const SizedBox(width: 8),
+                                Expanded(child: Text(team)),
+                              ],
+                            ),
+                            value: isChecked,
+                            onChanged: (val) {
+                              setStateDialog(() {
+                                if (val == true) {
+                                  tempSelection.add(team);
+                                } else {
+                                  tempSelection.remove(team);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
+                      ElevatedButton(
+                        onPressed: () {
+                          onChanged(tempSelection);
+                          Navigator.pop(ctx);
+                        },
+                        child: const Text("Confirmar"),
+                      )
+                    ],
+                  );
+                }
+              );
+            }
+          );
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              const SizedBox(height: 8),
+              if (currentValues.isEmpty)
+                const Text("Nenhuma seleção escolhida", style: TextStyle(fontSize: 16))
+              else
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: currentValues.map((t) => Chip(
+                    label: Text("${_teamsFlagsMap[t]} $t", style: const TextStyle(fontSize: 12)),
+                    backgroundColor: Colors.purple.shade100,
+                  )).toList(),
+                )
+            ],
+          ),
+        ),
       ),
     );
   }

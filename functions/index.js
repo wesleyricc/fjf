@@ -974,14 +974,21 @@ exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async
     const usersSnap = await db.collection('bolao_users').get();
     const batchHandler = new BatchHandler(db);
 
+    // Garantir que as variáveis sejam tratadas como arrays (mesmo que venham vazias ou como string legada)
+    const bestOffenseArray = Array.isArray(officialBestOffense) ? officialBestOffense : (officialBestOffense ? [officialBestOffense] : []);
+    const worstDefenseArray = Array.isArray(officialWorstDefense) ? officialWorstDefense : (officialWorstDefense ? [officialWorstDefense] : []);
+
     for (const userDoc of usersSnap.docs) {
       const userData = userDoc.data();
       let extraPoints = 0;
 
       if (userData.bonus_champion === officialChampion) extraPoints += 20;
       if (userData.bonus_runner_up === officialRunnerUp) extraPoints += 10;
-      if (userData.bonus_best_offense === officialBestOffense) extraPoints += 10;
-      if (userData.bonus_worst_defense === officialWorstDefense) extraPoints += 10;
+      
+      // 🚨 VALIDAÇÃO EM LISTA (Array) PARA EMPATES
+      if (userData.bonus_best_offense && bestOffenseArray.includes(userData.bonus_best_offense)) extraPoints += 10;
+      if (userData.bonus_worst_defense && worstDefenseArray.includes(userData.bonus_worst_defense)) extraPoints += 10;
+      
       if (userData.bonus_disappointment === officialDisappointment) extraPoints += 10;
 
       if (extraPoints > 0) {

@@ -269,13 +269,13 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
-                                  SizedBox(height: 4),
-                                  Text("⏳ Palpites das Partidas:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
-                                  Text("O palpite de cada confronto fecha individualmente 30 minutos antes do início programado daquela partida. Fique atento para não perder o prazo do dia!", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  SizedBox(height: 8),
-                                  Text("🔒 Bônus Extras (O Grande Campeão, etc):", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
-                                  Text("Serão trancados definitivamente no dia 17/06/2026 às 23h59. Após isso, não será possível alterar suas escolhas.", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  Navigator.canPop(context) ? const SizedBox.shrink() : const Divider(),
+                                  const SizedBox(height: 4),
+                                  const Text("⏳ Palpites das Partidas:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  const Text("O palpite de cada confronto fecha individualmente 30 minutos antes do início programado daquela partida. Fique atento para não perder o prazo do dia!", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  const SizedBox(height: 8),
+                                  const Text("🔒 Bônus Extras (O Grande Campeão, etc):", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  const Text("Serão trancados definitivamente no dia 17/06/2026 às 23h59. Após isso, não será possível alterar suas escolhas.", style: TextStyle(fontSize: 13, height: 1.5)),
                                 ],
                               ),
                             )
@@ -296,17 +296,35 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
-                                  SizedBox(height: 4),
-                                  Text("🎯 Na Mosca (Placar Exato): +5 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
-                                  Text("Acertou o vencedor e o placar exato. (Ex: Palpitou 2x1, jogo terminou 2x1).", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  SizedBox(height: 8),
-                                  Text("⚖️ Acerto de Vencedor + Saldo: +3 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
-                                  Text("Acertou o vencedor e a diferença de gols, mas errou o placar. (Ex: Palpitou 2x0, jogo terminou 3x1).", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("💡 Dica de Empate: Se apostar 0x0 e o jogo terminar 1x1, você ganha 3 pontos! (Acertou o empate e o saldo, que é sempre zero).", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54)),
-                                  SizedBox(height: 8),
-                                  Text("✔️ Acerto Simples: +2 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
-                                  Text("Acertou apenas quem venceu a partida. (Ex: Palpitou 1x0, jogo terminou 3x0).", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  Navigator.canPop(context) ? const SizedBox.shrink() : const Divider(),
+                                  const SizedBox(height: 4),
+                                  const Text("🎯 Na Mosca (Placar Exato): +5 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  const Text("Acertou o vencedor e o placar exato. (Ex: Palpitou 2x1, jogo terminou 2x1).", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  const SizedBox(height: 8),
+                                  const Text("⚖️ Acerto de Vencedor + Saldo: +3 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  const Text("Acertou o vencedor e a diferença de gols, mas errou o placar. (Ex: Palpitou 2x0, jogo terminou 3x1).", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  const Text("💡 Dica de Empate: Se apostar 0x0 e o jogo terminar 1x1, você ganha 3 pontos! (Acertou o empate e o saldo, que é sempre zero).", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54)),
+                                  const SizedBox(height: 8),
+                                  const Text("✔️ Acerto Simples: +2 Pontos", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, height: 1.5)),
+                                  const Text("Acertou apenas quem venceu a partida. (Ex: Palpitou 1x0, jogo terminou 3x0).", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  
+                                  // 🚨 NOVA REGRA MATAMATA
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                                    child: const Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text("⚠️ Jogos de Mata-Mata (Fase Final)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blue)),
+                                        SizedBox(height: 4),
+                                        Text("Nas fases eliminatórias, o placar considerado válido para o Bolão será o resultado final após os 90 minutos regulamentares MAIS o tempo de Prorrogação (120 minutos no total).\n\nGols de disputa de pênaltis NÃO são contabilizados no placar do Bolão.", style: TextStyle(fontSize: 13, height: 1.5)),
+                                        SizedBox(height: 8),
+                                        // 🚨 ALERTA E DICA SOBRE O EMPATE COM PÊNALTIS
+                                        Text("💡 Dica importante: Se o jogo terminar empatado (indo para os pênaltis), o resultado oficial para o Bolão será EMPATE. Ou seja, quem apostou na vitória de um dos times não pontuará. Por outro lado, quem apostar no empate receberá a pontuação normalmente, independentemente de qual equipe vença a disputa de pênaltis!", style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.black87)),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             )
@@ -328,15 +346,30 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Navigator.canPop(context) ? SizedBox.shrink() : Divider(),
-                                  SizedBox(height: 4),
-                                  Text("Esses pontos serão calculados apenas no fim da Copa do Mundo:", style: TextStyle(fontSize: 12, color: Colors.black54)),
-                                  SizedBox(height: 8),
-                                  Text("🏆 O Grande Campeão: +20 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("🥈 O Vice-Campeão: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("⚽ Melhor Ataque da Copa: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("🛡️ Pior Defesa da Copa: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
-                                  Text("📉 A Grande Decepção: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  Navigator.canPop(context) ? const SizedBox.shrink() : const Divider(),
+                                  const SizedBox(height: 4),
+                                  const Text("Esses pontos serão calculados apenas no fim da Copa do Mundo:", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                                  const SizedBox(height: 8),
+                                  const Text("🏆 O Grande Campeão: +20 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  const Text("🥈 O Vice-Campeão: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  const Text("⚽ Melhor Ataque da Copa: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  const Text("🛡️ Pior Defesa da Copa: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
+                                  const Text("📉 A Grande Decepção: +10 Pontos", style: TextStyle(fontSize: 13, height: 1.5)),
+
+                                  // 🚨 NOVA REGRA DESEMPATE BÔNUS APLICADA AQUI 🚨
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
+                                    child: const Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text("⚠️ Critério de Empate nos Bônus", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.purple)),
+                                        SizedBox(height: 4),
+                                        Text("Caso duas ou mais seleções empatem nas estatísticas de Melhor Ataque ou Pior Defesa, TODAS ELAS serão consideradas vencedoras do bônus!\n\nOu seja, se você apostou em qualquer uma das seleções empatadas, você garantirá os pontos integrais da categoria.", style: TextStyle(fontSize: 13, height: 1.5)),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             )

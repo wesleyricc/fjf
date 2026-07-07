@@ -58,18 +58,56 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
   ];
 
   final Map<String, String> _teamsFlagsMap = {
-    'México': '🇲🇽', 'África do Sul': '🇿🇦', 'Coreia do Sul': '🇰🇷', 'Tchéquia': '🇨🇿',
-    'Canadá': '🇨🇦', 'Bósnia e Herzegovina': '🇧🇦', 'Estados Unidos': '🇺🇸', 'Paraguai': '🇵🇾',
-    'Espanha': '🇪🇸', 'Camboja': '🇰🇭', 'França': '🇫🇷', 'Irã': '🇮🇷', 'Brasil': '🇧🇷',
-    'Marrocos': '🇲🇦', 'Escócia': '🏴󠁧󠁢󠁳󠁣󠁴󠁿', 'Haiti': '🇭🇹', 'Argentina': '🇦🇷', 'Senegal': '🇸🇳',
-    'Gana': '🇬🇭', 'Croácia': '🇭🇷', 'Bélgica': '🇧🇪', 'Egito': '🇪🇬', 'Tunísia': '🇹🇳',
-    'Japão': '🇯🇵', 'Suíça': '🇨🇭', 'Catar': '🇶🇦', 'Nigéria': '🇳🇬', 'Uruguai': '🇺🇾',
-    'Colômbia': '🇨🇴', 'Portugal': '🇵🇹', 'Cabo Verde': '🇨🇻', 'Gales': '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
-    'Panamá': '🇵🇦', 'Inglaterra': '🇬🇧', 'Nova Zelândia': '🇳🇿', 'Itália': '🇮🇹',
-    'Argélia': '🇩🇿', 'Jamaica': '🇯🇲', 'Equador': '🇪🇨', 'Holanda': '🇳🇱', 'Alemanha': '🇩🇪',
-    'Curaçau': '🇨🇼', 'Costa do Marfim': '🇨🇮', 'Austrália': '🇦🇺', 'Arábia Saudita': '🇸🇦',
-    'Honduras': '🇭🇳', 'Peru': '🇵🇪', 'Venezuela': '🇻🇪',
-  };
+  'A Definir': '❓',
+  'África do Sul': '🇿🇦',
+  'Alemanha': '🇩🇪',
+  'Arábia Saudita': '🇸🇦',
+  'Argélia': '🇩🇿',
+  'Argentina': '🇦🇷',
+  'Austrália': '🇦🇺',
+  'Áustria': '🇦🇹',
+  'Bélgica': '🇧🇪',
+  'Bósnia e Herzegovina': '🇧🇦',
+  'Brasil': '🇧🇷',
+  'Cabo Verde': '🇨🇻',
+  'Canadá': '🇨🇦',
+  'Catar': '🇶🇦',
+  'Colômbia': '🇨🇴',
+  'Coreia do Sul': '🇰🇷',
+  'Costa do Marfim': '🇨🇮',
+  'Croácia': '🇭🇷',
+  'Curaçao': '🇨🇼',
+  'Egito': '🇪🇬',
+  'Equador': '🇪🇨',
+  'Escócia': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  'Espanha': '🇪🇸',
+  'Estados Unidos': '🇺🇸',
+  'França': '🇫🇷',
+  'Gana': '🇬🇭',
+  'Haiti': '🇭🇹',
+  'Holanda': '🇳🇱',
+  'Inglaterra': '🇬🇧',
+  'Irã': '🇮🇷',
+  'Iraque': '🇮🇶',
+  'Japão': '🇯🇵',
+  'Jordânia': '🇯🇴',
+  'Marrocos': '🇲🇦',
+  'México': '🇲🇽',
+  'Noruega': '🇳🇴',
+  'Nova Zelândia': '🇳🇿',
+  'Panamá': '🇵🇦',
+  'Paraguai': '🇵🇾',
+  'Portugal': '🇵🇹',
+  'RD Congo': '🇨🇩',
+  'Senegal': '🇸🇳',
+  'Suécia': '🇸🇪',
+  'Suíça': '🇨🇭',
+  'Tchéquia': '🇨🇿',
+  'Tunísia': '🇹🇳',
+  'Turquia': '🇹🇷',
+  'Uruguai': '🇺🇾',
+  'Uzbequistão': '🇺🇿',
+};
 
   @override
   void initState() {
@@ -200,11 +238,13 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
                       const SizedBox(height: 4),
                       const Text("O grande vencedor (1º Lugar do Ranking) leva 50% de TODO o valor arrecadado com as inscrições!", style: TextStyle(fontSize: 14)),
                       const Divider(height: 30),
+                      
                       const Text("⏳ PRAZOS DE ENCERRAMENTO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red)),
                       const SizedBox(height: 4),
                       const Text("• Palpites das Partidas: O palpite de cada confronto fecha individualmente 30 minutos antes do início programado daquela partida.", style: TextStyle(fontSize: 14, height: 1.5)),
                       const Text("• Bônus Extras: Serão trancados definitivamente no dia 17/06/2026 às 23h59. Faça suas escolhas com antecedência!", style: TextStyle(fontSize: 14, height: 1.5)),
                       const Divider(height: 30),
+                      
                       const Text("⚽ PONTUAÇÃO DOS JOGOS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
                       const SizedBox(height: 8),
                       const Text("🎯 Na Mosca (+5 Pontos)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -215,11 +255,44 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
                       const SizedBox(height: 8),
                       const Text("✔️ Acerto Simples (+2 Pontos)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const Text("Acertou apenas quem venceu a partida.\nExemplo: Palpitou 1x0, jogo terminou 3x0.", style: TextStyle(fontSize: 14, height: 1.5)),
+                      
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text("⚠️ Jogos de Mata-Mata (Fase Final)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blue)),
+                            SizedBox(height: 4),
+                            Text("Nas fases eliminatórias, o placar considerado válido para o Bolão será o resultado final após os 90 minutos regulamentares MAIS o tempo de Prorrogação (120 minutos no total).\n\nGols de disputa de pênaltis NÃO são contabilizados no placar do Bolão.", style: TextStyle(fontSize: 13, height: 1.5)),
+                            SizedBox(height: 8),
+                            // 🚨 ALERTA E DICA SOBRE O EMPATE COM PÊNALTIS
+                            Text("💡 Dica importante: Se você apostar na vitória de um time e o jogo terminar empatado (indo para os pênaltis), o resultado oficial da partida para o Bolão será EMPATE. Ou seja, quem apostou na vitória de uma das equipes não pontuará, mesmo que ela vença a disputa de pênaltis depois!", style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.black87)),
+                          ],
+                        ),
+                      ),
                       const Divider(height: 30),
+                      
                       const Text("🏆 PONTUAÇÃO DOS BÔNUS EXTRAS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purple)),
                       const SizedBox(height: 4),
                       const Text("• O Grande Campeão: +20 Pontos\n• O Vice-Campeão: +10 Pontos\n• Melhor Ataque da Copa: +10 Pontos\n• Pior Defesa da Copa: +10 Pontos\n• A Grande Decepção: +10 Pontos", style: TextStyle(fontSize: 14, height: 1.5)),
+                      
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text("⚠️ Critério de Empate nos Bônus", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.purple)),
+                            SizedBox(height: 4),
+                            Text("Caso duas ou mais seleções empatem nas estatísticas de Melhor Ataque ou Pior Defesa, TODAS ELAS serão consideradas vencedoras do bônus!\n\nOu seja, se você apostou em qualquer uma das seleções empatadas, você garantirá os pontos integrais da categoria.", style: TextStyle(fontSize: 13, height: 1.5)),
+                          ],
+                        ),
+                      ),
                       const Divider(height: 30),
+
                       const Text("⚖️ CRITÉRIOS DE DESEMPATE (RANKING)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.teal)),
                       const SizedBox(height: 4),
                       const Text("Em caso de empate na pontuação total, o sistema utilizará a seguinte ordem para definir a posição final:\n\n1º Maior número de placares exatos (Na Mosca)\n2º Maior número de acertos de saldo\n3º Maior número de acertos simples\n4º Maior pontuação ganha com Bônus Extras", style: TextStyle(fontSize: 14, height: 1.5)),
@@ -401,7 +474,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
                           children: [
                             _buildMatchesTab(_userId, isGlobalLocked, currentUser),
                             _buildBonusTab(_userId, isGlobalLocked, currentUser),
-                            _BolaoRankingTab(currentUserId: _userId, currentUser: currentUser), 
+                            _BolaoRankingTab(currentUserId: _userId, currentUser: currentUser), // 🚨 CORRIGIDO (Instancia nova stream na aba)
                           ],
                         ),
                       ),
@@ -622,22 +695,15 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
             List<BolaoMatch> filteredMatches = rawMatches.where((match) {
               if (_selectedPhaseFilter != "Todas as Fases" && match.group != _selectedPhaseFilter) return false;
 
-              // 🚨 LÓGICA DE FILTRAGEM CORRIGIDA 🚨
               final bool isFinished = match.status == 'finished';
               final bool isInProgress = match.status == 'in_progress'; 
               final now = DateTime.now();
               final bool isMatchLockedLocally = now.isAfter(match.date.subtract(const Duration(minutes: 30)));
               
-              // Palpite fechado = trava global OU trava dos 30 minutos OU partida já iniciada OU finalizada
               final bool isPredictionsClosed = isGlobalLocked || isMatchLockedLocally || isInProgress || isFinished;
 
-              // Em aberto = partidas ainda não iniciadas com o palpite em aberto
               if (_selectedStatusFilter == "Em Aberto" && isPredictionsClosed) return false;
-              
-              // Em andamento = partidas iniciadas ou não iniciadas e com palpite fechado (exceto as encerradas)
               if (_selectedStatusFilter == "Em Andamento" && (!isPredictionsClosed || isFinished)) return false;
-              
-              // Encerrados = partidas concluídas pelo admin
               if (_selectedStatusFilter == "Encerrados" && !isFinished) return false;
               
               return true;
@@ -1008,6 +1074,9 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
     );
   }
 
+  // =====================================================================
+  // Aba de BÔNUS EXTRAS + Termômetro da Galera 
+  // =====================================================================
   Widget _buildBonusTab(String userId, bool isGlobalLocked, BolaoUser? currentUser) {
     final deadline = DateTime.utc(2026, 6, 18, 2, 59, 59); 
     final bool isTimeOver = DateTime.now().toUtc().isAfter(deadline);
@@ -1016,56 +1085,70 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
     final List<String> availableTeams = _teamsFlagsMap.keys.toList()..sort();
     final List<String> seededTeams = ['Alemanha', 'Argentina', 'Bélgica', 'Brasil', 'Canadá', 'Espanha', 'Estados Unidos', 'França', 'Holanda', 'Inglaterra', 'México', 'Portugal'];
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: isBonusLocked ? Colors.red.shade50 : Colors.amber.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: isBonusLocked ? Colors.red.shade200 : Colors.amber.shade300)),
-          child: Text(
-            isBonusLocked ? "🔒 Opções Extras Trancadas Definitivamente!" : "Atenção: Estes palpites trancam no dia 17/06/2026 às 23h59. Pense bem!", 
-            style: TextStyle(color: isBonusLocked ? Colors.red[800] : Colors.orange[800], fontWeight: FontWeight.bold), textAlign: TextAlign.center
-          ),
-        ),
-        const SizedBox(height: 20),
+    // 🚨 AQUI CONSUMIMOS A STREAM DIRETO PARA OS BÔNUS (E O RANKING FARÁ O MESMO ABAIXO)
+    return StreamBuilder<List<BolaoUser>>(
+      stream: BolaoService().streamLeaderboard(),
+      builder: (context, snapshot) {
+        final allUsers = snapshot.data ?? [];
 
-        _buildBonusDropdown(
-          title: "O Grande Campeão (20 pts)", description: "Qual seleção irá levantar a taça e sagrar-se campeã do mundo?", icon: Icons.emoji_events,
-          currentValue: currentUser?.champion, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
-          onChanged: (val) => _saveBonusPrediction(userId, 'bonus_champion', val),
-        ),
-        const SizedBox(height: 12),
-        _buildBonusDropdown(
-          title: "O Vice-Campeão (10 pts)", description: "Qual seleção chegará à Grande Final, mas irá perder o título?", icon: Icons.looks_two,
-          currentValue: currentUser?.runnerUp, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
-          onChanged: (val) => _saveBonusPrediction(userId, 'bonus_runner_up', val),
-        ),
-        const SizedBox(height: 12),
-        _buildBonusDropdown(
-          title: "Melhor Ataque (10 pts)", description: "A seleção que marcar o maior número de gols no total da Copa.", icon: Icons.sports_soccer,
-          currentValue: currentUser?.bestOffense, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
-          onChanged: (val) => _saveBonusPrediction(userId, 'bonus_best_offense', val),
-        ),
-        const SizedBox(height: 12),
-        _buildBonusDropdown(
-          title: "A Pior Defesa (10 pts)", description: "O 'Saco de Pancadas'. A seleção que sofrer o maior número de gols.", icon: Icons.shield,
-          currentValue: currentUser?.worstDefense, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
-          onChanged: (val) => _saveBonusPrediction(userId, 'bonus_worst_defense', val),
-        ),
-        const SizedBox(height: 12),
-        _buildBonusDropdown(
-          title: "A Grande Decepção (10 pts)", description: "O Fiasco. A primeira seleção 'Cabeça de Chave' a ser eliminada do torneio.", icon: Icons.trending_down,
-          currentValue: currentUser?.disappointment, isLocked: isBonusLocked, availableTeams: seededTeams, currentUser: currentUser,
-          onChanged: (val) => _saveBonusPrediction(userId, 'bonus_disappointment', val),
-        ),
-        const SizedBox(height: 30),
-      ],
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: isBonusLocked ? Colors.red.shade50 : Colors.amber.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: isBonusLocked ? Colors.red.shade200 : Colors.amber.shade300)),
+              child: Text(
+                isBonusLocked ? "🔒 Opções Extras Trancadas Definitivamente!" : "Atenção: Estes palpites trancam no dia 17/06/2026 às 23h59. Pense bem!", 
+                style: TextStyle(color: isBonusLocked ? Colors.red[800] : Colors.orange[800], fontWeight: FontWeight.bold), textAlign: TextAlign.center
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            _buildBonusDropdown(
+              title: "O Grande Campeão (20 pts)", description: "Qual seleção irá levantar a taça e sagrar-se campeã do mundo?", icon: Icons.emoji_events,
+              currentValue: currentUser?.champion, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
+              onChanged: (val) => _saveBonusPrediction(userId, 'bonus_champion', val),
+              bonusKey: 'bonus_champion', allUsers: allUsers,
+            ),
+            const SizedBox(height: 12),
+            _buildBonusDropdown(
+              title: "O Vice-Campeão (10 pts)", description: "Qual seleção chegará à Grande Final, mas irá perder o título?", icon: Icons.looks_two,
+              currentValue: currentUser?.runnerUp, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
+              onChanged: (val) => _saveBonusPrediction(userId, 'bonus_runner_up', val),
+              bonusKey: 'bonus_runner_up', allUsers: allUsers,
+            ),
+            const SizedBox(height: 12),
+            _buildBonusDropdown(
+              title: "Melhor Ataque (10 pts)", description: "A seleção que marcar o maior número de gols no total da Copa.", icon: Icons.sports_soccer,
+              currentValue: currentUser?.bestOffense, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
+              onChanged: (val) => _saveBonusPrediction(userId, 'bonus_best_offense', val),
+              bonusKey: 'bonus_best_offense', allUsers: allUsers,
+            ),
+            const SizedBox(height: 12),
+            _buildBonusDropdown(
+              title: "A Pior Defesa (10 pts)", description: "O 'Saco de Pancadas'. A seleção que sofrer o maior número de gols.", icon: Icons.shield,
+              currentValue: currentUser?.worstDefense, isLocked: isBonusLocked, availableTeams: availableTeams, currentUser: currentUser,
+              onChanged: (val) => _saveBonusPrediction(userId, 'bonus_worst_defense', val),
+              bonusKey: 'bonus_worst_defense', allUsers: allUsers,
+            ),
+            const SizedBox(height: 12),
+            _buildBonusDropdown(
+              title: "A Grande Decepção (10 pts)", description: "O Fiasco. A primeira seleção 'Cabeça de Chave' a ser eliminada do torneio.", icon: Icons.trending_down,
+              currentValue: currentUser?.disappointment, isLocked: isBonusLocked, availableTeams: seededTeams, currentUser: currentUser,
+              onChanged: (val) => _saveBonusPrediction(userId, 'bonus_disappointment', val),
+              bonusKey: 'bonus_disappointment', allUsers: allUsers,
+            ),
+            const SizedBox(height: 30),
+          ],
+        );
+      }
     );
   }
 
   Widget _buildBonusDropdown({
     required String title, required String description, required IconData icon, required String? currentValue,
     required bool isLocked, required List<String> availableTeams, required Function(String?) onChanged, required BolaoUser? currentUser,
+    required String bonusKey, required List<BolaoUser> allUsers,
   }) {
     final bool isProfileIncomplete = currentUser == null || !currentUser.isProfileComplete;
 
@@ -1108,14 +1191,111 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
                   onChanged: isLocked ? null : onChanged,
                 ),
               ),
-            )
+            ),
+            
+            // 🚨 TERMÔMETRO DA GALERA PARA BÔNUS (EXIBIDO APENAS SE ESTIVER TRANCADO) 🚨
+            if (isLocked && allUsers.isNotEmpty)
+               _buildBonusThermometer(bonusKey, allUsers),
           ],
         ),
       ),
     );
   }
+
+  // Componente que Calcula e Mostra o Termômetro do Bônus
+  Widget _buildBonusThermometer(String bonusKey, List<BolaoUser> allUsers) {
+    Map<String, int> counts = {};
+    int totalVotes = 0;
+
+    for (var u in allUsers) {
+      String? choice;
+      if (bonusKey == 'bonus_champion') choice = u.champion;
+      else if (bonusKey == 'bonus_runner_up') choice = u.runnerUp;
+      else if (bonusKey == 'bonus_best_offense') choice = u.bestOffense;
+      else if (bonusKey == 'bonus_worst_defense') choice = u.worstDefense;
+      else if (bonusKey == 'bonus_disappointment') choice = u.disappointment;
+
+      if (choice != null && choice.isNotEmpty) {
+        counts[choice] = (counts[choice] ?? 0) + 1;
+        totalVotes++;
+      }
+    }
+
+    if (totalVotes == 0) return const SizedBox.shrink();
+
+    var sortedEntries = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    List<Widget> bars = [];
+    
+    for (int i = 0; i < sortedEntries.length; i++) {
+      if (i >= 3 && sortedEntries.length > 4) {
+        // Agrupa os restantes em "Outros" se houver mais de 4 opções diferentes
+        int outrosCount = 0;
+        for (int j = i; j < sortedEntries.length; j++) {
+          outrosCount += sortedEntries[j].value;
+        }
+        double percent = outrosCount / totalVotes;
+        bars.add(_buildThermometerBar("🌍 Outros", percent, outrosCount));
+        break;
+      } else {
+        String teamName = sortedEntries[i].key;
+        int count = sortedEntries[i].value;
+        double percent = count / totalVotes;
+        String flag = _teamsFlagsMap[teamName] ?? '❓';
+        bars.add(_buildThermometerBar("$flag $teamName", percent, count));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 24),
+        Row(
+          children: [
+            const Icon(Icons.query_stats, color: Colors.indigo, size: 16),
+            const SizedBox(width: 6),
+            const Text("Termômetro da Galera", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
+            const Spacer(),
+            Text("$totalVotes votos", style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ...bars,
+      ],
+    );
+  }
+
+  Widget _buildThermometerBar(String label, double percent, int count) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87)),
+              Text("${(percent * 100).toStringAsFixed(1)}%", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: percent,
+              backgroundColor: Colors.grey.shade200,
+              color: Colors.indigo.shade400,
+              minHeight: 6,
+            ),
+          )
+        ],
+      ),
+    );
+  }
 }
 
+// 🚨 COMPONENTE DE RANKING - CHAMA A STREAM DIRETAMENTE 🚨
 class _BolaoRankingTab extends StatefulWidget {
   final String currentUserId;
   final BolaoUser? currentUser; 
@@ -1134,7 +1314,7 @@ class _BolaoRankingTabState extends State<_BolaoRankingTab> {
   @override
   void initState() {
     super.initState();
-    _leaderboardStream = BolaoService().streamLeaderboard();
+    _leaderboardStream = BolaoService().streamLeaderboard(); // Inicializada e gerenciada dentro da aba
   }
 
   @override
