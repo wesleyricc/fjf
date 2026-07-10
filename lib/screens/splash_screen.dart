@@ -114,7 +114,6 @@ class _SplashScreenState extends State<SplashScreen> {
                 borderRadius: BorderRadius.circular(16),
                 child: const SponsorBannerRotator(
                   location: 'app_open',
-                  height: 650,
                   isStatic: false,
                 ),
               ),
@@ -923,9 +922,11 @@ class _SplashScreenState extends State<SplashScreen> {
                                     ),
                                   ),
                                 ),
+                              ],
                                 
                                 // CARD: Mini Bolão (FAST PASS)
-                                const SizedBox(height: 10),
+                                if (service.isMiniBolaoEnabled) ...[
+                                  const SizedBox(height: 10),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 10),
                                   child: Card(

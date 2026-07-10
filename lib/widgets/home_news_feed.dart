@@ -86,7 +86,7 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
                 List<Widget> carouselItems = [];
                 for (int i = 0; i < newsList.length; i++) {
                   carouselItems.add(_buildNewsCard(context, newsList[i]));
-                  if ((i + 1) % 3 == 0) carouselItems.add(_buildAdCard());
+                  if ((i + 1) % 2 == 0) carouselItems.add(_buildAdCard());
                 }
 
                 return ListView(
@@ -169,7 +169,7 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            const SponsorBannerRotator(location: 'news_feed', isStatic: false, height: double.infinity),
+            const SponsorBannerRotator(location: 'news_feed', isStatic: false),
             Positioned(
               top: 8, right: 8,
               child: Container(

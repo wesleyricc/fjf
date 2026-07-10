@@ -44,6 +44,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       itemId: widget.team.id,
       itemName: widget.team.name,
     );
+
+    // Dispara a busca de jogadores logo ao entrar na tela (se não estiver em cache)
+    // Isso evita o atraso causado pelo 'service.isLoading' global que bloqueava a requisição
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Provider.of<ChampionshipService>(context, listen: false).fetchRoster(widget.team.id);
+      }
+    });
   }
 
   Future<void> _showDefineStartersDialog() async {
@@ -302,10 +310,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       builder: (context, service, _) {
         List<Player> all = service.getCachedRoster(widget.team.id);
         
-        if (all.isEmpty && !service.isLoading) {
-           WidgetsBinding.instance.addPostFrameCallback((_) {
-              service.fetchRoster(widget.team.id);
-           });
+        if (all.isEmpty && service.isLoading) {
+           // Continua vazio, mas deixamos o initState ou o pull-to-refresh gerenciar a busca.
         }
         
         final players = all.where((p) => !p.isStaff).toList();

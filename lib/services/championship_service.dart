@@ -55,6 +55,7 @@ class ChampionshipService with ChangeNotifier {
   bool get isFantasyEnabled => _cachedAppSettings?['feature_fantasy'] ?? false;
   bool get isBolaoEnabled => _cachedAppSettings?['feature_bolao'] ?? false;
   bool get isPhotoStoreEnabled => _cachedAppSettings?['feature_photo_store'] ?? false;
+  bool get isMiniBolaoEnabled => _cachedAppSettings?['feature_mini_bolao'] ?? false;
 
   List<Player> get allPlayers {
     if (_allPlayersCache.isNotEmpty) return _allPlayersCache;
@@ -206,6 +207,8 @@ class ChampionshipService with ChangeNotifier {
   // 👥 GESTÃO DE ELENCO
   // ===========================================================================
   
+  final Set<String> _fetchingRosters = {};
+
   List<Player> getCachedRoster(String teamId) {
     if (_cachedPlayersByTeam.containsKey(teamId)) return List.from(_cachedPlayersByTeam[teamId]!);
     if (_allPlayersCache.isNotEmpty) {
@@ -225,6 +228,11 @@ class ChampionshipService with ChangeNotifier {
       return _cachedPlayersByTeam[teamId] ?? [];
     }
 
+    if (_fetchingRosters.contains(teamId)) {
+      return _cachedPlayersByTeam[teamId] ?? [];
+    }
+    _fetchingRosters.add(teamId);
+
     try {
       final snapshot = await _firestore.collection('championships').doc(_currentSeasonId)
           .collection('player_stats').where('team_id', isEqualTo: teamId).where('isActive', isEqualTo: true).get();
@@ -240,6 +248,8 @@ class ChampionshipService with ChangeNotifier {
     } catch (e) {
       debugPrint("Erro ao carregar elenco $teamId: $e");
       return [];
+    } finally {
+      _fetchingRosters.remove(teamId);
     }
   }
 

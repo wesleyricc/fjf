@@ -244,9 +244,8 @@ class _FixturesScreenState extends State<FixturesScreen> {
                           ])
                         ), 
                         Container(
-                          height: 80, 
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]), 
-                          child: ClipRRect(borderRadius: BorderRadius.circular(8), child: SponsorBannerRotator(location: 'header_fixtures', filterTag: bannerFilterTag, height: 80))
+                          child: ClipRRect(borderRadius: BorderRadius.circular(8), child: SponsorBannerRotator(location: 'header_fixtures', filterTag: bannerFilterTag))
                         )
                       ]
                     )
@@ -257,7 +256,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                   ),
                 ],
               ),
-          bottomNavigationBar: const SponsorBannerRotator(height: 120, location: 'footer_home'), 
+          bottomNavigationBar: const SponsorBannerRotator(location: 'footer_home'), 
           floatingActionButton: (authService.isAuthenticated) ? FloatingActionButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditMatchScreen(match: null))), backgroundColor: Theme.of(context).primaryColor, child: const Icon(Icons.add, color: Colors.white)) : null,
         );
       }

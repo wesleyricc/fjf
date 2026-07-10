@@ -133,47 +133,81 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
 
   @override
   Widget build(BuildContext context) {
-    final double effectiveHeight = widget.height ?? 100;
+    // PADRÕES DE TAMANHO DE BANNERS PARA OS ANUNCIANTES:
+    // location == 'app_open'        -> Proporção 9:16  (1080x1920 px) - Formato Vertical / Tela Cheia
+    // location == 'news_feed'       -> Proporção 1:1   (1080x1080 px) - Formato Quadrado
+    // location == 'header_fixtures' -> Proporção 32:9  (1920x540 px)  - Formato Horizontal (Banner Largo)
+    // location == 'footer_home'     -> Proporção 32:9  (1920x540 px)  - Formato Horizontal (Rodapé)
 
-    if (_filteredSponsors.isEmpty) {
-      return _buildHouseAd(height: effectiveHeight);
+    double? aspect;
+    if (widget.location == 'app_open') {
+      aspect = 9 / 16;
+    } else if (widget.location == 'news_feed') {
+      aspect = 1 / 1;
+    } else if (widget.location == 'header_fixtures' || widget.location == 'footer_home') {
+      aspect = 32 / 9;
     }
 
-    final data = _filteredSponsors[_currentIndex];
-    final imageUrl = data['imageUrl'] ?? '';
-    final targetUrl = data['targetUrl'] ?? '';
-    final sponsorName = data['name'] ?? 'sponsor_$_currentIndex';
-    final String uniqueKey = imageUrl.isNotEmpty ? imageUrl : sponsorName;
+    Widget content;
 
-    return Container(
-      color: Colors.white,
-      height: effectiveHeight,
-      width: double.infinity,
-      child: AnimatedSwitcher(
+    if (_filteredSponsors.isEmpty) {
+      content = _buildHouseAd();
+    } else {
+      final data = _filteredSponsors[_currentIndex];
+      final imageUrl = data['imageUrl'] ?? '';
+      final targetUrl = data['targetUrl'] ?? '';
+      final sponsorName = data['name'] ?? 'sponsor_$_currentIndex';
+      final String uniqueKey = imageUrl.isNotEmpty ? imageUrl : sponsorName;
+
+      content = AnimatedSwitcher(
         duration: const Duration(milliseconds: 800),
         child: InkWell(
           key: ValueKey<String>(uniqueKey),
           onTap: () => _launchURL(targetUrl, sponsorName), // 🚨 Repassa o nome do patrocinador
           child: imageUrl.isEmpty
-              ? _buildHouseAd(title: sponsorName, height: effectiveHeight)
+              ? _buildHouseAd(title: sponsorName)
               : CachedNetworkImage(
                   imageUrl: imageUrl,
                   fit: BoxFit.cover,
                   width: double.infinity,
-                  height: effectiveHeight,
-                  errorWidget: (c, u, e) => _buildHouseAd(height: effectiveHeight),
+                  height: double.infinity,
+                  errorWidget: (c, u, e) => _buildHouseAd(),
                 ),
         ),
-      ),
-    );
+      );
+    }
+
+    if (widget.height != null) {
+      return Container(
+        color: Colors.white,
+        height: widget.height,
+        width: double.infinity,
+        child: content,
+      );
+    } else if (aspect != null) {
+      return AspectRatio(
+        aspectRatio: aspect,
+        child: Container(
+          color: Colors.white,
+          width: double.infinity,
+          child: content,
+        ),
+      );
+    } else {
+      return Container(
+        color: Colors.white,
+        height: 100,
+        width: double.infinity,
+        child: content,
+      );
+    }
   }
 
-  Widget _buildHouseAd({String? title, required double height}) {
+  Widget _buildHouseAd({String? title}) {
     return InkWell(
       onTap: () => _launchURL(null, title ?? "Seja Parceiro (House Ad)"),
       child: Container(
         width: double.infinity,
-        height: height,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: Colors.white,

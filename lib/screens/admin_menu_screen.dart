@@ -159,6 +159,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     bool fantasy = champService.isFantasyEnabled;
     bool bolao = champService.isBolaoEnabled;
     bool store = champService.isPhotoStoreEnabled;
+    bool miniBolao = champService.isMiniBolaoEnabled;
     bool isDialogSaving = false;
 
     await showDialog(
@@ -192,6 +193,12 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                     activeColor: Colors.purple,
                     onChanged: (v) => setDialogState(() => store = v),
                   ),
+                  SwitchListTile(
+                    title: const Text('Mini Bolão'),
+                    value: miniBolao,
+                    activeColor: Colors.orange,
+                    onChanged: (v) => setDialogState(() => miniBolao = v),
+                  ),
                 ],
               ),
               actions: [
@@ -209,6 +216,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                             'feature_fantasy': fantasy,
                             'feature_bolao': bolao,
                             'feature_photo_store': store,
+                            'feature_mini_bolao': miniBolao,
                           }, SetOptions(merge: true));
                       
                       if (mounted) {
