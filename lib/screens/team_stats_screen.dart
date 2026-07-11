@@ -7,8 +7,8 @@ import '../services/admin_service.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/team_model.dart'; 
 
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+
+import '../widgets/main_bottom_nav_bar.dart';
 import '../widgets/rank_indicator.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/ui/shimmer_effect.dart';     
@@ -161,7 +161,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> with SingleTickerProv
               ],
             ),
           ),
-          drawer: const AppDrawer(),
+
           
           body: TabBarView(
             controller: _tabController,
@@ -175,7 +175,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> with SingleTickerProv
             ],
           ),
           
-          bottomNavigationBar: const SponsorBannerRotator(),
+          bottomNavigationBar: const MainBottomNavBar(currentRoute: '/team-stats'),
         );
       },
     );

@@ -6,8 +6,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/player_model.dart';
 import '../models/team_model.dart';
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+
+import '../widgets/main_bottom_nav_bar.dart';
 import '../services/championship_service.dart';
 import '../services/auth_service.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
@@ -134,7 +134,7 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
           )
         ]
       ),
-      drawer: const AppDrawer(),
+
       body: Consumer<SuspensionViewModel>(
         builder: (context, vm, _) {
           if (vm.isLoading && vm.suspensions.isEmpty) {
@@ -189,7 +189,7 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
           );
         },
       ),
-      bottomNavigationBar: const SponsorBannerRotator(),
+      bottomNavigationBar: const MainBottomNavBar(currentRoute: '/suspension-history'),
     );
   }
 

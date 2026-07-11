@@ -12,10 +12,11 @@ import '../models/match_model.dart';
 import '../models/team_model.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
-import '../widgets/app_drawer.dart';
+
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/standings_table_widget.dart';
 import '../widgets/ui/custom_empty_state.dart'; 
+import '../widgets/main_bottom_nav_bar.dart';
 
 class StandingsScreen extends StatefulWidget {
   const StandingsScreen({super.key});
@@ -133,7 +134,7 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
               tabs: const [Tab(text: 'Oficial'), Tab(text: 'Simulador')],
             ),
           ),
-          drawer: const AppDrawer(),
+
           body: (service.isOffline && _cachedTeams.isEmpty)
               ? CustomEmptyState.offline(onRetry: () => service.fetchStaticData(forceRefresh: true))
               : _cachedTeams.isEmpty
@@ -145,7 +146,7 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
                     _buildSimulatorTab(),
                   ],
                 ),
-          bottomNavigationBar: const SponsorBannerRotator(),
+          bottomNavigationBar: const MainBottomNavBar(currentRoute: '/standings'),
         );
       }
     );

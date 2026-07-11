@@ -11,7 +11,7 @@ import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/player_model.dart'; 
 
 import '../widgets/player_display_card.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+import '../widgets/main_bottom_nav_bar.dart';
 import 'player_profile_screen.dart';
 
 class MatchRosterScreen extends StatefulWidget {
@@ -64,6 +64,19 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
   Player? _team2Ala2;
   Player? _team2Pivo;
   List<Player> _team2Reserves = [];
+
+  Color? _team1Color;
+  Color? _team2Color;
+
+  Color? _parseHexColor(String? hexColor) {
+    if (hexColor == null || hexColor.isEmpty) return null;
+    String hex = hexColor.replaceAll('#', '');
+    if (hex.length == 6) hex = 'FF$hex';
+    if (hex.length == 8) {
+      return Color(int.parse(hex, radix: 16));
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -122,6 +135,9 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
 
       final starters1 = t1Doc?.defaultStarters ?? [];
       final starters2 = t2Doc?.defaultStarters ?? [];
+
+      _team1Color = _parseHexColor(t1Doc?.primaryColor);
+      _team2Color = _parseHexColor(t2Doc?.primaryColor);
 
       _calculateLineups(_team1Players, starters1, true);
       _calculateLineups(_team2Players, starters2, false);
@@ -246,13 +262,9 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
               itemBuilder: (ctx, idx) {
                 final p = reserves[idx];
                 return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.grey[200],
-                    child: Text("${p.jerseyNumber ?? '?'}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ),
                   title: Text(p.name),
-                  subtitle: Text(p.position ?? 'Jogador'),
-                  trailing: const Icon(Icons.swap_vert_circle, color: Colors.green),
+                  subtitle: Text('Camisa ${p.jerseyNumber ?? "-"}'),
+                  trailing: const Icon(Icons.swap_horiz, color: Colors.green),
                   onTap: () {
                     Navigator.pop(ctx);
                     _swapPlayer(isTeam1, currentPlayer, p, posKey);
@@ -313,7 +325,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
                 ),
               ],
             ),
-      bottomNavigationBar: const SponsorBannerRotator(),
+      bottomNavigationBar: const MainBottomNavBar(currentRoute: '/match-roster'),
     );
   }
 
@@ -448,7 +460,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (ctx, idx) {
                   final r = reserves[idx];
-                  return _buildReserveCard(r);
+                  return _buildReserveCard(r, isTeam1);
                 },
               ),
             ),
@@ -475,32 +487,25 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 4, offset: const Offset(0, 2))],
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                child: PlayerDisplayCard(
-                  playerName: "", 
-                  jerseyNumber: p.jerseyNumber ?? 0,
-                  yellowCards: p.yellowCards,
-                  redCards: p.redCards,
-                  isSuspended: p.isSuspended,
-                  compactMode: true, 
-                  teamShieldUrl: null, 
-                ),
+              PlayerDisplayCard(
+                playerName: "", 
+                jerseyNumber: p.jerseyNumber ?? 0,
+                yellowCards: p.yellowCards,
+                redCards: p.redCards,
+                isSuspended: p.isSuspended,
+                compactMode: true, 
+                teamShieldUrl: null, 
+                teamColor: isTeam1 ? _team1Color : _team2Color,
               ),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.transparent,
                 ),
                 child: Text(
                   p.name.split(' ').first, 
-                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, shadows: [Shadow(blurRadius: 4, color: Colors.black)]),
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                 ),
@@ -512,7 +517,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
     );
   }
 
-  Widget _buildReserveCard(Player p) {
+  Widget _buildReserveCard(Player p, bool isTeam1) {
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: p.id))),
       child: Container(
@@ -532,6 +537,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
               redCards: p.redCards,
               isSuspended: p.isSuspended,
               compactMode: true,
+              teamColor: isTeam1 ? _team1Color : _team2Color,
             ),
           ],
         ),

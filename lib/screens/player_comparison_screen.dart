@@ -8,8 +8,8 @@ import '../theme/app_theme.dart';
 import '../services/championship_service.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+
+import '../widgets/main_bottom_nav_bar.dart';
 import '../widgets/player_selection_modal.dart'; 
 import '../utils/custom_cache_manager.dart';
 
@@ -77,7 +77,7 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
           ],
         ),
       ),
-      drawer: const AppDrawer(),
+
       body: Column(
         children: [
           Container(
@@ -132,7 +132,7 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: const SponsorBannerRotator(),
+      bottomNavigationBar: const MainBottomNavBar(currentRoute: '/player-comparison'),
     );
   }
 

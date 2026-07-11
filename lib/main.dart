@@ -232,10 +232,6 @@ class FjfApp extends StatelessWidget {
         
         initialRoute: '/',
         routes: {
-          '/': (ctx) => const SplashScreen(),
-          '/fixtures': (ctx) => const FixturesScreen(),
-          '/standings': (ctx) => const StandingsScreen(),
-          '/teams': (ctx) => const TeamsListScreen(),
           '/team-stats': (ctx) => const TeamStatsScreen(),
           '/player-stats': (ctx) => const PlayerStatsScreen(),
           '/suspension-history': (ctx) => const SuspensionHistoryScreen(),
@@ -252,13 +248,32 @@ class FjfApp extends StatelessWidget {
           '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
           '/about-history': (ctx) => const AboutHistoryScreen(),
           '/about-board': (ctx) => const AboutBoardScreen(),
-          '/season-summary': (ctx) => const SeasonSummaryScreen(),
           '/fantasy-leagues': (ctx) => const FantasyLeaguesScreen(),
           '/free-agents-registration': (ctx) => const FreeAgentRegistrationScreen(),
           '/free-agents-market': (ctx) => const FreeAgentsMarketScreen(),
           '/wordcup-pool': (ctx) => const BolaoPaywallScreen(),
         },
         onGenerateRoute: (settings) {
+          WidgetBuilder? builder;
+          switch (settings.name) {
+            case '/': builder = (ctx) => const SplashScreen(); break;
+            case '/fixtures': builder = (ctx) => const FixturesScreen(); break;
+            case '/standings': builder = (ctx) => const StandingsScreen(); break;
+            case '/season-summary': builder = (ctx) => const SeasonSummaryScreen(); break;
+            case '/teams': builder = (ctx) => const TeamsListScreen(); break;
+          }
+
+          if (builder != null) {
+            return PageRouteBuilder(
+              settings: settings,
+              pageBuilder: (context, animation, secondaryAnimation) => builder!(context),
+              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              transitionDuration: const Duration(milliseconds: 250),
+            );
+          }
+
           if (settings.name == '/voting') {
             final pollArgs = settings.arguments as Poll;
             return MaterialPageRoute(

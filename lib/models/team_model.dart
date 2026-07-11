@@ -37,6 +37,9 @@ class Team {
   
   // Gestão
   final List<String> defaultStarters;
+  
+  // Customização
+  final String? primaryColor;
 
   Team({
     required this.id,
@@ -72,6 +75,7 @@ class Team {
     required this.totalYellowCards,
     required this.totalRedCards,
     required this.defaultStarters,
+    this.primaryColor,
   });
 
   factory Team.fromFirestore(DocumentSnapshot doc) {
@@ -113,6 +117,7 @@ class Team {
       totalRedCards: (data['total_red_cards'] as num?)?.toInt() ?? 0,
       
       defaultStarters: List<String>.from(data['default_starters'] ?? []),
+      primaryColor: data['primary_color'] as String? ?? data['color'] as String?,
     );
   }
 
@@ -150,6 +155,7 @@ class Team {
       'total_yellow_cards': totalYellowCards,
       'total_red_cards': totalRedCards,
       'default_starters': defaultStarters,
+      if (primaryColor != null) 'primary_color': primaryColor,
     };
   }
 }

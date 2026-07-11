@@ -12,6 +12,7 @@ class SponsorBannerRotator extends StatefulWidget {
   final bool isStatic;
   final double? height;
   final String? filterTag;
+  final VoidCallback? onCycleComplete;
 
   const SponsorBannerRotator({
     super.key,
@@ -19,6 +20,7 @@ class SponsorBannerRotator extends StatefulWidget {
     this.isStatic = false,
     this.height,
     this.filterTag,
+    this.onCycleComplete,
   });
 
   @override
@@ -92,6 +94,12 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         // 🚨 RASTREIA A IMPRESSÃO A CADA GIRO DO BANNER
         _logImpression(_filteredSponsors[_currentIndex]);
         _precacheNextImage();
+
+        if (_currentIndex == 0) {
+          widget.onCycleComplete?.call();
+        }
+      } else {
+        widget.onCycleComplete?.call();
       }
     });
   }

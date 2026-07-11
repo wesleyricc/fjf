@@ -2,7 +2,7 @@
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/championship_service.dart';
-import '../widgets/app_drawer.dart';
+
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -17,7 +17,7 @@ class HomeScreen extends StatelessWidget {
         title: Text("FJF $seasonYear"),
         centerTitle: true,
       ),
-      drawer: const AppDrawer(),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(

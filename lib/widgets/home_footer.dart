@@ -69,55 +69,55 @@ class HomeFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: const Color(0xFF1A1A1A), // Fundo escuro moderno
-      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       child: Column(
         children: [
           // Título
           const Text(
             "CONECTE-SE CONOSCO",
-            style: TextStyle(color: Colors.white70, letterSpacing: 1.5, fontSize: 12, fontWeight: FontWeight.bold),
+            style: TextStyle(color: Colors.white70, letterSpacing: 1.2, fontSize: 11, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
 
           // Ícones Sociais
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: _socialLinks.map((link) {
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: IconButton(
-                  icon: FaIcon(link['icon'], color: link['color'], size: 28),
+                  icon: FaIcon(link['icon'], color: link['color'], size: 22),
                   onPressed: () => _launchURL(link['url']),
                 ),
               );
             }).toList(),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // Botão Regulamento
           OutlinedButton.icon(
-            icon: const Icon(Icons.description_outlined, color: Colors.white),
-            label: const Text('BAIXAR REGULAMENTO', style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.description_outlined, color: Colors.white, size: 18),
+            label: const Text('BAIXAR REGULAMENTO', style: TextStyle(color: Colors.white, fontSize: 11)),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Colors.white54),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             ),
             onPressed: () => _openRegulation(context),
           ),
           
-          const SizedBox(height: 30),
-          const Divider(color: Colors.white24),
-          const SizedBox(height: 10),
+          const SizedBox(height: 16),
+          const Divider(color: Colors.white24, height: 1),
+          const SizedBox(height: 12),
           
           // Copyright
           const Text(
             '© FJF 2026 - Todos os direitos reservados',
-            style: TextStyle(color: Colors.white38, fontSize: 11),
+            style: TextStyle(color: Colors.white38, fontSize: 10),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           const Text(
             'Desenvolvido por Wesley Ricardo',
-            style: TextStyle(color: Colors.white24, fontSize: 10),
+            style: TextStyle(color: Colors.white24, fontSize: 9),
           ),
 
           // --- VERSÃO DO APP ---

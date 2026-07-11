@@ -160,6 +160,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
     bool bolao = champService.isBolaoEnabled;
     bool store = champService.isPhotoStoreEnabled;
     bool miniBolao = champService.isMiniBolaoEnabled;
+    bool appOpenAd = champService.isAppOpenAdEnabled;
     bool isDialogSaving = false;
 
     await showDialog(
@@ -199,6 +200,12 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                     activeColor: Colors.orange,
                     onChanged: (v) => setDialogState(() => miniBolao = v),
                   ),
+                  SwitchListTile(
+                    title: const Text('Anúncio na Abertura (App Open)'),
+                    value: appOpenAd,
+                    activeColor: Colors.teal,
+                    onChanged: (v) => setDialogState(() => appOpenAd = v),
+                  ),
                 ],
               ),
               actions: [
@@ -217,6 +224,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                             'feature_bolao': bolao,
                             'feature_photo_store': store,
                             'feature_mini_bolao': miniBolao,
+                            'feature_app_open_ad': appOpenAd,
                           }, SetOptions(merge: true));
                       
                       if (mounted) {

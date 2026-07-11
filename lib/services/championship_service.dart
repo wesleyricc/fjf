@@ -56,6 +56,7 @@ class ChampionshipService with ChangeNotifier {
   bool get isBolaoEnabled => _cachedAppSettings?['feature_bolao'] ?? false;
   bool get isPhotoStoreEnabled => _cachedAppSettings?['feature_photo_store'] ?? false;
   bool get isMiniBolaoEnabled => _cachedAppSettings?['feature_mini_bolao'] ?? false;
+  bool get isAppOpenAdEnabled => _cachedAppSettings?['feature_app_open_ad'] ?? true;
 
   List<Player> get allPlayers {
     if (_allPlayersCache.isNotEmpty) return _allPlayersCache;

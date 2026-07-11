@@ -14,7 +14,7 @@ import '../services/voting_service.dart';
 import '../models/poll_model.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
-import '../widgets/app_drawer.dart';
+// removed app_drawer.dart
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/home_live_video_card.dart';
 import '../widgets/home_news_feed.dart';
@@ -27,6 +27,7 @@ import 'team_detail_screen.dart';
 import '../services/fantasy_auth_service.dart';
 import '../services/auth_service.dart'; 
 import '../viewmodels/sponsor_viewmodel.dart';
+import '../widgets/main_bottom_nav_bar.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -83,10 +84,17 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _checkAndShowStartupAds() async {
     if (SplashScreen.hasShownOpenAd) return;
 
-    SplashScreen.hasShownOpenAd = true;
-
     await Future.delayed(const Duration(seconds: 1));
-    if (mounted) _showAdDialog();
+    if (!mounted) return;
+
+    final service = Provider.of<ChampionshipService>(context, listen: false);
+    if (!service.isAppOpenAdEnabled) {
+      SplashScreen.hasShownOpenAd = true;
+      return;
+    }
+
+    SplashScreen.hasShownOpenAd = true;
+    _showAdDialog();
   }
 
   void _showAdDialog() {
@@ -239,110 +247,7 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 
-  Widget _buildVotingBanner(BuildContext context, Poll poll, String seasonId) {
-    final user = Provider.of<FantasyAuthService>(context, listen: false).user;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            // 🚨 Analytics: Click no Banner de Votação
-            AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
-            Navigator.pushNamed(context, '/voting', arguments: poll)
-                .then((_) => setState(() {}));
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.purple.shade900, Colors.deepPurpleAccent],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFC5A814), width: 1.5),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.purple.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4))
-              ],
-            ),
-            child: FutureBuilder<bool>(
-                future: user != null
-                    ? VotingService().hasUserVoted(seasonId, poll.id, user.uid)
-                    : Future.value(false),
-                builder: (context, snapshot) {
-                  final hasVoted = snapshot.data ?? false;
-
-                  return ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.2),
-                          shape: BoxShape.circle),
-                      child: const Icon(Icons.how_to_vote,
-                          color: Colors.amber, size: 28),
-                    ),
-                    title: const Text("VOTAÇÃO ABERTA!",
-                        style: TextStyle(
-                            color: Colors.amber,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 11,
-                            letterSpacing: 1)),
-                    subtitle: Text(
-                      poll.title,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: hasVoted
-                        ? Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                                color: Colors.green.shade500,
-                                borderRadius: BorderRadius.circular(20)),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check_circle,
-                                    color: Colors.white, size: 16),
-                                SizedBox(width: 4),
-                                Text("VOTADO",
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 11)),
-                              ],
-                            ),
-                          )
-                        : Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                                color: Colors.amber,
-                                borderRadius: BorderRadius.circular(20)),
-                            child: Text("VOTAR",
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 13,
-                                    color: Colors.purple.shade900)),
-                          ),
-                  );
-                }),
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildThemedSectionHeader(
       BuildContext context, String title, IconData icon) {
@@ -433,15 +338,14 @@ class _SplashScreenState extends State<SplashScreen> {
     final int displayYear = championshipService.currentSeasonYear;
 
     return Scaffold(
-      drawer: const AppDrawer(),
-      onDrawerChanged: (isOpen) => setState(() => _isDrawerOpen = isOpen),
+      bottomNavigationBar: const MainBottomNavBar(currentRoute: '/'),
       body: Stack(
         children: [
           Container(color: const Color(0xFFF0F2F5)),
           CustomScrollView(
             slivers: [
               SliverAppBar(
-                expandedHeight: 280.0,
+                expandedHeight: 160.0,
                 floating: false,
                 pinned: true,
                 backgroundColor: primaryColor,
@@ -516,18 +420,18 @@ class _SplashScreenState extends State<SplashScreen> {
                                           offset: Offset(0, 5))
                                     ]),
                                 child: const CircleAvatar(
-                                  radius: 45,
+                                  radius: 30,
                                   backgroundColor: Colors.white,
                                   backgroundImage:
                                       AssetImage('assets/logo3_fjf.png'),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
                             Text("FJF $displayYear",
                                 style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 28,
+                                    fontSize: 22,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1.5,
                                     shadows: [
@@ -536,11 +440,11 @@ class _SplashScreenState extends State<SplashScreen> {
                                           blurRadius: 4,
                                           offset: Offset(0, 2))
                                     ])),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
 
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 32, vertical: 6),
+                                  horizontal: 24, vertical: 4),
                               decoration: BoxDecoration(
                                   color: Colors.white.withOpacity(0.95),
                                   borderRadius: BorderRadius.circular(4),
@@ -623,382 +527,23 @@ class _SplashScreenState extends State<SplashScreen> {
 
                       const SizedBox(height: 10),
 
-                      if (seasonId.isNotEmpty)
-                        StreamBuilder<List<Poll>>(
-                          stream: VotingService().streamActivePolls(seasonId),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-                            final activePolls = snapshot.data!;
-                            if (activePolls.length == 1) {
-                              return _buildVotingBanner(
-                                  context, activePolls.first, seasonId);
-                            }
-
-                            return Container(
-                              margin: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: const Color(0xFFC5A814), width: 1.5),
-                                boxShadow: const [
-                                  BoxShadow(
-                                      color: Colors.black12,
-                                      blurRadius: 8,
-                                      offset: Offset(0, 4))
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 12),
-                                    decoration: const BoxDecoration(
-                                      gradient: LinearGradient(colors: [
-                                        Color(0xFF002776),
-                                        Color(0xFF001133)
-                                      ]),
-                                      borderRadius: BorderRadius.vertical(
-                                          top: Radius.circular(11)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.emoji_events,
-                                            color: Color(0xFFC5A814), size: 24),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                            "PREMIAÇÕES ABERTAS (${activePolls.length})",
-                                            style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w900,
-                                                letterSpacing: 1,
-                                                fontSize: 13)),
-                                      ],
-                                    ),
-                                  ),
-                                  ListView.separated(
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    padding: EdgeInsets.zero,
-                                    itemCount: activePolls.length,
-                                    separatorBuilder: (_, __) =>
-                                        const Divider(height: 1),
-                                    itemBuilder: (context, index) {
-                                      final poll = activePolls[index];
-                                      final user =
-                                          Provider.of<FantasyAuthService>(
-                                                  context,
-                                                  listen: false)
-                                              .user;
-
-                                      return FutureBuilder<bool>(
-                                          future: user != null
-                                              ? VotingService().hasUserVoted(
-                                                  seasonId, poll.id, user.uid)
-                                              : Future.value(false),
-                                          builder: (context, voteSnapshot) {
-                                            final hasVoted =
-                                                voteSnapshot.data ?? false;
-                                            return ListTile(
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 16,
-                                                      vertical: 4),
-                                              leading: CircleAvatar(
-                                                radius: 18,
-                                                backgroundColor: hasVoted
-                                                    ? Colors.green
-                                                        .withOpacity(0.1)
-                                                    : const Color(0xFFC5A814)
-                                                        .withOpacity(0.2),
-                                                child: Icon(
-                                                    hasVoted
-                                                        ? Icons.check
-                                                        : Icons.how_to_vote,
-                                                    color: hasVoted
-                                                        ? Colors.green
-                                                        : const Color(
-                                                            0xFFC5A814),
-                                                    size: 18),
-                                              ),
-                                              title: Text(poll.title,
-                                                  style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 14,
-                                                      color: hasVoted
-                                                          ? Colors.grey
-                                                          : Colors.black87)),
-                                              subtitle: Text(
-                                                  poll.category
-                                                      .replaceAll('_', ' ')
-                                                      .toUpperCase(),
-                                                  style: const TextStyle(
-                                                      fontSize: 10,
-                                                      color: Colors.grey,
-                                                      fontWeight:
-                                                          FontWeight.bold)),
-                                              trailing: hasVoted
-                                                  ? const Icon(
-                                                      Icons.check_circle,
-                                                      color: Colors.green)
-                                                  : ElevatedButton(
-                                                      style: ElevatedButton
-                                                          .styleFrom(
-                                                              backgroundColor:
-                                                                  const Color(
-                                                                      0xFFC5A814),
-                                                              foregroundColor:
-                                                                  Colors
-                                                                      .black87,
-                                                              elevation: 0),
-                                                      onPressed: () {
-                                                          AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
-                                                          Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {}));
-                                                      },
-                                                      child: const Text("VOTAR",
-                                                          style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w900,
-                                                              fontSize: 11)),
-                                                    ),
-                                              onTap: () {
-                                                  AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
-                                                  Navigator.pushNamed(context, '/voting', arguments: poll).then((_) => setState(() {}));
-                                              },
-                                            );
-                                          });
-                                    },
-                                  )
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-
-                      HomeLiveVideoCard(hidePlayer: _isDrawerOpen),
+                      HomeLiveVideoCard(hidePlayer: false),
 
                       Consumer<ChampionshipService>(
                         builder: (context, service, child) {
-                          final bool hasActiveFlags = service.isFantasyEnabled || service.isBolaoEnabled;
-
-                          if (service.isLoading && !hasActiveFlags && !_isCacheResolved) {
-                            return Column(
-                              children: [
-                                const SizedBox(height: 10),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: const ShimmerEffect.rectangular(height: 80, width: double.infinity),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: const ShimmerEffect.rectangular(height: 80, width: double.infinity),
-                                  ),
-                                ),
-                              ],
+                          if (service.isLoading && !_isCacheResolved) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              child: ShimmerEffect.rectangular(height: 100, width: double.infinity),
                             );
                           }
-
-                          return Column(
-                            children: [
-                              // CARD: Fantasy FJF
-                              if (service.isFantasyEnabled) ...[
-                                const SizedBox(height: 10),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  child: StreamBuilder<Map<String, dynamic>>(
-                                    stream: FantasyService().streamMarketStatus(),
-                                    builder: (context, snapshot) {
-                                      String statusText = "";
-                                      Color statusColor = Colors.transparent;
-                                      IconData statusIcon = Icons.hourglass_empty;
-                                      bool isDataLoaded = false;
-
-                                      if (snapshot.hasData) {
-                                        isDataLoaded = true;
-                                        final bool isOpen = snapshot.data!['is_open'] ?? true;
-                                        if (isOpen) {
-                                          statusText = "ABERTO"; 
-                                          statusColor = Colors.greenAccent; 
-                                          statusIcon = Icons.check_circle;
-                                        } else {
-                                          statusText = "FECHADO"; 
-                                          statusColor = Colors.redAccent; 
-                                          statusIcon = Icons.lock;
-                                        }
-                                      }
-
-                                      return Card(
-                                        elevation: 4,
-                                        clipBehavior: Clip.antiAlias,
-                                        color: const Color(0xFF002776), // Azul Seleção
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12), 
-                                          side: const BorderSide(color: Color(0xFFC5A814), width: 1.5)
-                                        ),
-                                        child: ListTile(
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                          leading: const Icon(Icons.sports_soccer, color: Colors.white, size: 32),
-                                          title: const Text("FANTASY FJF", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black45, blurRadius: 2)])),
-                                          subtitle: const Text("Escale seu time agora!", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black26, blurRadius: 2)])),
-                                          trailing: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              if (isDataLoaded)
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                  decoration: BoxDecoration(color: statusColor.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: statusColor.withOpacity(0.5))),
-                                                  child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(statusIcon, color: statusColor, size: 12), const SizedBox(width: 4), Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11))]),
-                                                ),
-                                              const SizedBox(width: 8),
-                                              const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-                                            ],
-                                          ),
-                                          onTap: () {
-                                            AnalyticsService.logCustomScreenView('Home_Click_Fantasy');
-                                            Navigator.pushNamed(context, '/fantasy-home');
-                                          },
-                                        ),
-                                      );
-                                    }
-                                  ),
-                                ),
-                              ],
-
-                              // CARD: Bolão Oficial da Copa
-                              if (service.isBolaoEnabled) ...[
-                                const SizedBox(height: 10),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  child: Card(
-                                    elevation: 4,
-                                    clipBehavior: Clip.antiAlias, 
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12), 
-                                      side: const BorderSide(color: Color(0xFFC5A814), width: 1.5)
-                                    ),
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        gradient: AppTheme.brazilGradient,
-                                      ),
-                                      child: ListTile(
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        leading: const Icon(FontAwesomeIcons.earthAmericas, color: Colors.white, size: 32),
-                                        title: const Text(
-                                          "BOLÃO DA COPA 2026", 
-                                          style: TextStyle(
-                                            color: Colors.white, 
-                                            fontWeight: FontWeight.w900, 
-                                            shadows: [Shadow(color: Colors.black45, blurRadius: 2)]
-                                          )
-                                        ),
-                                        subtitle: const Text(
-                                          "Dê seus palpites e concorra a prêmios!", 
-                                          style: TextStyle(
-                                            color: Colors.white, 
-                                            fontWeight: FontWeight.w600,
-                                            shadows: [Shadow(color: Colors.black26, blurRadius: 2)]
-                                          )
-                                        ),
-                                        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-                                        onTap: () {
-                                          AnalyticsService.logCustomScreenView('Home_Click_Bolao_VIP');
-                                          Navigator.pushNamed(context, '/wordcup-pool');
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                                
-                                // CARD: Mini Bolão (FAST PASS)
-                                if (service.isMiniBolaoEnabled) ...[
-                                  const SizedBox(height: 10),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                                  child: Card(
-                                    elevation: 6,
-                                    clipBehavior: Clip.antiAlias,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      side: BorderSide(color: Colors.orange.shade300, width: 1.5),
-                                    ),
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [Colors.orange.shade900, Colors.deepOrange.shade700],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                      ),
-                                      child: ListTile(
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        leading: const Icon(Icons.rocket_launch, color: Colors.white, size: 32),
-                                        title: const Text(
-                                          "MINI BOLÃO FJF",
-                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black45, blurRadius: 2)]),
-                                        ),
-                                        subtitle: const Text(
-                                          "Tiro curto! Salas com prêmios em dinheiro.",
-                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black26, blurRadius: 2)]),
-                                        ),
-                                        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-                                        onTap: () {
-                                          AnalyticsService.logCustomScreenView('Home_Click_Mini_Bolao');
-                                          Navigator.push(context, MaterialPageRoute(builder: (_) => const MiniBolaoHomeScreen()));
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          );
+                          return _buildSuperAppGrid(context, service);
                         },
                       ),
 
                       const SizedBox(height: 16),
                       const HomeNewsFeed(),
                       const SizedBox(height: 10),
-
-                      if (championshipService.isPhotoStoreEnabled) ...[
-                        _buildThemedSectionHeader(
-                            context, "Loja de Fotos", Icons.camera_enhance),
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 10),
-                          decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: const BorderRadius.vertical(
-                                  bottom: Radius.circular(12)),
-                              boxShadow: const [
-                                BoxShadow(
-                                    color: Colors.black12,
-                                    blurRadius: 6,
-                                    offset: Offset(0, 3))
-                              ],
-                              border: Border.all(color: Colors.grey.shade200)),
-                          child: InkWell(
-                            onTap: () {
-                              AnalyticsService.logCustomScreenView('Home_Click_Photo_Store');
-                            },
-                            child: const PhotoStoreBanner(),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
 
                       _buildThemedSectionHeader(
                           context, "Equipes Participantes", Icons.groups),
@@ -1035,24 +580,279 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 40, bottom: 80),
+                  padding: const EdgeInsets.only(top: 40, bottom: 0),
                   child: HomeFooter(appVersion: SplashScreen.appVersion),
                 ),
               ),
             ],
           ),
-
-          if (seasonId.isNotEmpty)
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SponsorBannerRotator(location: 'footer_home'),
-            ),
         ],
       ),
     );
   }
+
+  Widget _buildSuperAppGridItem({
+    required BuildContext context,
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+    int badgeCount = 0,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: double.infinity,
+                height: 70,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+                ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              if (badgeCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      badgeCount.toString(),
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showVotingBottomSheet(BuildContext context, List<Poll> activePolls, String seasonId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 16),
+                height: 4,
+                width: 40,
+                decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const Text("PREMIAÇÕES ABERTAS", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 16),
+            ...activePolls.map((poll) {
+              final user = Provider.of<FantasyAuthService>(context, listen: false).user;
+              return FutureBuilder<bool>(
+                future: user != null ? VotingService().hasUserVoted(seasonId, poll.id, user.uid) : Future.value(false),
+                builder: (context, voteSnapshot) {
+                  final hasVoted = voteSnapshot.data ?? false;
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                    leading: CircleAvatar(
+                      backgroundColor: hasVoted ? Colors.green.withOpacity(0.1) : const Color(0xFFC5A814).withOpacity(0.2),
+                      child: Icon(hasVoted ? Icons.check : Icons.how_to_vote, color: hasVoted ? Colors.green : const Color(0xFFC5A814)),
+                    ),
+                    title: Text(poll.title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: hasVoted ? Colors.grey : Colors.black87)),
+                    subtitle: Text(poll.category.replaceAll('_', ' ').toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold)),
+                    trailing: hasVoted ? const Icon(Icons.check_circle, color: Colors.green) : ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC5A814), foregroundColor: Colors.black87, elevation: 0),
+                      onPressed: () {
+                        AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
+                        Navigator.pushNamed(context, '/voting', arguments: poll).then((_) {
+                            if (context.mounted) Navigator.pop(ctx);
+                        });
+                      },
+                      child: const Text("VOTAR", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
+                    ),
+                    onTap: () {
+                      AnalyticsService.logCustomScreenView('Home_Click_Voting_Banner', parameters: {'poll_id': poll.id});
+                      Navigator.pushNamed(context, '/voting', arguments: poll).then((_) {
+                          if (context.mounted) Navigator.pop(ctx);
+                      });
+                    },
+                  );
+                }
+              );
+            }).toList(),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuperAppGrid(BuildContext context, ChampionshipService service) {
+    return StreamBuilder<List<Poll>>(
+      stream: service.currentSeasonId.isNotEmpty 
+          ? VotingService().streamActivePolls(service.currentSeasonId)
+          : Stream.value([]),
+      builder: (context, pollSnapshot) {
+        final activePolls = pollSnapshot.data ?? [];
+        
+        List<Widget> items = [];
+
+        if (service.isFantasyEnabled) {
+          items.add(_buildSuperAppGridItem(
+            context: context,
+            title: "Fantasy",
+            icon: Icons.sports_soccer,
+            color: const Color(0xFF002776),
+            onTap: () {
+              AnalyticsService.logCustomScreenView('Home_Click_Fantasy');
+              Navigator.pushNamed(context, '/fantasy-home');
+            },
+          ));
+        }
+
+        if (service.isBolaoEnabled) {
+          items.add(_buildSuperAppGridItem(
+            context: context,
+            title: "Bolão FJF - Copa do Mundo 2026",
+            icon: FontAwesomeIcons.earthAmericas,
+            color: const Color(0xFF009C3B),
+            onTap: () {
+              AnalyticsService.logCustomScreenView('Home_Click_Bolao_VIP');
+              Navigator.pushNamed(context, '/wordcup-pool');
+            },
+          ));
+        }
+
+        if (service.isMiniBolaoEnabled) {
+          items.add(_buildSuperAppGridItem(
+            context: context,
+            title: "Mini Bolão FJF",
+            icon: Icons.rocket_launch,
+            color: Colors.deepOrange.shade600,
+            onTap: () {
+              AnalyticsService.logCustomScreenView('Home_Click_Mini_Bolao');
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const MiniBolaoHomeScreen()));
+            },
+          ));
+        }
+
+        if (service.isPhotoStoreEnabled) {
+          items.add(_buildSuperAppGridItem(
+            context: context,
+            title: "Fotos",
+            icon: Icons.camera_enhance,
+            color: const Color(0xFF32BCAD),
+            onTap: () {
+              AnalyticsService.logCustomScreenView('Home_Click_Photo_Store');
+              Navigator.pushNamed(context, '/photo-sales');
+            },
+          ));
+        }
+
+        if (activePolls.isNotEmpty) {
+          items.add(_buildSuperAppGridItem(
+            context: context,
+            title: "Votações",
+            icon: Icons.how_to_vote,
+            color: const Color(0xFFC5A814),
+            badgeCount: activePolls.length,
+            onTap: () {
+               if (activePolls.length == 1) {
+                  Navigator.pushNamed(context, '/voting', arguments: activePolls.first).then((_) => setState(() {}));
+               } else {
+                  _showVotingBottomSheet(context, activePolls, service.currentSeasonId);
+               }
+            },
+          ));
+        }
+
+        if (items.isEmpty) return const SizedBox();
+
+        Widget gridLayout;
+        if (items.length <= 4) {
+          gridLayout = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: items.map((item) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: item,
+              ),
+            )).toList(),
+          );
+        } else {
+          // Ex: se houver 5 cards, divide 3 em cima e 2 embaixo
+          List<Widget> firstRow = items.sublist(0, 3).map((item) => Expanded(
+            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: item)
+          )).toList();
+          List<Widget> secondRow = items.sublist(3).map((item) => Expanded(
+            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: item)
+          )).toList();
+
+          gridLayout = Column(
+            children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: firstRow),
+              const SizedBox(height: 16),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: secondRow),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            _buildThemedSectionHeader(context, "Central FJF", Icons.apps),
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: gridLayout,
+            ),
+          ],
+        );
+      }
+    );
+  }
+
+  // Métodos de construção movidos para MainBottomNavBar
 }
 
 class _SponsorGridCard extends StatelessWidget {

@@ -13,10 +13,11 @@ import '../models/match_model.dart';
 import '../models/award_model.dart';
 
 // Widgets
-import '../widgets/app_drawer.dart';
+
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/award_card.dart';
 import 'edit_award_screen.dart';
+import '../widgets/main_bottom_nav_bar.dart';
 import '../theme/app_theme.dart'; 
 
 class SeasonSummaryScreen extends StatefulWidget {
@@ -68,7 +69,7 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
               )
             ],
           ),
-          drawer: const AppDrawer(),
+
           body: !hasFinishedMatches
               ? _buildEmptyState(seasonName) 
               : CustomScrollView(
@@ -169,7 +170,7 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
                     const SliverToBoxAdapter(child: SizedBox(height: 40)),
                   ],
                 ),
-          bottomNavigationBar: const SponsorBannerRotator(),
+          bottomNavigationBar: const MainBottomNavBar(currentRoute: '/season-summary'),
         );
       },
     );

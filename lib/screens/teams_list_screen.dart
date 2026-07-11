@@ -10,12 +10,13 @@ import '../services/auth_service.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/team_model.dart'; 
 
-import '../widgets/app_drawer.dart';
+
 import '../widgets/sponsor_banner_rotator.dart';
 import '../widgets/ui/shimmer_effect.dart';     
 import '../widgets/ui/custom_empty_state.dart';  
 import 'team_detail_screen.dart';
 import 'edit_team_screen.dart';
+import '../widgets/main_bottom_nav_bar.dart';
 
 class TeamsListScreen extends StatefulWidget {
   const TeamsListScreen({super.key});
@@ -125,9 +126,9 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
               )
             ],
           ),
-          drawer: const AppDrawer(),
+
           body: _buildBody(context, teams, isLoading, champService, authService.isAuthenticated, seasonId),
-          bottomNavigationBar: const SponsorBannerRotator(),
+          bottomNavigationBar: const MainBottomNavBar(currentRoute: '/teams'),
           floatingActionButton: authService.isAuthenticated
               ? FloatingActionButton.extended(
                   onPressed: () async {

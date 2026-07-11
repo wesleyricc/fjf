@@ -10,8 +10,9 @@ import '../services/auth_service.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../models/match_model.dart'; 
 
-import '../widgets/app_drawer.dart';
+
 import '../widgets/sponsor_banner_rotator.dart';
+import '../widgets/main_bottom_nav_bar.dart';
 import '../widgets/modern_fixtures_nav.dart';
 import '../widgets/palpitometro_widget.dart'; 
 import '../widgets/ui/shimmer_effect.dart';     
@@ -203,7 +204,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
               IconButton(icon: const Icon(Icons.refresh), onPressed: () => service.fetchStaticData(forceRefresh: true))
             ]
           ),
-          drawer: const AppDrawer(),
+
           body: _isLoadingSettings 
             ? const Center(child: CircularProgressIndicator()) 
             : Column(
@@ -256,7 +257,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
                   ),
                 ],
               ),
-          bottomNavigationBar: const SponsorBannerRotator(location: 'footer_home'), 
+          bottomNavigationBar: const MainBottomNavBar(currentRoute: '/fixtures'), 
           floatingActionButton: (authService.isAuthenticated) ? FloatingActionButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditMatchScreen(match: null))), backgroundColor: Theme.of(context).primaryColor, child: const Icon(Icons.add, color: Colors.white)) : null,
         );
       }

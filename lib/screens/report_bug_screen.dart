@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+
+import '../widgets/main_bottom_nav_bar.dart';
 import '../services/support_service.dart'; 
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../theme/app_theme.dart'; 
@@ -81,7 +81,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
           ),
         ),
       ),
-      drawer: const AppDrawer(),
+
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -162,7 +162,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: const SponsorBannerRotator(),
+      bottomNavigationBar: const MainBottomNavBar(currentRoute: '/report-bug'),
     );
   }
 }

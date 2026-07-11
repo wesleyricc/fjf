@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+import '../widgets/main_bottom_nav_bar.dart';
 import '../theme/app_theme.dart'; 
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
@@ -110,7 +110,7 @@ class _AboutHistoryScreenState extends State<AboutHistoryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const SponsorBannerRotator(),
+      bottomNavigationBar: const MainBottomNavBar(currentRoute: '/about-history'),
     );
   }
 

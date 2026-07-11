@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 import '../services/admin_service.dart';
 import '../services/championship_service.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
-import '../widgets/app_drawer.dart';
-import '../widgets/sponsor_banner_rotator.dart';
+
+import '../widgets/main_bottom_nav_bar.dart';
 import '../widgets/generic_player_rank_list.dart'; 
 import '../widgets/total_cards_rank_list.dart';    
 import '../models/player_model.dart';
@@ -90,7 +90,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
               title: const Text("Estatísticas"),
               flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
             ),
-            drawer: const AppDrawer(),
+
             body: CustomEmptyState.offline(
               onRetry: () {
                 setState(() => _isFetching = true);
@@ -108,7 +108,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
               title: const Text("Estatísticas"),
               flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
             ),
-            drawer: const AppDrawer(),
+
             body: ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: 8,
@@ -180,7 +180,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
               ],
             ),
           ),
-          drawer: const AppDrawer(),
+
           body: TabBarView(
             controller: _tabController,
             children: [
@@ -195,7 +195,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
               TotalCardsRankList(allPlayers: allPlayers),
             ],
           ),
-          bottomNavigationBar: const SponsorBannerRotator(),
+          bottomNavigationBar: const MainBottomNavBar(currentRoute: '/player-stats'),
         );
       }
     );

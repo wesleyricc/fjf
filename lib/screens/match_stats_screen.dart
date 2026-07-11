@@ -12,7 +12,7 @@ import '../services/championship_service.dart';
 import '../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 
 // Widgets
-import '../widgets/sponsor_banner_rotator.dart';
+import '../widgets/main_bottom_nav_bar.dart';
 import '../widgets/match_result_card.dart';
 import '../widgets/match_stats_tab.dart';
 import '../widgets/match_media_tab.dart';
@@ -335,7 +335,7 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
             ),
           ],
         ),
-        bottomNavigationBar: const SponsorBannerRotator(),
+        bottomNavigationBar: const MainBottomNavBar(currentRoute: '/match-stats'),
       ),
     );
   }
