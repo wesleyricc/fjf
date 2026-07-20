@@ -9,7 +9,7 @@ import '../services/voting_service.dart';
 import '../services/analytics_service.dart';
 import '../models/poll_model.dart';
 import '../widgets/sponsor_banner_rotator.dart';
-import '../screens/mini_bolao_home_screen.dart';
+import '../screens/bolao/mini_bolao_home_screen.dart';
 
 class MainBottomNavBar extends StatelessWidget {
   final String currentRoute;
@@ -262,7 +262,7 @@ class MainBottomNavBar extends StatelessWidget {
   Widget _buildMarketSection(BuildContext context) {
     return Column(
       children: [
-        _buildThemedSectionHeader(context, "Seja um Atleta FJF", Icons.assignment_ind),
+        _buildThemedSectionHeader(context, "Portal do Atleta", Icons.assignment_ind),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
@@ -273,9 +273,9 @@ class MainBottomNavBar extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _buildListTile(context, Icons.assignment_ind, "Inscrição no Mercado", '/free-agents-registration', isDark: true),
+              _buildListTile(context, Icons.assignment_ind, "Seja um Atleta FJF", '/free-agents-registration', isDark: true),
               Divider(height: 1, color: Colors.white.withOpacity(0.2)),
-              _buildListTile(context, Icons.transfer_within_a_station, "Mercado de Atletas", '/free-agents-market', isDark: true),
+              _buildListTile(context, Icons.security, "Acessar Portal", '/portal', isDark: true),
             ],
           ),
         ),

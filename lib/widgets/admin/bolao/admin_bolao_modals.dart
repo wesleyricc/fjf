@@ -1,0 +1,1118 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import '../../../models/bolao_models.dart';
+import '../../../utils/bolao_constants.dart';
+import '../../../services/analytics_service.dart';
+
+class AdminBolaoModals {
+  static Future<void> showPlayerSearchModal(BuildContext context, List<String> players, Function(String) onSelected) async {
+    String localSearch = "";
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocalState) {
+            final filtered = players.where((p) => p.toLowerCase().contains(localSearch.toLowerCase())).toList();
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 16),
+                  const Text("Selecionar Atleta", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: "Pesquisar nome...",
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                    onChanged: (val) => setLocalState(() => localSearch = val),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (c, i) => ListTile(
+                        leading: const Icon(Icons.person, color: Colors.grey),
+                        title: Text(filtered[i], style: const TextStyle(fontWeight: FontWeight.bold)),
+                        onTap: () {
+                          onSelected(filtered[i]);
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ),
+                  )
+                ],
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
+  static Future<void> showCreateMiniBolaoModal(BuildContext context) async {
+    AnalyticsService.logCustomScreenView('Admin_Modal_Create_Mini_Bolao');
+
+    final titleCtrl = TextEditingController();
+    final feeCtrl = TextEditingController(text: "10.00");
+    final feePercentCtrl = TextEditingController(text: "30"); 
+    final playersCtrl = TextEditingController();
+    BolaoMatch? selectedMatch;
+    DateTime? selectedDeadline; 
+    bool isSaving = false;
+
+    final matchesSnap = await FirebaseFirestore.instance.collection('bolao_matches')
+        .where('status', isNotEqualTo: 'finished')
+        .get();
+    
+    final List<BolaoMatch> availableMatches = matchesSnap.docs.map((d) => BolaoMatch.fromFirestore(d)).toList();
+    availableMatches.sort((a, b) => a.date.compareTo(b.date));
+
+    if (!context.mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.9,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom, 
+                left: 24, right: 24, top: 24
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white, 
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24))
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.rocket_launch, color: Colors.blue, size: 28),
+                            SizedBox(width: 8),
+                            Text("Criar Mini Bolão", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
+                          ],
+                        ),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: const InputDecoration(labelText: "Nome da Sala (Ex: Super Final)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.title)),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    DropdownButtonFormField<BolaoMatch>(
+                      value: selectedMatch,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: "Selecione a Partida", border: OutlineInputBorder(), prefixIcon: Icon(Icons.sports_soccer)),
+                      items: availableMatches.map((m) {
+                        return DropdownMenuItem(
+                          value: m,
+                          child: Text("${m.homeTeam} x ${m.awayTeam} (${m.date.day}/${m.date.month})", overflow: TextOverflow.ellipsis),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        setModalState(() => selectedMatch = val);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: feeCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: "Valor Entrada (R\$)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.attach_money)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: feePercentCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: "Taxa do App (%)", border: OutlineInputBorder(), prefixIcon: Icon(Icons.percent)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    const Text("Artilheiros Elegíveis", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: playersCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: "Digite os nomes separados por vírgula.\nEx: Vini Jr, Mbappé, Neymar, Griezmann",
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        side: const BorderSide(color: Colors.blue, width: 1.5),
+                        foregroundColor: Colors.blue.shade700,
+                      ),
+                      onPressed: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDeadline ?? DateTime.now().add(const Duration(days: 1)),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2027),
+                        );
+                        if (date != null && context.mounted) {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: selectedDeadline != null ? TimeOfDay.fromDateTime(selectedDeadline!) : const TimeOfDay(hour: 23, minute: 59),
+                          );
+                          if (time != null && context.mounted) {
+                            setModalState(() {
+                              selectedDeadline = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                            });
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.access_time),
+                      label: Text(
+                        selectedDeadline == null 
+                            ? "Definir Prazo Limite (Obrigatório)" 
+                            : "Encerra: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDeadline!)}",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    if (selectedMatch != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("💡 Equipes do Primeiro Gol Geradas Automaticamente:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                            const SizedBox(height: 4),
+                            Text("1. ${selectedMatch!.homeTeam}\n2. ${selectedMatch!.awayTeam}\n3. Sem Gols", style: const TextStyle(color: Colors.black87)),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 30),
+                    SizedBox(
+                      width: double.infinity, height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700, 
+                          foregroundColor: Colors.white, 
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                        ),
+                        onPressed: isSaving ? null : () async {
+                          if (titleCtrl.text.isEmpty || selectedMatch == null || feeCtrl.text.isEmpty || playersCtrl.text.isEmpty || feePercentCtrl.text.isEmpty || selectedDeadline == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha todos os campos e o prazo limite!"), backgroundColor: Colors.orange));
+                            return;
+                          }
+
+                          setModalState(() => isSaving = true);
+                          try {
+                            List<String> playersList = playersCtrl.text.split(',')
+                                .map((e) => e.trim())
+                                .where((e) => e.isNotEmpty)
+                                .toList();
+
+                            await FirebaseFirestore.instance.collection('bolao_mini_leagues').add({
+                              'title': titleCtrl.text.trim(),
+                              'match_ids': [selectedMatch!.id], 
+                              'entry_fee': double.tryParse(feeCtrl.text.replaceAll(',', '.')) ?? 10.0,
+                              'admin_fee_percentage': double.tryParse(feePercentCtrl.text.replaceAll(',', '.')) ?? 30.0,
+                              'deadline': Timestamp.fromDate(selectedDeadline!), 
+                              'prize_pool': 0.0,
+                              'participants_count': 0,
+                              'is_active': true,
+                              'status': 'open',
+                              'created_at': FieldValue.serverTimestamp(),
+                              'available_players': playersList,
+                              'available_teams': [selectedMatch!.homeTeam, selectedMatch!.awayTeam, 'Sem Gols'],
+                            });
+                            
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mini Bolão criado e liberado ao público! 🚀"), backgroundColor: Colors.green));
+                            }
+                          } catch (e) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                          } finally {
+                            setModalState(() => isSaving = false);
+                          }
+                        },
+                        child: isSaving ? const CircularProgressIndicator(color: Colors.white) : const Text("LANÇAR MINI BOLÃO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                  ],
+                ),
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
+  static Future<void> showEditMiniBolaoModal(BuildContext context, DocumentSnapshot doc) async {
+    AnalyticsService.logCustomScreenView('Admin_Modal_Edit_Mini_Bolao');
+
+    final data = doc.data() as Map<String, dynamic>;
+    final titleCtrl = TextEditingController(text: data['title']);
+    final feeCtrl = TextEditingController(text: data['entry_fee']?.toString());
+    final feePercentCtrl = TextEditingController(text: data['admin_fee_percentage']?.toString() ?? "30"); 
+    final players = List<String>.from(data['available_players'] ?? []);
+    final playersCtrl = TextEditingController(text: players.join(', '));
+    
+    final Timestamp? initialTs = data['deadline'] as Timestamp?;
+    DateTime? selectedDeadline = initialTs?.toDate();
+    
+    bool isSaving = false;
+
+    if (!context.mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
+              decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Editar Mini Bolão", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "Nome da Sala", border: OutlineInputBorder())),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: feeCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: "Valor da Entrada (R\$)", border: OutlineInputBorder()),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: feePercentCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: "Taxa do App (%)", border: OutlineInputBorder()),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Text("Artilheiros Elegíveis", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: playersCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(hintText: "Nomes separados por vírgula.", border: OutlineInputBorder()),
+                    ),
+                    const SizedBox(height: 16),
+
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        side: const BorderSide(color: Colors.blue, width: 1.5),
+                        foregroundColor: Colors.blue.shade700,
+                      ),
+                      onPressed: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDeadline ?? DateTime.now().add(const Duration(days: 1)),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2027),
+                        );
+                        if (date != null && context.mounted) {
+                          final time = await showTimePicker(
+                            context: context,
+                            initialTime: selectedDeadline != null ? TimeOfDay.fromDateTime(selectedDeadline!) : const TimeOfDay(hour: 23, minute: 59),
+                          );
+                          if (time != null && context.mounted) {
+                            setModalState(() {
+                              selectedDeadline = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                            });
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.access_time),
+                      label: Text(
+                        selectedDeadline == null 
+                            ? "Definir Prazo Limite (Obrigatório)" 
+                            : "Encerra: ${DateFormat('dd/MM/yyyy HH:mm').format(selectedDeadline!)}",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+                    SizedBox(
+                      width: double.infinity, height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade700, foregroundColor: Colors.white),
+                        onPressed: isSaving ? null : () async {
+                          if (titleCtrl.text.isEmpty || feeCtrl.text.isEmpty || playersCtrl.text.isEmpty || feePercentCtrl.text.isEmpty || selectedDeadline == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha todos os campos e o prazo limite!"), backgroundColor: Colors.orange));
+                            return;
+                          }
+                          setModalState(() => isSaving = true);
+                          try {
+                            List<String> playersList = playersCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+                            await FirebaseFirestore.instance.collection('bolao_mini_leagues').doc(doc.id).update({
+                              'title': titleCtrl.text.trim(),
+                              'entry_fee': double.tryParse(feeCtrl.text.replaceAll(',', '.')) ?? 10.0,
+                              'admin_fee_percentage': double.tryParse(feePercentCtrl.text.replaceAll(',', '.')) ?? 30.0,
+                              'deadline': Timestamp.fromDate(selectedDeadline!), 
+                              'available_players': playersList,
+                            });
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Mini Bolão atualizado!"), backgroundColor: Colors.green));
+                            }
+                          } catch (e) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                          } finally {
+                            setModalState(() => isSaving = false);
+                          }
+                        },
+                        child: isSaving ? const CircularProgressIndicator(color: Colors.white) : const Text("SALVAR ALTERAÇÕES", style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
+  static Future<void> showControlMiniBolaoModal(BuildContext context, DocumentSnapshot doc) async {
+    AnalyticsService.logCustomScreenView('Admin_Modal_Control_Mini_Bolao');
+
+    final data = doc.data() as Map<String, dynamic>;
+    final List<String> availableTeams = List<String>.from(data['available_teams'] ?? []);
+    final List<String> availablePlayers = List<String>.from(data['available_players'] ?? []);
+    
+    String homeTeam = availableTeams.isNotEmpty ? availableTeams[0] : "Casa";
+    String awayTeam = availableTeams.length > 1 ? availableTeams[1] : "Visitante";
+    String homeFlag = BolaoConstants.teamsFlagsMap[homeTeam] ?? '❓';
+    String awayFlag = BolaoConstants.teamsFlagsMap[awayTeam] ?? '❓';
+
+    final homeCtrl = TextEditingController(text: data['real_score_home']?.toString() ?? '');
+    final awayCtrl = TextEditingController(text: data['real_score_away']?.toString() ?? '');
+    List<String> realScorers = List<String>.from(data['real_scorers'] ?? []);
+    
+    String? selectedFirstGoal = data['real_first_goal_team']?.toString().isNotEmpty == true ? data['real_first_goal_team'] : null;
+    if (selectedFirstGoal != null && !availableTeams.contains(selectedFirstGoal)) selectedFirstGoal = null;
+    
+    final firstGoalMinuteCtrl = TextEditingController(text: data['real_first_goal_minute']?.toString() ?? '');
+    bool? realHalfTimeDraw = data['real_half_time_draw'];
+    String? realHighestScoringHalf = data['real_highest_scoring_half']?.toString().isNotEmpty == true ? data['real_highest_scoring_half'] : null;
+
+    String? selectedPlayerToAdd;
+    bool isSaving = false;
+
+    if (!context.mounted) return;
+
+    await showModalBottomSheet(
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+
+            Future<void> _processRanking(bool isPartial) async {
+               if (homeCtrl.text.isEmpty || awayCtrl.text.isEmpty || selectedFirstGoal == null || firstGoalMinuteCtrl.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha o placar, o primeiro gol e o MINUTO do gol."), backgroundColor: Colors.orange));
+                  return;
+               }
+               
+               if (!isPartial) {
+                  if (realHalfTimeDraw == null || realHighestScoringHalf == null) {
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Para encerrar, preencha os dados de tempo e empate."), backgroundColor: Colors.orange));
+                     return;
+                  }
+               }
+
+               setModalState(() => isSaving = true);
+               try {
+                 await FirebaseFunctions.instance.httpsCallable('calculateMiniBolaoPoints').call({
+                   'miniBolaoId': doc.id,
+                   'realHomeScore': int.parse(homeCtrl.text),
+                   'realAwayScore': int.parse(awayCtrl.text),
+                   'realScorers': realScorers, 
+                   'realFirstGoalTeam': selectedFirstGoal,
+                   'realFirstGoalMinute': int.parse(firstGoalMinuteCtrl.text), 
+                   'realHalfTimeDraw': realHalfTimeDraw,         
+                   'realHighestScoringHalf': realHighestScoringHalf, 
+                   'isPartial': isPartial, 
+                 });
+                 if (context.mounted) {
+                   Navigator.pop(context);
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                       content: Text(isPartial ? "Ranking parcial atualizado no App!" : "Ranking Finalizado com Sucesso! 🏆"), 
+                       backgroundColor: Colors.green
+                   ));
+                 }
+               } catch (e) {
+                 if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+               } finally {
+                 if (context.mounted) setModalState(() => isSaving = false);
+               }
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.9,
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
+              decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Controle do Mini Bolão", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange)),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      color: Colors.orange.shade50,
+                      child: const Text("Atenção: Você pode ATUALIZAR PARCIALMENTE para exibir o ranking ao vivo. Apenas o botão ENCERRAR travará a sala.", style: TextStyle(color: Colors.orange)),
+                    ),
+                    const SizedBox(height: 16),
+
+                    const Text("Placar Real", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(homeFlag, style: const TextStyle(fontSize: 32)),
+                              Text(homeTeam, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 
+                              const SizedBox(height: 8), 
+                              TextField(
+                                controller: homeCtrl, keyboardType: TextInputType.number, 
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                textAlign: TextAlign.center, decoration: const InputDecoration(border: OutlineInputBorder())
+                              )
+                            ]
+                          )
+                        ),
+                        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text("X", style: TextStyle(fontWeight: FontWeight.bold))),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(awayFlag, style: const TextStyle(fontSize: 32)),
+                              Text(awayTeam, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 
+                              const SizedBox(height: 8), 
+                              TextField(
+                                controller: awayCtrl, keyboardType: TextInputType.number, 
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                textAlign: TextAlign.center, decoration: const InputDecoration(border: OutlineInputBorder())
+                              )
+                            ]
+                          )
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    const Text("Autores dos Gols da Partida:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text("Informe quem marcou gol neste jogo (Toque para pesquisar).", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 12),
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    showPlayerSearchModal(context, availablePlayers, (selected) {
+                                      setModalState(() => selectedPlayerToAdd = selected);
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      border: Border.all(color: Colors.grey.shade400),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            selectedPlayerToAdd ?? "🔍 Pesquisar...", 
+                                            style: TextStyle(color: selectedPlayerToAdd == null ? Colors.grey.shade600 : Colors.black87, fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
+                                          )
+                                        ),
+                                        const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle, color: Colors.green, size: 36),
+                                onPressed: () {
+                                  if (selectedPlayerToAdd != null) {
+                                    setModalState(() {
+                                      realScorers.add(selectedPlayerToAdd!);
+                                      selectedPlayerToAdd = null;
+                                    });
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Selecione um atleta."), backgroundColor: Colors.orange));
+                                  }
+                                },
+                              )
+                            ],
+                          ),
+                          const Divider(height: 24),
+
+                          const Text("Gols Confirmados Reais:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          if (realScorers.isEmpty)
+                            const Text("Nenhum gol associado ainda.", style: TextStyle(color: Colors.grey, fontSize: 12))
+                          else
+                            Wrap(
+                              spacing: 8.0, runSpacing: 8.0,
+                              children: realScorers.asMap().entries.map((entry) {
+                                int idx = entry.key;
+                                String player = entry.value;
+                                return Chip(
+                                  label: Text(player, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  backgroundColor: Colors.orange.shade100,
+                                  deleteIconColor: Colors.red,
+                                  onDeleted: () {
+                                    setModalState(() {
+                                      realScorers.removeAt(idx);
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                        ]
+                      )
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    const Text("Primeiro Gol (Time e Minuto)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButtonFormField<String>(
+                            value: selectedFirstGoal,
+                            decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                            items: availableTeams.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                            onChanged: (val) => setModalState(() => selectedFirstGoal = val),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 1,
+                          child: TextField(
+                            controller: firstGoalMinuteCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: const InputDecoration(labelText: "Minuto (Ex: 12)", border: OutlineInputBorder()),
+                          ),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    const Text("Empatou no Intervalo?", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setModalState(() => realHalfTimeDraw = true),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(color: realHalfTimeDraw == true ? Colors.blue.shade100 : Colors.white, border: Border.all(color: realHalfTimeDraw == true ? Colors.blue : Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                              child: Center(child: Text("SIM", style: TextStyle(fontWeight: FontWeight.bold, color: realHalfTimeDraw == true ? Colors.blue.shade800 : Colors.black87))),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setModalState(() => realHalfTimeDraw = false),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(color: realHalfTimeDraw == false ? Colors.blue.shade100 : Colors.white, border: Border.all(color: realHalfTimeDraw == false ? Colors.blue : Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                              child: Center(child: Text("NÃO", style: TextStyle(fontWeight: FontWeight.bold, color: realHalfTimeDraw == false ? Colors.blue.shade800 : Colors.black87))),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    const Text("Metade com Mais Gols", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: realHighestScoringHalf,
+                      decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                      items: const [
+                        DropdownMenuItem(value: "1º Tempo", child: Text("1º Tempo")),
+                        DropdownMenuItem(value: "2º Tempo", child: Text("2º Tempo")),
+                        DropdownMenuItem(value: "Empate (Mesma Qtde)", child: Text("Empate (Mesma Qtde de Gols)")),
+                      ],
+                      onChanged: (val) => setModalState(() => realHighestScoringHalf = val),
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                            icon: isSaving ? const SizedBox() : const Icon(Icons.sync),
+                            label: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("ATUALIZAR PARCIAL", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            onPressed: isSaving ? null : () => _processRanking(true),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade800, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                            icon: isSaving ? const SizedBox() : const Icon(Icons.flag),
+                            label: isSaving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("ENCERRAR SALA", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            onPressed: isSaving ? null : () => _processRanking(false),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+                  ],
+                ),
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
+  static Future<void> showEditMatchDialog(BuildContext context, BolaoMatch match) async {
+    if (!BolaoConstants.teamsFlagsMap.containsKey(match.homeTeam)) BolaoConstants.teamsFlagsMap[match.homeTeam] = '❓';
+    if (!BolaoConstants.teamsFlagsMap.containsKey(match.awayTeam)) BolaoConstants.teamsFlagsMap[match.awayTeam] = '❓';
+
+    final List<String> availableTeams = BolaoConstants.teamsFlagsMap.keys.toList()..sort();
+
+    String selectedHome = match.homeTeam;
+    String selectedAway = match.awayTeam;
+
+    if (!context.mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: Text("Definir Times: ${match.group}"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Seleção da Casa (Mandante)", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1B5E20))),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: selectedHome,
+                      isExpanded: true,
+                      decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                      items: availableTeams.map((team) {
+                        return DropdownMenuItem(
+                          value: team,
+                          child: Row(
+                            children: [
+                              Text(BolaoConstants.teamsFlagsMap[team] ?? '❓', style: const TextStyle(fontSize: 20)),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text(team, overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) setModalState(() => selectedHome = val);
+                      },
+                    ),
+                    const Divider(height: 40),
+                    const Text("Seleção de Fora (Visitante)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: selectedAway,
+                      isExpanded: true,
+                      decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12)),
+                      items: availableTeams.map((team) {
+                        return DropdownMenuItem(
+                          value: team,
+                          child: Row(
+                            children: [
+                              Text(BolaoConstants.teamsFlagsMap[team] ?? '❓', style: const TextStyle(fontSize: 20)),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text(team, overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) setModalState(() => selectedAway = val);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1B5E20), foregroundColor: Colors.white),
+                  onPressed: () async {
+                    
+                    Navigator.pop(context);
+                    try {
+                      final homeFlag = BolaoConstants.teamsFlagsMap[selectedHome] ?? '❓';
+                      final awayFlag = BolaoConstants.teamsFlagsMap[selectedAway] ?? '❓';
+
+                      await FirebaseFirestore.instance.collection('bolao_matches').doc(match.id).update({
+                        'home_team': selectedHome,
+                        'away_team': selectedAway,
+                        'home_flag_url': homeFlag,
+                        'away_flag_url': awayFlag,
+                        'updated_at': FieldValue.serverTimestamp(),
+                      });
+                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Confronto salvo com sucesso! 🏁"), backgroundColor: Colors.green));
+                    } catch (e) {
+                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                    } finally {
+                      
+                    }
+                  },
+                  child: const Text("Confirmar Confronto"),
+                ),
+              ],
+            );
+          }
+        );
+      },
+    );
+  }
+
+  static void showLiveMatchControl(BuildContext context, BolaoMatch match) {
+    int currentHomeScore = match.realScoreHome ?? 0;
+    int currentAwayScore = match.realScoreAway ?? 0;
+    bool isUpdating = false;
+    final bool isFinished = match.status == 'finished';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            
+            Future<void> _updateScore(int home, int away) async {
+              setModalState(() => isUpdating = true);
+              try {
+                await FirebaseFirestore.instance.collection('bolao_matches').doc(match.id).update({
+                  'real_score_home': home,
+                  'real_score_away': away,
+                  if (!isFinished) 'status': 'in_progress', 
+                  'updated_at': FieldValue.serverTimestamp()
+                });
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+              } finally {
+                if (context.mounted) setModalState(() => isUpdating = false);
+              }
+            }
+
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 16),
+                  Text(
+                    isFinished ? "🟠 CORRIGIR PLACAR (REPROCESSAMENTO)" : "🔴 CONTROLE AO VIVO", 
+                    style: TextStyle(color: isFinished ? Colors.orange.shade800 : Colors.red, fontWeight: FontWeight.w900, fontSize: 16)
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Column(
+                        children: [
+                          Text(match.homeFlagUrl, style: const TextStyle(fontSize: 40)),
+                          const SizedBox(height: 8),
+                          Text(match.homeTeam, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(50),
+                                  onTap: isUpdating || currentHomeScore <= 0 ? null : () {
+                                    currentHomeScore--;
+                                    _updateScore(currentHomeScore, currentAwayScore);
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Icon(Icons.remove_circle_outline, color: (isUpdating || currentHomeScore <= 0) ? Colors.grey : Colors.red.shade600, size: 36),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 50,
+                                alignment: Alignment.center,
+                                child: Text(
+                                  "$currentHomeScore",
+                                  style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: Colors.black87),
+                                ),
+                              ),
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(50),
+                                  onTap: isUpdating ? null : () {
+                                    currentHomeScore++;
+                                    _updateScore(currentHomeScore, currentAwayScore);
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Icon(Icons.add_circle_outline, color: isUpdating ? Colors.grey : Colors.green.shade600, size: 36),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                      
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8.0, right: 8.0, bottom: 20.0),
+                        child: Text("X", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      ),
+
+                      Column(
+                        children: [
+                          Text(match.awayFlagUrl, style: const TextStyle(fontSize: 40)),
+                          const SizedBox(height: 8),
+                          Text(match.awayTeam, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(50),
+                                  onTap: isUpdating || currentAwayScore <= 0 ? null : () {
+                                    currentAwayScore--;
+                                    _updateScore(currentHomeScore, currentAwayScore);
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Icon(Icons.remove_circle_outline, color: (isUpdating || currentAwayScore <= 0) ? Colors.grey : Colors.red.shade600, size: 36),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 50,
+                                alignment: Alignment.center,
+                                child: Text(
+                                  "$currentAwayScore",
+                                  style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: Colors.black87),
+                                ),
+                              ),
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(50),
+                                  onTap: isUpdating ? null : () {
+                                    currentAwayScore++;
+                                    _updateScore(currentHomeScore, currentAwayScore);
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Icon(Icons.add_circle_outline, color: isUpdating ? Colors.grey : Colors.green.shade600, size: 36),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 16),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isFinished ? Colors.orange.shade800 : Colors.black87, 
+                        foregroundColor: Colors.white, 
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                      ),
+                      onPressed: isUpdating ? null : () async {
+                        
+                        final bool? confirmacao = await showDialog<bool>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              title: Row(
+                                children: [
+                                  Icon(Icons.warning_amber_rounded, color: isFinished ? Colors.orange : Colors.red.shade700, size: 28),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(isFinished ? 'Corrigir e Reprocessar?' : 'Encerrar Oficialmente?', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+                                ],
+                              ),
+                              content: Text(
+                                isFinished 
+                                    ? 'Você está prestes a corrigir o placar de um jogo já encerrado.\n\nO servidor recalculará a pontuação de TODOS os usuários calculando a diferença do placar antigo para o novo (Não haverá duplicação).\n\nDeseja confirmar o novo placar?'
+                                    : 'Esta ação é IRREVERSÍVEL. \n\nO aplicativo irá travar o placar e acionar o servidor para calcular os pontos de todos os participantes.\n\nTem certeza que o jogo acabou?',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false),
+                                  child: Text('Cancelar', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold)),
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: isFinished ? Colors.orange.shade800 : Colors.red.shade700,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  child: Text(isFinished ? 'Sim, Reprocessar!' : 'Sim, Encerrar!', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+
+                        if (confirmacao == true) {
+                          setModalState(() => isUpdating = true);
+                          try {
+                            // 🚨 Rastreamento do Reprocessamento ou Fechamento Admin
+                            AnalyticsService.logCustomScreenView(
+                              'Admin_Bolao_Match_Process', 
+                              parameters: {'match_id': match.id, 'action': isFinished ? 'reprocess' : 'close'}
+                            );
+
+                            final callable = FirebaseFunctions.instance.httpsCallable('calculateBolaoMatchPoints');
+                            await callable.call({
+                              'matchId': match.id,
+                              'realHomeScore': currentHomeScore,
+                              'realAwayScore': currentAwayScore,
+                            });
+                            if (context.mounted) {
+                              Navigator.pop(context); 
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isFinished ? "Jogo reprocessado com sucesso! Ranking corrigido. 🔄" : "Jogo processado e Ranking oficial atualizado! 🏆"), backgroundColor: Colors.green));
+                            }
+                          } catch (e) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao processar: $e"), backgroundColor: Colors.red));
+                          } finally {
+                            if (context.mounted) setModalState(() => isUpdating = false);
+                          }
+                        }
+                      },
+                      icon: Icon(isFinished ? Icons.refresh : Icons.flag),
+                      label: isUpdating 
+                        ? const CircularProgressIndicator(color: Colors.white) 
+                        : Text(isFinished ? "CONFIRMAR E REPROCESSAR JOGO" : "ENCERRAR PARTIDA OFICIALMENTE", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  )
+                ],
+              ),
+            );
+          }
+        );
+      }
+    );
+  }
+
+
+}

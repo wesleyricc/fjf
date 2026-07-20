@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'firestore_cache_service.dart';
 
 import '../models/bolao_models.dart';
 
@@ -237,9 +238,12 @@ class BolaoService {
     await _firestore.collection('bolao_users').doc(userId).update({field: value});
   }
 
-  Stream<List<BolaoUser>> streamLeaderboard() {
-    return _firestore.collection('bolao_users').snapshots().map((snap) {
-      final users = snap.docs.map((d) => BolaoUser.fromFirestore(d, d.data()['name'] ?? 'Participante')).toList();
+  Stream<List<BolaoUser>> streamLeaderboard() async* {
+    List<BolaoUser> mapUsers(QuerySnapshot snap) {
+      final users = snap.docs.map((d) {
+        final data = d.data() as Map<String, dynamic>?;
+        return BolaoUser.fromFirestore(d, data?['name'] ?? 'Participante');
+      }).toList();
       
       users.sort((a, b) {
         int cmp = b.totalPoints.compareTo(a.totalPoints);
@@ -252,8 +256,30 @@ class BolaoService {
         if (cmp != 0) return cmp;
         return b.bonusPoints.compareTo(a.bonusPoints);
       });
-      
       return users;
+    }
+
+    final query = _firestore.collection('bolao_users');
+    const cacheKey = 'bolao_users_leaderboard';
+    const ttl = Duration(minutes: 5);
+
+    // 1. Emite o dado imediatamente via Cache (TTL: 5 min)
+    final initialSnap = await FirestoreCacheService.getWithCache(
+      query: query,
+      cacheKey: cacheKey,
+      ttl: ttl,
+    );
+    yield mapUsers(initialSnap);
+
+    // 2. Continua emitindo atualizações a cada 5 minutos
+    yield* Stream.periodic(ttl).asyncMap((_) async {
+      final snap = await FirestoreCacheService.getWithCache(
+        query: query,
+        cacheKey: cacheKey,
+        ttl: ttl,
+        forceRefresh: true, 
+      );
+      return mapUsers(snap);
     });
   }
 

@@ -23,6 +23,7 @@ class FantasyAuthService with ChangeNotifier {
   User? get user => _user;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _user != null;
+  bool get isGoogleAuthenticated => _user?.providerData.any((p) => p.providerId == 'google.com') ?? false;
 
   FantasyAuthService(this._fantasyService) {
     // Inicialização correta com as chaves para Web

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/player_model.dart';
 
@@ -46,9 +47,9 @@ class PlayerService {
         'man_of_the_match_awards': 0, 'goals_conceded': 0,
         'is_suspended': false
       });
-      return "Sucesso: Jogador criado.";
+      return globalRef.id;
     } catch (e) {
-      return "Erro ao criar jogador: $e";
+      throw "Erro ao criar jogador: $e";
     }
   }
 
@@ -70,6 +71,17 @@ class PlayerService {
       try {
         await getPlayerStatsRef(seasonId).doc(doc.id).update({'isActive': false});
       } catch (_) {}
+      
+      // Inativar acesso ao portal (Deletando o documento em portal_users bloqueia o acesso via Rules)
+      try {
+        final portalUserQuery = await _firestore.collection('portal_users').where('playerId', isEqualTo: doc.id).get();
+        for (var portalDoc in portalUserQuery.docs) {
+          await portalDoc.reference.delete();
+        }
+      } catch (e) {
+        debugPrint("Aviso: Falha ao remover acesso do portal: $e");
+      }
+      
       return "Sucesso: Jogador inativado.";
     } catch (e) {
       return "Erro: $e";

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/standings_sorter.dart'; 
-import '../screens/team_detail_screen.dart';
+import '../screens/championship/team_detail_screen.dart';
 import '../models/match_model.dart';
 import '../services/admin_service.dart';
 

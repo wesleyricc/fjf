@@ -11,6 +11,8 @@ class ScoutCardDialog extends StatefulWidget {
   final List<DocumentSnapshot> awayPlayers;
   final MatchEventType cardType; 
   final MatchEvent? eventToEdit;
+  final String? preSelectedTeamId;
+  final String? preSelectedPlayerId;
 
   const ScoutCardDialog({
     super.key,
@@ -19,6 +21,8 @@ class ScoutCardDialog extends StatefulWidget {
     required this.awayPlayers,
     required this.cardType,
     this.eventToEdit,
+    this.preSelectedTeamId,
+    this.preSelectedPlayerId,
   });
 
   @override
@@ -44,6 +48,17 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
       _selectedPlayerName = e.playerName;
       _minuteController.text = e.minute.toString();
       _selectedPeriod = e.period;
+    } else {
+      if (widget.preSelectedTeamId != null) _selectedTeamId = widget.preSelectedTeamId;
+      if (widget.preSelectedPlayerId != null) {
+        _selectedPlayerId = widget.preSelectedPlayerId;
+        final playersList = _selectedTeamId == widget.match['team_home_id'] ? widget.homePlayers : widget.awayPlayers;
+        final doc = playersList.where((d) => d.id == _selectedPlayerId).firstOrNull;
+        if (doc != null) {
+          final data = doc.data() as Map<String, dynamic>;
+          _selectedPlayerName = data['name'];
+        }
+      }
     }
   }
 
@@ -80,6 +95,14 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
       case MatchEventType.shotOnPost:
         title = "NA TRAVE";
         color = Colors.brown;
+        break;
+      case MatchEventType.ownGoal:
+        title = "GOL CONTRA";
+        color = Colors.black87;
+        break;
+      case MatchEventType.directFreeKickMissed:
+        title = "TIRO LIVRE PERDIDO";
+        color = Colors.indigo;
         break;
       default:
         title = "EVENTO";

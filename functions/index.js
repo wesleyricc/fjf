@@ -22,7 +22,10 @@ const DEFAULT_CONFIG = {
   ptsPenaltySaved: 5.0,     
   ptsPenaltyMissed: -3.0,   
   ptsShotOnPost: 3.0,       
-  ptsCleanSheet: 5.0,       
+  ptsCleanSheet: 5.0,
+  ptsOwnGoal: -5.0,
+  ptsDirectFreeKickMissed: -3.0,
+  ptsManOfTheMatch: 3.0,
   
   factorExpectation: 0.35, 
   factorVariation: 0.25,
@@ -102,6 +105,18 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
     valorInscricao = entryFee.toFixed(2);
     description = `Mini Bolão: ${mbData.title}`.substring(0, 140);
   } 
+  else if (type === 'portal') {
+    const dueId = request.data.dueId;
+    if (!dueId) throw new HttpsError('invalid-argument', 'ID do débito não informado.');
+    const dueSnap = await db.collection('portal_financial_dues').doc(dueId).get();
+    if (!dueSnap.exists) throw new HttpsError('not-found', 'Débito não encontrado.');
+    
+    const dueData = dueSnap.data();
+    if (dueData.status === 'paid') throw new HttpsError('failed-precondition', 'Este débito já está pago.');
+    
+    valorInscricao = parseFloat(dueData.amount).toFixed(2);
+    description = dueData.title.substring(0, 140);
+  }
   else {
     if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
       throw new HttpsError('invalid-argument', 'Nenhum item no carrinho.');
@@ -157,6 +172,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
       txid: cobranca.txid,
       items: itemsToSave,
       mini_bolao_id: miniBolaoId || null, 
+      due_id: type === 'portal' ? request.data.dueId : null,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -254,6 +270,14 @@ exports.sicoobWebhook = onRequest(async (req, res) => {
 
             console.log(`✅ [WEBHOOK SICOOB] Mini Bolão liberado automaticamente. TXID: ${txid}`);
           }
+          else if (orderData.type === 'portal' && orderData.due_id) {
+            const dueRef = db.collection('portal_financial_dues').doc(orderData.due_id);
+            batchHandler.update(dueRef, {
+              status: 'paid',
+              payment_date: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`✅ [WEBHOOK SICOOB] Débito do Portal pago. TXID: ${txid}`);
+          }
         }
       }
     }
@@ -303,6 +327,14 @@ async function processOrderApproval(txid, orderData, valorPago = null) {
     });
 
      console.log(`✅ [POLLING MANUAL] Mini Bolão liberado. TXID: ${txid}`);
+  }
+  else if (orderData.type === 'portal' && orderData.due_id) {
+    const dueRef = db.collection('portal_financial_dues').doc(orderData.due_id);
+    batchHandler.update(dueRef, {
+      status: 'paid',
+      payment_date: admin.firestore.FieldValue.serverTimestamp()
+    });
+    console.log(`✅ [POLLING MANUAL] Débito do Portal pago. TXID: ${txid}`);
   }
   else if (orderData.type === 'photo') {
     console.log(`✅ [POLLING MANUAL] Fotos liberadas. TXID: ${txid}`);
@@ -369,9 +401,15 @@ exports.closeRound = onCall({
 
     const scoresMap = {};
     const teamCleanSheets = {}; 
+    const playersPlayedSet = new Set();
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
+      
+      // Mapeamento de Presença (quem jogou)
+      if (data.lineup_played && Array.isArray(data.lineup_played)) {
+        data.lineup_played.forEach(pid => playersPlayedSet.add(pid.toString()));
+      }
       
       const scoreHome = data.score_home || 0;
       const scoreAway = data.score_away || 0;
@@ -388,10 +426,12 @@ exports.closeRound = onCall({
         reds: config.ptsRedCard,
         penalties_saved: config.ptsPenaltySaved,     
         penalties_missed: config.ptsPenaltyMissed,   
-        shots_on_post: config.ptsShotOnPost          
+        shots_on_post: config.ptsShotOnPost,
+        own_goals: config.ptsOwnGoal,
+        direct_free_kicks_missed: config.ptsDirectFreeKickMissed
       };
 
-      ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post'].forEach(cat => {
+      ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post', 'own_goals', 'direct_free_kicks_missed'].forEach(cat => {
         if (stats[cat]) {
           Object.entries(stats[cat]).forEach(([pid, val]) => {
             const points = (Number(val) || 0) * (ptsRules[cat] || 0);
@@ -399,6 +439,11 @@ exports.closeRound = onCall({
           });
         }
       });
+
+      if (data.stats_applied.man_of_the_match) {
+        const motmPid = data.stats_applied.man_of_the_match;
+        scoresMap[motmPid] = (scoresMap[motmPid] || 0) + (config.ptsManOfTheMatch || 3.0);
+      }
     });
 
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
@@ -406,11 +451,14 @@ exports.closeRound = onCall({
     const teamScores = {};    
     const teamLogDetails = {}; 
     const teamCoaches = {};   
+    const playersInfo = {}; 
 
     allPlayersSnap.forEach(doc => {
       const p = doc.data();
       const pid = doc.id;
       const teamId = p.team_id; 
+      
+      playersInfo[pid] = p;
 
       if (!teamId) return;
 
@@ -492,23 +540,88 @@ exports.closeRound = onCall({
     });
 
     const userTeamsSnap = await db.collection('fantasy_teams').get();
+    
+    const playerPickedCount = {};
+    const teamRoundScores = {};
+    const teamPatrimony = {}; // NOVO
+
     userTeamsSnap.forEach(doc => {
       const team = doc.data();
-      const lineup = team.lineup_player_ids || []; 
-      const captainId = team.captain_id || null;    
+      const originalLineup = team.lineup_player_ids || []; 
+      const benchIds = team.bench_player_ids || [];
+      const captainId = team.captain_id || null;
+      const luxuryReserveId = team.luxury_reserve_id || null;
+
+      // Conta para Mais Escalados
+      originalLineup.forEach(pid => {
+        playerPickedCount[pid] = (playerPickedCount[pid] || 0) + 1;
+      });
+
+      let finalLineup = [...originalLineup];
+      let substitutedList = [];
+
+      const benchByPos = {};
+      benchIds.forEach(bId => {
+        if(playersInfo[bId]) benchByPos[playersInfo[bId].position] = bId;
+      });
+
+      const positions = ['Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
+      
+      positions.forEach(pos => {
+        const startersOfPos = originalLineup.filter(pid => playersInfo[pid] && playersInfo[pid].position === pos);
+        const benchId = benchByPos[pos];
+
+        if (startersOfPos.length && benchId && playersPlayedSet.has(benchId)) {
+           const allPlayed = startersOfPos.every(pid => playersPlayedSet.has(pid));
+           
+           if (!allPlayed) {
+              const missedStarter = startersOfPos.find(pid => !playersPlayedSet.has(pid));
+              if (missedStarter) {
+                 finalLineup = finalLineup.filter(p => p !== missedStarter);
+                 finalLineup.push(benchId);
+                 substitutedList.push({ out: missedStarter, in: benchId, type: 'normal' });
+              }
+           } else {
+              if (luxuryReserveId === benchId) {
+                 const benchScore = scoresMap[benchId] || 0;
+                 let worstStarter = startersOfPos[0];
+                 let worstScore = scoresMap[worstStarter] || 0;
+
+                 startersOfPos.forEach(pid => {
+                    const s = scoresMap[pid] || 0;
+                    if (s < worstScore) { worstScore = s; worstStarter = pid; }
+                 });
+
+                 if (benchScore > worstScore) {
+                    finalLineup = finalLineup.filter(p => p !== worstStarter);
+                    finalLineup.push(benchId);
+                    substitutedList.push({ out: worstStarter, in: benchId, type: 'luxury' });
+                 }
+              }
+           }
+        }
+      });
 
       let roundPoints = 0;
       let playersCurrentValue = 0;
 
-      lineup.forEach(pid => {
+      finalLineup.forEach(pid => {
         let pScore = scoresMap[pid] || 0;
         if (pid === captainId) pScore *= 2;
         roundPoints += pScore;
+      });
+
+      originalLineup.forEach(pid => {
         playersCurrentValue += (newPricesMap[pid] || config.minPrice);
       });
 
+      // Arredonda pra 2 casas decimais
+      roundPoints = Number(roundPoints.toFixed(2));
+      teamRoundScores[doc.id] = roundPoints; // Guarda pra usar no mata-mata
+
       const currentBalance = team.current_balance || 0; 
       const totalPatrimony = Number((currentBalance + playersCurrentValue).toFixed(2));
+      teamPatrimony[doc.id] = totalPatrimony; // NOVO
 
       const teamHistoryRef = doc.ref.collection('history').doc(round.toString());
       
@@ -518,7 +631,9 @@ exports.closeRound = onCall({
         patrimony: totalPatrimony,
         processed_at: admin.firestore.Timestamp.now(),
         captain_id: captainId, 
-        lineup_snapshot: lineup 
+        lineup_snapshot: originalLineup,
+        final_lineup: finalLineup,
+        substitutions: substitutedList
       });
 
       batchHandler.update(doc.ref, {
@@ -528,6 +643,141 @@ exports.closeRound = onCall({
         updated_at: admin.firestore.Timestamp.now()                                 
       });
     });
+
+    // ==========================================
+    // 3. SCOUTS GLOBAIS (Seleção e Mais Escalados)
+    // ==========================================
+    const mostPickedArr = Object.keys(playerPickedCount).map(pid => {
+      return { pid, count: playerPickedCount[pid], ...playersInfo[pid] };
+    });
+    mostPickedArr.sort((a, b) => b.count - a.count);
+    const top12Picked = mostPickedArr.slice(0, 12).map(p => ({
+      player_id: p.pid,
+      name: p.name || 'Sem nome',
+      position: p.position || 'Desconhecido',
+      photo_url: p.photo_url || '',
+      team_shield_url: p.team_shield_url || '',
+      count: p.count,
+      round_score: scoresMap[p.pid] || 0
+    }));
+
+    const playersByPos = { 'Goleiro': [], 'Fixo': [], 'Ala': [], 'Pivô': [], 'Técnico': [] };
+    Object.keys(scoresMap).forEach(pid => {
+      const pInfo = playersInfo[pid];
+      if (pInfo && playersByPos[pInfo.position]) {
+        playersByPos[pInfo.position].push({ pid, score: scoresMap[pid], info: pInfo });
+      }
+    });
+
+    const dreamTeam = [];
+    const pushTop = (pos, limit) => {
+      if (playersByPos[pos]) {
+        playersByPos[pos].sort((a, b) => b.score - a.score);
+        playersByPos[pos].slice(0, limit).forEach(p => {
+          dreamTeam.push({
+            player_id: p.pid,
+            name: p.info.name || 'Sem nome',
+            position: pos,
+            photo_url: p.info.photo_url || '',
+            team_shield_url: p.info.team_shield_url || '',
+            round_score: p.score
+          });
+        });
+      }
+    };
+    pushTop('Goleiro', 1);
+    pushTop('Fixo', 1);
+    pushTop('Ala', 2);
+    pushTop('Pivô', 1);
+    pushTop('Técnico', 1);
+
+    const roundStatsRef = db.collection('fantasy_stats').doc(`round_${round}`);
+    batchHandler.set(roundStatsRef, {
+      round: round,
+      most_picked: top12Picked,
+      dream_team: dreamTeam,
+      updated_at: admin.firestore.Timestamp.now()
+    });
+
+    // ==========================================
+    // 4. LIGAS MATA-MATA (Knockout Processing)
+    // ==========================================
+    const knockoutLeaguesSnap = await db.collection('fantasy_leagues')
+      .where('type', '==', 'knockout')
+      .where('status', '==', 'active')
+      .get();
+
+    for (let leagueDoc of knockoutLeaguesSnap.docs) {
+      const leagueId = leagueDoc.id;
+      
+      const kMatchesSnap = await db.collection('fantasy_leagues').doc(leagueId)
+        .collection('matches')
+        .where('round', '==', round)
+        .get();
+        
+      if (kMatchesSnap.empty) continue;
+
+      let totalMatchesInRound = kMatchesSnap.size;
+      
+      for (let kMatchDoc of kMatchesSnap.docs) {
+        const kMatch = kMatchDoc.data();
+        const scoreA = teamRoundScores[kMatch.teamAId] || 0;
+        const scoreB = teamRoundScores[kMatch.teamBId] || 0;
+        
+        let winnerId = null;
+        let loserId = null;
+
+        if (scoreA > scoreB) {
+          winnerId = kMatch.teamAId; loserId = kMatch.teamBId;
+        } else if (scoreB > scoreA) {
+          winnerId = kMatch.teamBId; loserId = kMatch.teamAId;
+        } else {
+          // Desempate por patrimônio
+          const patA = teamPatrimony[kMatch.teamAId] || 0;
+          const patB = teamPatrimony[kMatch.teamBId] || 0;
+          if (patA !== patB) {
+             winnerId = patA > patB ? kMatch.teamAId : kMatch.teamBId;
+             loserId = patA > patB ? kMatch.teamBId : kMatch.teamAId;
+          } else {
+             // Sorteio em caso de empate total
+             winnerId = Math.random() > 0.5 ? kMatch.teamAId : kMatch.teamBId;
+             loserId = winnerId === kMatch.teamAId ? kMatch.teamBId : kMatch.teamAId;
+          }
+        }
+
+        batchHandler.update(kMatchDoc.ref, {
+          scoreA: scoreA,
+          scoreB: scoreB,
+          winnerId: winnerId
+        });
+
+        // Promove o vencedor
+        if (totalMatchesInRound > 1) {
+          const nextMatchIndex = Math.floor(kMatch.matchIndex / 2);
+          const isTeamAForNext = kMatch.matchIndex % 2 === 0;
+
+          const nextPhase = totalMatchesInRound === 2 ? 'Final' : 
+                            totalMatchesInRound === 4 ? 'Semi' : 
+                            totalMatchesInRound === 8 ? 'Quartas' : 'Oitavas';
+
+          const nextMatchId = `match_${round + 1}_${nextMatchIndex}`;
+          const nextMatchRef = db.collection('fantasy_leagues').doc(leagueId).collection('matches').doc(nextMatchId);
+
+          batchHandler.set(nextMatchRef, {
+            phase: nextPhase,
+            round: round + 1,
+            matchIndex: nextMatchIndex,
+            [`team${isTeamAForNext ? 'A' : 'B'}Id`]: winnerId
+          }, { merge: true });
+        } else {
+           // É a Final, temos um Campeão!
+           batchHandler.update(leagueDoc.ref, {
+             status: 'finished',
+             champion_id: winnerId
+           });
+        }
+      }
+    }
 
     await batchHandler.commit();
 
@@ -701,6 +951,77 @@ exports.autoCloseMarket = onSchedule({
 
   } catch (error) {
     console.error("🔥 Erro no autoCloseMarket:", error);
+  }
+});
+
+// ==================================================================
+// 📊 ESTATÍSTICAS DA RODADA (FinOps - Mercado Fechado)
+// ==================================================================
+
+exports.processMarketClosed = onDocumentWritten({
+  document: "fantasy_config/status",
+}, async (event) => {
+  const before = event.data.before?.data();
+  const after = event.data.after?.data();
+
+  if (!before || !after) return;
+  if (before.is_open === true && after.is_open === false) {
+    console.log("🔒 Mercado fechou! Processando estatísticas de escalação...");
+    const currentRound = after.current_round || 1;
+    
+    try {
+      const teamsSnap = await db.collection('fantasy_teams').get();
+      
+      const playerCounts = {};
+      const captainCounts = {};
+      
+      teamsSnap.forEach(doc => {
+        const team = doc.data();
+        const lineup = team.lineup_player_ids || [];
+        const captainId = team.captain_id;
+        
+        lineup.forEach(pid => {
+          playerCounts[pid] = (playerCounts[pid] || 0) + 1;
+        });
+        
+        if (captainId) {
+          captainCounts[captainId] = (captainCounts[captainId] || 0) + 1;
+        }
+      });
+      
+      let mostSelectedPlayer = null;
+      let mostSelectedPlayerCount = 0;
+      
+      Object.entries(playerCounts).forEach(([pid, count]) => {
+        if (count > mostSelectedPlayerCount) {
+          mostSelectedPlayer = pid;
+          mostSelectedPlayerCount = count;
+        }
+      });
+      
+      let mostSelectedCaptain = null;
+      let mostSelectedCaptainCount = 0;
+      
+      Object.entries(captainCounts).forEach(([pid, count]) => {
+        if (count > mostSelectedCaptainCount) {
+          mostSelectedCaptain = pid;
+          mostSelectedCaptainCount = count;
+        }
+      });
+      
+      await db.collection('fantasy_config').doc('market_stats').set({
+        round: currentRound,
+        most_selected_player_id: mostSelectedPlayer,
+        most_selected_player_count: mostSelectedPlayerCount,
+        most_selected_captain_id: mostSelectedCaptain,
+        most_selected_captain_count: mostSelectedCaptainCount,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      
+      console.log(`✅ Estatísticas da rodada ${currentRound} geradas com sucesso!`);
+    } catch (error) {
+      console.error("🔥 Erro ao processar estatísticas do mercado:", error);
+    }
   }
 });
 
@@ -980,24 +1301,31 @@ exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async
 
     for (const userDoc of usersSnap.docs) {
       const userData = userDoc.data();
-      let extraPoints = 0;
-
-      if (userData.bonus_champion === officialChampion) extraPoints += 20;
-      if (userData.bonus_runner_up === officialRunnerUp) extraPoints += 10;
+      let championPts = (userData.bonus_champion === officialChampion) ? 20 : 0;
+      let runnerUpPts = (userData.bonus_runner_up === officialRunnerUp) ? 10 : 0;
       
       // 🚨 VALIDAÇÃO EM LISTA (Array) PARA EMPATES
-      if (userData.bonus_best_offense && bestOffenseArray.includes(userData.bonus_best_offense)) extraPoints += 10;
-      if (userData.bonus_worst_defense && worstDefenseArray.includes(userData.bonus_worst_defense)) extraPoints += 10;
+      let offensePts = (userData.bonus_best_offense && bestOffenseArray.includes(userData.bonus_best_offense)) ? 10 : 0;
+      let defensePts = (userData.bonus_worst_defense && worstDefenseArray.includes(userData.bonus_worst_defense)) ? 10 : 0;
       
-      if (userData.bonus_disappointment === officialDisappointment) extraPoints += 10;
+      let disappointmentPts = (userData.bonus_disappointment === officialDisappointment) ? 10 : 0;
 
-      if (extraPoints > 0) {
-        batchHandler.update(userDoc.ref, {
-          total_points: admin.firestore.FieldValue.increment(extraPoints),
-          bonus_points: admin.firestore.FieldValue.increment(extraPoints),
-          updated_at: admin.firestore.FieldValue.serverTimestamp()
-        });
-      }
+      let extraPoints = championPts + runnerUpPts + offensePts + defensePts + disappointmentPts;
+
+      // Recupera TODO o bônus que já foi somado no total_points (pode estar duplicado pelo bug anterior)
+      let oldBonusPoints = userData.bonus_points || 0;
+      let pointsDiff = extraPoints - oldBonusPoints;
+
+      batchHandler.update(userDoc.ref, {
+        total_points: admin.firestore.FieldValue.increment(pointsDiff),
+        bonus_points: extraPoints,
+        bonus_champion_points: championPts,
+        bonus_runner_up_points: runnerUpPts,
+        bonus_best_offense_points: offensePts,
+        bonus_worst_defense_points: defensePts,
+        bonus_disappointment_points: disappointmentPts,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
     }
 
     await batchHandler.commit();
@@ -1347,3 +1675,126 @@ class BatchHandler {
     }
   }
 }
+
+// ==================================================================
+// 📈 FINOPS: OTIMIZAÇÃO DE RECÁLCULO DE ESTATÍSTICAS DE TIMES
+// ==================================================================
+
+exports.updateTeamStatsOnMatchUpdate = onDocumentWritten({
+  document: "championships/{seasonId}/matches/{matchId}",
+}, async (event) => {
+  const seasonId = event.params.seasonId;
+  const before = event.data.before?.data();
+  const after = event.data.after?.data();
+  
+  // Se não tem time definido, ignora
+  if (!after?.team_home_id && !before?.team_home_id) return;
+  
+  const hId = after?.team_home_id || before?.team_home_id;
+  const aId = after?.team_away_id || before?.team_away_id;
+  
+  const calculatePoints = (h, a) => {
+      if (h > a) return { pHome: 3, pAway: 0, wH: 1, dH: 0, lH: 0, wA: 0, dA: 0, lA: 1 };
+      if (h < a) return { pHome: 0, pAway: 3, wH: 0, dH: 0, lH: 1, wA: 1, dA: 0, lA: 0 };
+      return { pHome: 1, pAway: 1, wH: 0, dH: 1, lH: 0, wA: 0, dA: 1, lA: 0 };
+  };
+
+  const getStatsContributed = (match) => {
+      if (!match || match.status !== 'finished') {
+          return { home: null, away: null };
+      }
+      const hScore = match.score_home || 0;
+      const aScore = match.score_away || 0;
+      const res = calculatePoints(hScore, aScore);
+      const isPhase1 = match.phase === 'first';
+      
+      return {
+          home: {
+              match_points: isPhase1 ? res.pHome : 0,
+              points: isPhase1 ? res.pHome : 0,
+              games_played: isPhase1 ? 1 : 0,
+              wins: isPhase1 ? res.wH : 0,
+              draws: isPhase1 ? res.dH : 0,
+              losses: isPhase1 ? res.lH : 0,
+              goals_for: isPhase1 ? hScore : 0,
+              goals_against: isPhase1 ? aScore : 0,
+              goal_difference: isPhase1 ? (hScore - aScore) : 0,
+              
+              overall_match_points: res.pHome,
+              overall_points: res.pHome,
+              overall_games_played: 1,
+              overall_wins: res.wH,
+              overall_draws: res.dH,
+              overall_losses: res.lH,
+              overall_goals_for: hScore,
+              overall_goals_against: aScore,
+              overall_goal_difference: hScore - aScore,
+          },
+          away: {
+              match_points: isPhase1 ? res.pAway : 0,
+              points: isPhase1 ? res.pAway : 0,
+              games_played: isPhase1 ? 1 : 0,
+              wins: isPhase1 ? res.wA : 0,
+              draws: isPhase1 ? res.dA : 0,
+              losses: isPhase1 ? res.lA : 0,
+              goals_for: isPhase1 ? aScore : 0,
+              goals_against: isPhase1 ? hScore : 0,
+              goal_difference: isPhase1 ? (aScore - hScore) : 0,
+              
+              overall_match_points: res.pAway,
+              overall_points: res.pAway,
+              overall_games_played: 1,
+              overall_wins: res.wA,
+              overall_draws: res.dA,
+              overall_losses: res.lA,
+              overall_goals_for: aScore,
+              overall_goals_against: hScore,
+              overall_goal_difference: aScore - hScore,
+          }
+      };
+  };
+
+  const oldStats = getStatsContributed(before);
+  const newStats = getStatsContributed(after);
+  
+  // Calcular deltas
+  const calcDelta = (oldS, newS) => {
+      if (!oldS && !newS) return null;
+      const result = {};
+      let hasChanges = false;
+      const keys = [
+          'match_points', 'points', 'games_played', 'wins', 'draws', 'losses', 'goals_for', 'goals_against', 'goal_difference',
+          'overall_match_points', 'overall_points', 'overall_games_played', 'overall_wins', 'overall_draws', 'overall_losses', 'overall_goals_for', 'overall_goals_against', 'overall_goal_difference'
+      ];
+      keys.forEach(k => {
+          const oldVal = oldS ? (oldS[k] || 0) : 0;
+          const newVal = newS ? (newS[k] || 0) : 0;
+          const diff = newVal - oldVal;
+          if (diff !== 0) {
+              result[k] = admin.firestore.FieldValue.increment(diff);
+              hasChanges = true;
+          }
+      });
+      return hasChanges ? result : null;
+  };
+  
+  const homeDelta = calcDelta(oldStats.home, newStats.home);
+  const awayDelta = calcDelta(oldStats.away, newStats.away);
+  
+  if (!homeDelta && !awayDelta) return; 
+  
+  const batch = db.batch();
+  
+  if (homeDelta && hId) {
+      const tHomeRef = db.collection('championships').doc(seasonId).collection('teams_participation').doc(hId);
+      batch.update(tHomeRef, homeDelta);
+  }
+  
+  if (awayDelta && aId) {
+      const tAwayRef = db.collection('championships').doc(seasonId).collection('teams_participation').doc(aId);
+      batch.update(tAwayRef, awayDelta);
+  }
+  
+  await batch.commit();
+  console.log(`✅ FINOPS: Estatísticas do time atualizadas via Cloud Functions para o jogo ${event.params.matchId}`);
+});

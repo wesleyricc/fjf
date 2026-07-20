@@ -6,6 +6,7 @@ import 'admin_service.dart';
 import '../models/team_model.dart'; 
 import '../models/player_model.dart'; 
 import '../models/match_model.dart';
+import 'firestore_cache_service.dart';
 
 class ChampionshipService with ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -187,21 +188,36 @@ class ChampionshipService with ChangeNotifier {
   }
 
   Future<void> _fetchMatches() async {
-    final snapshot = await _firestore.collection('championships').doc(_currentSeasonId).collection('matches').orderBy('datetime').get();
+    final query = _firestore.collection('championships').doc(_currentSeasonId).collection('matches').orderBy('datetime');
+    final snapshot = await FirestoreCacheService.getWithCache(
+      query: query,
+      cacheKey: 'matches_$_currentSeasonId',
+      ttl: const Duration(minutes: MATCHES_CACHE_TTL),
+    );
     _cachedMatches = snapshot.docs.map((doc) => MatchModel.fromFirestore(doc)).toList();
     _lastMatchesFetch = DateTime.now();
   }
 
   Future<void> _fetchTeams() async {
-    final snapshot = await _firestore.collection('championships').doc(_currentSeasonId).collection('teams_participation').get();
+    final query = _firestore.collection('championships').doc(_currentSeasonId).collection('teams_participation');
+    final snapshot = await FirestoreCacheService.getWithCache(
+      query: query,
+      cacheKey: 'teams_$_currentSeasonId',
+      ttl: const Duration(minutes: TEAMS_CACHE_TTL),
+    );
     _cachedTeams = snapshot.docs.map((doc) => Team.fromFirestore(doc)).toList();
     _cachedTeams.sort((a, b) => a.name.compareTo(b.name));
     _lastTeamsFetch = DateTime.now();
   }
 
   Future<void> _fetchConfig() async {
-    final doc = await _firestore.collection('championships').doc(_currentSeasonId).collection('settings').doc('app_settings').get();
-    if (doc.exists) _cachedAppSettings = doc.data();
+    final docRef = _firestore.collection('championships').doc(_currentSeasonId).collection('settings').doc('app_settings');
+    final doc = await FirestoreCacheService.getDocumentWithCache(
+      docRef: docRef,
+      cacheKey: 'app_settings_$_currentSeasonId',
+      ttl: const Duration(hours: 12), // Configurações mudam raramente
+    );
+    if (doc.exists) _cachedAppSettings = doc.data() as Map<String, dynamic>?;
   }
 
   // ===========================================================================

@@ -41,6 +41,7 @@ class AdminMatchViewModel extends ChangeNotifier {
   List<DocumentSnapshot> homePlayers = [];
   List<DocumentSnapshot> awayPlayers = [];
   List<DocumentSnapshot> get allPlayers => [...homePlayers, ...awayPlayers];
+  List<String> lineupPlayed = [];
 
   // --- ARQUIVOS / MÍDIA ---
   String? existingSumulaUrl;
@@ -115,6 +116,12 @@ class AdminMatchViewModel extends ChangeNotifier {
     redCards.clear();
     goalsConceded.clear();
     mediaLinks.clear();
+    lineupPlayed.clear();
+    
+    final lpDb = data['lineup_played'];
+    if (lpDb != null && lpDb is List) {
+      lineupPlayed = List<String>.from(lpDb);
+    }
 
     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
       final stats = data['stats_applied']['player_stats'];
@@ -185,6 +192,13 @@ class AdminMatchViewModel extends ChangeNotifier {
         'team_id': p.teamId,
       })).toList();
 
+      if (data['lineup_played'] == null) {
+        lineupPlayed = [
+          ...homeList.map((p) => p.id),
+          ...awayList.map((p) => p.id)
+        ];
+      }
+
     } catch (e) {
       debugPrint("Erro ao carregar jogadores no Admin: $e");
     } finally {
@@ -220,6 +234,15 @@ class AdminMatchViewModel extends ChangeNotifier {
 
   void updateMotm(String? id) {
     selectedManOfTheMatchId = id;
+    notifyListeners();
+  }
+
+  void togglePlayerInLineup(String playerId) {
+    if (lineupPlayed.contains(playerId)) {
+      lineupPlayed.remove(playerId);
+    } else {
+      lineupPlayed.add(playerId);
+    }
     notifyListeners();
   }
 
@@ -286,6 +309,7 @@ class AdminMatchViewModel extends ChangeNotifier {
       winnerTeamId: winnerId,
       newSumulaUrl: finalSumulaUrl,
       newMediaLinks: mediaLinks,
+      newLineupPlayed: lineupPlayed,
     );
 
     isSaving = false;

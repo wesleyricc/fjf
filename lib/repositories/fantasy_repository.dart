@@ -19,6 +19,7 @@ class FantasyRepository {
   static const Duration MARKET_CACHE_VALIDITY = Duration(minutes: 2);
 
   final Map<String, FantasyTeam> _cachedTeams = {};
+  final Map<String, FantasyPlayer> _cachedIndividualPlayers = {};
   
   // ---> OTIMIZAÇÃO: BROADCAST STREAM <---
   // Impede que cada tela crie uma nova ligação ao Firestore em simultâneo
@@ -34,7 +35,8 @@ class FantasyRepository {
       return _cachedPlayers!;
     }
 
-    final players = await _api.getAllPlayers();
+    // A otimização de TTL agora acontece lá no FirestoreCacheService também!
+    final players = await _api.getAllPlayers(forceRefresh: forceRefresh);
     
     _cachedPlayers = players;
     _lastPlayersFetch = DateTime.now();
@@ -73,26 +75,43 @@ class FantasyRepository {
       return _cachedPlayers!.where((p) => ids.contains(p.playerId)).toList();
     }
     
-    // Caso contrário, busca direto da API (Firebase)
-    final players = await _api.getPlayersByIds(ids);
+    List<String> missingIds = ids;
+    List<FantasyPlayer> resultPlayers = [];
     
-    // Opcional: Atualiza o cache global se necessário, ou apenas retorna
-    return players;
+    if (!forceRefresh) {
+      missingIds = ids.where((id) => !_cachedIndividualPlayers.containsKey(id)).toList();
+      resultPlayers = ids.where((id) => _cachedIndividualPlayers.containsKey(id))
+                         .map((id) => _cachedIndividualPlayers[id]!).toList();
+    }
+
+    if (missingIds.isNotEmpty) {
+      final fetchedPlayers = await _api.getPlayersByIds(missingIds);
+      for (var p in fetchedPlayers) {
+        _cachedIndividualPlayers[p.playerId] = p;
+        resultPlayers.add(p);
+      }
+    }
+    
+    return resultPlayers;
   }
 
   Future<String> saveLineup({
     required String userId,
     required List<String> playerIds,
+    required List<String> benchIds,
     required String? captainId,
+    required String? luxuryReserveId,
     required double expectedOldTeamCost,
-    required double totalCost, 
+    required double newTeamCost,
   }) async {
     final result = await _api.saveLineup(
       userId: userId,
       playerIds: playerIds,
+      benchIds: benchIds,
       captainId: captainId,
+      luxuryReserveId: luxuryReserveId,
       expectedOldTeamCost: expectedOldTeamCost,
-      newTeamCost: totalCost,
+      newTeamCost: newTeamCost,
     );
 
     if (result == "Sucesso") {
@@ -106,5 +125,6 @@ class FantasyRepository {
     _cachedPlayers = null;
     _cachedMarketStatus = null;
     _cachedTeams.clear();
+    _cachedIndividualPlayers.clear();
   }
 }

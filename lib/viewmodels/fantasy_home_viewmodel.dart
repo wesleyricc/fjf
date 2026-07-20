@@ -33,11 +33,20 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
   FantasyTeam? _team;
   Map<String, LiveScoreData> _liveScores = {}; 
-  final Map<String, String> _playerTeamMap = {};
 
   StreamSubscription? _marketSub;
   StreamSubscription? _teamSub;
   StreamSubscription? _matchesSub;
+  StreamSubscription? _marketStatsSub;
+
+  FantasyPlayer? mostSelectedPlayer;
+  FantasyPlayer? mostSelectedCaptain;
+  FantasyPlayer? topScorer;
+  FantasyPlayer? worstScorer;
+  int mostSelectedCount = 0;
+  int mostSelectedCaptainCount = 0;
+  double topScore = 0.0;
+  double worstScore = 0.0;
 
   bool get isOffline => _isOffline; 
   bool get isLoading => _isLoading;
@@ -140,7 +149,6 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
     try {
       _gameConfig = await _fantasyService.getGameConfig();
-      await _loadPlayerTeamMap();
     } catch (e) {
       debugPrint("Aviso: Falha ao carregar configurações: $e");
     }
@@ -152,11 +160,13 @@ class FantasyHomeViewModel extends ChangeNotifier {
       
       if (!_isMarketOpen) {
         _subscribeToLiveMatches(seasonId, _currentRound);
+        _listenToMarketStats();
       } else {
         _matchesSub?.cancel();
+        _marketStatsSub?.cancel();
         _liveScores = {}; 
-        if (!_isDisposed) notifyListeners();
       }
+      if (!_isDisposed) notifyListeners();
     });
 
     _teamSub?.cancel();
@@ -174,16 +184,33 @@ class FantasyHomeViewModel extends ChangeNotifier {
     });
   }
 
-  Future<void> _loadPlayerTeamMap() async {
-    try {
-      final players = await _repository.getAllPlayers();
-      _playerTeamMap.clear();
-      for (var p in players) {
-        _playerTeamMap[p.playerId] = p.teamId;
+  void _listenToMarketStats() {
+    _marketStatsSub?.cancel();
+    _marketStatsSub = _firestore.collection('fantasy_config').doc('market_stats').snapshots().listen((snap) async {
+      if (snap.exists && !_isDisposed) {
+        final data = snap.data()!;
+        if (data['round'] == _currentRound) {
+          mostSelectedCount = data['most_selected_player_count'] ?? 0;
+          mostSelectedCaptainCount = data['most_selected_captain_count'] ?? 0;
+          
+          final String? mPid = data['most_selected_player_id'];
+          final String? cPid = data['most_selected_captain_id'];
+          
+          List<String> idsToFetch = [];
+          if (mPid != null && mostSelectedPlayer?.playerId != mPid) idsToFetch.add(mPid);
+          if (cPid != null && cPid != mPid && mostSelectedCaptain?.playerId != cPid) idsToFetch.add(cPid);
+          
+          if (idsToFetch.isNotEmpty) {
+            final players = await _fantasyService.getPlayersByIds(idsToFetch);
+            for (var p in players) {
+              if (p.playerId == mPid) mostSelectedPlayer = p;
+              if (p.playerId == cPid) mostSelectedCaptain = p;
+            }
+            if (!_isDisposed) notifyListeners();
+          }
+        }
       }
-    } catch (e) {
-      debugPrint("Erro ao mapear times: $e");
-    }
+    });
   }
 
   void _subscribeToLiveMatches(String seasonId, int round) {
@@ -191,8 +218,21 @@ class FantasyHomeViewModel extends ChangeNotifier {
     _matchesSub?.cancel(); 
     
     // 📡 Escuta o documento único da rodada
-    _matchesSub = _scoutService.streamLiveScores(seasonId, round).listen((scores) {
+    _matchesSub = _scoutService.streamLiveScores(seasonId, round).listen((scores) async {
+      if (_isDisposed) return;
       Map<String, LiveScoreData> calculatedScores = {};
+      
+      String? currentTopScorerId;
+      String? currentWorstScorerId;
+      double maxScore = -999.0;
+      double minScore = 999.0;
+      
+      scores.forEach((pid, s) {
+        if (s.hasStats) {
+           if (s.totalScore > maxScore) { maxScore = s.totalScore; currentTopScorerId = pid; }
+           if (s.totalScore < minScore) { minScore = s.totalScore; currentWorstScorerId = pid; }
+        }
+      });
       
       for (String pid in _team!.lineupPlayerIds) {
          final s = scores[pid] ?? FantasyScoutDetail(totalScore: 0.0);
@@ -208,11 +248,33 @@ class FantasyHomeViewModel extends ChangeNotifier {
            penaltiesMissed: s.penaltiesMissed,
            shotsOnPost: s.shotsOnPost,
            cleanSheets: s.cleanSheets,
+           ownGoals: s.ownGoals,
+           missedFreeKicks: s.missedFreeKicks,
+           motm: s.motm,
          );
       }
       
       _liveScores = calculatedScores;
-      if (!_isDisposed) notifyListeners();
+      
+      bool needNotify = true;
+      
+      if (currentTopScorerId != null && (topScorer?.playerId != currentTopScorerId || topScore != maxScore)) {
+        topScore = maxScore;
+        if (topScorer?.playerId != currentTopScorerId) {
+          final pList = await _fantasyService.getPlayersByIds([currentTopScorerId!]);
+          if (pList.isNotEmpty) topScorer = pList.first;
+        }
+      }
+      
+      if (currentWorstScorerId != null && (worstScorer?.playerId != currentWorstScorerId || worstScore != minScore)) {
+        worstScore = minScore;
+        if (worstScorer?.playerId != currentWorstScorerId) {
+          final pList = await _fantasyService.getPlayersByIds([currentWorstScorerId!]);
+          if (pList.isNotEmpty) worstScorer = pList.first;
+        }
+      }
+      
+      if (needNotify && !_isDisposed) notifyListeners();
     });
   }
 
@@ -222,6 +284,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
     _marketSub?.cancel();
     _teamSub?.cancel();
     _matchesSub?.cancel();
+    _marketStatsSub?.cancel();
     super.dispose();
   }
 }
@@ -240,7 +303,11 @@ class LiveScoreData {
   final int shotsOnPost;
   final int cleanSheets;
   
-  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets) > 0;
+  final int ownGoals;
+  final int missedFreeKicks;
+  final int motm;
+  
+  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets + ownGoals + missedFreeKicks + motm) > 0;
 
   LiveScoreData({
     required this.totalScore,
@@ -254,5 +321,8 @@ class LiveScoreData {
     this.penaltiesMissed = 0,
     this.shotsOnPost = 0,
     this.cleanSheets = 0,
+    this.ownGoals = 0,
+    this.missedFreeKicks = 0,
+    this.motm = 0,
   });
 }

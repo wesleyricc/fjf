@@ -81,7 +81,9 @@ class FantasyTeam {
   final double teamValue;
   final double currentBalance;
   final List<String> lineupPlayerIds;
+  final List<String> benchPlayerIds;
   final String? captainId;
+  final String? luxuryReserveId;
   final String shieldType; 
   final String? customLogoUrl;
 
@@ -96,7 +98,9 @@ class FantasyTeam {
     required this.teamValue,
     required this.currentBalance,
     required this.lineupPlayerIds,
+    this.benchPlayerIds = const [],
     this.captainId,
+    this.luxuryReserveId,
     required this.shieldType,
     this.customLogoUrl,
   });
@@ -117,7 +121,11 @@ class FantasyTeam {
       lineupPlayerIds: List<String>.from(
           data['lineup_player_ids'] ?? data['lineup'] ?? []
       ),
+      benchPlayerIds: List<String>.from(
+          data['bench_player_ids'] ?? []
+      ),
       captainId: data['captain_id'],
+      luxuryReserveId: data['luxury_reserve_id'],
       shieldType: data['shield_type'] ?? '1',
       customLogoUrl: data['custom_logo_url'],
     );
@@ -134,7 +142,9 @@ class FantasyTeam {
       'team_value': teamValue,
       'current_balance': currentBalance,
       'lineup_player_ids': lineupPlayerIds,
+      'bench_player_ids': benchPlayerIds,
       'captain_id': captainId,
+      'luxury_reserve_id': luxuryReserveId,
       'shield_type': shieldType,
       'custom_logo_url': customLogoUrl,
     };
@@ -153,6 +163,11 @@ class FantasyGameConfig {
   final double ptsShotOnPost;
   final double ptsCleanSheet;
   
+  // Novíssimos
+  final double ptsOwnGoal;
+  final double ptsMissedFreeKick;
+  final double ptsMotm;
+  
   final double factorExpectation;
   final double factorVariation;
   final double capLimitPercent;
@@ -167,6 +182,9 @@ class FantasyGameConfig {
     required this.ptsPenaltyMissed,
     required this.ptsShotOnPost,
     required this.ptsCleanSheet,
+    required this.ptsOwnGoal,
+    required this.ptsMissedFreeKick,
+    required this.ptsMotm,
     required this.factorExpectation,
     required this.factorVariation,
     required this.capLimitPercent,
@@ -183,6 +201,9 @@ class FantasyGameConfig {
       ptsPenaltyMissed: -3.0,
       ptsShotOnPost: 3.0,
       ptsCleanSheet: 5.0,
+      ptsOwnGoal: -3.0,
+      ptsMissedFreeKick: -3.0,
+      ptsMotm: 5.0,
       factorExpectation: 0.35,
       factorVariation: 0.25,
       capLimitPercent: 0.25,
@@ -207,6 +228,9 @@ class FantasyGameConfig {
       ptsPenaltyMissed: toDouble(map['ptsPenaltyMissed'] ?? map['pts_penalty_missed'], -3.0),
       ptsShotOnPost: toDouble(map['ptsShotOnPost'] ?? map['pts_shot_on_post'], 3.0),
       ptsCleanSheet: toDouble(map['ptsCleanSheet'] ?? map['pts_clean_sheet'], 5.0),
+      ptsOwnGoal: toDouble(map['ptsOwnGoal'] ?? map['pts_own_goal'], -3.0),
+      ptsMissedFreeKick: toDouble(map['ptsMissedFreeKick'] ?? map['pts_missed_free_kick'], -3.0),
+      ptsMotm: toDouble(map['ptsMotm'] ?? map['pts_motm'], 5.0),
       factorExpectation: toDouble(map['factorExpectation'] ?? map['factor_expectation'], 0.35),
       factorVariation: toDouble(map['factorVariation'] ?? map['factor_variation'], 0.25),
       capLimitPercent: toDouble(map['capLimitPercent'] ?? map['cap_limit_percent'], 0.25),
@@ -224,6 +248,9 @@ class FantasyGameConfig {
       'ptsPenaltyMissed': ptsPenaltyMissed,
       'ptsShotOnPost': ptsShotOnPost,
       'ptsCleanSheet': ptsCleanSheet,
+      'ptsOwnGoal': ptsOwnGoal,
+      'ptsMissedFreeKick': ptsMissedFreeKick,
+      'ptsMotm': ptsMotm,
       'factorExpectation': factorExpectation,
       'factorVariation': factorVariation,
       'capLimitPercent': capLimitPercent,

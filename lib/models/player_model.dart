@@ -32,6 +32,7 @@ class Player {
   final int totalRedCards;
   final int goalsConceded;
   final int motmAwards;
+  final int matchesPlayed;
 
   Player({
     required this.id,
@@ -59,6 +60,7 @@ class Player {
     required this.totalRedCards,
     required this.goalsConceded,
     required this.motmAwards,
+    required this.matchesPlayed,
   });
 
   factory Player.fromFirestore(DocumentSnapshot doc) {
@@ -93,6 +95,7 @@ class Player {
       totalRedCards: (data['total_red_cards'] as num?)?.toInt() ?? 0,
       goalsConceded: (data['goals_conceded'] as num?)?.toInt() ?? 0,
       motmAwards: (data['man_of_the_match_awards'] as num?)?.toInt() ?? 0,
+      matchesPlayed: (data['matches_played'] as num?)?.toInt() ?? 0,
     );
   }
 }

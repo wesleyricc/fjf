@@ -11,6 +11,8 @@ class ScoutGoalDialog extends StatefulWidget {
   final List<DocumentSnapshot> awayPlayers;
   final MatchEvent? eventToEdit;
   final MatchEvent? linkedAssistEvent; // Assistência vinculada (vinda da Timeline)
+  final String? preSelectedTeamId;
+  final String? preSelectedPlayerId;
 
   const ScoutGoalDialog({
     super.key,
@@ -19,6 +21,8 @@ class ScoutGoalDialog extends StatefulWidget {
     required this.awayPlayers,
     this.eventToEdit,
     this.linkedAssistEvent,
+    this.preSelectedTeamId,
+    this.preSelectedPlayerId,
   });
 
   @override
@@ -54,6 +58,17 @@ class _ScoutGoalDialogState extends State<ScoutGoalDialog> {
       if (widget.linkedAssistEvent != null) {
         _assistId = widget.linkedAssistEvent!.playerId;
         _assistName = widget.linkedAssistEvent!.playerName;
+      }
+    } else {
+      if (widget.preSelectedTeamId != null) _selectedTeamId = widget.preSelectedTeamId;
+      if (widget.preSelectedPlayerId != null) {
+        _scorerId = widget.preSelectedPlayerId;
+        final playersList = _selectedTeamId == widget.match['team_home_id'] ? widget.homePlayers : widget.awayPlayers;
+        final doc = playersList.where((d) => d.id == _scorerId).firstOrNull;
+        if (doc != null) {
+          final data = doc.data() as Map<String, dynamic>;
+          _scorerName = data['name'];
+        }
       }
     }
   }

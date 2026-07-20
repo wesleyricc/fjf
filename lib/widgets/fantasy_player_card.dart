@@ -7,12 +7,16 @@ class FantasyPlayerCard extends StatelessWidget {
   final FantasyPlayer player;
   final VoidCallback? onTap;
   final bool isSelected;
+  final bool isFavorite;
+  final VoidCallback? onFavorite;
 
   const FantasyPlayerCard({
     super.key,
     required this.player,
     this.onTap,
     this.isSelected = false,
+    this.isFavorite = false,
+    this.onFavorite,
   });
 
   @override
@@ -108,9 +112,25 @@ class FantasyPlayerCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    "C\$ ${player.currentPrice.toStringAsFixed(2)}",
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
+                  Row(
+                    children: [
+                      if (onFavorite != null)
+                        GestureDetector(
+                          onTap: onFavorite,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Icon(
+                              isFavorite ? Icons.favorite : Icons.favorite_border,
+                              color: isFavorite ? Colors.red : Colors.grey.shade400,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        "C\$ ${player.currentPrice.toStringAsFixed(2)}",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
+                      ),
+                    ],
                   ),
                   Text(
                     "$variationIcon ${player.lastPriceChange.toStringAsFixed(2)}",
@@ -118,6 +138,19 @@ class FantasyPlayerCard extends StatelessWidget {
                       color: variationColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.blue.shade100),
+                    ),
+                    child: Text(
+                      "Mín. valorizar: ${(player.currentPrice * 0.35).toStringAsFixed(1)} pts",
+                      style: TextStyle(fontSize: 9, color: Colors.blue.shade800, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ],

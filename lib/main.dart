@@ -5,6 +5,10 @@ import 'package:flutter/services.dart'; // <-- NOVO: Necessário para a StatusBa
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:provider/provider.dart';
+import 'services/portal_service.dart';
+import 'services/portal_auth_service.dart';
+import 'screens/portal/portal_login_screen.dart';
+import 'screens/portal/portal_dashboard_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart'; 
@@ -15,14 +19,17 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 // Configurações
 import 'firebase_options.dart'; 
 import 'firebase_options_test.dart'; 
-import 'screens/bolao_paywall_screen.dart';
-import 'screens/fantasy_admin_control_screen.dart';
-import 'screens/fantasy_history_screen.dart';
-import 'screens/fantasy_ranking_screen.dart';
-import 'screens/fantasy_rules_screen.dart';
-import 'screens/free_agent_registration_screen.dart';
-import 'screens/free_agents_market_screen.dart';
-import 'screens/teams_list_screen.dart';
+import 'screens/bolao/bolao_paywall_screen.dart';
+import 'screens/fantasy/fantasy_admin_control_screen.dart';
+import 'screens/fantasy/fantasy_history_screen.dart';
+import 'screens/fantasy/fantasy_ranking_screen.dart';
+import 'screens/fantasy/fantasy_scouts_screen.dart';
+import 'screens/fantasy/fantasy_knockout_bracket_screen.dart';
+import 'models/fantasy_league_model.dart';
+import 'screens/fantasy/fantasy_rules_screen.dart';
+import 'screens/player/free_agent_registration_screen.dart';
+import 'screens/player/free_agents_market_screen.dart';
+import 'screens/championship/teams_list_screen.dart';
 import 'theme/app_theme.dart';
 
 // Services
@@ -52,30 +59,30 @@ import 'viewmodels/photo_banner_viewmodel.dart';
 import 'repositories/fantasy_repository.dart';
 
 // Screens
-import 'screens/splash_screen.dart';
-import 'screens/fixtures_screen.dart';
-import 'screens/standings_screen.dart';
-import 'screens/team_stats_screen.dart';
-import 'screens/player_stats_screen.dart';
-import 'screens/suspension_history_screen.dart';
-import 'screens/player_comparison_screen.dart';
-import 'screens/report_bug_screen.dart';
-import 'screens/admin_menu_screen.dart';
-import 'screens/photo_sales_screen.dart';
-import 'screens/fantasy_home_screen.dart';
-import 'screens/fantasy_market_screen.dart';
-import 'screens/fantasy_lineup_screen.dart';
-import 'screens/fantasy_ranking_screen.dart';
-import 'screens/fantasy_admin_control_screen.dart';
-import 'screens/fantasy_rules_screen.dart';
-import 'screens/fantasy_history_screen.dart';
-import 'screens/about_history_screen.dart';
-import 'screens/about_board_screen.dart';
-import 'screens/season_summary_screen.dart';
-import 'screens/fantasy_leagues_screen.dart';
+import 'screens/home/home_dashboard_screen.dart';
+import 'screens/championship/fixtures_screen.dart';
+import 'screens/championship/standings_screen.dart';
+import 'screens/championship/team_stats_screen.dart';
+import 'screens/player/player_stats_screen.dart';
+import 'screens/player/suspension_history_screen.dart';
+import 'screens/player/player_comparison_screen.dart';
+import 'screens/institutional/report_bug_screen.dart';
+import 'screens/admin/admin_menu_screen.dart';
+import 'screens/institutional/photo_sales_screen.dart';
+import 'screens/fantasy/fantasy_home_screen.dart';
+import 'screens/fantasy/fantasy_market_screen.dart';
+import 'screens/fantasy/fantasy_lineup_screen.dart';
+import 'screens/fantasy/fantasy_ranking_screen.dart';
+import 'screens/fantasy/fantasy_admin_control_screen.dart';
+import 'screens/fantasy/fantasy_rules_screen.dart';
+import 'screens/fantasy/fantasy_history_screen.dart';
+import 'screens/institutional/about_history_screen.dart';
+import 'screens/institutional/about_board_screen.dart';
+import 'screens/championship/season_summary_screen.dart';
+import 'screens/fantasy/fantasy_leagues_screen.dart';
 
 // ---> IMPORTS DO SISTEMA DE VOTAÇÃO <---
-import 'screens/voting_screen.dart';
+import 'screens/institutional/voting_screen.dart';
 import 'models/poll_model.dart';
 
 void _logFirestoreIndexError(Object error) {
@@ -175,10 +182,8 @@ class FjfApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ChampionshipService()),
-        ChangeNotifierProvider(create: (_) => PhotoSalesViewModel()),
         ChangeNotifierProvider(create: (_) => SponsorViewModel()),
         ChangeNotifierProvider(create: (_) => NewsViewModel()), 
-        ChangeNotifierProvider(create: (_) => SuspensionViewModel()),
         ChangeNotifierProvider(create: (_) => PhotoBannerViewModel()),
 
         Provider<FantasyRepository>(create: (_) => FantasyRepository()),
@@ -190,11 +195,10 @@ class FjfApp extends StatelessWidget {
         Provider(create: (_) => DisciplinaryService()),
         Provider(create: (_) => AwardService()),
 
-        ChangeNotifierProvider(create: (_) => FantasyHomeViewModel()),
-        ChangeNotifierProvider(create: (_) => FantasyLineupViewModel()),
-        ChangeNotifierProvider(create: (_) => FantasyLeagueViewModel()),
         
         Provider(create: (_) => FantasyService()),
+        Provider(create: (_) => PortalService()),
+        ChangeNotifierProvider(create: (_) => PortalAuthService()),
         
         ChangeNotifierProvider(
           create: (context) => FantasyAuthService(
@@ -232,23 +236,48 @@ class FjfApp extends StatelessWidget {
         
         initialRoute: '/',
         routes: {
+          '/portal': (ctx) => Consumer<PortalAuthService>(
+                builder: (context, auth, _) => auth.isAuthenticated
+                    ? const PortalDashboardScreen()
+                    : const PortalLoginScreen(),
+              ),
           '/team-stats': (ctx) => const TeamStatsScreen(),
           '/player-stats': (ctx) => const PlayerStatsScreen(),
-          '/suspension-history': (ctx) => const SuspensionHistoryScreen(),
+          '/suspension-history': (ctx) => ChangeNotifierProvider(
+            create: (_) => SuspensionViewModel(),
+            child: const SuspensionHistoryScreen(),
+          ),
           '/player-comparison': (ctx) => const PlayerComparisonScreen(),
           '/report-bug': (ctx) => const ReportBugScreen(),
           '/admin-menu': (ctx) => const AdminMenuScreen(),
-          '/photo-sales': (ctx) => const PhotoSalesScreen(),
-          '/fantasy-home': (ctx) => const FantasyHomeScreen(),
+          '/photo-sales': (ctx) => ChangeNotifierProvider(
+            create: (_) => PhotoSalesViewModel(),
+            child: const PhotoSalesScreen(),
+          ),
+          '/fantasy-home': (ctx) => ChangeNotifierProvider(
+            create: (_) => FantasyHomeViewModel(),
+            child: const FantasyHomeScreen(),
+          ),
           '/fantasy-market': (ctx) => const FantasyMarketScreen(),
-          '/fantasy-lineup': (ctx) => const FantasyLineupScreen(),
+          '/fantasy-lineup': (ctx) => ChangeNotifierProvider(
+            create: (_) => FantasyLineupViewModel(),
+            child: const FantasyLineupScreen(),
+          ),
           '/fantasy-rankings': (ctx) => const FantasyRankingScreen(),
           '/fantasy-admin': (ctx) => const FantasyAdminControlScreen(),
           '/fantasy-rules': (ctx) => const FantasyRulesScreen(),
           '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
+          '/fantasy-scouts': (ctx) => const FantasyScoutsScreen(),
+          '/fantasy-knockout': (ctx) {
+            final args = ModalRoute.of(ctx)!.settings.arguments as FantasyLeague;
+            return FantasyKnockoutBracketScreen(league: args);
+          },
           '/about-history': (ctx) => const AboutHistoryScreen(),
           '/about-board': (ctx) => const AboutBoardScreen(),
-          '/fantasy-leagues': (ctx) => const FantasyLeaguesScreen(),
+          '/fantasy-leagues': (ctx) => ChangeNotifierProvider(
+            create: (_) => FantasyLeagueViewModel(),
+            child: const FantasyLeaguesScreen(),
+          ),
           '/free-agents-registration': (ctx) => const FreeAgentRegistrationScreen(),
           '/free-agents-market': (ctx) => const FreeAgentsMarketScreen(),
           '/wordcup-pool': (ctx) => const BolaoPaywallScreen(),
@@ -256,7 +285,7 @@ class FjfApp extends StatelessWidget {
         onGenerateRoute: (settings) {
           WidgetBuilder? builder;
           switch (settings.name) {
-            case '/': builder = (ctx) => const SplashScreen(); break;
+            case '/': builder = (ctx) => const HomeDashboardScreen(); break;
             case '/fixtures': builder = (ctx) => const FixturesScreen(); break;
             case '/standings': builder = (ctx) => const StandingsScreen(); break;
             case '/season-summary': builder = (ctx) => const SeasonSummaryScreen(); break;

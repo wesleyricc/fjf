@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../screens/player_profile_screen.dart';
+import '../screens/player/player_profile_screen.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/rank_indicator.dart'; 
 import '../models/player_model.dart';
@@ -180,6 +180,10 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> {
     if (widget.statField == 'goals') val = '${player.goals}';
     else if (widget.statField == 'assists') val = '${player.assists}';
     else if (widget.statField == 'goalsConceded') val = '${player.goalsConceded}';
+    else if (widget.statField == 'goals_conceded_avg') {
+      double avg = player.matchesPlayed > 0 ? player.goalsConceded / player.matchesPlayed : 0.0;
+      val = avg.toStringAsFixed(2);
+    }
     else if (widget.statField == 'motmAwards') val = '${player.motmAwards}';
     else if (widget.statField == 'totalYellowCards') val = '${player.totalYellowCards}';
     else if (widget.statField == 'totalRedCards') val = '${player.totalRedCards}';
@@ -229,6 +233,10 @@ class _GenericPlayerRankListState extends State<GenericPlayerRankList> {
       if (widget.statField == 'goals') val = '${player.goals}';
       else if (widget.statField == 'assists') val = '${player.assists}';
       else if (widget.statField == 'goalsConceded') val = '${player.goalsConceded}';
+      else if (widget.statField == 'goals_conceded_avg') {
+        double avg = player.matchesPlayed > 0 ? player.goalsConceded / player.matchesPlayed : 0.0;
+        val = avg.toStringAsFixed(2);
+      }
       else if (widget.statField == 'motmAwards') val = '${player.motmAwards}';
       else if (widget.statField == 'totalYellowCards') val = '${player.totalYellowCards}';
       else if (widget.statField == 'totalRedCards') val = '${player.totalRedCards}';

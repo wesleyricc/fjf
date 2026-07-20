@@ -62,11 +62,13 @@ class ScoutTimelineWidget extends StatelessWidget {
             // C. PRIORIDADE POR TIPO (Peso do Evento no mesmo minuto)
             int getWeight(MatchEventType type) {
               switch (type) {
-                case MatchEventType.redCard: return 7;
-                case MatchEventType.yellowCard: return 6;
-                case MatchEventType.goal: return 5;
-                case MatchEventType.penaltySaved: return 4;
-                case MatchEventType.penaltyMissed: return 3;
+                case MatchEventType.redCard: return 9;
+                case MatchEventType.yellowCard: return 8;
+                case MatchEventType.goal: return 7;
+                case MatchEventType.ownGoal: return 6;
+                case MatchEventType.penaltySaved: return 5;
+                case MatchEventType.penaltyMissed: return 4;
+                case MatchEventType.directFreeKickMissed: return 3;
                 case MatchEventType.shotOnPost: return 2;
                 case MatchEventType.assist: return 1;
               }
@@ -105,6 +107,10 @@ class ScoutTimelineWidget extends StatelessWidget {
                   icon = Icons.cancel; color = Colors.deepPurple; typeLabel = "PÊN. PERDIDO"; break;
                 case MatchEventType.shotOnPost:
                   icon = Icons.adjust; color = Colors.brown; typeLabel = "NA TRAVE"; break;
+                case MatchEventType.ownGoal:
+                  icon = Icons.sports_soccer; color = Colors.black87; typeLabel = "GOL CONTRA"; break;
+                case MatchEventType.directFreeKickMissed:
+                  icon = Icons.close; color = Colors.indigo; typeLabel = "TL PERDIDO"; break;
               }
 
               if (evt.type == MatchEventType.goal && evt.concededByPlayerId != null) {

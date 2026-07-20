@@ -1,0 +1,386 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =================================================================
+    // ⚙️ FUNÇÕES AUXILIARES DE SEGURANÇA
+    // =================================================================
+
+    // Verifica se o usuário autenticado é o próprio dono do recurso
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // 🚨 SEGURANÇA MÁXIMA ATIVADA 🚨
+    // O sistema agora vai até a coleção 'admin_users' e verifica se o UID do 
+    // usuário logado existe lá. Se não existir, ele é bloqueado imediatamente.
+    function isAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admin_users/$(request.auth.uid));
+    }
+    
+    // Função para verificar se o usuário é um Presidente cadastrado
+    function isPresident() {
+      return request.auth != null && exists(/databases/$(database)/documents/president_users/$(request.auth.uid));
+    }
+
+    function isPortalStaff() {
+      return request.auth != null && exists(/databases/$(database)/documents/portal_users/$(request.auth.uid)) && (get(/databases/$(database)/documents/portal_users/$(request.auth.uid)).data.role == 'admin' || get(/databases/$(database)/documents/portal_users/$(request.auth.uid)).data.role == 'staff');
+    }
+    
+    function isPortalAdmin() {
+      return request.auth != null && exists(/databases/$(database)/documents/portal_users/$(request.auth.uid)) && get(/databases/$(database)/documents/portal_users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isPortalPresident() {
+      return request.auth != null && exists(/databases/$(database)/documents/portal_users/$(request.auth.uid)) && get(/databases/$(database)/documents/portal_users/$(request.auth.uid)).data.role == 'president';
+    }
+
+    // 🚨 NOVA FUNÇÃO: Puxa o status do mercado de Fantasy diretamente da raiz do servidor
+    function isFantasyMarketOpen() {
+      return get(/databases/$(database)/documents/fantasy_config/status).data.is_open == true;
+    }
+
+    // =================================================================
+    // 0. MÓDULO FANTASY 
+    // =================================================================
+
+    match /fantasy_config/{document=**} {
+      allow read: if request.auth != null; 
+      allow write: if isAdmin();
+    }
+
+    match /fantasy_market_players/{playerId} {
+      allow read: if true;
+      allow write: if isAdmin(); 
+    }
+
+    match /fantasy_teams/{userId} {
+      allow read: if request.auth != null; // Qualquer usuário logado vê os times (para o Ranking)
+      allow create: if isOwner(userId);    // Só o próprio usuário cria seu time
+      
+      // 🚨 DEVSECOPS: Validação Estrita do Mercado
+      // O usuário pode atualizar nome/logo a qualquer hora, MAS se tentar alterar a escalação,
+      // capitão ou saldo, o banco verifica se o mercado está aberto na raiz!
+      allow update: if isAdmin() || (
+        isOwner(userId) && (
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lineup_player_ids', 'captain_id', 'current_balance']))
+          || isFantasyMarketOpen()
+        )
+      );
+
+      // Histórico do time no Fantasy (Evolução de patrimônio e pontos)
+      match /history/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+    
+    // ---------------------------------------------------------
+    // 🏆 REGRAS DO BOLÃO DA COPA
+    // ---------------------------------------------------------
+
+    match /bolao_users/{userId} {
+      // Qualquer pessoa logada pode ler os dados públicos (Nome, Foto, Pontos) para montar o ranking
+      allow read: if request.auth != null; 
+      
+      // Criado apenas via Cloud Function de Pagamento
+      allow create: if false; 
+      
+      // 🚨 DEVSECOPS: O usuário só pode alterar o próprio NOME/FOTO direto pelo App.
+      // Qualquer tentativa de alterar pontos, bônus ou status de pagamento é bloqueada!
+      // A única forma de alterar os bônus é passando pela Cloud Function (onde o tempo é validado).
+      allow update: if request.auth != null && request.auth.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'bonus_champion', 'bonus_runner_up', 'bonus_best_offense', 'bonus_worst_defense', 
+          'bonus_disappointment', 'total_points', 'exact_hits', 'goal_difference_hits', 
+          'winner_hits', 'bonus_points', 'has_paid'
+        ]);
+      
+      // 🚨 BLINDAGEM DE DADOS SENSÍVEIS (CPF / WhatsApp)
+      // Bloqueia leituras em massa. Apenas o próprio DONO do perfil ou um ADMINISTRADOR oficial
+      // podem ler ou escrever dentro desta subcoleção.
+      match /private/info {
+        allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      }
+
+      // 🚨 Proteção dos Palpites
+      // CORREÇÃO: Leitura liberada para que a Resenha ("Palpites da Galera") funcione, 
+      // mas escrita continua estritamente proibida pelo app (forçando Cloud Function).
+      match /predictions/{matchId} {
+        allow read: if request.auth != null; 
+        allow write: if false; 
+      }
+    }
+
+    match /bolao_matches/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin(); // O Admin agora pode gerar os jogos e placares!
+    }
+    
+    match /bolao_config/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin(); // O Admin agora pode abrir/fechar os palpites!
+    }
+    
+    // 🚨 REGRAS DO SISTEMA DE DUELOS (X1)
+    match /bolao_duels/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // =================================================================
+    // 🎯 REGRAS DO MINI BOLÃO VIP (TIRO CURTO)
+    // =================================================================
+
+    // Salas do Mini Bolão VIP
+    match /bolao_mini_leagues/{leagueId} {
+      allow read: if true;
+      allow write: if isAdmin(); // Apenas o Admin cria, edita ou exclui as salas
+
+      // Os participantes dentro da sala VIP
+      match /participants/{userId} {
+        allow read: if true; // Todos precisam ler para o Ranking Funcionar
+        allow write: if false; // BLOQUEADO: A gravação do palpite é EXCLUSIVAMENTE via Cloud Function!
+      }
+    }
+
+    // Perfil dos Treinadores Isolados do Mini Bolão VIP
+    match /mini_bolao_users/{userId} {
+      allow read: if true; // Público para a foto e o nome aparecerem no Ranking VIP
+      allow write: if isOwner(userId) || isAdmin(); // O usuário pode editar o próprio perfil VIP
+    }
+    
+    // 🚨 PERFIL DOS USUÁRIOS DO MINI BOLÃO
+    match /mini_bolao_users/{userId} {
+      allow read: if true; // 🟢 Permite que o Ranking leia o nome e a foto de todos
+      allow write: if isOwner(userId) || isAdmin(); // 🟢 Apenas o próprio usuário pode editar seu CPF/Telefone
+    }
+    
+    // =================================================================
+    // 5. MÓDULO MERCADO DE ATLETAS (DRAFT)
+    // =================================================================
+
+    // Atualizando o módulo do Mercado
+    match /free_agents/{document} {
+      allow create: if true; // Inscrição continua pública
+      allow read: if isPresident() || isAdmin() || isPortalPresident() || isPortalAdmin(); // Apenas Presidentes ou Admins leem
+      allow update, delete: if isAdmin() || isPortalAdmin();
+    }
+    
+    // ==========================================
+    // REGRAS PARA AS LIGAS PRIVADAS DO FANTASY
+    // ==========================================
+    match /fantasy_leagues/{leagueId} {
+      // Qualquer usuário logado pode ver as ligas (necessário para achar pelo código)
+      allow read: if request.auth != null;
+      
+      // Qualquer usuário logado pode criar uma liga nova
+      allow create: if request.auth != null;
+      
+      // Apenas o dono pode atualizar configurações, mas qualquer usuário pode se adicionar em participants
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.owner_id || 
+        // Permite update se a única coisa que mudou foi o array 'participants' (adicionou seu UID)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']))
+      );
+      
+      // Apenas o dono da liga pode deletar ela
+      allow delete: if request.auth != null && request.auth.uid == resource.data.owner_id;
+    }
+    
+    match /championships/{seasonId}/fantasy_live/{document=**} {
+      allow read: if request.auth != null; // Permite ler se o usuário estiver logado
+      allow write: if false; // NINGUÉM pode escrever pelo app (Apenas a Cloud Function)
+    }
+
+    // =================================================================
+    // 1. MÓDULO E-COMMERCE & FOTOS
+    // =================================================================
+
+    match /photo_albums/{albumId} {
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+
+    match /photo_sales/{photoId} {
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+
+    match /orders/{orderId} {
+      allow create: if true; // Aberto para permitir Checkout de visitantes (Guest)
+      allow read: if true; 
+      allow update, delete: if false; // Ninguém altera ou deleta um pedido direto pelo frontend
+    }
+
+    // =================================================================
+    // 2. DIRETÓRIOS GLOBAIS (RAIZ)
+    // =================================================================
+
+    match /mail/{document} {
+      allow create: if true; // Permite disparar gatilhos de email (se usar Firebase Extensions)
+      allow read, update, delete: if false; // Segurança total, ninguém lê os emails dos outros
+    }
+
+    match /admin_users/{userId} {
+      allow read: if true; // Permite que o app saiba quem é admin
+      allow write: if isAdmin(); // Apenas um admin existente pode promover outro admin
+    }
+    
+    match /president_users/{userId} {
+      allow read: if request.auth != null; // Permite que usuários logados verifiquem se são presidentes
+      allow write: if isAdmin(); // Apenas Admins podem cadastrar novos presidentes
+    }
+
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /sponsors/{sponsorId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /media_feed/{mediaId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /players/{playerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /teams_directory/{teamId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =================================================================
+    // 3. CAMPEONATOS E TEMPORADAS (ESTRUTURA 2025/2026+)
+    // =================================================================
+
+    match /championships/{seasonId} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      // Configurações, Notícias e Prêmios da Temporada
+      match /settings/{docId} { allow read: if true; allow write: if isAdmin(); }
+      match /news/{newsId} { allow read: if true; allow write: if isAdmin(); }
+      match /awards/{awardId} { allow read: if true; allow write: if isAdmin(); }
+
+      // Estatísticas Disciplinares e de Jogadores
+      match /disciplinary_log/{logId} { allow read: if true; allow write: if isAdmin(); }
+      match /player_stats/{playerId} { allow read: if true; allow write: if isAdmin(); }
+
+      // Times Participantes e Log de Pontos Extras
+      match /teams_participation/{teamId} {
+        allow read: if true;
+        allow write: if isAdmin();
+        
+        match /extra_points_log/{logId} {
+          allow read: if true;
+          allow write: if isAdmin();
+        }
+      }
+
+      // Jogos e Timeline da Súmula (Tempo Real)
+      match /matches/{matchId} {
+        allow read: if true;
+        allow write: if isAdmin();
+
+        match /timeline/{eventId} {
+          allow read: if true;
+          allow write: if isAdmin();
+        }
+      }
+
+      // Sistema de Votação (Enquetes / Melhores do Ano)
+      match /polls/{pollId} {
+        allow read: if true;
+        allow write: if isAdmin();
+
+        match /nominees/{nomineeId} {
+          allow read: if true;
+          allow delete, create: if isAdmin();
+          allow update: if isAdmin() || (
+            request.auth != null &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vote_count']) &&
+            request.resource.data.vote_count == resource.data.vote_count + 1
+          );
+        }
+
+        match /votes/{userId} {
+          allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+          allow create: if request.auth != null && request.auth.uid == userId;
+          allow update, delete: if isAdmin();
+        }
+      }
+    }
+
+    // =================================================================
+    // 4. COLEÇÕES LEGADAS (APENAS LEITURA PARA PÚBLICO / ESCRITA ADMIN)
+    // =================================================================
+
+    match /teams/{teamId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      match /extra_points_log/{logId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+    
+    // 🚨 REGRA ADICIONADA: Libera a leitura e exclusão dos Jogos Antigos para a Migração
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      match /timeline/{eventId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    match /voting_stats/{document} { 
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+
+    match /suspension_log/{logId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =================================================================
+    // 6. PORTAL DO ATLETA E DIRETORIA
+    // =================================================================
+    
+    // Perfil dos membros no Portal
+    match /portal_users/{userId} {
+      allow read: if request.auth != null; 
+      allow write: if isAdmin() || isPresident() || isPortalAdmin() || request.auth.uid == userId; 
+    }
+
+    // Eventos da Agenda (Treinos, Jogos, Reuniões)
+    match /portal_events/{eventId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin() || isPresident() || isPortalStaff();
+    }
+
+    // Lista de Chamada (Presença)
+    match /portal_attendance/{attendanceId} {
+      allow read: if request.auth != null;
+      // Atleta pode marcar a própria presença, ou Staff pode marcar por ele
+      allow write: if isAdmin() || isPresident() || isPortalStaff() || (request.auth != null && request.resource.data.user_id == request.auth.uid);
+    }
+
+    // Controle Financeiro (Débitos e Mensalidades)
+    match /portal_financial_dues/{dueId} {
+      // O atleta só pode ler suas próprias pendências, Admin vê todas
+      allow read: if isAdmin() || isPresident() || isPortalAdmin() || (request.auth != null && resource.data.user_id == request.auth.uid);
+      allow write: if isAdmin() || isPresident() || isPortalAdmin();
+    }
+  }
+}

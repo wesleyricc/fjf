@@ -1,0 +1,23 @@
+
+  final BolaoService _bolaoService = BolaoService();
+  
+  final TextEditingController _chatController = TextEditingController();
+  final TextEditingController _rankingSearchController = TextEditingController();
+  final ScrollController _chatScrollController = ScrollController();
+  final FocusNode _chatFocusNode = FocusNode(); 
+
+  List<Map<String, dynamic>> _predictions = [];
+  bool _isLoadingPredictions = true;
+  late Timer _timer;
+  bool _isChatOpen = false;
+  bool _isChatEndingSoon = false; 
+
+  String _rankingSearchQuery = '';
+  Map<dynamic, dynamic>? _replyingToMessage; 
+
+  late Stream<DatabaseEvent> _chatStream;
+  late Stream<DatabaseEvent> _reactionsStream;
+  late Stream<DatabaseEvent> _liveRankingStream; 
+  late Stream<List<BolaoUser>> _leaderboardStream;
+
+  final List<String> _availableEmojis = ['🤣', '🎯', '🦓', '🚀', '🤯', '🤡'];

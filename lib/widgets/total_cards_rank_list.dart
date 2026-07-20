@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 // import 'package:cached_network_image/cached_network_image.dart'; // Pode remover se não for usar em outro lugar do arquivo
 import '../models/player_model.dart';
-import '../screens/player_profile_screen.dart';
+import '../screens/player/player_profile_screen.dart';
 import '../widgets/rank_highlight_card.dart';
 import '../widgets/rank_indicator.dart';
 

@@ -1,0 +1,263 @@
+Widget _buildUnifiedListUI(List<dynamic> rankingList, Map<dynamic, dynamic> allReactions, {Map<dynamic, dynamic>? liveData}) {
+    final filteredUsers = rankingList.where((u) {
+        final String uName = ((u as Map)['name'] ?? '').toString().toLowerCase();
+        return uName.contains(_rankingSearchQuery.toLowerCase());
+    }).toList();
+
+    bool hasOtherLiveMatches = false;
+    if (liveData != null) {
+      for (var u in rankingList) {
+        final map = u as Map<dynamic, dynamic>;
+        int base = (map['basePoints'] as num?)?.toInt() ?? 0;
+        int match = (map['matchPoints'] as num?)?.toInt() ?? 0;
+        int total = (map['totalPoints'] as num?)?.toInt() ?? 0;
+        if ((total - base - match) > 0) {
+          hasOtherLiveMatches = true;
+          break;
+        }
+      }
+    }
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: ExpansionTile(
+            title: Text(liveData != null ? "RANKING PARCIAL SIMULADO" : (widget.match.status == 'finished' ? "RANKING OFICIAL ENCERRADO" : "RANKING GERAL - AGUARDANDO INÍCIO"), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF1B5E20))),
+            subtitle: const Text("Toque para ver a legenda de pontuação e estatísticas", style: TextStyle(fontSize: 10, color: Colors.grey)),
+            leading: Icon(liveData != null ? Icons.sensors : Icons.info, color: liveData != null ? Colors.red : const Color(0xFF1B5E20)),
+            children: [
+              if (liveData != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: Colors.indigo.shade50,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Cálculo não oficial baseado no placar atual. O ranking definitivo será atualizado na tela principal apenas após o apito final.", style: TextStyle(fontSize: 11, color: Colors.indigo.shade800)),
+                      const Divider(height: 16),
+                      const Text("ENTENDA A PONTUAÇÃO:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.black87)),
+                      const SizedBox(height: 4),
+                      Text("• Destaque: Sua pontuação total atualizada.", style: TextStyle(fontSize: 10, color: Colors.indigo.shade700, fontWeight: FontWeight.bold)),
+                      const Text("• Base: Pontos que o treinador já possuía antes do jogo.", style: TextStyle(fontSize: 10, color: Colors.black87)),
+                      Text("• (aqui): Pontos somados apenas nesta partida.", style: TextStyle(fontSize: 10, color: Colors.green.shade700)),
+                      if (hasOtherLiveMatches)
+                        Text("• (outros): Pontos de partidas rolando agora.", style: TextStyle(fontSize: 10, color: Colors.orange.shade900)),
+                    ]
+                  ),
+                ),
+                
+              _buildZebraometro(),
+            ],
+          ),
+        ),
+
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            child: TextField(
+              controller: _rankingSearchController, 
+              onChanged: (value) => setState(() => _rankingSearchQuery = value),
+              decoration: InputDecoration(
+                hintText: 'Buscar treinador...',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              ),
+            ),
+          ),
+        ),
+
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final userMap = filteredUsers[index] as Map<dynamic, dynamic>;
+              final targetUserId = userMap['userId'];
+              final bool isMe = targetUserId == widget.currentUser.userId;
+              final int rank = userMap['rank'];
+
+              int basePts = (userMap['basePoints'] as num?)?.toInt() ?? 0;
+              int matchPts = (userMap['matchPoints'] as num?)?.toInt() ?? 0;
+              int totalPts = (userMap['totalPoints'] as num?)?.toInt() ?? 0;
+              int otherPts = totalPts - basePts - matchPts;
+
+              Color rankColor = Colors.grey.shade600;
+              if (rank == 1) rankColor = Colors.amber.shade600; 
+              else if (rank == 2) rankColor = Colors.grey.shade500; 
+              else if (rank == 3) rankColor = Colors.brown.shade400;
+
+              Color badgeBgColor;
+              Color badgeBorderColor;
+              Color badgeTextColor;
+              String badgeText;
+
+              if (matchPts == 5) {
+                badgeBgColor = Colors.green.shade50;
+                badgeBorderColor = Colors.green.shade300;
+                badgeTextColor = Colors.green.shade800;
+                badgeText = "+5 (Na Mosca!)";
+              } else if (matchPts == 3) {
+                badgeBgColor = Colors.blue.shade50;
+                badgeBorderColor = Colors.blue.shade300;
+                badgeTextColor = Colors.blue.shade800;
+                badgeText = "+3 (Vencedor + Saldo)";
+              } else if (matchPts == 2) {
+                badgeBgColor = Colors.orange.shade50;
+                badgeBorderColor = Colors.orange.shade300;
+                badgeTextColor = Colors.orange.shade900;
+                badgeText = "+2 (Vencedor)";
+              } else {
+                badgeBgColor = Colors.grey.shade100;
+                badgeBorderColor = Colors.grey.shade300;
+                badgeTextColor = Colors.grey.shade600;
+                badgeText = "0 pontos";
+              }
+
+              final Map<dynamic, dynamic> userReactions = (allReactions[targetUserId] as Map<dynamic, dynamic>?) ?? {};
+
+              return Card(
+                color: isMe ? Colors.blueGrey.shade50 : Colors.white,
+                elevation: isMe ? 4 : 1,
+                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: isMe ? const BorderSide(color: Color(0xFF1B5E20), width: 1.5) : BorderSide.none),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 25,
+                        child: Text('$rankº', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: rankColor), textAlign: TextAlign.center),
+                      ),
+                      const SizedBox(width: 8),
+                      CircleAvatar(
+                        radius: 18, backgroundColor: Colors.grey[200],
+                        backgroundImage: (userMap['photoUrl'] != null && userMap['photoUrl'].toString().isNotEmpty) ? CachedNetworkImageProvider(userMap['photoUrl']) : null,
+                        child: (userMap['photoUrl'] == null || userMap['photoUrl'].toString().isEmpty) ? const Icon(Icons.person, color: Colors.grey) : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(userMap['name'], style: TextStyle(fontWeight: isMe ? FontWeight.bold : FontWeight.w500, fontSize: 14), overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 4),
+                            
+                            Row(
+                              children: [
+                                const Text("Palpite: ", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)),
+                                  child: Text(userMap['prediction'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: _availableEmojis.map((emoji) {
+                                int count = 0;
+                                bool didIReact = false;
+                                List<String> currentReactors = [];
+
+                                userReactions.forEach((reactorId, reactedEmoji) {
+                                  if (reactedEmoji == emoji) {
+                                    count++;
+                                    currentReactors.add(reactorId.toString());
+                                    if (reactorId == widget.currentUser.userId) didIReact = true;
+                                  }
+                                });
+
+                                return Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      _bolaoService.toggleReaction(widget.match.id, targetUserId, widget.currentUser.userId, emoji);
+                                    },
+                                    onLongPress: count > 0 ? () {
+                                      _showReactorsModal(context, emoji, currentReactors, rankingList);
+                                    } : null,
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 2.0),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Opacity(
+                                            opacity: count > 0 ? 1.0 : 0.6,
+                                            child: Text(emoji, style: const TextStyle(fontSize: 14)),
+                                          ),
+                                          if (count > 0) ...[
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              "$count", 
+                                              style: TextStyle(
+                                                fontWeight: didIReact ? FontWeight.bold : FontWeight.w500, 
+                                                fontSize: 11, 
+                                                color: didIReact ? const Color(0xFF1B5E20) : Colors.grey.shade600
+                                              )
+                                            ),
+                                          ]
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text("${totalPts} pts", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: liveData != null ? Colors.indigo.shade700 : const Color(0xFF1B5E20))),
+                          const SizedBox(height: 4),
+                          
+                          if (widget.match.status == 'in_progress') ...[
+                            Text("Base: $basePts", style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                            if (matchPts > 0) 
+                              Text("+$matchPts (aqui)", style: const TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
+                            if (otherPts > 0) 
+                              Text("+$otherPts (outros)", style: TextStyle(fontSize: 10, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                          ] 
+                          else if (widget.match.status == 'finished') ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: badgeBgColor,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: badgeBorderColor),
+                              ),
+                              child: Text(
+                                badgeText,
+                                style: TextStyle(
+                                  fontSize: 10, 
+                                  color: badgeTextColor, 
+                                  fontWeight: FontWeight.bold
+                                )
+                              ),
+                            )
+                          ]
+                        ],
+                      )
+                    ],
+                  ),
+                ),
+              );
+            },
+            childCount: filteredUsers.length,
+          ),
+        ),
+      ],
+    );
+  }

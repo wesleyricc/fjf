@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/player_model.dart';
 import '../services/player_service.dart';
+import '../services/portal_auth_service.dart';
 
 class EditPlayerViewModel extends ChangeNotifier {
   final PlayerService _playerService;
@@ -22,6 +23,9 @@ class EditPlayerViewModel extends ChangeNotifier {
   String? selectedPosition;
   String? selectedFoot;
   String? selectedStaffRole;
+  
+  bool createPortalAccess = false;
+  String portalPassword = '';
   
   String? photoUrl;
   File? imageFile;
@@ -66,6 +70,9 @@ class EditPlayerViewModel extends ChangeNotifier {
   void setPosition(String? pos) { selectedPosition = pos; notifyListeners(); }
   void setFoot(String? foot) { selectedFoot = foot; notifyListeners(); }
   void setStaffRole(String? role) { selectedStaffRole = role; notifyListeners(); }
+  
+  void setCreatePortalAccess(bool value) { createPortalAccess = value; notifyListeners(); }
+  void setPortalPassword(String value) { portalPassword = value; notifyListeners(); }
 
   void clearImage() {
     photoUrl = null;
@@ -131,6 +138,7 @@ class EditPlayerViewModel extends ChangeNotifier {
     required int? weightKg,
     required String instagram,
     required String phone,
+    PortalAuthService? portalAuthService,
   }) async {
     if (isStaff && selectedStaffRole == null) {
       return "Selecione a função da comissão técnica.";
@@ -160,16 +168,53 @@ class EditPlayerViewModel extends ChangeNotifier {
         'team_name': teamName,
       };
 
+      String currentId;
       if (_existingPlayer == null) {
-        return await _playerService.createPlayer(seasonId: seasonId, data: playerData);
+        currentId = await _playerService.createPlayer(seasonId: seasonId, data: playerData);
       } else {
-        return await _playerService.updatePlayer(seasonId: seasonId, playerId: _existingPlayer!.id, data: playerData);
+        await _playerService.updatePlayer(seasonId: seasonId, playerId: _existingPlayer!.id, data: playerData);
+        currentId = _existingPlayer!.id;
       }
+
+      // Criar acesso ao Portal se marcado
+      if (createPortalAccess && portalAuthService != null && portalPassword.isNotEmpty) {
+        final username = _generateUsername(name, jerseyNumber);
+        final role = isStaff ? 'staff' : 'athlete';
+        try {
+          final err = await portalAuthService.createUserAccess(username, portalPassword, name, role, teamId: teamId, playerId: currentId);
+          if (err != null) {
+            return "Sucesso: Jogador salvo, mas erro no acesso: $err";
+          }
+        } catch (e) {
+          debugPrint("Erro ao criar acesso ao portal: $e");
+          return "Sucesso: Jogador salvo, mas falha ao gerar acesso.";
+        }
+      }
+      
+      return _existingPlayer == null ? "Sucesso: Jogador criado." : "Sucesso: Jogador atualizado.";
     } catch (e) {
       return "Erro: $e";
     } finally {
       isUploading = false;
       notifyListeners();
     }
+  }
+
+  String _generateUsername(String name, int? number) {
+    // Basic normalization: lowercase, remove accents, take first and last name
+    String normalized = name.toLowerCase().replaceAll(RegExp(r'[áàâãä]'), 'a')
+        .replaceAll(RegExp(r'[éèêë]'), 'e')
+        .replaceAll(RegExp(r'[íìîï]'), 'i')
+        .replaceAll(RegExp(r'[óòôõö]'), 'o')
+        .replaceAll(RegExp(r'[úùûü]'), 'u')
+        .replaceAll(RegExp(r'[ç]'), 'c')
+        .replaceAll(RegExp(r'[^a-z0-9 ]'), '');
+    List<String> parts = normalized.split(' ').where((s) => s.isNotEmpty).toList();
+    if (parts.length >= 2) {
+      return "${parts.first}.${parts.last}";
+    } else if (parts.isNotEmpty) {
+      return "${parts.first}${number != null ? '.$number' : ''}";
+    }
+    return "atleta${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}";
   }
 }

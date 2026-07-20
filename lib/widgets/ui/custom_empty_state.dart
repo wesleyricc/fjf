@@ -6,6 +6,8 @@ class CustomEmptyState extends StatelessWidget {
   final String message;
   final String? buttonText;
   final VoidCallback? onButtonPressed;
+  final String? secondaryButtonText;
+  final VoidCallback? onSecondaryButtonPressed;
   final Color? iconColor;
 
   const CustomEmptyState({
@@ -15,6 +17,8 @@ class CustomEmptyState extends StatelessWidget {
     required this.message,
     this.buttonText,
     this.onButtonPressed,
+    this.secondaryButtonText,
+    this.onSecondaryButtonPressed,
     this.iconColor,
   });
 
@@ -77,7 +81,17 @@ class CustomEmptyState extends StatelessWidget {
                   label: Text(buttonText!),
                 ),
               ),
-            ]
+            ],
+            if (secondaryButtonText != null && onSecondaryButtonPressed != null) ...[
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: onSecondaryButtonPressed,
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).primaryColor,
+                ),
+                child: Text(secondaryButtonText!),
+              ),
+            ],
           ],
         ),
       ),

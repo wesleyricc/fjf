@@ -7,8 +7,8 @@ import '../services/championship_service.dart';
 import '../services/player_service.dart'; 
 import '../models/player_model.dart'; 
 
-import '../screens/player_profile_screen.dart';
-import '../screens/edit_player_screen.dart';
+import '../screens/player/player_profile_screen.dart';
+import '../screens/admin/edit_player_screen.dart';
 import '../utils/custom_cache_manager.dart';
 
 class RosterSectionHeader extends StatelessWidget {

@@ -1,5 +1,4 @@
-// Adicionamos penaltySaved, penaltyMissed e shotOnPost
-enum MatchEventType { goal, yellowCard, redCard, assist, penaltySaved, penaltyMissed, shotOnPost }
+enum MatchEventType { goal, yellowCard, redCard, assist, penaltySaved, penaltyMissed, shotOnPost, ownGoal, directFreeKickMissed }
 
 class MatchEvent {
   final String id;

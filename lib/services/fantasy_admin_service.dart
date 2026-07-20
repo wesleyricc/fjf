@@ -50,11 +50,15 @@ class FantasyAdminService {
         final penaltiesSavedMap = getStatMap('penalties_saved');
         final penaltiesMissedMap = getStatMap('penalties_missed');
         final shotsOnPostMap = getStatMap('shots_on_post');
+        final ownGoalsMap = getStatMap('own_goals');
+        final missedFreeKicksMap = getStatMap('missed_free_kicks');
+        final motmMap = getStatMap('motm');
 
         final Set<String> allPlayerIds = {
           ...goalsMap.keys, ...assistsMap.keys, ...yellowsMap.keys, 
           ...redsMap.keys, ...penaltiesSavedMap.keys, 
-          ...penaltiesMissedMap.keys, ...shotsOnPostMap.keys
+          ...penaltiesMissedMap.keys, ...shotsOnPostMap.keys,
+          ...ownGoalsMap.keys, ...missedFreeKicksMap.keys, ...motmMap.keys
         };
 
         for (String pid in allPlayerIds) {
@@ -66,6 +70,9 @@ class FantasyAdminService {
           points += (penaltiesSavedMap[pid] ?? 0) * config.ptsPenaltySaved;
           points += (penaltiesMissedMap[pid] ?? 0) * config.ptsPenaltyMissed;
           points += (shotsOnPostMap[pid] ?? 0) * config.ptsShotOnPost;
+          points += (ownGoalsMap[pid] ?? 0) * config.ptsOwnGoal;
+          points += (missedFreeKicksMap[pid] ?? 0) * config.ptsMissedFreeKick;
+          points += (motmMap[pid] ?? 0) * config.ptsMotm;
           
           scoresMap[pid] = (scoresMap[pid] ?? 0.0) + points;
         }

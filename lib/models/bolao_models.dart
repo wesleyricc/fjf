@@ -99,6 +99,13 @@ class BolaoUser {
   final String? worstDefense;
   final String? disappointment;
 
+  // BÔNUS PONTOS INDIVIDUAIS
+  final int? bonusChampionPoints;
+  final int? bonusRunnerUpPoints;
+  final int? bonusBestOffensePoints;
+  final int? bonusWorstDefensePoints;
+  final int? bonusDisappointmentPoints;
+
   BolaoUser({
     required this.userId,
     required this.name,
@@ -112,6 +119,11 @@ class BolaoUser {
     this.bestOffense,
     this.worstDefense,
     this.disappointment,
+    this.bonusChampionPoints,
+    this.bonusRunnerUpPoints,
+    this.bonusBestOffensePoints,
+    this.bonusWorstDefensePoints,
+    this.bonusDisappointmentPoints,
     this.cpf,         
     this.phone,       
     this.photoUrl,    
@@ -139,6 +151,11 @@ class BolaoUser {
       bestOffense: data['bonus_best_offense'],
       worstDefense: data['bonus_worst_defense'],
       disappointment: data['bonus_disappointment'],
+      bonusChampionPoints: data['bonus_champion_points'],
+      bonusRunnerUpPoints: data['bonus_runner_up_points'],
+      bonusBestOffensePoints: data['bonus_best_offense_points'],
+      bonusWorstDefensePoints: data['bonus_worst_defense_points'],
+      bonusDisappointmentPoints: data['bonus_disappointment_points'],
       cpf: data['cpf'],               
       phone: data['phone'],           
       photoUrl: data['photo_url'],
@@ -160,6 +177,11 @@ class BolaoUser {
       bestOffense: data['bonus_best_offense'],
       worstDefense: data['bonus_worst_defense'],
       disappointment: data['bonus_disappointment'],
+      bonusChampionPoints: data['bonus_champion_points'],
+      bonusRunnerUpPoints: data['bonus_runner_up_points'],
+      bonusBestOffensePoints: data['bonus_best_offense_points'],
+      bonusWorstDefensePoints: data['bonus_worst_defense_points'],
+      bonusDisappointmentPoints: data['bonus_disappointment_points'],
       cpf: data['cpf'],               
       phone: data['phone'],           
       photoUrl: data['photo_url'],    

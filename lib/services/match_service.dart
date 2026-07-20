@@ -71,6 +71,8 @@ class MatchService {
       Map<String, int> penaltiesSaved = {};
       Map<String, int> penaltiesMissed = {};
       Map<String, int> shotsOnPost = {};
+      Map<String, int> ownGoals = {};
+      Map<String, int> directFreeKicksMissed = {};
 
       final matchSnap = await matchRef.get();
       if (!matchSnap.exists) return;
@@ -132,6 +134,15 @@ class MatchService {
           else if (event.type == MatchEventType.shotOnPost) {
             shotsOnPost[pid] = (shotsOnPost[pid] ?? 0) + 1;
           }
+          else if (event.type == MatchEventType.ownGoal) {
+            ownGoals[pid] = (ownGoals[pid] ?? 0) + 1;
+            // Gol contra também incrementa o placar do time adversário
+            if (event.teamId == homeId) scoreAway++;
+            else if (event.teamId == awayId) scoreHome++;
+          }
+          else if (event.type == MatchEventType.directFreeKickMissed) {
+            directFreeKicksMissed[pid] = (directFreeKicksMissed[pid] ?? 0) + 1;
+          }
         }
 
         transaction.update(matchRef, {
@@ -148,6 +159,8 @@ class MatchService {
             'penalties_saved': penaltiesSaved,
             'penalties_missed': penaltiesMissed,
             'shots_on_post': shotsOnPost,
+            'own_goals': ownGoals,
+            'direct_free_kicks_missed': directFreeKicksMissed,
           }
         });
       });
@@ -191,6 +204,12 @@ class MatchService {
       final data = matchDoc.data() as Map<String, dynamic>;
       final statsApplied = data['stats_applied'] as Map<String, dynamic>?;
       
+      final lineupPlayed = data['lineup_played'] as List<dynamic>? ?? [];
+      for (var pid in lineupPlayed) {
+        if (!playerTotals.containsKey(pid.toString())) playerTotals[pid.toString()] = {};
+        playerTotals[pid.toString()]!['matches_played'] = (playerTotals[pid.toString()]!['matches_played'] ?? 0) + 1;
+      }
+      
       if (statsApplied != null && statsApplied['player_stats'] != null) {
         final pStats = statsApplied['player_stats'] as Map<String, dynamic>;
         
@@ -211,6 +230,8 @@ class MatchService {
         if (pStats['penalties_saved'] is Map) processStat('penalties_saved', pStats['penalties_saved'], 1);
         if (pStats['penalties_missed'] is Map) processStat('penalties_missed', pStats['penalties_missed'], 1);
         if (pStats['shots_on_post'] is Map) processStat('shots_on_post', pStats['shots_on_post'], 1);
+        if (pStats['own_goals'] is Map) processStat('own_goals', pStats['own_goals'], 1);
+        if (pStats['direct_free_kicks_missed'] is Map) processStat('direct_free_kicks_missed', pStats['direct_free_kicks_missed'], 1);
 
         String hId = data['team_home_id'];
         String aId = data['team_away_id'];
@@ -237,6 +258,9 @@ class MatchService {
       final int newGoals = stats['goals'] ?? 0;
       final int newAssists = stats['assists'] ?? 0;
       final int newConceded = stats['goals_conceded'] ?? 0;
+      final int newMatchesPlayed = stats['matches_played'] ?? 0;
+      final int newOwnGoals = stats['own_goals'] ?? 0;
+      final int newDirectFreeKicksMissed = stats['direct_free_kicks_missed'] ?? 0;
 
       // Obtém os dados que estão atualmente na base de dados
       final currentData = pDoc.data() as Map<String, dynamic>;
@@ -247,7 +271,10 @@ class MatchService {
           currentData['goals_conceded'] != newConceded ||
           currentData['total_yellow_cards'] != newYellows ||
           currentData['total_red_cards'] != newReds ||
-          currentData['is_suspended'] != newIsSuspended) {
+          currentData['is_suspended'] != newIsSuspended ||
+          currentData['matches_played'] != newMatchesPlayed ||
+          currentData['own_goals'] != newOwnGoals ||
+          currentData['direct_free_kicks_missed'] != newDirectFreeKicksMissed) {
           
         batch.update(pDoc.reference, {
           'goals': newGoals,
@@ -258,6 +285,9 @@ class MatchService {
           'total_red_cards': newReds,
           'red_cards': newReds, 
           'is_suspended': newIsSuspended,
+          'matches_played': newMatchesPlayed,
+          'own_goals': newOwnGoals,
+          'direct_free_kicks_missed': newDirectFreeKicksMissed,
         });
       } else {
         writesSaved++;
@@ -288,9 +318,12 @@ class MatchService {
     await batch.commit();
     debugPrint("✅ FinOps Otimização: $writesSaved gravações desnecessárias foram bloqueadas.");
 
-    for (String tid in teamIds) {
-      await _teamService.recalculateTeamStats(tid, seasonId);
-    }
+    // 🚨 FINOPS: O recálculo de estatísticas do time (pontos, vitórias, gols)
+    // agora é responsabilidade exclusiva de uma Cloud Function (`updateTeamStatsOnMatchUpdate`)
+    // que atua no onWrite da partida, evitando N leituras custosas por aqui.
+    // for (String tid in teamIds) {
+    //   await _teamService.recalculateTeamStats(tid, seasonId);
+    // }
   }
 
   // ===========================================================================
@@ -360,9 +393,23 @@ class MatchService {
   // ===========================================================================
 
   Future<String> updateMatchStats({
-    required String seasonId, required DocumentSnapshot matchSnapshot, required String newStatus, required int newScoreHome, required int newScoreAway,
-    required Map<String, int> newGoals, required Map<String, int> newAssists, required Map<String, int> newYellows, required Map<String, int> newReds, required Map<String, int> newGoalsConceded,
-    required String? newManOfTheMatchId, required int? penaltyScoreHome, required int? penaltyScoreAway, required String? winnerTeamId, required String? newSumulaUrl, required List<Map<String, dynamic>> newMediaLinks,
+    required String seasonId, 
+    required DocumentSnapshot matchSnapshot, 
+    required String newStatus, 
+    required int newScoreHome, 
+    required int newScoreAway,
+    required Map<String, int> newGoals, 
+    required Map<String, int> newAssists, 
+    required Map<String, int> newYellows, 
+    required Map<String, int> newReds, 
+    required Map<String, int> newGoalsConceded,
+    required String? newManOfTheMatchId, 
+    required int? penaltyScoreHome,
+    int? penaltyScoreAway,
+    String? winnerTeamId,
+    String? newSumulaUrl,
+    List<Map<String, dynamic>>? newMediaLinks,
+    List<String>? newLineupPlayed,
   }) async {
     try {
       final matchId = matchSnapshot.id;
@@ -377,6 +424,7 @@ class MatchService {
         'stats_applied.media_links': newMediaLinks,
         'score_home': newScoreHome, 
         'score_away': newScoreAway,
+        if (newLineupPlayed != null) 'lineup_played': newLineupPlayed,
       });
 
       if (newStatus == 'finished') {

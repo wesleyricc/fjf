@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../screens/player_profile_screen.dart'; // Para navegação
+import '../screens/player/player_profile_screen.dart'; // Para navegação
 
 class MatchStatsTab extends StatelessWidget {
   final Map<String, dynamic> matchData;
