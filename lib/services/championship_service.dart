@@ -59,6 +59,17 @@ class ChampionshipService with ChangeNotifier {
   bool get isMiniBolaoEnabled => _cachedAppSettings?['feature_mini_bolao'] ?? false;
   bool get isAppOpenAdEnabled => _cachedAppSettings?['feature_app_open_ad'] ?? true;
 
+  bool get isLiveActive {
+    if (_cachedAppSettings == null) return false;
+    final String? remoteId = _cachedAppSettings!['live_video_id'];
+    final Timestamp? timestamp = _cachedAppSettings!['live_video_timestamp'];
+    if (remoteId != null && remoteId.isNotEmpty && timestamp != null && remoteId != 'ByBvdFS1jko') {
+      final diff = DateTime.now().difference(timestamp.toDate());
+      return diff.inHours < 24;
+    }
+    return false;
+  }
+
   List<Player> get allPlayers {
     if (_allPlayersCache.isNotEmpty) return _allPlayersCache;
     return _cachedPlayersByTeam.values.expand((x) => x).toList();
@@ -162,12 +173,12 @@ class ChampionshipService with ChangeNotifier {
 
     try {
       if (forceRefresh || refreshMatchesOnly || _isExpired(_lastMatchesFetch, MATCHES_CACHE_TTL)) {
-        await _fetchMatches();
+        await _fetchMatches(forceRefresh: forceRefresh);
       }
 
       if (!refreshMatchesOnly) {
         if (forceRefresh || _isExpired(_lastTeamsFetch, TEAMS_CACHE_TTL)) {
-          await _fetchTeams();
+          await _fetchTeams(forceRefresh: forceRefresh);
         }
         await _fetchConfig();
       }
@@ -187,23 +198,25 @@ class ChampionshipService with ChangeNotifier {
     return diff.inMinutes >= ttlMinutes;
   }
 
-  Future<void> _fetchMatches() async {
+  Future<void> _fetchMatches({bool forceRefresh = false}) async {
     final query = _firestore.collection('championships').doc(_currentSeasonId).collection('matches').orderBy('datetime');
     final snapshot = await FirestoreCacheService.getWithCache(
       query: query,
       cacheKey: 'matches_$_currentSeasonId',
       ttl: const Duration(minutes: MATCHES_CACHE_TTL),
+      forceRefresh: forceRefresh,
     );
     _cachedMatches = snapshot.docs.map((doc) => MatchModel.fromFirestore(doc)).toList();
     _lastMatchesFetch = DateTime.now();
   }
 
-  Future<void> _fetchTeams() async {
+  Future<void> _fetchTeams({bool forceRefresh = false}) async {
     final query = _firestore.collection('championships').doc(_currentSeasonId).collection('teams_participation');
     final snapshot = await FirestoreCacheService.getWithCache(
       query: query,
       cacheKey: 'teams_$_currentSeasonId',
       ttl: const Duration(minutes: TEAMS_CACHE_TTL),
+      forceRefresh: forceRefresh,
     );
     _cachedTeams = snapshot.docs.map((doc) => Team.fromFirestore(doc)).toList();
     _cachedTeams.sort((a, b) => a.name.compareTo(b.name));

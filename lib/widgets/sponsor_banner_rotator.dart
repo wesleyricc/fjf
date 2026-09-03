@@ -13,6 +13,7 @@ class SponsorBannerRotator extends StatefulWidget {
   final double? height;
   final String? filterTag;
   final VoidCallback? onCycleComplete;
+  final BoxFit fit;
 
   const SponsorBannerRotator({
     super.key,
@@ -21,6 +22,7 @@ class SponsorBannerRotator extends StatefulWidget {
     this.height,
     this.filterTag,
     this.onCycleComplete,
+    this.fit = BoxFit.cover,
   });
 
   @override
@@ -60,7 +62,12 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     final allSponsors = sponsorVm.sponsors;
 
     final filtered = allSponsors.where((data) {
-      if (data['location'] != widget.location) return false;
+      final List<dynamic> locations = data['locations'] ?? [];
+      final String? oldLocation = data['location'];
+      
+      final matchesLocation = locations.contains(widget.location) || oldLocation == widget.location;
+      if (!matchesLocation) return false;
+      
       if (widget.filterTag != null) {
         final docRound = data['round'];
         if (docRound != null && docRound.toString().isNotEmpty) {
@@ -144,16 +151,17 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     // PADRÕES DE TAMANHO DE BANNERS PARA OS ANUNCIANTES:
     // location == 'app_open'        -> Proporção 9:16  (1080x1920 px) - Formato Vertical / Tela Cheia
     // location == 'news_feed'       -> Proporção 1:1   (1080x1080 px) - Formato Quadrado
-    // location == 'header_fixtures' -> Proporção 32:9  (1920x540 px)  - Formato Horizontal (Banner Largo)
-    // location == 'footer_home'     -> Proporção 32:9  (1920x540 px)  - Formato Horizontal (Rodapé)
+    // location == 'header_fixtures' -> Proporção 21:9  (1920x820 px)  - Formato Horizontal (Banner Largo, agora mais alto)
+    // location == 'footer_home'     -> Proporção 21:9  (1920x820 px)  - Formato Horizontal (Rodapé, agora mais alto)
+    // location == 'home_mid'        -> Proporção 21:9  (1920x820 px)  - Formato Horizontal (Meio da Home)
 
     double? aspect;
     if (widget.location == 'app_open') {
       aspect = 9 / 16;
     } else if (widget.location == 'news_feed') {
       aspect = 1 / 1;
-    } else if (widget.location == 'header_fixtures' || widget.location == 'footer_home') {
-      aspect = 32 / 9;
+    } else if (widget.location.startsWith('header_') || widget.location == 'footer_home' || widget.location == 'home_mid') {
+      aspect = 21 / 9;
     }
 
     Widget content;
@@ -176,7 +184,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
               ? _buildHouseAd(title: sponsorName)
               : CachedNetworkImage(
                   imageUrl: imageUrl,
-                  fit: BoxFit.cover,
+                  fit: widget.fit,
                   width: double.infinity,
                   height: double.infinity,
                   errorWidget: (c, u, e) => _buildHouseAd(),
@@ -216,41 +224,60 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       onTap: () => _launchURL(null, title ?? "Seja Parceiro (House Ad)"),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.symmetric(horizontal: BorderSide(color: Colors.grey.shade200)),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1E1E1E), Color(0xFF323232)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: const Color(0xFFC5A814).withOpacity(0.5), width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.amber.withOpacity(0.15),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFC5A814), Color(0xFFE8CA3B)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: const Color(0xFFC5A814).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
               ),
-              child: const Icon(FontAwesomeIcons.handshake, color: Colors.amber, size: 24),
+              child: const Icon(FontAwesomeIcons.bullhorn, color: Colors.white, size: 24),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title ?? "SEJA PARCEIRO",
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFFC25F22), letterSpacing: 0.5),
+                    title ?? "SUA MARCA AQUI",
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFE8CA3B), letterSpacing: 1.0),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 2),
-                  const Text("Anuncie aqui", style: TextStyle(color: Colors.grey, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 4),
+                  const Text("Anuncie no App Oficial e ganhe destaque", style: TextStyle(color: Colors.white70, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFC5A814),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
+              ),
+              child: const Text("Saber Mais", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
           ],
         ),
       ),

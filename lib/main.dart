@@ -26,6 +26,7 @@ import 'screens/fantasy/fantasy_ranking_screen.dart';
 import 'screens/fantasy/fantasy_scouts_screen.dart';
 import 'screens/fantasy/fantasy_knockout_bracket_screen.dart';
 import 'models/fantasy_league_model.dart';
+import 'models/fantasy_models.dart';
 import 'screens/fantasy/fantasy_rules_screen.dart';
 import 'screens/player/free_agent_registration_screen.dart';
 import 'screens/player/free_agents_market_screen.dart';
@@ -60,6 +61,7 @@ import 'repositories/fantasy_repository.dart';
 
 // Screens
 import 'screens/home/home_dashboard_screen.dart';
+import 'screens/home/live_video_screen.dart';
 import 'screens/championship/fixtures_screen.dart';
 import 'screens/championship/standings_screen.dart';
 import 'screens/championship/team_stats_screen.dart';
@@ -286,6 +288,7 @@ class FjfApp extends StatelessWidget {
           WidgetBuilder? builder;
           switch (settings.name) {
             case '/': builder = (ctx) => const HomeDashboardScreen(); break;
+            case '/live': builder = (ctx) => const LiveVideoScreen(); break;
             case '/fixtures': builder = (ctx) => const FixturesScreen(); break;
             case '/standings': builder = (ctx) => const StandingsScreen(); break;
             case '/season-summary': builder = (ctx) => const SeasonSummaryScreen(); break;

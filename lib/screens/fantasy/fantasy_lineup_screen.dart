@@ -7,6 +7,7 @@ import '../../services/fantasy_auth_service.dart';
 import '../../services/championship_service.dart';
 import '../../models/fantasy_models.dart';
 import '../../services/fantasy_scout_service.dart';
+import '../../widgets/fantasy/live_scouts_widget.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../viewmodels/fantasy_lineup_viewmodel.dart';
 import 'fantasy_market_screen.dart';
@@ -75,6 +76,10 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
     );
 
     if (selectedPlayer != null) {
+      // 🚨 CORREÇÃO: Aguarda a animação de retorno (pop) terminar antes de rebuildar a tela
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      
       if (isBench) {
         vm.addBenchPlayer(slotIndex, selectedPlayer);
       } else {
@@ -643,6 +648,25 @@ class PlayerCard extends StatelessWidget {
                     Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
+                          const Text("Preço Atual"),
+                          Text("C\$ ${player.currentPrice.toStringAsFixed(2)}",
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                        ]),
+                    const Divider(),
+                    Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text("Mín. para valorizar"),
+                          Text("${(player.currentPrice * 0.35).toStringAsFixed(1)} pts",
+                              style: TextStyle(
+                                  color: Colors.blue.shade800,
+                                  fontWeight: FontWeight.bold)),
+                        ]),
+                    const Divider(),
+                    Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
                           const Text("Última Pontuação"),
                           Text(lastScore.toStringAsFixed(2),
                               style:
@@ -667,11 +691,9 @@ class PlayerCard extends StatelessWidget {
                                   color: apprecColor,
                                   fontWeight: FontWeight.bold)),
                         ]),
-                    if (!isMarketOpen) ...[
-                      const Divider(),
-                      LiveScoutsWidget(
-                          scouts: liveScouts, isCaptain: isCaptain),
-                    ],
+                    const Divider(),
+                    LiveScoutsWidget(
+                        scouts: liveScouts, isCaptain: isCaptain, isMarketOpen: isMarketOpen, position: player.position),
                     if (isMarketOpen) ...[
                       const Divider(),
                       Row(mainAxisAlignment: MainAxisAlignment.end, children: [
@@ -737,73 +759,4 @@ class PlayerCard extends StatelessWidget {
   }
 }
 
-class LiveScoutsWidget extends StatelessWidget {
-  final FantasyScoutDetail? scouts;
-  final bool isCaptain;
 
-  const LiveScoutsWidget(
-      {super.key, required this.scouts, required this.isCaptain});
-
-  @override
-  Widget build(BuildContext context) {
-    if (scouts == null || !scouts!.hasStats) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.0),
-        child: Text("Nenhum scout registrado na rodada.",
-            style: TextStyle(fontSize: 12, color: Colors.grey)),
-      );
-    }
-
-    List<Widget> badges = [];
-
-    void addBadge(String label, int count, Color color) {
-      if (count > 0) {
-        badges.add(Container(
-          margin: const EdgeInsets.only(right: 6, bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withOpacity(0.5)),
-          ),
-          child: Text("${count}x $label",
-              style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.bold, color: color)),
-        ));
-      }
-    }
-
-    // Inserção dos badges (Cartola Style)
-    addBadge("G", scouts!.goals, Colors.green);
-    addBadge("A", scouts!.assists, Colors.blue);
-    addBadge("SG", scouts!.cleanSheets, Colors.teal);
-    addBadge("PD", scouts!.penaltiesSaved, Colors.orange);
-    addBadge("FT", scouts!.shotsOnPost, Colors.brown);
-    addBadge("CA", scouts!.yellows, Colors.amber.shade800);
-    addBadge("PP", scouts!.penaltiesMissed, Colors.deepPurple);
-    addBadge("CV", scouts!.reds, Colors.red);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8),
-        const Text("Scouts da Rodada:",
-            style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-                color: Colors.black54)),
-        const SizedBox(height: 6),
-        Wrap(children: badges),
-        if (isCaptain)
-          const Padding(
-            padding: EdgeInsets.only(top: 4.0),
-            child: Text("* Pontuação a dobrar pelo Capitão.",
-                style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.orange,
-                    fontStyle: FontStyle.italic)),
-          )
-      ],
-    );
-  }
-}

@@ -12,6 +12,7 @@ import '../../widgets/rank_highlight_card.dart';
 import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/ui/custom_empty_state.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/sponsor_banner_rotator.dart';
 
 
 import 'team_detail_screen.dart';
@@ -163,15 +164,44 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> with SingleTickerProv
           ),
 
           
-          body: TabBarView(
-            controller: _tabController,
+          body: Column(
             children: [
-              _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 'GP', Icons.sports_soccer, descending: true, champService: champService),
-              _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 'GC', Icons.gpp_good, descending: false, champService: champService), 
-              _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800], champService: champService),
-              _buildRankingList(context, allTeams, isLoading, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red, champService: champService),
-              _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true, champService: champService),
-              _buildRankingList(context, allTeams, isLoading, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true, champService: champService), 
+              Container(
+                margin: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    children: [
+                      const SponsorBannerRotator(location: 'header_team_stats'),
+                      Positioned(
+                        top: 0, right: 16,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(4))),
+                          child: const Text("Patrocinador", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsFor : t.goalsFor, 'GP', Icons.sports_soccer, descending: true, champService: champService),
+                    _buildRankingList(context, allTeams, isLoading, (t) => _showOverall ? t.overallGoalsAgainst : t.goalsAgainst, 'GC', Icons.gpp_good, descending: false, champService: champService), 
+                    _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards, 'CA', Icons.style, descending: true, filterZero: true, color: Colors.amber[800], champService: champService),
+                    _buildRankingList(context, allTeams, isLoading, (t) => t.totalRedCards, 'CV', Icons.style, descending: true, filterZero: true, color: Colors.red, champService: champService),
+                    _buildRankingList(context, allTeams, isLoading, (t) => t.totalYellowCards + t.totalRedCards, 'Cartões', Icons.layers, descending: true, filterZero: true, champService: champService),
+                    _buildRankingList(context, allTeams, isLoading, (t) => t.disciplinaryPoints, 'PD', Icons.balance, descending: false, filterZero: true, champService: champService), 
+                  ],
+                ),
+              ),
             ],
           ),
           

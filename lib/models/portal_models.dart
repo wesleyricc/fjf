@@ -56,6 +56,7 @@ class PortalEvent {
   final String description;
   final String? teamId; // Pode ser nulo se for um evento global
   final String? targetRole; // 'all' (todos), 'president' (apenas presidentes)
+  final bool isMatch;
 
   PortalEvent({
     required this.id,
@@ -65,6 +66,7 @@ class PortalEvent {
     required this.description,
     this.teamId,
     this.targetRole,
+    this.isMatch = false,
   });
 
   factory PortalEvent.fromFirestore(DocumentSnapshot doc) {
@@ -77,6 +79,7 @@ class PortalEvent {
       description: data['description'] ?? '',
       teamId: data['teamId'],
       targetRole: data['targetRole'] ?? 'all',
+      isMatch: data['isMatch'] ?? false,
     );
   }
 

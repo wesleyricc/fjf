@@ -432,7 +432,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                 ],
 
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                const SliverToBoxAdapter(child: SponsorBannerRotator()),
+                const SliverToBoxAdapter(child: SponsorBannerRotator(location: 'footer_team_detail')),
               ],
             ),
           ),

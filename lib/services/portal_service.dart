@@ -17,9 +17,15 @@ class PortalService {
     await _firestore.collection('portal_users').doc(user.id).set(user.toMap());
   }
   
-  Stream<List<PortalUser>> streamAllUsers() {
-    return _firestore.collection('portal_users').orderBy('name').snapshots().map((snap) {
-      return snap.docs.map((doc) => PortalUser.fromFirestore(doc)).toList();
+  Stream<List<PortalUser>> streamAllUsers({String? teamId}) {
+    Query query = _firestore.collection('portal_users');
+    if (teamId != null) {
+      query = query.where('teamId', isEqualTo: teamId);
+    }
+    return query.snapshots().map((snap) {
+      final list = snap.docs.map((doc) => PortalUser.fromFirestore(doc)).toList();
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      return list;
     });
   }
 
@@ -104,20 +110,25 @@ class PortalService {
     });
   }
 
-  Stream<List<PortalFinancialDue>> streamAllDues() {
-    return _firestore.collection('portal_financial_dues')
-        .orderBy('due_date', descending: true)
-        .snapshots().map((snap) {
-      return snap.docs.map((doc) => PortalFinancialDue.fromFirestore(doc)).toList();
+  Stream<List<PortalFinancialDue>> streamAllDues({String? teamId}) {
+    Query query = _firestore.collection('portal_financial_dues');
+    if (teamId != null) {
+      query = query.where('teamId', isEqualTo: teamId);
+    }
+    return query.snapshots().map((snap) {
+      final list = snap.docs.map((doc) => PortalFinancialDue.fromFirestore(doc)).toList();
+      list.sort((a, b) => b.dueDate.compareTo(a.dueDate));
+      return list;
     });
   }
 
-  Future<Map<String, dynamic>> generatePixForDue(String dueId, String username) async {
+  Future<Map<String, dynamic>> generatePixForDue(String dueId, String username, {String? customDescription}) async {
     final callable = FirebaseFunctions.instance.httpsCallable('createPixPayment');
     final response = await callable.call({
       'type': 'portal',
       'dueId': dueId,
       'customerContact': '$username@fjf.com.br',
+      if (customDescription != null) 'customDescription': customDescription,
     });
     
     if (response.data == null || response.data is! Map) {

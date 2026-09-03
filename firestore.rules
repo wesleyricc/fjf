@@ -352,6 +352,201 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+    // =================================================================
+
+    // Atualizando o módulo do Mercado
+    match /free_agents/{document} {
+      allow create: if true; // Inscrição continua pública
+      allow read: if isPresident() || isAdmin() || isPortalPresident() || isPortalAdmin(); // Apenas Presidentes ou Admins leem
+      allow update, delete: if isAdmin() || isPortalAdmin();
+    }
+    
+    // ==========================================
+    // REGRAS PARA AS LIGAS PRIVADAS DO FANTASY
+    // ==========================================
+    match /fantasy_leagues/{leagueId} {
+      // Qualquer usuário logado pode ver as ligas (necessário para achar pelo código)
+      allow read: if request.auth != null;
+      
+      // Qualquer usuário logado pode criar uma liga nova
+      allow create: if request.auth != null;
+      
+      // Apenas o dono pode atualizar configurações, mas qualquer usuário pode se adicionar em participants
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.owner_id || 
+        // Permite update se a única coisa que mudou foi o array 'participants' (adicionou seu UID)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']))
+      );
+      
+      // Apenas o dono da liga pode deletar ela
+      allow delete: if request.auth != null && request.auth.uid == resource.data.owner_id;
+    }
+    
+    match /championships/{seasonId}/fantasy_live/{document=**} {
+      allow read: if request.auth != null; // Permite ler se o usuário estiver logado
+      allow write: if false; // NINGUÉM pode escrever pelo app (Apenas a Cloud Function)
+    }
+
+    // =================================================================
+    // 1. MÓDULO E-COMMERCE & FOTOS
+    // =================================================================
+
+    match /photo_albums/{albumId} {
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+
+    match /photo_sales/{photoId} {
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+
+    match /orders/{orderId} {
+      allow create: if true; // Aberto para permitir Checkout de visitantes (Guest)
+      allow read: if true; 
+      allow update, delete: if false; // Ninguém altera ou deleta um pedido direto pelo frontend
+    }
+
+    // =================================================================
+    // 2. DIRETÓRIOS GLOBAIS (RAIZ)
+    // =================================================================
+
+    match /mail/{document} {
+      allow create: if true; // Permite disparar gatilhos de email (se usar Firebase Extensions)
+      allow read, update, delete: if false; // Segurança total, ninguém lê os emails dos outros
+    }
+
+    match /admin_users/{userId} {
+      allow read: if true; // Permite que o app saiba quem é admin
+      allow write: if isAdmin(); // Apenas um admin existente pode promover outro admin
+    }
+    
+    match /president_users/{userId} {
+      allow read: if request.auth != null; // Permite que usuários logados verifiquem se são presidentes
+      allow write: if isAdmin(); // Apenas Admins podem cadastrar novos presidentes
+    }
+
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /sponsors/{sponsorId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /media_feed/{mediaId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /players/{playerId} {
+      allow read: if true;
+      allow write: if isAdmin() || isPortalAdmin();
+    }
+
+    match /teams_directory/{teamId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =================================================================
+    // 3. CAMPEONATOS E TEMPORADAS (ESTRUTURA 2025/2026+)
+    // =================================================================
+
+    match /championships/{seasonId} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      // Configurações, Notícias e Prêmios da Temporada
+      match /settings/{docId} { allow read: if true; allow write: if isAdmin(); }
+      match /news/{newsId} { allow read: if true; allow write: if isAdmin(); }
+      match /awards/{awardId} { allow read: if true; allow write: if isAdmin(); }
+
+      // Estatísticas Disciplinares e de Jogadores
+      match /disciplinary_log/{logId} { allow read: if true; allow write: if isAdmin() || isPortalAdmin(); }
+      match /player_stats/{playerId} { allow read: if true; allow write: if isAdmin() || isPortalAdmin(); }
+
+      // Times Participantes e Log de Pontos Extras
+      match /teams_participation/{teamId} {
+        allow read: if true;
+        allow write: if isAdmin();
+        
+        match /extra_points_log/{logId} {
+          allow read: if true;
+          allow write: if isAdmin();
+        }
+      }
+
+      // Jogos e Timeline da Súmula (Tempo Real)
+      match /matches/{matchId} {
+        allow read: if true;
+        allow write: if isAdmin();
+
+        match /timeline/{eventId} {
+          allow read: if true;
+          allow write: if isAdmin();
+        }
+      }
+
+      // Sistema de Votação (Enquetes / Melhores do Ano)
+      match /polls/{pollId} {
+        allow read: if true;
+        allow write: if isAdmin();
+
+        match /nominees/{nomineeId} {
+          allow read: if true;
+          allow delete, create: if isAdmin();
+          allow update: if isAdmin() || (
+            request.auth != null &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vote_count']) &&
+            request.resource.data.vote_count == resource.data.vote_count + 1
+          );
+        }
+
+        match /votes/{userId} {
+          allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+          allow create: if request.auth != null && request.auth.uid == userId;
+          allow update, delete: if isAdmin();
+        }
+      }
+    }
+
+    // =================================================================
+    // 4. COLEÇÕES LEGADAS (APENAS LEITURA PARA PÚBLICO / ESCRITA ADMIN)
+    // =================================================================
+
+    match /teams/{teamId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      match /extra_points_log/{logId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+    
+    // 🚨 REGRA ADICIONADA: Libera a leitura e exclusão dos Jogos Antigos para a Migração
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      match /timeline/{eventId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    match /voting_stats/{document} { 
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+
+    match /suspension_log/{logId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
 
     // =================================================================
     // 6. PORTAL DO ATLETA E DIRETORIA
@@ -360,27 +555,34 @@ service cloud.firestore {
     // Perfil dos membros no Portal
     match /portal_users/{userId} {
       allow read: if request.auth != null; 
-      allow write: if isAdmin() || isPresident() || isPortalAdmin() || request.auth.uid == userId; 
+      allow write: if isAdmin() || isPresident() || isPortalPresident() || isPortalAdmin() || request.auth.uid == userId; 
     }
 
     // Eventos da Agenda (Treinos, Jogos, Reuniões)
     match /portal_events/{eventId} {
       allow read: if request.auth != null;
-      allow write: if isAdmin() || isPresident() || isPortalStaff();
+      allow write: if isAdmin() || isPresident() || isPortalPresident() || isPortalStaff();
     }
 
     // Lista de Chamada (Presença)
     match /portal_attendance/{attendanceId} {
       allow read: if request.auth != null;
       // Atleta pode marcar a própria presença, ou Staff pode marcar por ele
-      allow write: if isAdmin() || isPresident() || isPortalStaff() || (request.auth != null && request.resource.data.user_id == request.auth.uid);
+      allow write: if isAdmin() || isPresident() || isPortalPresident() || isPortalStaff() || (request.auth != null && request.resource.data.user_id == request.auth.uid);
     }
 
     // Controle Financeiro (Débitos e Mensalidades)
     match /portal_financial_dues/{dueId} {
       // O atleta só pode ler suas próprias pendências, Admin vê todas
-      allow read: if isAdmin() || isPresident() || isPortalAdmin() || (request.auth != null && resource.data.user_id == request.auth.uid);
-      allow write: if isAdmin() || isPresident() || isPortalAdmin();
+      allow read: if isAdmin() || isPresident() || isPortalPresident() || isPortalAdmin() || (request.auth != null && resource.data.user_id == request.auth.uid);
+      allow write: if isAdmin() || isPresident() || isPortalPresident() || isPortalAdmin();
+    }
+
+    // =================================================================
+    // 7. PRANCHETA TÁTICA
+    // =================================================================
+    match /tactics/{tacticId} {
+      allow read, write: if request.auth != null; 
     }
   }
 }

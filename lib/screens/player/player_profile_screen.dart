@@ -294,7 +294,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                   ),
                   
                   const SizedBox(height: 20),
-                  const SponsorBannerRotator(),
+                  const SponsorBannerRotator(location: 'footer_player_profile'),
                   const SizedBox(height: 40),
                 ]),
               ),

@@ -49,9 +49,9 @@ class PortalFinancialTab extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isApto ? Colors.green.shade100 : Colors.red.shade100,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isApto ? Colors.green : Colors.red, width: 2),
+                color: isApto ? Colors.green.shade50 : Colors.red.shade50,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: isApto ? Colors.green.withOpacity(0.5) : Colors.red.withOpacity(0.5), width: 1.5),
               ),
               child: Row(
                 children: [
@@ -112,6 +112,7 @@ class _DueCard extends StatefulWidget {
 class _DueCardState extends State<_DueCard> {
   bool _isLoadingPix = false;
   String? _pixCode;
+  bool _expanded = false;
 
   Future<void> _generatePix(BuildContext context) async {
     setState(() => _isLoadingPix = true);
@@ -121,7 +122,8 @@ class _DueCardState extends State<_DueCard> {
       
       final result = await portalService.generatePixForDue(
         widget.due.id, 
-        authService.currentPortalUser!.username
+        authService.currentPortalUser!.username,
+        customDescription: '${widget.due.title} - ${authService.currentPortalUser!.name}'
       );
       
       setState(() {
@@ -143,6 +145,9 @@ class _DueCardState extends State<_DueCard> {
 
   @override
   Widget build(BuildContext context) {
+    final authService = Provider.of<PortalAuthService>(context, listen: false);
+    final user = authService.currentPortalUser;
+    
     final due = widget.due;
     final isPending = widget.isPending;
 
@@ -150,114 +155,111 @@ class _DueCardState extends State<_DueCard> {
     final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
     
     final bool isOverdue = isPending && due.dueDate.isBefore(DateTime.now());
-
+    
+    final statusColor = due.status == 'under_review' ? Colors.blue : (isPending ? (isOverdue ? Colors.red : Colors.orange) : Colors.green);
+    final statusIcon = due.status == 'under_review' ? Icons.hourglass_empty : (isPending ? Icons.warning_amber_rounded : Icons.check_circle);
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: isPending ? (isOverdue ? Colors.red : Colors.orange) : Colors.green,
-          width: 2,
-        ),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: statusColor.withOpacity(0.3), width: 1.5),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    due.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      color: _expanded ? statusColor.withOpacity(0.02) : Colors.white,
+      child: InkWell(
+        onTap: () => setState(() => _expanded = !_expanded),
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              // Linha principal compacta
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: statusColor.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(statusIcon, color: statusColor, size: 20),
                   ),
-                ),
-                Text(
-                  currencyFormat.format(due.amount),
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                  due.status == 'under_review' 
-                    ? Icons.hourglass_empty 
-                    : (isPending ? Icons.warning_amber_rounded : Icons.check_circle),
-                  color: due.status == 'under_review' 
-                    ? Colors.blue 
-                    : (isPending ? (isOverdue ? Colors.red : Colors.orange) : Colors.green),
-                  size: 16,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  due.status == 'under_review'
-                    ? 'Em Análise'
-                    : (isPending 
-                      ? (isOverdue ? "Vencido em ${dateFormat.format(due.dueDate)}" : "Vence em ${dateFormat.format(due.dueDate)}")
-                      : "Pago em ${due.paymentDate != null ? dateFormat.format(due.paymentDate!) : '-'}"),
-                  style: TextStyle(
-                    color: due.status == 'under_review'
-                      ? Colors.blue
-                      : (isPending ? (isOverdue ? Colors.red : Colors.orange[800]) : Colors.green),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            if (isPending && due.status != 'under_review') ...[
-              const Divider(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: _isLoadingPix 
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton.icon(
-                      icon: const Icon(Icons.pix),
-                      label: const Text('PAGAR COM PIX'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: () => _pixCode != null ? _showPixModal(context) : _generatePix(context),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(due.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 2),
+                        Text(
+                          due.status == 'under_review' ? 'Em Análise' : (isPending ? (isOverdue ? "Vencido em ${dateFormat.format(due.dueDate)}" : "Vence em ${dateFormat.format(due.dueDate)}") : "Pago em ${due.paymentDate != null ? dateFormat.format(due.paymentDate!) : '-'}"),
+                          style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ],
                     ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(currencyFormat.format(due.amount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                      Icon(_expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.grey, size: 18),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.check),
-                  label: const Text('JÁ PAGUEI (OUTRO MEIO)'),
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Confirmar Pagamento'),
-                        content: const Text('Tem certeza que deseja marcar este débito como pago? Ele será enviado para análise da administração.'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
-                        ],
+              
+              // Conteúdo expandido (Botões de Ação)
+              if (_expanded && isPending && due.status != 'under_review') ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _isLoadingPix 
+                        ? const Center(child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                        : FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                            icon: const Icon(Icons.pix, size: 16),
+                            label: const Text('PAGAR COM PIX', style: TextStyle(fontSize: 12)),
+                            onPressed: () => _pixCode != null ? _showPixModal(context) : _generatePix(context),
+                          ),
+                    ),
+                    if (user != null && (user.role == 'admin' || user.role == 'president' || user.role == 'staff')) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(foregroundColor: Colors.green, side: const BorderSide(color: Colors.green)),
+                          icon: const Icon(Icons.check, size: 16),
+                          label: const Text('JÁ PAGUEI', style: TextStyle(fontSize: 12)),
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Confirmar Pagamento'),
+                                content: const Text('Enviar para análise administrativa?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              try {
+                                final portalService = Provider.of<PortalService>(context, listen: false);
+                                await portalService.updateDue(due.id, {'status': 'under_review'});
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enviado para análise!'), backgroundColor: Colors.green));
+                              } catch (e) {
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                              }
+                            }
+                          },
+                        ),
                       ),
-                    );
-                    if (confirm == true) {
-                      try {
-                        final portalService = Provider.of<PortalService>(context, listen: false);
-                        await portalService.updateDue(due.id, {'status': 'under_review'});
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enviado para análise!'), backgroundColor: Colors.green));
-                        }
-                      } catch (e) {
-                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
-                      }
-                    }
-                  },
+                    ]
+                  ],
                 ),
-              )
-            ]
-          ],
+              ]
+            ],
+          ),
         ),
       ),
     );

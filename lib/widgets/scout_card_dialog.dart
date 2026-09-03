@@ -33,6 +33,7 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
   String? _selectedTeamId;
   String? _selectedPlayerId; // Único ID
   String? _selectedPlayerName;
+  String? _concededById;
   
   final _minuteController = TextEditingController();
   String _selectedPeriod = '1T';
@@ -48,6 +49,7 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
       _selectedPlayerName = e.playerName;
       _minuteController.text = e.minute.toString();
       _selectedPeriod = e.period;
+      _concededById = e.concededByPlayerId;
     } else {
       if (widget.preSelectedTeamId != null) _selectedTeamId = widget.preSelectedTeamId;
       if (widget.preSelectedPlayerId != null) {
@@ -142,6 +144,15 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
                 if (!isEditing || v != widget.eventToEdit?.teamId) {
                   _selectedPlayerId = null;
                   _selectedPlayerName = null;
+                  _concededById = null;
+                  
+                  if (currentType == MatchEventType.ownGoal && v != null) {
+                     final teamPlayers = (v == homeId) ? widget.homePlayers : widget.awayPlayers;
+                     try {
+                       final gk = teamPlayers.firstWhere((p) => (p.data() as Map)['is_goalkeeper'] == true);
+                       _concededById = gk.id;
+                     } catch (_) {}
+                  }
                 }
               }),
             ),
@@ -175,6 +186,33 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
                  });
               },
             ),
+            
+            if (currentType == MatchEventType.ownGoal) ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _concededById,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Goleiro (Gol Sofrido)', border: OutlineInputBorder()),
+                items: activePlayers 
+                  .where((p) => (p.data() as Map)['is_staff'] != true)
+                  .map((p) {
+                    final d = p.data() as Map<String, dynamic>;
+                    final isGk = d['is_goalkeeper'] == true;
+                    return DropdownMenuItem(
+                      value: p.id, 
+                      child: Row(
+                        children: [
+                         if(isGk) ...[
+                           const Icon(Icons.pan_tool_outlined, size: 14, color: Colors.grey),
+                           const SizedBox(width: 4),
+                         ],
+                         Expanded(child: Text("${d['jersey_number'] ?? '-'} ${d['name']}", overflow: TextOverflow.ellipsis)),
+                      ])
+                    );
+                }).toList(),
+                onChanged: (_selectedTeamId == null || _isSaving) ? null : (v) => setState(() => _concededById = v),
+              ),
+            ],
             const SizedBox(height: 16),
             
             // 3. TEMPO DE JOGO
@@ -240,7 +278,8 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
       teamId: _selectedTeamId!, 
       minute: minute, 
       period: _selectedPeriod, 
-      timestamp: widget.eventToEdit?.timestamp ?? now
+      timestamp: widget.eventToEdit?.timestamp ?? now,
+      concededByPlayerId: _concededById,
     );
 
     try {

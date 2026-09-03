@@ -158,7 +158,7 @@ class FantasyRulesScreen extends StatelessWidget {
         
         _buildInfoAlert(
           "Travas de Mercado", 
-          "A valorização ou desvalorização máxima por rodada é de 25% do valor atual do atleta para evitar quebras repentinas.", 
+          "A variação de preço é limitada entre C\$ 2,00 e C\$ 5,00 por rodada. Isso garante que pechinchas possam dar lucro, mas sem causar inflação exagerada que quebre a economia (C\$ 50,00 iniciais).", 
           Icons.lock_outline,
           Colors.purple,
         ),

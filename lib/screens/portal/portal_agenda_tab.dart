@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'portal_admin_modals.dart';
 import 'portal_event_attendance_screen.dart';
 import '../../theme/app_theme.dart';
+import '../../services/championship_service.dart';
 
 class PortalAgendaTab extends StatelessWidget {
   const PortalAgendaTab({super.key});
@@ -15,6 +16,7 @@ class PortalAgendaTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final portalService = Provider.of<PortalService>(context, listen: false);
     final authService = Provider.of<PortalAuthService>(context, listen: false);
+    final champService = Provider.of<ChampionshipService>(context, listen: true);
     final user = authService.currentPortalUser;
 
     if (user == null) return const Center(child: Text("Usuário não encontrado."));
@@ -30,7 +32,30 @@ class PortalAgendaTab extends StatelessWidget {
           return Center(child: Text('Erro: ${snapshot.error}'));
         }
 
-        final events = snapshot.data ?? [];
+        List<PortalEvent> events = List.from(snapshot.data ?? []);
+        
+        if (user.teamId != null) {
+          final now = DateTime.now();
+          final matches = champService.matches.where((m) => 
+            (m.homeTeamId == user.teamId || m.awayTeamId == user.teamId) && 
+            m.datetime != null && m.datetime!.isAfter(now)
+          );
+          
+          for (var m in matches) {
+            events.add(PortalEvent(
+              id: m.id,
+              title: 'Jogo: ${m.homeTeamName} x ${m.awayTeamName}',
+              date: m.datetime!,
+              location: m.location,
+              description: 'Rodada ${m.round} - ${m.phase}',
+              teamId: user.teamId,
+              targetRole: 'all',
+              isMatch: true,
+            ));
+          }
+        }
+        
+        events.sort((a, b) => a.date.compareTo(b.date));
         
         final listWidget = events.isEmpty 
           ? const Center(
@@ -74,147 +99,180 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateFormat = DateFormat('dd/MM/yyyy • HH:mm');
-
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.event, color: Colors.black87),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    event.title,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                // Minimalist Date Block
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(DateFormat('MMM').format(event.date).toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+                      Text(DateFormat('dd').format(event.date), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+                    ],
                   ),
                 ),
-                if (user.role == 'admin' || user.role == 'president') ...[
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () => PortalAdminModals.showEditEventModal(context, event),
+                const SizedBox(width: 12),
+                
+                // Event Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(event.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(DateFormat('HH:mm').format(event.date), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          const SizedBox(width: 12),
+                          const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(child: Text(event.location, style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        ],
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Excluir Evento'),
-                          content: const Text('Tem certeza que deseja excluir este evento?'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) {
-                        await portalService.deleteEvent(event.id);
+                ),
+                
+                // Admin Actions Popup
+                if (!event.isMatch && (user.role == 'admin' || user.role == 'president'))
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert, color: Colors.grey),
+                    onSelected: (val) async {
+                      if (val == 'edit') {
+                        PortalAdminModals.showEditEventModal(context, event);
+                      } else if (val == 'delete') {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Excluir Evento'),
+                            content: const Text('Certeza que deseja excluir?'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) await portalService.deleteEvent(event.id);
                       }
                     },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'edit', child: Text('Editar Evento')),
+                      const PopupMenuItem(value: 'delete', child: Text('Excluir', style: TextStyle(color: Colors.red))),
+                    ],
                   ),
-                ],
               ],
             ),
-            const SizedBox(height: 8),
-            Text(event.description, style: const TextStyle(color: Colors.black87)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(dateFormat.format(event.date), style: const TextStyle(color: Colors.grey)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(event.location, style: const TextStyle(color: Colors.grey)),
-              ],
-            ),
-            const Divider(height: 24),
             
-            // Controle de presença
-            StreamBuilder<List<PortalAttendance>>(
-              stream: portalService.streamAttendanceForEvent(event.id),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const SizedBox(height: 40);
-                
-                final allAttendance = snapshot.data!;
-                final myAttendance = allAttendance.where((a) => a.userId == user.id).firstOrNull;
-                
-                final String status = myAttendance?.status ?? 'pending';
+            // Attendance Controls
+            if (!event.isMatch) ...[
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              StreamBuilder<List<PortalAttendance>>(
+                stream: portalService.streamAttendanceForEvent(event.id),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const SizedBox.shrink();
+                  
+                  final myAttendance = snapshot.data!.where((a) => a.userId == user.id).firstOrNull;
+                  final status = myAttendance?.status ?? 'pending';
 
-                return Row(
-                  children: [
-                    const Text('Sua presença:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const Spacer(),
-                    if (status == 'pending') ...[
-                      OutlinedButton(
-                        onPressed: () => portalService.updateAttendance(event.id, user.id, 'absent'),
-                        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                        child: const Text('NÃO IREI'),
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            status == 'confirmed' ? Icons.check_circle : (status == 'absent' ? Icons.cancel : Icons.help_outline),
+                            size: 16,
+                            color: status == 'confirmed' ? Colors.green : (status == 'absent' ? Colors.red : Colors.grey),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            status == 'confirmed' ? 'Você confirmou presença' : (status == 'absent' ? 'Você marcou ausência' : 'Confirme sua presença:'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: status != 'pending' ? FontWeight.bold : FontWeight.normal,
+                              color: status == 'confirmed' ? Colors.green : (status == 'absent' ? Colors.red : Colors.grey),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () => portalService.updateAttendance(event.id, user.id, 'confirmed'),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                        child: const Text('CONFIRMAR'),
-                      ),
-                    ] else if (status == 'confirmed') ...[
-                      const Icon(Icons.check_circle, color: Colors.green),
-                      const SizedBox(width: 4),
-                      const Text('Confirmado', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                      IconButton(
-                        icon: const Icon(Icons.edit, size: 18),
-                        onPressed: () => portalService.updateAttendance(event.id, user.id, 'pending'),
-                      )
-                    ] else if (status == 'absent') ...[
-                      const Icon(Icons.cancel, color: Colors.red),
-                      const SizedBox(width: 4),
-                      const Text('Ausente', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                      IconButton(
-                        icon: const Icon(Icons.edit, size: 18),
-                        onPressed: () => portalService.updateAttendance(event.id, user.id, 'pending'),
-                      )
-                    ] else ...[
-                      const Icon(Icons.info, color: Colors.orange),
-                      const SizedBox(width: 4),
-                      const Text('Justificado', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                    ]
-                  ],
-                );
-              },
-            ),
-
-            if (user.role == 'admin' || user.role == 'staff') ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => PortalEventAttendanceScreen(event: event)),
-                    );
-                  },
-                  icon: const Icon(Icons.checklist),
-                  label: const Text('LISTA DE CHAMADA'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
-                    foregroundColor: Colors.white,
+                      
+                      if (status == 'pending')
+                        Row(
+                          children: [
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                minimumSize: const Size(0, 30),
+                                foregroundColor: Colors.red,
+                              ),
+                              onPressed: () => portalService.updateAttendance(event.id, user.id, 'absent'),
+                              child: const Text('NÃO IREI', style: TextStyle(fontSize: 12)),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                minimumSize: const Size(0, 30),
+                                backgroundColor: Colors.green,
+                              ),
+                              onPressed: () => portalService.updateAttendance(event.id, user.id, 'confirmed'),
+                              child: const Text('IREI', style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        )
+                      else
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.edit, size: 16, color: Colors.blue),
+                          onPressed: () => portalService.updateAttendance(event.id, user.id, 'pending'),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              
+              if (user.role == 'admin' || user.role == 'staff') ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: 36,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => PortalEventAttendanceScreen(event: event)),
+                      );
+                    },
+                    icon: const Icon(Icons.checklist, size: 16),
+                    label: const Text('Lista de Chamada', style: TextStyle(fontSize: 12)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.indigo,
+                      side: const BorderSide(color: Colors.indigo),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
                 ),
-              ),
-            ]
+              ]
+            ],
           ],
         ),
       ),

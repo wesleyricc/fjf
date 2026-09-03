@@ -8,6 +8,7 @@ import '../../models/player_model.dart';
 import '../../models/team_model.dart';
 import '../../widgets/main_bottom_nav_bar.dart';
 import '../../services/championship_service.dart';
+import '../../widgets/sponsor_banner_rotator.dart';
 import '../../services/auth_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../viewmodels/suspension_viewmodel.dart';
@@ -135,8 +136,34 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
         ]
       ),
 
-      body: Consumer<SuspensionViewModel>(
-        builder: (context, vm, _) {
+      body: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                children: [
+                  const SponsorBannerRotator(location: 'header_suspensions'),
+                  Positioned(
+                    top: 0, right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(4))),
+                      child: const Text("Patrocinador", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Consumer<SuspensionViewModel>(
+              builder: (context, vm, _) {
           if (vm.isLoading && vm.suspensions.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -188,6 +215,9 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
             ),
           );
         },
+      ),
+      ),
+      ],
       ),
       bottomNavigationBar: const MainBottomNavBar(currentRoute: '/suspension-history'),
     );

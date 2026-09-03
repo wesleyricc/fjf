@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/portal_auth_service.dart';
+import '../../theme/app_theme.dart';
 import 'portal_dashboard_screen.dart';
 
 class PortalLoginScreen extends StatefulWidget {
@@ -56,10 +57,14 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
     final authService = Provider.of<PortalAuthService>(context);
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: AppTheme.brazilGradient,
+          ),
+        ),
         title: const Text('Portal FJF', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Center(
@@ -77,7 +82,7 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.security, size: 60, color: Colors.black87),
+                      const Icon(Icons.security, size: 60, color: AppTheme.primaryColor),
                       const SizedBox(height: 16),
                       const Text(
                         'Acesso Restrito',
@@ -133,7 +138,7 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
                         child: ElevatedButton(
                           onPressed: authService.isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
+                            backgroundColor: AppTheme.primaryColor,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),

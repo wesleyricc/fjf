@@ -70,6 +70,16 @@ class FantasyDashboard extends StatelessWidget {
                               Colors.amber[800]!)),
                     ]),
                     const SizedBox(height: 24),
+                    
+                    if (vm.lastRoundNumber != null) ...[
+                      const Text("Desempenho (Rodada Anterior)",
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      _buildPerformanceCard(context, vm),
+                      const SizedBox(height: 24),
+                    ],
+
                     Text(
                         vm.isMarketOpen
                             ? "Última Performance"
@@ -450,5 +460,72 @@ class FantasyDashboard extends StatelessWidget {
             ),
           )
         ]));
+  }
+
+  Widget _buildPerformanceCard(BuildContext context, FantasyHomeViewModel vm) {
+    final points = vm.lastRoundPoints ?? 0.0;
+    final app = vm.lastRoundAppreciation ?? 0.0;
+    final isAppPositive = app >= 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          // Pontuação
+          Column(
+            children: [
+              const Text("Pontuação", style: TextStyle(fontSize: 14, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(points.toStringAsFixed(2), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 2),
+                  const Text("pts", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                ],
+              ),
+            ],
+          ),
+          
+          // Divisor
+          Container(height: 40, width: 1, color: Colors.grey[300]),
+
+          // Valorização
+          Column(
+            children: [
+              const Text("Valorização", style: TextStyle(fontSize: 14, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Icon(
+                    isAppPositive ? Icons.trending_up : Icons.trending_down,
+                    color: isAppPositive ? Colors.green : Colors.red,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    "C\$ ${app.abs().toStringAsFixed(2)}",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isAppPositive ? Colors.green : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

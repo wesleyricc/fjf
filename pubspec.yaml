@@ -72,6 +72,7 @@ dependencies:
   flutter_native_splash: ^2.4.7
   firebase_database: ^12.4.2
   shimmer: ^3.0.0
+  pointer_interceptor: ^0.10.1+2
 
 dev_dependencies:
   flutter_test:

@@ -180,20 +180,53 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
 
     return RefreshIndicator(
       onRefresh: () => service.fetchStaticData(forceRefresh: true),
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2, 
-          crossAxisSpacing: 16, 
-          mainAxisSpacing: 16, 
-          childAspectRatio: 0.85 
-        ),
-        itemCount: teams.length,
-        itemBuilder: (context, index) {
-          final team = teams[index];
-          return _buildTeamGridCard(context, team, seasonId, isAdmin);
-        },
+        slivers: [
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  children: [
+                    const SponsorBannerRotator(location: 'header_teams'),
+                    Positioned(
+                      top: 0, right: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(4))),
+                        child: const Text("Patrocinador", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 80),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2, 
+                crossAxisSpacing: 16, 
+                mainAxisSpacing: 16, 
+                childAspectRatio: 0.85 
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final team = teams[index];
+                  return _buildTeamGridCard(context, team, seasonId, isAdmin);
+                },
+                childCount: teams.length,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -66,12 +66,49 @@ class Player {
   factory Player.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
 
+    return Player.fromMap({...data, 'id': doc.id});
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'jersey_number': jerseyNumber,
+      'position': position,
+      'date_of_birth': dateOfBirth != null ? Timestamp.fromDate(dateOfBirth!) : null,
+      'height_cm': heightCm,
+      'weight_kg': weightKg,
+      'preferred_foot': preferredFoot,
+      'photo_url': photoUrl,
+      'team_id': teamId,
+      'team_name': teamName,
+      'team_shield_url': teamShieldUrl,
+      'is_staff': isStaff,
+      'staff_role': staffRole,
+      'is_goalkeeper': isGoalkeeper,
+      'isActive': isActive,
+      'is_suspended': isSuspended,
+      'goals': goals,
+      'assists': assists,
+      'yellow_cards': yellowCards,
+      'red_cards': redCards,
+      'total_yellow_cards': totalYellowCards,
+      'total_red_cards': totalRedCards,
+      'goals_conceded': goalsConceded,
+      'man_of_the_match_awards': motmAwards,
+      'matches_played': matchesPlayed,
+    };
+  }
+
+  factory Player.fromMap(Map<String, dynamic> data) {
     return Player(
-      id: doc.id,
+      id: data['id'] ?? '',
       name: data['name'] ?? 'Sem Nome',
       jerseyNumber: data['jersey_number'],
       position: data['position'],
-      dateOfBirth: (data['date_of_birth'] as Timestamp?)?.toDate(),
+      dateOfBirth: data['date_of_birth'] != null 
+          ? (data['date_of_birth'] is Timestamp ? (data['date_of_birth'] as Timestamp).toDate() : null) 
+          : null,
       heightCm: (data['height_cm'] as num?)?.toInt(),
       weightKg: (data['weight_kg'] as num?)?.toInt(),
       preferredFoot: data['preferred_foot'],

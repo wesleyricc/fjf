@@ -5,32 +5,57 @@ import '../../services/portal_service.dart';
 import 'package:intl/intl.dart';
 import 'portal_admin_modals.dart';
 import '../../theme/app_theme.dart';
+import 'portal_admin_teams_tab.dart';
+import '../../services/championship_service.dart';
+import '../../models/team_model.dart';
+import 'portal_tactical_tab.dart';
+import '../../models/team_model.dart';
 
 class PortalAdminTab extends StatelessWidget {
-  const PortalAdminTab({super.key});
+  final bool isPresident;
+  final String? teamId;
+
+  const PortalAdminTab({
+    super.key,
+    this.isPresident = false,
+    this.teamId,
+  });
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: isPresident ? 4 : 5,
       child: Column(
         children: [
-          const TabBar(
+          TabBar(
             labelColor: AppTheme.primaryColor,
             indicatorColor: AppTheme.primaryColor,
             unselectedLabelColor: Colors.grey,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
-              Tab(text: 'Dashboard'),
-              Tab(text: 'Membros'),
-              Tab(text: 'Financeiro (Geral)'),
+              const Tab(text: 'Dashboard'),
+              if (!isPresident) const Tab(text: 'Equipes'),
+              const Tab(text: 'Membros'),
+              Tab(text: isPresident ? 'Financeiro' : 'Financeiro (Geral)'),
+              const Tab(text: 'Tática'),
             ],
           ),
           Expanded(
             child: TabBarView(
+              physics: const NeverScrollableScrollPhysics(),
               children: [
                 _buildDashboard(context),
-                const _MembersTab(),
-                const _FinancialTab(),
+                if (!isPresident) const PortalAdminTeamsTab(),
+                _MembersTab(
+                    teamId: isPresident ? teamId : null,
+                    isPresident: isPresident),
+                _FinancialTab(
+                    teamId: isPresident ? teamId : null,
+                    isPresident: isPresident),
+                PortalTacticalTab(
+                    teamId: isPresident ? teamId : null,
+                    isPresident: isPresident),
               ],
             ),
           )
@@ -43,10 +68,11 @@ class PortalAdminTab extends StatelessWidget {
     final portalService = Provider.of<PortalService>(context, listen: false);
 
     return StreamBuilder<List<PortalUser>>(
-      stream: portalService.streamAllUsers(),
+      stream: portalService.streamAllUsers(teamId: isPresident ? teamId : null),
       builder: (context, userSnapshot) {
         return StreamBuilder<List<PortalFinancialDue>>(
-          stream: portalService.streamAllDues(),
+          stream:
+              portalService.streamAllDues(teamId: isPresident ? teamId : null),
           builder: (context, dueSnapshot) {
             if (userSnapshot.hasError || dueSnapshot.hasError) {
               return const Center(
@@ -209,7 +235,10 @@ class PortalAdminTab extends StatelessWidget {
 }
 
 class _MembersTab extends StatefulWidget {
-  const _MembersTab();
+  final String? teamId;
+  final bool isPresident;
+
+  const _MembersTab({this.teamId, this.isPresident = false});
 
   @override
   State<_MembersTab> createState() => _MembersTabState();
@@ -222,8 +251,53 @@ class _MembersTabState extends State<_MembersTab> {
   Widget build(BuildContext context) {
     final portalService = Provider.of<PortalService>(context, listen: false);
 
+    String formatRole(String role) {
+      switch (role.toLowerCase()) {
+        case 'admin':
+          return 'Admin';
+        case 'president':
+          return 'Presidente';
+        case 'athlete':
+          return 'Atleta';
+        case 'staff':
+          return 'Staff';
+        default:
+          if (role.isEmpty) return '';
+          return role[0].toUpperCase() + role.substring(1).toLowerCase();
+      }
+    }
+
+    Color getRoleColor(String role) {
+      switch (role.toLowerCase()) {
+        case 'admin':
+          return Colors.red.shade100;
+        case 'president':
+          return Colors.blue.shade100;
+        case 'staff':
+          return Colors.orange.shade100;
+        case 'athlete':
+        default:
+          return Colors.green.shade100;
+      }
+    }
+    
+    Color getRoleTextColor(String role) {
+      switch (role.toLowerCase()) {
+        case 'admin':
+          return Colors.red.shade900;
+        case 'president':
+          return Colors.blue.shade900;
+        case 'staff':
+          return Colors.orange.shade900;
+        case 'athlete':
+        default:
+          return Colors.green.shade900;
+      }
+    }
+
     return StreamBuilder<List<PortalUser>>(
-      stream: portalService.streamAllUsers(),
+      stream: portalService.streamAllUsers(
+          teamId: widget.isPresident ? widget.teamId : null),
       builder: (context, snapshot) {
         if (snapshot.hasError)
           return Center(
@@ -239,9 +313,11 @@ class _MembersTabState extends State<_MembersTab> {
           final nameStr = u.name.toLowerCase();
           final usernameStr = u.username.toLowerCase();
           final teamStr = (u.teamId ?? '').toLowerCase();
-          
+
           for (var term in terms) {
-            if (!(nameStr.contains(term) || usernameStr.contains(term) || teamStr.contains(term))) {
+            if (!(nameStr.contains(term) ||
+                usernameStr.contains(term) ||
+                teamStr.contains(term))) {
               return false;
             }
           }
@@ -264,22 +340,24 @@ class _MembersTabState extends State<_MembersTab> {
                 onChanged: (val) => setState(() => _searchQuery = val),
               ),
             ),
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () =>
-                      PortalAdminModals.showCreateUserModal(context),
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('Novo Membro / Acesso'),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white),
+            if (!widget.isPresident)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => PortalAdminModals.showCreateUserModal(
+                        context,
+                        lockedTeamId: widget.teamId),
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Novo Membro / Acesso'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        foregroundColor: Colors.white),
+                  ),
                 ),
               ),
-            ),
             Expanded(
               child: ListView.builder(
                 itemCount: filteredUsers.length,
@@ -294,38 +372,52 @@ class _MembersTabState extends State<_MembersTab> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Chip(label: Text(u.role.toUpperCase())),
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () =>
-                              PortalAdminModals.showEditUserModal(context, u),
+                        Chip(
+                          label: Text(
+                            formatRole(u.role),
+                            style: TextStyle(
+                              color: getRoleTextColor(u.role),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          backgroundColor: getRoleColor(u.role),
+                          side: BorderSide.none,
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Excluir Membro'),
-                                content: const Text(
-                                    'Tem certeza que deseja excluir o acesso deste membro?'),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(ctx, false),
-                                      child: const Text('Cancelar')),
-                                  TextButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      child: const Text('Excluir',
-                                          style: TextStyle(color: Colors.red))),
-                                ],
-                              ),
-                            );
-                            if (confirm == true) {
-                              await portalService.deleteUser(u.id);
-                            }
-                          },
-                        ),
+                        if (!widget.isPresident) ...[
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () =>
+                                PortalAdminModals.showEditUserModal(context, u),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Excluir Membro'),
+                                  content: const Text(
+                                      'Tem certeza que deseja excluir o acesso deste membro?'),
+                                  actions: [
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        child: const Text('Cancelar')),
+                                    TextButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('Excluir',
+                                            style: TextStyle(color: Colors.red))),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await portalService.deleteUser(u.id);
+                              }
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   );
@@ -340,7 +432,10 @@ class _MembersTabState extends State<_MembersTab> {
 }
 
 class _FinancialTab extends StatefulWidget {
-  const _FinancialTab();
+  final String? teamId;
+  final bool isPresident;
+
+  const _FinancialTab({this.teamId, this.isPresident = false});
 
   @override
   State<_FinancialTab> createState() => _FinancialTabState();
@@ -348,13 +443,18 @@ class _FinancialTab extends StatefulWidget {
 
 class _FinancialTabState extends State<_FinancialTab> {
   String _searchQuery = '';
+  String? _selectedTeamId;
 
   @override
   Widget build(BuildContext context) {
     final portalService = Provider.of<PortalService>(context, listen: false);
+    final champService = Provider.of<ChampionshipService>(context, listen: false);
+    final List<Team> teams = champService.teams;
+    final Map<String, String> teamNames = { for (var t in teams) t.id: t.name };
 
     return StreamBuilder<List<PortalFinancialDue>>(
-      stream: portalService.streamAllDues(),
+      stream: portalService.streamAllDues(
+          teamId: widget.isPresident ? widget.teamId : null),
       builder: (context, snapshot) {
         if (snapshot.hasError)
           return Center(
@@ -366,14 +466,17 @@ class _FinancialTabState extends State<_FinancialTab> {
         final allDues = snapshot.data!;
 
         final filteredDues = allDues.where((d) {
+          if (_selectedTeamId != null && _selectedTeamId != 'all' && d.teamId != _selectedTeamId) return false;
           if (_searchQuery.isEmpty) return true;
           final terms = _searchQuery.toLowerCase().trim().split(RegExp(r'\s+'));
           final titleStr = d.title.toLowerCase();
           final userStr = (d.userName ?? d.userId).toLowerCase();
           final teamStr = (d.teamId ?? '').toLowerCase();
-          
+
           for (var term in terms) {
-            if (!(titleStr.contains(term) || userStr.contains(term) || teamStr.contains(term))) {
+            if (!(titleStr.contains(term) ||
+                userStr.contains(term) ||
+                teamStr.contains(term))) {
               return false;
             }
           }
@@ -388,20 +491,59 @@ class _FinancialTabState extends State<_FinancialTab> {
 
         final currency = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
+        // Agrupar por atleta
+        final Map<String, List<PortalFinancialDue>> groupedDues = {};
+        for (var due in filteredDues) {
+          final key = due.userId;
+          if (!groupedDues.containsKey(key)) {
+            groupedDues[key] = [];
+          }
+          groupedDues[key]!.add(due);
+        }
+
+        final usersList = groupedDues.keys.toList();
+        usersList.sort((a, b) {
+            final nameA = groupedDues[a]!.first.userName ?? a;
+            final nameB = groupedDues[b]!.first.userName ?? b;
+            return nameA.toLowerCase().compareTo(nameB.toLowerCase());
+        });
+
         return Column(
           children: [
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: TextField(
-                decoration: InputDecoration(
-                  labelText: 'Filtrar por atleta, equipe ou título',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                ),
-                onChanged: (val) => setState(() => _searchQuery = val),
+              child: Column(
+                children: [
+                  TextField(
+                    decoration: InputDecoration(
+                      labelText: 'Filtrar por atleta, equipe ou título',
+                      prefixIcon: const Icon(Icons.search),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                    ),
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                  ),
+                  if (!widget.isPresident) ...[
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      decoration: InputDecoration(
+                        labelText: 'Filtrar por Equipe',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                      ),
+                      value: _selectedTeamId ?? 'all',
+                      items: [
+                        const DropdownMenuItem(value: 'all', child: Text('Todas as Equipes')),
+                        ...teams.map((t) => DropdownMenuItem(value: t.id, child: Text(t.name))),
+                      ],
+                      onChanged: (val) => setState(() => _selectedTeamId = val),
+                    ),
+                  ],
+                ],
               ),
             ),
             Container(
@@ -417,75 +559,114 @@ class _FinancialTabState extends State<_FinancialTab> {
                 ],
               ),
             ),
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () =>
-                      PortalAdminModals.showCreateDueModal(context),
-                  icon: const Icon(Icons.add_card),
-                  label: const Text('Lançar Débito / Cobrança'),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white),
+            if (!widget.isPresident)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => PortalAdminModals.showCreateDueModal(context,
+                        lockedTeamId: widget.teamId),
+                    icon: const Icon(Icons.add_card),
+                    label: const Text('Lançar Débito / Cobrança'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        foregroundColor: Colors.white),
+                  ),
                 ),
               ),
-            ),
             Expanded(
               child: ListView.builder(
-                itemCount: filteredDues.length,
+                itemCount: usersList.length,
                 itemBuilder: (ctx, i) {
-                  final due = filteredDues[i];
-                  final isPaid = due.status == 'paid';
-                  final isUnderReview = due.status == 'under_review';
-                  return ListTile(
-                    leading: Icon(
-                      isPaid ? Icons.check_circle : (isUnderReview ? Icons.hourglass_empty : Icons.warning_amber),
-                      color: isPaid ? Colors.green : (isUnderReview ? Colors.blue : Colors.orange),
-                    ),
-                    title: Text(
-                        '${due.title} (Atleta: ${due.userName ?? due.userId.substring(0, 5) + "..."})'),
-                    subtitle: Text('Time: ${due.teamId ?? "Geral"}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(currency.format(due.amount),
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16)),
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () =>
-                              PortalAdminModals.showEditDueModal(context, due),
+                  final userId = usersList[i];
+                  final userDues = groupedDues[userId]!;
+                  final userName = userDues.first.userName ?? userId.substring(0, 5) + "...";
+                  final teamNameStr = teamNames[userDues.first.teamId] ?? userDues.first.teamId ?? 'Geral';
+                  
+                  final pendingCount = userDues.where((d) => d.status != 'paid').length;
+                  final totalUserPending = userDues.where((d) => d.status != 'paid').fold(0.0, (sum, d) => sum + d.amount);
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                    child: ExpansionTile(
+                      leading: CircleAvatar(
+                        backgroundColor: pendingCount > 0 ? Colors.orange : Colors.green,
+                        child: Icon(pendingCount > 0 ? Icons.warning_amber : Icons.check, color: Colors.white),
+                      ),
+                      title: Text(
+                        widget.isPresident ? userName : '$userName ($teamNameStr)', 
+                        style: const TextStyle(fontWeight: FontWeight.bold)
+                      ),
+                      subtitle: Text(
+                        pendingCount > 0 
+                          ? '$pendingCount pendência(s) - ${currency.format(totalUserPending)}'
+                          : 'Nenhuma pendência',
+                        style: TextStyle(
+                          color: pendingCount > 0 ? Colors.red : Colors.green,
+                          fontWeight: pendingCount > 0 ? FontWeight.bold : FontWeight.normal
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Excluir Débito'),
-                                content: const Text(
-                                    'Tem certeza que deseja excluir este débito?'),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(ctx, false),
-                                      child: const Text('Cancelar')),
-                                  TextButton(
-                                      onPressed: () => Navigator.pop(ctx, true),
-                                      child: const Text('Excluir',
-                                          style: TextStyle(color: Colors.red))),
-                                ],
-                              ),
-                            );
-                            if (confirm == true) {
-                              await portalService.deleteDue(due.id);
-                            }
-                          },
-                        ),
-                      ],
+                      ),
+                      children: userDues.map((due) {
+                        final isPaid = due.status == 'paid';
+                        final isUnderReview = due.status == 'under_review';
+                        return ListTile(
+                          leading: Icon(
+                            isPaid
+                                ? Icons.check_circle
+                                : (isUnderReview
+                                    ? Icons.hourglass_empty
+                                    : Icons.warning_amber),
+                            color: isPaid
+                                ? Colors.green
+                                : (isUnderReview ? Colors.blue : Colors.orange),
+                          ),
+                          title: Text(due.title),
+                          subtitle: Text('Vencimento: ${DateFormat('dd/MM/yyyy').format(due.dueDate)}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(currency.format(due.amount),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold, fontSize: 16)),
+                              if (!widget.isPresident) ...[
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () =>
+                                      PortalAdminModals.showEditDueModal(context, due),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Excluir Débito'),
+                                        content: const Text(
+                                            'Tem certeza que deseja excluir este débito?'),
+                                        actions: [
+                                          TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: const Text('Cancelar')),
+                                          TextButton(
+                                              onPressed: () => Navigator.pop(ctx, true),
+                                              child: const Text('Excluir',
+                                                  style: TextStyle(color: Colors.red))),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      await portalService.deleteDue(due.id);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }).toList(),
                     ),
                   );
                 },

@@ -302,25 +302,34 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
       decoration: BoxDecoration(
         color: Colors.white, 
         borderRadius: BorderRadius.circular(8), 
-        border: Border.all(color: Colors.amber.shade300, width: 2), 
+        border: Border.all(color: Colors.grey.shade300, width: 1), 
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(7),
         child: Stack(
           fit: StackFit.expand,
           children: [
             SponsorBannerRotator(
               location: 'news_feed', 
               isStatic: false,
+              fit: BoxFit.contain, // Garante que a imagem não seja cortada
               onCycleComplete: onCycleComplete,
             ),
             Positioned(
-              top: 6, right: 6,
+              top: 0, right: 0,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
-                child: const Text("Publicidade", style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFC5A814), Color(0xFFE8CA3B)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(bottomLeft: Radius.circular(8)),
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(-1, 2))],
+                ),
+                child: const Text("PATROCINADO", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
               ),
             ),
           ],

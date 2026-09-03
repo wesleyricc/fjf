@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/portal_auth_service.dart';
 import '../../services/portal_service.dart';
 import '../../models/portal_models.dart';
+import '../../models/player_model.dart';
 import '../../theme/app_theme.dart';
+import '../../services/championship_service.dart';
 
 class PortalHomeTab extends StatelessWidget {
   final Function(int index) onNavigate;
@@ -14,6 +17,7 @@ class PortalHomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<PortalAuthService>(context);
+    final champService = Provider.of<ChampionshipService>(context, listen: false);
     final user = authService.currentPortalUser;
 
     if (user == null) {
@@ -27,24 +31,14 @@ class PortalHomeTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Olá, ${user.name.split(' ').first} 👋',
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.secondaryColor),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Aqui está o resumo da sua situação no clube.',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-          ),
+          _buildPlayerHeader(context, user, champService.currentSeasonId),
           const SizedBox(height: 24),
-          
-          _buildFinancialSummaryCard(context, user),
-          const SizedBox(height: 16),
-          
-          _buildAgendaSummaryCard(context, user),
-          const SizedBox(height: 16),
-          
-          _buildProfileSummaryCard(context, user),
+          const Text(
+            'Painel de Controle',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.secondaryColor),
+          ),
+          const SizedBox(height: 12),
+          _buildUnifiedDashboardCard(context, user),
 
           if (isAdmin) ...[
             const SizedBox(height: 24),
@@ -54,8 +48,11 @@ class PortalHomeTab extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Card(
-              elevation: 3,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.blue.withOpacity(0.2)),
+              ),
               child: ListTile(
                 leading: Container(
                   padding: const EdgeInsets.all(8),
@@ -74,226 +71,366 @@ class PortalHomeTab extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileSummaryCard(BuildContext context, PortalUser user) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const CircleAvatar(
-                  radius: 24,
-                  backgroundColor: AppTheme.primaryColor,
-                  child: Icon(Icons.person, color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text(user.username, style: const TextStyle(color: Colors.grey)),
-                    ],
+  Widget _buildPlayerHeader(BuildContext context, PortalUser user, String seasonId) {
+    if (user.playerId == null || user.playerId!.isEmpty) {
+      return _buildFallbackHeader(user);
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('player_stats').doc(user.playerId).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        final playerDoc = snapshot.data!;
+        if (!playerDoc.exists) return _buildFallbackHeader(user);
+        
+        final player = Player.fromFirestore(playerDoc);
+
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(color: AppTheme.primaryColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 36,
+                    backgroundColor: Colors.white,
+                    backgroundImage: player.photoUrl.isNotEmpty ? NetworkImage(player.photoUrl) : null,
+                    child: player.photoUrl.isEmpty ? const Icon(Icons.person, size: 36, color: Colors.grey) : null,
                   ),
-                ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          player.name,
+                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            if (player.teamShieldUrl.isNotEmpty) ...[
+                              Image.network(player.teamShieldUrl, width: 20, height: 20, errorBuilder: (context, error, stackTrace) => const Icon(Icons.shield, size: 20, color: Colors.white)),
+                              const SizedBox(width: 6),
+                            ],
+                            Expanded(
+                              child: Text(
+                                player.teamName.isNotEmpty ? player.teamName : 'Sem Clube',
+                                style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          player.position ?? 'Posição Indefinida',
+                          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.white),
+                    tooltip: 'Editar Biometria',
+                    onPressed: () => _showEditBiometricsModal(context, seasonId, player),
+                  )
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildStatColumn('Peso', player.weightKg != null ? '${player.weightKg} kg' : '--'),
+                  _buildStatColumn('Altura', player.heightCm != null ? '${player.heightCm} cm' : '--'),
+                  _buildStatColumn('Pé', player.preferredFoot ?? '--'),
+                ],
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatColumn(String label, String value) {
+    return Column(
+      children: [
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
+      ],
+    );
+  }
+
+  Widget _buildFallbackHeader(PortalUser user) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(radius: 30, child: Icon(Icons.person, size: 30)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(user.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(user.username, style: const TextStyle(color: Colors.grey)),
               ],
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => onNavigate(1), // Aba Perfil
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primaryColor,
-                  side: const BorderSide(color: AppTheme.primaryColor),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text('Ver Perfil Completo'),
-              ),
-            ),
-          ],
-        ),
+          )
+        ],
       ),
     );
   }
 
-  Widget _buildAgendaSummaryCard(BuildContext context, PortalUser user) {
-    final portalService = Provider.of<PortalService>(context, listen: false);
+  void _showEditBiometricsModal(BuildContext context, String seasonId, Player player) {
+    final heightCtrl = TextEditingController(text: player.heightCm?.toString() ?? '');
+    final weightCtrl = TextEditingController(text: player.weightKg?.toString() ?? '');
+    String? preferredFoot = player.preferredFoot;
+    final List<String> footOptions = ['Destro', 'Canhoto', 'Ambidestro'];
+    
+    // Garantir que a opção existe na lista, se não, resetar
+    if (preferredFoot != null && !footOptions.contains(preferredFoot)) {
+      preferredFoot = null;
+    }
 
-    return StreamBuilder<List<PortalEvent>>(
-      stream: portalService.streamUpcomingEvents(teamId: user.teamId, userRole: user.role),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())));
-        }
-
-        final events = snapshot.data ?? [];
-        final nextEvent = events.isNotEmpty ? events.first : null;
-
-        return Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: const [
-                        Icon(Icons.calendar_month, color: AppTheme.secondaryColor),
-                        SizedBox(width: 8),
-                        Text('Próximo Evento', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      ],
-                    ),
-                    if (nextEvent != null)
-                      TextButton(
-                        onPressed: () => onNavigate(2), // Aba Agenda
-                        child: const Text('Ver Agenda'),
-                      )
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (nextEvent == null)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                    child: const Text('Sua agenda está livre! Não há próximos eventos marcados.', style: TextStyle(color: Colors.grey)),
-                  )
-                else
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: AppTheme.primaryColor.withOpacity(0.05), borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3))),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(nextEvent.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.primaryColor)),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.access_time, size: 14, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Text(DateFormat('dd/MM/yyyy HH:mm').format(nextEvent.date), style: const TextStyle(color: Colors.black87, fontSize: 13)),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Expanded(child: Text(nextEvent.location, style: const TextStyle(color: Colors.black87, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                          ],
-                        ),
-                      ],
-                    ),
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Editar Dados Físicos'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: weightCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Peso (kg)', border: OutlineInputBorder()),
                   ),
-                if (nextEvent == null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: TextButton(onPressed: () => onNavigate(2), child: const Text('Abrir Agenda Completa')),
-                    ),
-                  )
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: heightCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Altura (cm)', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: preferredFoot,
+                    decoration: const InputDecoration(labelText: 'Pé Preferido', border: OutlineInputBorder()),
+                    items: footOptions.map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
+                    onChanged: (val) => setState(() => preferredFoot = val),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                FilledButton(
+                  onPressed: () async {
+                    final w = int.tryParse(weightCtrl.text);
+                    final h = int.tryParse(heightCtrl.text);
+                    await FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('player_stats').doc(player.id).update({
+                      if (w != null) 'weight_kg': w,
+                      if (h != null) 'height_cm': h,
+                      if (preferredFoot != null) 'preferred_foot': preferredFoot,
+                    });
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                  child: const Text('Salvar'),
+                )
               ],
-            ),
-          ),
+            );
+          }
         );
-      },
+      }
     );
   }
 
-  Widget _buildFinancialSummaryCard(BuildContext context, PortalUser user) {
+  Widget _buildUnifiedDashboardCard(BuildContext context, PortalUser user) {
     final portalService = Provider.of<PortalService>(context, listen: false);
+    final champService = Provider.of<ChampionshipService>(context, listen: true);
 
-    return StreamBuilder<List<PortalFinancialDue>>(
-      stream: portalService.streamMyDues(user.id),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Card(child: Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())));
-        }
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          // Seção Agenda
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: StreamBuilder<List<PortalEvent>>(
+              stream: portalService.streamUpcomingEvents(teamId: user.teamId, userRole: user.role),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-        final dues = snapshot.data ?? [];
-        final now = DateTime.now();
-        final startOfToday = DateTime(now.year, now.month, now.day);
-        
-        final pendingDues = dues.where((d) => d.status != 'paid').toList();
-        final overdueDues = pendingDues.where((d) => d.dueDate.isBefore(startOfToday) && d.status != 'under_review').toList();
-        
-        final bool isApto = overdueDues.isEmpty;
-        final int openCount = pendingDues.length;
+                List<PortalEvent> events = List.from(snapshot.data ?? []);
+                
+                if (user.teamId != null) {
+                  final now = DateTime.now();
+                  final matches = champService.matches.where((m) => 
+                    (m.homeTeamId == user.teamId || m.awayTeamId == user.teamId) && 
+                    m.datetime != null && m.datetime!.isAfter(now)
+                  );
+                  for (var m in matches) {
+                    events.add(PortalEvent(
+                      id: m.id, title: 'Jogo: ${m.homeTeamName} x ${m.awayTeamName}',
+                      date: m.datetime!, location: m.location,
+                      description: 'Rodada ${m.round} - ${m.phase}', teamId: user.teamId,
+                      targetRole: 'all', isMatch: true,
+                    ));
+                  }
+                }
+                
+                events.sort((a, b) => a.date.compareTo(b.date));
+                final nextEvent = events.isNotEmpty ? events.first : null;
 
-        return InkWell(
-          onTap: () => onNavigate(3), // Aba Financeiro
-          borderRadius: BorderRadius.circular(12),
-          child: Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: isApto ? Colors.green : Colors.red, width: 1.5)
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: const [
+                            Icon(Icons.calendar_month, color: AppTheme.secondaryColor, size: 20),
+                            SizedBox(width: 8),
+                            Text('Próximo Compromisso', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          ],
+                        ),
+                        InkWell(
+                          onTap: () => onNavigate(1), // Aba Agenda (era 2)
+                          child: const Text('Ver Agenda', style: TextStyle(color: AppTheme.primaryColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (nextEvent == null)
+                      const Text('Nenhum evento agendado.', style: TextStyle(color: Colors.grey))
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: AppTheme.primaryColor.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                              child: Column(
+                                children: [
+                                  Text(DateFormat('MMM').format(nextEvent.date).toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+                                  Text(DateFormat('dd').format(nextEvent.date), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(nextEvent.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.access_time, size: 12, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Text(DateFormat('HH:mm').format(nextEvent.date), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.location_on, size: 12, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Expanded(child: Text(nextEvent.location, style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                    ],
+                                  )
+                                ],
+                              ),
+                            )
+                          ],
+                        ),
+                      )
+                  ],
+                );
+              }
             ),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  colors: isApto 
-                    ? [Colors.green.shade50, Colors.white] 
-                    : [Colors.red.shade50, Colors.white],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              ),
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+          ),
+          
+          Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
+          
+          // Seção Financeiro
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: StreamBuilder<List<PortalFinancialDue>>(
+              stream: portalService.streamMyDues(user.id),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final dues = snapshot.data ?? [];
+                final now = DateTime.now();
+                final startOfToday = DateTime(now.year, now.month, now.day);
+                
+                final pendingDues = dues.where((d) => d.status != 'paid').toList();
+                final overdueDues = pendingDues.where((d) => d.dueDate.isBefore(startOfToday) && d.status != 'under_review').toList();
+                
+                final bool isApto = overdueDues.isEmpty;
+
+                return InkWell(
+                  onTap: () => onNavigate(2), // Aba Financeiro (era 3)
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
-                        children: const [
-                          Icon(Icons.account_balance_wallet, color: Colors.black87),
-                          SizedBox(width: 8),
-                          Text('Situação Financeira', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(color: isApto ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1), shape: BoxShape.circle),
+                            child: Icon(Icons.account_balance_wallet, color: isApto ? Colors.green : Colors.red, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Situação Financeira', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              Text(isApto ? 'Em dia' : '${pendingDues.length} pendências', style: TextStyle(color: isApto ? Colors.green : Colors.red, fontSize: 13)),
+                            ],
+                          )
                         ],
                       ),
-                      Icon(isApto ? Icons.check_circle : Icons.warning, color: isApto ? Colors.green : Colors.red),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(color: isApto ? Colors.green : Colors.red, borderRadius: BorderRadius.circular(12)),
+                        child: Text(isApto ? 'APTO' : 'INAPTO', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      )
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    isApto ? 'APTO PARA JOGAR' : 'INAPTO PARA JOGAR',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isApto ? Colors.green.shade800 : Colors.red.shade800),
-                  ),
-                  const SizedBox(height: 4),
-                  if (!isApto)
-                    Text('Você possui $openCount pendência(s) em aberto.', style: TextStyle(color: Colors.red.shade900))
-                  else
-                    Text(openCount > 0 ? 'Você tem $openCount cobrança(s) a vencer.' : 'Tudo em dia! Nenhuma cobrança em aberto.', style: TextStyle(color: Colors.green.shade900)),
-                  
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text('Ver Detalhes', style: TextStyle(fontWeight: FontWeight.bold, color: isApto ? Colors.green.shade700 : Colors.red.shade700)),
-                      const SizedBox(width: 4),
-                      Icon(Icons.arrow_forward_ios, size: 14, color: isApto ? Colors.green.shade700 : Colors.red.shade700)
-                    ],
-                  )
-                ],
-              ),
+                );
+              }
             ),
-          ),
-        );
-      },
+          )
+        ],
+      ),
     );
   }
 }

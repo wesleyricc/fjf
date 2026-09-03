@@ -43,7 +43,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
         .snapshots();
   }
 
-  Future<void> _generatePix(String userId, String email) async {
+  Future<void> _generatePix(String userId, String email, String userName) async {
     setState(() => _isLoadingPix = true);
     
     // 🚨 Analytics: Iniciou o funil de compra do Bolão VIP
@@ -55,7 +55,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
     );
 
     try {
-      final result = await _bolaoService.generatePixForBolao(userId, email);
+      final result = await _bolaoService.generatePixForBolao(userId, email, userName: userName);
       setState(() {
         _pixCode = result['pix_code'];
         _isLoadingPix = false;
@@ -215,7 +215,7 @@ class _BolaoPaywallScreenState extends State<BolaoPaywallScreen> {
                         _isLoadingPix 
                             ? const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()))
                             : ElevatedButton.icon(
-                                onPressed: () => _generatePix(user.uid, user.email ?? ''),
+                                onPressed: () => _generatePix(user.uid, user.email ?? '', user.displayName ?? 'Usuário'),
                                 icon: const Icon(Icons.pix, color: Colors.tealAccent, size: 22),
                                 label: const Text("GERAR PIX PARA ENTRAR AGORA", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                                 style: ElevatedButton.styleFrom(

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/fantasy_service.dart';
+import '../../services/fantasy_auth_service.dart';
 import '../../services/championship_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../models/fantasy_models.dart';
@@ -9,6 +11,7 @@ import '../../widgets/fantasy_player_card.dart';
 import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/ui/custom_empty_state.dart';
 import '../../viewmodels/fantasy_market_viewmodel.dart';
+import '../../viewmodels/fantasy_home_viewmodel.dart';
 import '../../widgets/sponsor_banner_rotator.dart';
 
 class FantasyMarketScreen extends StatefulWidget {
@@ -317,6 +320,8 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                                         } else {
                                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saldo insuficiente."), backgroundColor: Colors.red));
                                         }
+                                      } else {
+                                        _showPlayerActionModal(context, player);
                                       }
                                     },
                                   ),
@@ -333,6 +338,122 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
         }
       ),
     );
+  }
+
+  void _showPlayerActionModal(BuildContext context, FantasyPlayer player) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FantasyPlayerCard(player: player),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text("Escalar no meu time", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    onPressed: () {
+                       Navigator.pop(ctx);
+                       _tryDirectHire(context, player);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ]
+            )
+          ),
+        );
+      }
+    );
+  }
+
+  Future<void> _tryDirectHire(BuildContext context, FantasyPlayer player) async {
+    final auth = Provider.of<FantasyAuthService>(context, listen: false);
+    final userId = auth.user?.uid;
+    if (userId == null) return;
+    
+    showDialog(
+      context: context, 
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator())
+    );
+
+    try {
+      final teamDoc = await FirebaseFirestore.instance.collection('fantasy_teams').doc(userId).get();
+      if (!teamDoc.exists) {
+        if (context.mounted) Navigator.pop(context); // close dialog
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Time não encontrado.")));
+        return;
+      }
+      
+      final team = FantasyTeam.fromFirestore(teamDoc);
+
+      final statusDoc = await FirebaseFirestore.instance.collection('fantasy_config').doc('status').get();
+      final bool isMarketOpen = statusDoc.exists ? (statusDoc.data()?['is_open'] ?? true) : true;
+
+      if (context.mounted) Navigator.pop(context); // close loading
+
+      if (!isMarketOpen) {
+         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O mercado está fechado.")));
+         return;
+      }
+
+      if (team.currentBalance < player.currentPrice) {
+         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saldo insuficiente.")));
+         return;
+      }
+      
+      if (team.lineupPlayerIds.contains(player.playerId) || team.benchPlayerIds.contains(player.playerId)) {
+         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jogador já está no seu time.")));
+         return;
+      }
+
+      // Check capacity for position
+      final fantasyService = Provider.of<FantasyService>(context, listen: false);
+      final lineupPlayers = await fantasyService.getPlayersByIds(team.lineupPlayerIds);
+      
+      int countInLineup = lineupPlayers.where((p) => p.position.toLowerCase() == player.position.toLowerCase()).length;
+      int maxLimit = 1;
+      if (player.position.toLowerCase() == 'ala') maxLimit = 2;
+      
+      if (countInLineup >= maxLimit) {
+        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Posição preenchida. Remova um ${player.position} da sua escalação primeiro."),
+          backgroundColor: Colors.orange,
+        ));
+        return;
+      }
+      
+      // Add player
+      team.lineupPlayerIds.add(player.playerId);
+      
+      await FirebaseFirestore.instance.collection('fantasy_teams').doc(team.userId).update({
+         'lineup_player_ids': team.lineupPlayerIds,
+         'current_balance': FieldValue.increment(-player.currentPrice),
+      });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${player.name} escalado com sucesso!"), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        // Just in case loading dialog is still up
+        Navigator.of(context).popUntil((route) => route.isFirst || route.settings.name == '/fantasy-market'); 
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao escalar: $e"), backgroundColor: Colors.red));
+      }
+    }
   }
 
   Widget _buildSkeletonPlayerCard() {

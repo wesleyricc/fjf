@@ -166,13 +166,14 @@ class BolaoService {
     });
   }
 
-  Future<Map<String, dynamic>> generatePixForBolao(String userId, String email) async {
+  Future<Map<String, dynamic>> generatePixForBolao(String userId, String email, {String? userName}) async {
     try {
       final callable = _functions.httpsCallable('createPixPayment');
       final response = await callable.call({
         'type': 'bolao',
         'userId': userId,
         'customerContact': email,
+        if (userName != null) 'customDescription': 'Inscrição Bolão Copa 2026 - $userName',
       });
       
       return {

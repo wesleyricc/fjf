@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
@@ -24,7 +25,7 @@ class MainBottomNavBar extends StatelessWidget {
       return;
     }
 
-    final isMainTab = ['/fixtures', '/standings', '/season-summary', '/teams'].contains(routeName);
+    final isMainTab = ['/fixtures', '/standings', '/season-summary', '/teams', '/live'].contains(routeName);
 
     if (currentRoute == '/') {
       Navigator.pushNamed(context, routeName);
@@ -37,10 +38,12 @@ class MainBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final champService = Provider.of<ChampionshipService>(context);
+    final bool isLive = champService.isLiveActive;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SponsorBannerRotator(location: 'footer_home'),
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -61,7 +64,7 @@ class MainBottomNavBar extends StatelessWidget {
                   _buildBottomNavItem(context, Icons.home, "Início", isActive: currentRoute == '/', onTap: () => _navigate(context, '/')),
                   _buildBottomNavItem(context, Icons.calendar_month, "Jogos", isActive: currentRoute == '/fixtures', onTap: () => _navigate(context, '/fixtures')),
                   _buildBottomNavItem(context, Icons.leaderboard, "Tabela", isActive: currentRoute == '/standings', onTap: () => _navigate(context, '/standings')),
-                  _buildBottomNavItem(context, Icons.emoji_events, "Resumo", isActive: currentRoute == '/season-summary', onTap: () => _navigate(context, '/season-summary')),
+                  _buildBottomNavItem(context, Icons.live_tv, "Ao Vivo", isActive: currentRoute == '/live', isLive: isLive, onTap: () => _navigate(context, '/live')),
                   _buildBottomNavItem(context, Icons.menu, "Menu", onTap: () => _showMenuBottomSheet(context)),
                 ],
               ),
@@ -72,8 +75,8 @@ class MainBottomNavBar extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNavItem(BuildContext context, IconData icon, String label, {bool isActive = false, required VoidCallback onTap}) {
-    final color = isActive ? Theme.of(context).primaryColor : Colors.grey.shade600;
+  Widget _buildBottomNavItem(BuildContext context, IconData icon, String label, {bool isActive = false, bool isLive = false, required VoidCallback onTap}) {
+    final color = isLive ? Colors.red : (isActive ? Theme.of(context).primaryColor : Colors.grey.shade600);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -84,7 +87,7 @@ class MainBottomNavBar extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 24),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+            Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: isActive || isLive ? FontWeight.bold : FontWeight.normal)),
           ],
         ),
       ),
@@ -96,12 +99,13 @@ class MainBottomNavBar extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: const BoxDecoration(
-          color: Color(0xFFF0F2F5),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
+      builder: (ctx) => PointerInterceptor(
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF0F2F5),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
         child: Column(
           children: [
             Container(
@@ -131,6 +135,7 @@ class MainBottomNavBar extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

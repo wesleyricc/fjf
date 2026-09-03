@@ -21,7 +21,6 @@ import '../../models/poll_model.dart';
 // removed app_drawer.dart
 import '../../widgets/main_bottom_nav_bar.dart';
 import '../../widgets/sponsor_banner_rotator.dart';
-import '../../widgets/home_live_video_card.dart';
 import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/home_news_feed.dart';
 import '../../widgets/home/home_teams_grid.dart';
@@ -31,6 +30,7 @@ import '../../widgets/home/home_section_header.dart';
 
 import '../bolao/mini_bolao_home_screen.dart';
 import '../championship/team_detail_screen.dart';
+
 class HomeDashboardScreen extends StatefulWidget {
   const HomeDashboardScreen({super.key});
   static const routeName = '/';
@@ -70,8 +70,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeData();
-      _checkAndShowStartupAds();
+      _initializeData().then((_) {
+        if (mounted) {
+          _checkAndShowStartupAds();
+        }
+      });
     });
 
     Future.delayed(const Duration(milliseconds: 2500), () {
@@ -248,7 +251,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       ),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +492,46 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                           ),
                         ),
                       const SizedBox(height: 10),
-                      HomeLiveVideoCard(hidePlayer: false),
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: const [
+                            BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 6,
+                                offset: Offset(0, 3))
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            children: [
+                              const SponsorBannerRotator(location: 'home_mid'),
+                              Positioned(
+                                top: 0,
+                                right: 16,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    borderRadius: const BorderRadius.vertical(
+                                        bottom: Radius.circular(4)),
+                                  ),
+                                  child: const Text("Patrocinador",
+                                      style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      //const SizedBox(height: 5),
                       Consumer<ChampionshipService>(
                         builder: (context, service, child) {
                           if (service.isLoading && !_isCacheResolved) {
@@ -507,7 +548,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       const SizedBox(height: 16),
                       const HomeNewsFeed(),
                       const SizedBox(height: 10),
-                      HomeSectionHeader(title: "Equipes Participantes", icon: Icons.groups, color: AppTheme.primaryColor),
+                      HomeSectionHeader(
+                          title: "Equipes Participantes",
+                          icon: Icons.groups,
+                          color: AppTheme.primaryColor),
                     ],
                   ),
                 ),
@@ -550,12 +594,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       ),
     );
   }
-
-  
-
-  
-
-  
 
   // Métodos de construção movidos para MainBottomNavBar
 }

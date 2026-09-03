@@ -9,6 +9,8 @@ import '../../services/championship_service.dart';
 import '../../services/team_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../models/player_model.dart';
+import '../../widgets/match_result_card.dart';
+import '../../widgets/sponsor_banner_rotator.dart';
 import '../../widgets/player_display_card.dart';
 import '../../widgets/main_bottom_nav_bar.dart';
 
@@ -298,6 +300,7 @@ class _MatchRosterScreenState extends State<MatchRosterScreen> with SingleTicker
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                const SponsorBannerRotator(location: 'header_match_roster'),
                 _buildMatchInfoCard(),
                 Container(
                   color: Theme.of(context).primaryColor.withOpacity(0.05),

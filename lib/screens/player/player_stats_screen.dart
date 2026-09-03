@@ -7,6 +7,7 @@ import '../../widgets/main_bottom_nav_bar.dart';
 import '../../widgets/generic_player_rank_list.dart';
 import '../../widgets/total_cards_rank_list.dart';
 import '../../models/player_model.dart';
+import '../../widgets/sponsor_banner_rotator.dart';
 import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/ui/custom_empty_state.dart';
 import '../../theme/app_theme.dart';
@@ -210,18 +211,47 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
             ),
           ),
 
-          body: TabBarView(
-            controller: _tabController,
+          body: Column(
             children: [
-              GenericPlayerRankList(players: scorers, statField: 'goals', statLabel: 'Gols', emptyMessage: 'Nenhum gol marcado.', emptyIcon: Icons.sports_soccer),
-              GenericPlayerRankList(players: assists, statField: 'assists', statLabel: 'Ass', emptyMessage: 'Nenhuma assistência.', emptyIcon: Icons.assistant),
-              GenericPlayerRankList(players: goalkeepers, statField: 'goals_conceded_avg', statLabel: 'GS/Jogo', emptyMessage: 'Sem dados de goleiros.', emptyIcon: Icons.pan_tool),
-              GenericPlayerRankList(players: motm, statField: 'motmAwards', statLabel: 'x', emptyMessage: 'Nenhum craque eleito.', emptyIcon: Icons.star),
-              GenericPlayerRankList(players: pending, isStatusList: true, emptyMessage: 'Ninguém pendurado.', emptyIcon: Icons.mood),
-              GenericPlayerRankList(players: suspended, isStatusList: true, isSuspendedTab: true, emptyMessage: 'Ninguém suspenso.', emptyIcon: Icons.check_circle_outline),
-              GenericPlayerRankList(players: yellows, statField: 'totalYellowCards', statLabel: 'CA', emptyMessage: 'Sem cartões.', emptyIcon: Icons.style_outlined),
-              GenericPlayerRankList(players: reds, statField: 'totalRedCards', statLabel: 'CV', emptyMessage: 'Sem cartões.', emptyIcon: Icons.style),
-              TotalCardsRankList(allPlayers: allPlayers),
+              Container(
+                margin: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    children: [
+                      const SponsorBannerRotator(location: 'header_player_stats'),
+                      Positioned(
+                        top: 0, right: 16,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(4))),
+                          child: const Text("Patrocinador", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    GenericPlayerRankList(players: scorers, statField: 'goals', statLabel: 'Gols', emptyMessage: 'Nenhum gol marcado.', emptyIcon: Icons.sports_soccer),
+                    GenericPlayerRankList(players: assists, statField: 'assists', statLabel: 'Ass', emptyMessage: 'Nenhuma assistência.', emptyIcon: Icons.assistant),
+                    GenericPlayerRankList(players: goalkeepers, statField: 'goals_conceded_avg', statLabel: 'GS/Jogo', emptyMessage: 'Sem dados de goleiros.', emptyIcon: Icons.pan_tool),
+                    GenericPlayerRankList(players: motm, statField: 'motmAwards', statLabel: 'x', emptyMessage: 'Nenhum craque eleito.', emptyIcon: Icons.star),
+                    GenericPlayerRankList(players: pending, isStatusList: true, emptyMessage: 'Ninguém pendurado.', emptyIcon: Icons.mood),
+                    GenericPlayerRankList(players: suspended, isStatusList: true, isSuspendedTab: true, emptyMessage: 'Ninguém suspenso.', emptyIcon: Icons.check_circle_outline),
+                    GenericPlayerRankList(players: yellows, statField: 'totalYellowCards', statLabel: 'CA', emptyMessage: 'Sem cartões.', emptyIcon: Icons.style_outlined),
+                    GenericPlayerRankList(players: reds, statField: 'totalRedCards', statLabel: 'CV', emptyMessage: 'Sem cartões.', emptyIcon: Icons.style),
+                    TotalCardsRankList(allPlayers: allPlayers),
+                  ],
+                ),
+              ),
             ],
           ),
           bottomNavigationBar: const MainBottomNavBar(currentRoute: '/player-stats'),

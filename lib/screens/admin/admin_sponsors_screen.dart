@@ -109,7 +109,7 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
   late TextEditingController _orderController;
   late TextEditingController _roundController; 
   
-  String _location = 'footer_home';
+  List<String> _selectedLocations = [];
   bool _isActive = true;
   bool _isSaving = false;
 
@@ -125,7 +125,13 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
     _orderController = TextEditingController(text: (data?['order'] ?? 1).toString());
     _roundController = TextEditingController(text: data?['round']?.toString() ?? '');
     
-    _location = data?['location'] ?? 'footer_home';
+    if (data != null && data['locations'] != null) {
+      _selectedLocations = List<String>.from(data['locations']);
+    } else if (data != null && data['location'] != null) {
+      _selectedLocations = [data['location']];
+    } else {
+      _selectedLocations = ['footer_home'];
+    }
     _isActive = data?['isActive'] ?? true;
   }
 
@@ -140,7 +146,8 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
         'name': _nameController.text.trim(),
         'imageUrl': _imageUrlController.text.trim(),
         'targetUrl': _targetUrlController.text.trim(),
-        'location': _location,
+        'location': _selectedLocations.isNotEmpty ? _selectedLocations.first : 'footer_home',
+        'locations': _selectedLocations,
         'displayTimeSeconds': int.tryParse(_displayTimeSecondsController.text) ?? 5,
         'order': int.tryParse(_orderController.text) ?? 1,
         'isActive': _isActive,
@@ -149,13 +156,13 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
       final roundNumber = int.tryParse(_roundController.text.trim());
       
       if (widget.sponsorDoc == null) {
-        if (_location == 'header_fixtures' && roundNumber != null) {
+        if (_selectedLocations.contains('header_fixtures') && roundNumber != null) {
           sponsorData['round'] = roundNumber; 
         }
         await collection.add(sponsorData);
         
       } else {
-        if (_location == 'header_fixtures' && roundNumber != null) {
+        if (_selectedLocations.contains('header_fixtures') && roundNumber != null) {
           sponsorData['round'] = roundNumber;
         } else {
           sponsorData['round'] = FieldValue.delete();
@@ -227,21 +234,16 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
                       decoration: const InputDecoration(labelText: 'Nome da Empresa (Controle Interno)', border: OutlineInputBorder()),
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: _location,
-                      decoration: const InputDecoration(labelText: 'Local de Exibição', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'footer_home', child: Text('Rodapé Fixo (Global)')),
-                        DropdownMenuItem(value: 'app_open', child: Text('Splash Screen (Abertura)')),
-                        DropdownMenuItem(value: 'header_fixtures', child: Text('Topo da Tabela de Jogos')),
-                        DropdownMenuItem(value: 'news_feed', child: Text('Feed de Notícias')),
-                        DropdownMenuItem(value: 'grid_teams', child: Text('Grid de Equipes')),
-                        DropdownMenuItem(value: 'fantasy', child: Text('Módulo Fantasy (Geral)')),
-                      ],
-                      onChanged: (val) => setState(() => _location = val!),
+                    const SizedBox(height: 12),
+                    const Text('Locais de Exibição:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      children: _buildLocationChips(),
                     ),
                     const SizedBox(height: 12),
-                    if (_location == 'header_fixtures') ...[
+                    if (_selectedLocations.contains('header_fixtures')) ...[
                       TextFormField(
                         controller: _roundController,
                         keyboardType: TextInputType.number,
@@ -309,5 +311,48 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildLocationChips() {
+    final Map<String, String> availableLocations = {
+      'footer_home': 'Rodapé Fixo (Global)',
+      'app_open': 'Splash Screen (Abertura)',
+      'home_mid': 'Meio da Tela Inicial',
+      'header_fixtures': 'Topo da Tabela de Jogos',
+      'news_feed': 'Feed de Notícias',
+      'grid_teams': 'Grid de Equipes',
+      'fantasy': 'Módulo Fantasy / Bolão',
+      'header_live': 'Ao Vivo',
+      'header_match_roster': 'Pré-Jogo (Escalação)',
+      'header_match_stats': 'Resumo da Partida',
+      'header_teams': 'Lista de Equipes',
+      'header_standings': 'Classificação',
+      'header_team_stats': 'Estatísticas da Equipe',
+      'header_summary': 'Resumo da Temporada',
+      'header_player_stats': 'Estatísticas do Jogador',
+      'header_comparator': 'Comparador de Jogadores',
+      'header_suspensions': 'Histórico de Suspensões',
+      'footer_player_profile': 'Rodapé do Perfil do Jogador',
+      'footer_team_detail': 'Rodapé dos Detalhes da Equipe',
+    };
+
+    return availableLocations.entries.map((entry) {
+      final isSelected = _selectedLocations.contains(entry.key);
+      return FilterChip(
+        label: Text(entry.value, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : Colors.black87)),
+        selected: isSelected,
+        selectedColor: Colors.blue.shade700,
+        checkmarkColor: Colors.white,
+        onSelected: (bool selected) {
+          setState(() {
+            if (selected) {
+              _selectedLocations.add(entry.key);
+            } else {
+              _selectedLocations.remove(entry.key);
+            }
+          });
+        },
+      );
+    }).toList();
   }
 }

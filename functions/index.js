@@ -27,8 +27,8 @@ const DEFAULT_CONFIG = {
   ptsDirectFreeKickMissed: -3.0,
   ptsManOfTheMatch: 3.0,
   
-  factorExpectation: 0.35, 
-  factorVariation: 0.25,
+  factorExpectation: 0.42, 
+  factorVariation: 0.18, 
   capLimitPercent: 0.25,   
   minPrice: 1.0,
 };
@@ -75,14 +75,14 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
     throw new HttpsError('unauthenticated', 'Usuário não autenticado no aplicativo.');
   }
 
-  const { type, userId, customerContact, photoIds, miniBolaoId } = request.data;
+  const { type, userId, customerContact, photoIds, miniBolaoId, customDescription } = request.data;
   let valorInscricao = "0.00";
   let itemsToSave = [];
-  let description = "";
+  let description = customDescription || "";
 
   if (type === 'bolao') {
     valorInscricao = "20.00"; 
-    description = `Inscrição Bolão Copa 2026 - ${userId}`;
+    if (!description) description = `Inscrição Bolão Copa 2026 - ${userId}`;
   } 
   else if (type === 'mini_bolao') {
     if (!miniBolaoId) throw new HttpsError('invalid-argument', 'ID do Mini Bolão não informado.');
@@ -103,7 +103,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
     if (entryFee <= 0) throw new HttpsError('invalid-argument', 'Valor do Mini Bolão é inválido.');
     
     valorInscricao = entryFee.toFixed(2);
-    description = `Mini Bolão: ${mbData.title}`.substring(0, 140);
+    if (!description) description = `Mini Bolão: ${mbData.title}`.substring(0, 140);
   } 
   else if (type === 'portal') {
     const dueId = request.data.dueId;
@@ -115,7 +115,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
     if (dueData.status === 'paid') throw new HttpsError('failed-precondition', 'Este débito já está pago.');
     
     valorInscricao = parseFloat(dueData.amount).toFixed(2);
-    description = dueData.title.substring(0, 140);
+    if (!description) description = dueData.title.substring(0, 140);
   }
   else {
     if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
@@ -130,7 +130,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
       }
     }
     valorInscricao = total.toFixed(2);
-    description = `Pack de ${itemsToSave.length} Fotos FJF - ${customerContact}`;
+    if (!description) description = `Pack de ${itemsToSave.length} Fotos FJF - ${customerContact}`;
   }
 
   try {
@@ -499,12 +499,20 @@ exports.closeRound = onCall({
       const p = doc.data();
       const pid = doc.id;
       const score = scoresMap[pid] || 0;
-      const currentPrice = p.current_price || config.minPrice; 
+      
+      // Busca o histórico caso seja um reprocessamento da rodada
+      const existingHistory = Array.isArray(p.history) ? p.history.find(h => h.round === round) : null;
+      // Se já existir, usamos o price_before original para não acumular variações de preço
+      const currentPrice = existingHistory ? (existingHistory.price_before || config.minPrice) : (p.current_price || config.minPrice); 
 
       const expectation = currentPrice * config.factorExpectation;
       const performance = score - expectation;
       let variation = performance * config.factorVariation;
-      const limit = currentPrice * config.capLimitPercent;
+      let limit = currentPrice * config.capLimitPercent;
+      
+      // Clamp garante que o limite nunca seja menor que 2.0 nem maior que 5.0
+      if (limit < 2.0) limit = 2.0;
+      if (limit > 5.0) limit = 5.0;
 
       if (variation > limit) variation = limit;
       if (variation < -limit) variation = -limit;
@@ -537,6 +545,14 @@ exports.closeRound = onCall({
         matches_played: playedMatches.length,
         history: updatedHistory
       });
+    });
+
+    const oldTeamHistoriesSnap = await db.collectionGroup('history').where('round', '==', round).get();
+    const oldTeamPointsMap = {};
+    oldTeamHistoriesSnap.forEach(doc => {
+      // O caminho é fantasy_teams/{teamId}/history/{round}
+      const teamId = doc.ref.parent.parent.id;
+      oldTeamPointsMap[teamId] = doc.data().points || 0;
     });
 
     const userTeamsSnap = await db.collection('fantasy_teams').get();
@@ -636,8 +652,14 @@ exports.closeRound = onCall({
         substitutions: substitutedList
       });
 
+      let baseTotalPoints = team.total_points || 0;
+      if (oldTeamPointsMap[doc.id] !== undefined) {
+         baseTotalPoints -= oldTeamPointsMap[doc.id]; // Subtrai a pontuação anterior para não duplicar no reprocessamento
+      }
+      const newTotalPoints = Number((baseTotalPoints + roundPoints).toFixed(2));
+
       batchHandler.update(doc.ref, {
-        total_points: Number(((team.total_points || 0) + roundPoints).toFixed(2)), 
+        total_points: newTotalPoints, 
         last_score: roundPoints,                                                   
         team_value: totalPatrimony,                                                
         updated_at: admin.firestore.Timestamp.now()                                 
@@ -779,6 +801,24 @@ exports.closeRound = onCall({
       }
     }
 
+    // ==========================================
+    // 5. ATUALIZAR LIVE SCOUT COM PONTUAÇÃO FINAL
+    // ==========================================
+    const liveDocRef = db.collection('championships').doc(seasonId).collection('fantasy_live').doc(`round_${round}`);
+    const liveDocSnap = await liveDocRef.get();
+    let liveScoresObj = liveDocSnap.exists ? (liveDocSnap.data().scores || {}) : {};
+    
+    Object.keys(scoresMap).forEach(pid => {
+       if (!liveScoresObj[pid]) liveScoresObj[pid] = {};
+       liveScoresObj[pid].totalScore = scoresMap[pid]; // Pontuação FINAL (já consolidada com técnicos, MOTM, etc)
+    });
+    
+    batchHandler.set(liveDocRef, {
+       scores: liveScoresObj,
+       is_final: true,
+       updated_at: admin.firestore.Timestamp.now()
+    }, { merge: true });
+
     await batchHandler.commit();
 
     return { 
@@ -828,6 +868,17 @@ exports.updateLiveScouts = onDocumentWritten({
     const configSnap = await db.collection('fantasy_config').doc('rules').get();
     const config = configSnap.exists ? { ...DEFAULT_CONFIG, ...configSnap.data() } : DEFAULT_CONFIG;
 
+    const allPlayersSnap = await db.collection('fantasy_market_players').get();
+    const playersInfo = {};
+    const teamCoaches = {};
+    allPlayersSnap.forEach(doc => {
+      const p = doc.data();
+      playersInfo[doc.id] = p;
+      if (p.team_id && p.position === 'Técnico') {
+        teamCoaches[p.team_id] = doc.id;
+      }
+    });
+
     const matchesSnap = await db.collection('championships').doc(seasonId)
       .collection('matches').where('round', '==', round).get();
 
@@ -840,6 +891,14 @@ exports.updateLiveScouts = onDocumentWritten({
       const scoreAway = data.score_away || 0;
       if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
       if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+
+      if (data.stats_applied && data.stats_applied.man_of_the_match) {
+        const motmPid = data.stats_applied.man_of_the_match;
+        if (!scoresMap[motmPid]) {
+           scoresMap[motmPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, motm: 0 };
+        }
+        scoresMap[motmPid].motm = 1;
+      }
 
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
 
@@ -871,6 +930,7 @@ exports.updateLiveScouts = onDocumentWritten({
       });
     });
 
+    const teamScores = {};
     Object.keys(scoresMap).forEach(pid => {
        let total = 0;
        total += (scoresMap[pid].goals || 0) * config.ptsGoal;
@@ -880,8 +940,29 @@ exports.updateLiveScouts = onDocumentWritten({
        total += (scoresMap[pid].penalties_saved || 0) * config.ptsPenaltySaved;
        total += (scoresMap[pid].penalties_missed || 0) * config.ptsPenaltyMissed;
        total += (scoresMap[pid].shots_on_post || 0) * config.ptsShotOnPost;
+       total += (scoresMap[pid].motm || 0) * (config.ptsManOfTheMatch || 3.0);
+       
+       const p = playersInfo[pid];
+       if (p && p.team_id) {
+         if (teamCleanSheets[p.team_id] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
+             scoresMap[pid].clean_sheets = 1;
+             total += config.ptsCleanSheet;
+         }
+         if (!teamScores[p.team_id]) teamScores[p.team_id] = [];
+         teamScores[p.team_id].push(total);
+       }
        
        scoresMap[pid].totalScore = total;
+    });
+
+    Object.entries(teamCoaches).forEach(([tId, coachPid]) => {
+      const scores = teamScores[tId] || [];
+      if (scores.length > 0) {
+        const total = scores.reduce((a, b) => a + b, 0);
+        const avg = total / scores.length;
+        if (!scoresMap[coachPid]) scoresMap[coachPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, motm: 0 };
+        scoresMap[coachPid].totalScore = Number(avg.toFixed(2));
+      }
     });
 
     await liveDocRef.set({

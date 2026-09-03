@@ -97,7 +97,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
 
     // 🚨 CORREÇÃO DO BUG: Busca o status inicial manualmente porque o broadcast stream 
     // pode não re-emitir o último valor para a tela de escalação que foi aberta depois.
-    _firestore.collection('fantasy_config').doc('status').get().then((doc) {
+    _firestore.collection('fantasy_config').doc('status').get(const GetOptions(source: Source.serverAndCache)).then((doc) {
       if (doc.exists && doc.data() != null) {
         _isMarketOpen = doc.data()!['is_open'] ?? true;
         _currentRound = doc.data()!['current_round'] ?? 1;
@@ -562,13 +562,25 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     }
   }
 
-  void _checkScoutSubscription(String seasonId) {
+  void _checkScoutSubscription(String seasonId) async {
     _scoutSub?.cancel();
-    if (!_isMarketOpen && _lineup.isNotEmpty) {
-      _scoutSub = _scoutService.streamLiveScores(seasonId, _currentRound).listen((scores) {
+    if (!_isMarketOpen) {
+      if (_lineup.isNotEmpty) {
+        _scoutSub = _scoutService.streamLiveScores(seasonId, _currentRound).listen((scores) {
+          _liveScores = scores;
+          if (!_isDisposed) notifyListeners();
+        });
+      }
+    } else {
+      // Se mercado está aberto, busca os scouts da rodada anterior (para exibir como histórico detalhado)
+      if (_currentRound > 1) {
+        final scores = await _scoutService.getLiveScores(seasonId, _currentRound - 1);
         _liveScores = scores;
         if (!_isDisposed) notifyListeners();
-      });
+      } else {
+        _liveScores = {};
+        if (!_isDisposed) notifyListeners();
+      }
     }
   }
 

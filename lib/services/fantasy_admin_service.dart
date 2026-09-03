@@ -174,7 +174,8 @@ class FantasyAdminService {
     double expectation = currentPrice * config.factorExpectation;
     double performance = score - expectation;
     double rawVariation = performance * config.factorVariation;
-    double limit = currentPrice * config.capLimitPercent;
+    // Clamp garante que o limite nunca seja menor que 2.0 nem maior que 5.0
+    double limit = (currentPrice * config.capLimitPercent).clamp(2.0, 5.0);
 
     double finalVariation = rawVariation;
     if (finalVariation > limit) finalVariation = limit;   

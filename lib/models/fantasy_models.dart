@@ -204,8 +204,8 @@ class FantasyGameConfig {
       ptsOwnGoal: -3.0,
       ptsMissedFreeKick: -3.0,
       ptsMotm: 5.0,
-      factorExpectation: 0.35,
-      factorVariation: 0.25,
+      factorExpectation: 0.42,
+      factorVariation: 0.18,
       capLimitPercent: 0.25,
       minPrice: 1.0,
     );

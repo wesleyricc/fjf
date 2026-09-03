@@ -48,6 +48,11 @@ class FantasyHomeViewModel extends ChangeNotifier {
   double topScore = 0.0;
   double worstScore = 0.0;
 
+  // Variáveis para desempenho da última rodada
+  int? lastRoundNumber;
+  double? lastRoundPoints;
+  double? lastRoundAppreciation;
+
   bool get isOffline => _isOffline; 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -134,7 +139,8 @@ class FantasyHomeViewModel extends ChangeNotifier {
   }
 
   Future<void> init(String userId, String seasonId, {bool force = false}) async {
-    if (!force && _loadedUserId == userId && _loadedSeasonId == seasonId && !_isLoading) return;
+    // 🚨 CORREÇÃO DO BUG 2: Impede o loop infinito ao não exigir que !_isLoading seja true para retornar
+    if (!force && _loadedUserId == userId && _loadedSeasonId == seasonId) return;
 
     _loadedUserId = userId;
     _loadedSeasonId = seasonId;
@@ -147,11 +153,35 @@ class FantasyHomeViewModel extends ChangeNotifier {
       return; 
     }
 
+    _fetchLastRoundPerformance(userId);
+
     try {
       _gameConfig = await _fantasyService.getGameConfig();
     } catch (e) {
       debugPrint("Aviso: Falha ao carregar configurações: $e");
     }
+
+    // 🚨 CORREÇÃO DO BUG 1: Busca o status inicial manualmente porque o stream pode não emitir
+    // o valor imediatamente e ficar cacheado com o mercado aberto.
+    _firestore.collection('fantasy_config').doc('status').get(const GetOptions(source: Source.serverAndCache)).then((doc) {
+      if (doc.exists && doc.data() != null && !_isDisposed) {
+        _isMarketOpen = doc.data()!['is_open'] ?? true;
+        _currentRound = doc.data()!['current_round'] ?? 1;
+        if (!_isMarketOpen) {
+          _subscribeToLiveMatches(seasonId, _currentRound);
+          _listenToMarketStats();
+        } else {
+          _matchesSub?.cancel();
+          _marketStatsSub?.cancel();
+          if (_currentRound > 1) {
+            _fetchPreviousRoundScouts(seasonId, _currentRound - 1);
+          } else {
+            _liveScores = {}; 
+          }
+        }
+        notifyListeners();
+      }
+    });
 
     _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
@@ -164,7 +194,11 @@ class FantasyHomeViewModel extends ChangeNotifier {
       } else {
         _matchesSub?.cancel();
         _marketStatsSub?.cancel();
-        _liveScores = {}; 
+        if (_currentRound > 1) {
+          _fetchPreviousRoundScouts(seasonId, _currentRound - 1);
+        } else {
+          _liveScores = {}; 
+        }
       }
       if (!_isDisposed) notifyListeners();
     });
@@ -286,6 +320,58 @@ class FantasyHomeViewModel extends ChangeNotifier {
     _matchesSub?.cancel();
     _marketStatsSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _fetchLastRoundPerformance(String userId) async {
+    try {
+      final snap = await _firestore.collection('fantasy_teams').doc(userId).collection('history').orderBy('round', descending: true).limit(2).get();
+      if (snap.docs.isNotEmpty) {
+        final lastDoc = snap.docs.first.data();
+        lastRoundNumber = lastDoc['round'];
+        lastRoundPoints = (lastDoc['points'] ?? 0).toDouble();
+        double lastPatrimony = (lastDoc['patrimony'] ?? 50.0).toDouble();
+        
+        double prevPatrimony = 50.0;
+        if (snap.docs.length > 1) {
+          prevPatrimony = (snap.docs[1].data()['patrimony'] ?? 50.0).toDouble();
+        }
+        
+        lastRoundAppreciation = lastPatrimony - prevPatrimony;
+        if (!_isDisposed) notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Erro ao buscar histórico da última rodada: $e");
+    }
+  }
+
+  Future<void> _fetchPreviousRoundScouts(String seasonId, int round) async {
+    try {
+      final scores = await _scoutService.getLiveScores(seasonId, round);
+      Map<String, LiveScoreData> calculatedScores = {};
+      
+      scores.forEach((pid, s) {
+         calculatedScores[pid] = LiveScoreData(
+           totalScore: s.totalScore,
+           isCaptain: (_team?.captainId == pid),
+           goals: s.goals,
+           assists: s.assists,
+           yellows: s.yellows,
+           reds: s.reds,
+           goalsConceded: s.goalsConceded,
+           penaltiesSaved: s.penaltiesSaved,
+           penaltiesMissed: s.penaltiesMissed,
+           shotsOnPost: s.shotsOnPost,
+           cleanSheets: s.cleanSheets,
+           ownGoals: s.ownGoals,
+           missedFreeKicks: s.missedFreeKicks,
+           motm: s.motm,
+         );
+      });
+      _liveScores = calculatedScores;
+      if (!_isDisposed) notifyListeners();
+    } catch (e) {
+      debugPrint("Erro ao buscar scouts anteriores: $e");
+    }
   }
 }
 

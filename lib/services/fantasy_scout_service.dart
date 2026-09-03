@@ -53,33 +53,50 @@ class FantasyScoutService {
         .snapshots()
         .map((snapshot) {
       
-      if (!snapshot.exists || snapshot.data() == null) return {};
-
-      final data = snapshot.data()!;
-      final scoresMap = data['scores'] as Map<String, dynamic>? ?? {};
-
-      final Map<String, FantasyScoutDetail> result = {};
-
-      scoresMap.forEach((pid, pData) {
-        final stats = pData as Map<String, dynamic>;
-        result[pid] = FantasyScoutDetail(
-          totalScore: (stats['totalScore'] ?? 0).toDouble(),
-          goals: (stats['goals'] ?? 0).toInt(),
-          assists: (stats['assists'] ?? 0).toInt(),
-          yellows: (stats['yellows'] ?? 0).toInt(),
-          reds: (stats['reds'] ?? 0).toInt(),
-          goalsConceded: (stats['goalsConceded'] ?? 0).toInt(),
-          penaltiesSaved: (stats['penaltiesSaved'] ?? 0).toInt(),
-          penaltiesMissed: (stats['penaltiesMissed'] ?? 0).toInt(),
-          shotsOnPost: (stats['shotsOnPost'] ?? 0).toInt(),
-          cleanSheets: (stats['cleanSheets'] ?? 0).toInt(),
-          ownGoals: (stats['ownGoals'] ?? 0).toInt(),
-          missedFreeKicks: (stats['missedFreeKicks'] ?? 0).toInt(),
-          motm: (stats['motm'] ?? 0).toInt(),
-        );
-      });
-
-      return result;
+      return _parseScoresMap(snapshot.data());
     });
+  }
+
+  Future<Map<String, FantasyScoutDetail>> getLiveScores(String seasonId, int round) async {
+    if (seasonId.isEmpty) return {};
+    try {
+      final doc = await _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('fantasy_live')
+          .doc('round_$round')
+          .get(const GetOptions(source: Source.serverAndCache));
+      if (!doc.exists) return {};
+      return _parseScoresMap(doc.data());
+    } catch (e) {
+      debugPrint("Erro ao buscar scouts: $e");
+      return {};
+    }
+  }
+
+  Map<String, FantasyScoutDetail> _parseScoresMap(Map<String, dynamic>? data) {
+    if (data == null) return {};
+    final scoresMap = data['scores'] as Map<String, dynamic>? ?? {};
+    final Map<String, FantasyScoutDetail> result = {};
+
+    scoresMap.forEach((pid, pData) {
+      final stats = pData as Map<String, dynamic>;
+      result[pid] = FantasyScoutDetail(
+        totalScore: (stats['totalScore'] ?? 0).toDouble(),
+        goals: (stats['goals'] ?? 0).toInt(),
+        assists: (stats['assists'] ?? 0).toInt(),
+        yellows: (stats['yellows'] ?? 0).toInt(),
+        reds: (stats['reds'] ?? 0).toInt(),
+        goalsConceded: (stats['goalsConceded'] ?? 0).toInt(),
+        penaltiesSaved: (stats['penaltiesSaved'] ?? 0).toInt(),
+        penaltiesMissed: (stats['penaltiesMissed'] ?? 0).toInt(),
+        shotsOnPost: (stats['shotsOnPost'] ?? 0).toInt(),
+        cleanSheets: (stats['cleanSheets'] ?? 0).toInt(),
+        ownGoals: (stats['ownGoals'] ?? 0).toInt(),
+        missedFreeKicks: (stats['missedFreeKicks'] ?? 0).toInt(),
+        motm: (stats['motm'] ?? 0).toInt(),
+      );
+    });
+    return result;
   }
 }

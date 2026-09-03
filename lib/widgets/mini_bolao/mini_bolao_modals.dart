@@ -211,12 +211,14 @@ class MiniBolaoModals {
     );
 
     try {
+      final String userName = userData?['name'] ?? userId;
       final callable = FirebaseFunctions.instance.httpsCallable('createPixPayment');
       final result = await callable.call({
         'type': 'mini_bolao',
         'userId': userId,
         'customerContact': contact,
         'miniBolaoId': miniBolaoId,
+        'customDescription': 'Mini Bolão: $title - $userName',
       });
 
       if (context.mounted) Navigator.pop(context);

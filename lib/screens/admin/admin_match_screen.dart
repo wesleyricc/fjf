@@ -315,6 +315,10 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
             MaterialPageRoute(builder: (ctx) => MatchLiveScoutScreen(match: vm.matchSnap))
           );
           await vm.reloadMatchData();
+          await vm.saveStats(); // Salva as presenças automaticamente (solicitação de melhoria)
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Partida e escalações sincronizadas!')));
+          }
         },
       ),
     );
