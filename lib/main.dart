@@ -82,6 +82,7 @@ import 'screens/institutional/about_history_screen.dart';
 import 'screens/institutional/about_board_screen.dart';
 import 'screens/championship/season_summary_screen.dart';
 import 'screens/fantasy/fantasy_leagues_screen.dart';
+import 'screens/splash/splash_screen.dart';
 
 // ---> IMPORTS DO SISTEMA DE VOTAÇÃO <---
 import 'screens/institutional/voting_screen.dart';
@@ -236,8 +237,9 @@ class FjfApp extends StatelessWidget {
         ],
         supportedLocales: const [Locale('pt', 'BR')],
         
-        initialRoute: '/',
+        initialRoute: '/splash',
         routes: {
+          '/splash': (ctx) => const SplashScreen(),
           '/portal': (ctx) => Consumer<PortalAuthService>(
                 builder: (context, auth, _) => auth.isAuthenticated
                     ? const PortalDashboardScreen()
@@ -287,7 +289,7 @@ class FjfApp extends StatelessWidget {
         onGenerateRoute: (settings) {
           WidgetBuilder? builder;
           switch (settings.name) {
-            case '/': builder = (ctx) => const HomeDashboardScreen(); break;
+            case '/home': builder = (ctx) => const HomeDashboardScreen(); break;
             case '/live': builder = (ctx) => const LiveVideoScreen(); break;
             case '/fixtures': builder = (ctx) => const FixturesScreen(); break;
             case '/standings': builder = (ctx) => const StandingsScreen(); break;

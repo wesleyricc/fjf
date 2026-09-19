@@ -182,6 +182,7 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
               CachedNetworkImage(
                 imageUrl: imageUrl, 
                 fit: BoxFit.cover,
+                memCacheWidth: 600,
                 placeholder: (c, u) => Container(color: Colors.grey[200]),
                 errorWidget: (c, u, e) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
               )
@@ -272,10 +273,11 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
               child: imageUrl.isEmpty
                   ? Container(color: Colors.grey[200], child: const Icon(Icons.image, color: Colors.grey))
                   : CachedNetworkImage(
-                      imageUrl: imageUrl, 
+                      imageUrl: imageUrl,
                       fit: BoxFit.cover,
-                      placeholder: (c, u) => Container(color: Colors.grey[200]),
-                      errorWidget: (c, u, e) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
+                      memCacheWidth: 300,
+                      placeholder: (c, u) => Container(color: Colors.grey[300]),
+                      errorWidget: (c, u, e) => Container(color: Colors.grey[300], child: const Icon(Icons.broken_image, color: Colors.grey)),
                     ),
             ),
             Expanded(

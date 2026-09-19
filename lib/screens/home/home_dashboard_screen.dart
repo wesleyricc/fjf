@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
+import 'dart:js_interop';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -24,12 +26,17 @@ import '../../widgets/sponsor_banner_rotator.dart';
 import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/home_news_feed.dart';
 import '../../widgets/home/home_teams_grid.dart';
+import '../../widgets/home/home_sponsors_grid.dart';
 import '../../widgets/home_footer.dart';
 import '../../widgets/home/home_super_app_grid.dart';
 import '../../widgets/home/home_section_header.dart';
 
 import '../bolao/mini_bolao_home_screen.dart';
 import '../championship/team_detail_screen.dart';
+
+extension type BeforeInstallPromptEvent._(JSObject _) implements web.Event {
+  external void prompt();
+}
 
 class HomeDashboardScreen extends StatefulWidget {
   const HomeDashboardScreen({super.key});
@@ -43,7 +50,7 @@ class HomeDashboardScreen extends StatefulWidget {
 
 class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   bool _isDrawerOpen = false;
-  html.Event? _installPromptEvent;
+  BeforeInstallPromptEvent? _installPromptEvent;
   bool _showInstallButton = false;
   bool _hasError = false;
   String _debugStatus = "Iniciando...";
@@ -58,15 +65,16 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     AnalyticsService.logCustomScreenView('App_Home_Dashboard');
 
     if (kIsWeb) {
-      html.window.addEventListener('beforeinstallprompt', (html.Event e) {
-        e.preventDefault();
+      web.window.addEventListener('beforeinstallprompt', ((web.Event e) {
+        final event = e as BeforeInstallPromptEvent;
+        event.preventDefault();
         if (mounted) {
           setState(() {
-            _installPromptEvent = e;
+            _installPromptEvent = event;
             _showInstallButton = true;
           });
         }
-      });
+      }).toJS);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -199,7 +207,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     // 🚨 Analytics: Rastreia a intenção de instalação do App (PWA)
     AnalyticsService.logCustomScreenView('Home_PWA_Install_Clicked');
 
-    (_installPromptEvent as dynamic).prompt();
+    _installPromptEvent!.prompt();
     setState(() {
       _installPromptEvent = null;
       _showInstallButton = false;
@@ -549,10 +557,57 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       const HomeNewsFeed(),
                       const SizedBox(height: 10),
                       HomeSectionHeader(
-                          title: "Equipes Participantes",
-                          icon: Icons.groups,
+                          title: "Parceiros Oficiais",
+                          icon: Icons.handshake,
                           color: AppTheme.primaryColor),
                     ],
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Container(
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: const BorderRadius.vertical(
+                            bottom: Radius.circular(12)),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 6,
+                              offset: Offset(0, 3))
+                        ],
+                        border: Border.all(color: Colors.grey.shade200)),
+                    padding: const EdgeInsets.all(12),
+                    child: const CustomScrollView(
+                      shrinkWrap: true,
+                      physics: NeverScrollableScrollPhysics(),
+                      slivers: [
+                        HomeSponsorsGrid(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // EQUPE PARTICIPANTES (Movido para baixo)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                    ),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 10),
+                        HomeSectionHeader(
+                            title: "Equipes Participantes",
+                            icon: Icons.groups,
+                            color: AppTheme.primaryColor),
+                      ],
+                    ),
                   ),
                 ),
               ),

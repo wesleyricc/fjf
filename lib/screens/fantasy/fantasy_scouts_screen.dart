@@ -75,7 +75,7 @@ class FantasyScoutsScreen extends StatelessWidget {
               radius: 24,
               backgroundColor: Colors.grey[200],
               backgroundImage: p['photo_url'] != null && p['photo_url'].toString().isNotEmpty
-                  ? CachedNetworkImageProvider(p['photo_url'], cacheManager: PlayerCacheManager.instance)
+                  ? CachedNetworkImageProvider(p['photo_url'], cacheManager: PlayerCacheManager.instance, maxWidth: 100, maxHeight: 100)
                   : null,
               child: p['photo_url'] == null || p['photo_url'].toString().isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
             ),
@@ -119,7 +119,7 @@ class FantasyScoutsScreen extends StatelessWidget {
               radius: 24,
               backgroundColor: Colors.grey[200],
               backgroundImage: p['photo_url'] != null && p['photo_url'].toString().isNotEmpty
-                  ? CachedNetworkImageProvider(p['photo_url'], cacheManager: PlayerCacheManager.instance)
+                  ? CachedNetworkImageProvider(p['photo_url'], cacheManager: PlayerCacheManager.instance, maxWidth: 100, maxHeight: 100)
                   : null,
               child: p['photo_url'] == null || p['photo_url'].toString().isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
             ),

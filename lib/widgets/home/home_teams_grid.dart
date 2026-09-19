@@ -43,6 +43,7 @@ class SponsorGridCard extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: data['imageUrl'] ?? '',
                 fit: BoxFit.contain,
+                memCacheWidth: 200,
                 errorWidget: (_, __, ___) => _buildDefaultCard(),
               ),
             ),
@@ -184,6 +185,7 @@ class HomeTeamsGrid extends StatelessWidget {
                           child: CachedNetworkImage(
                             imageUrl: team.shieldUrl,
                             fit: BoxFit.contain,
+                            memCacheWidth: 200,
                             placeholder: (_, __) => Container(color: Colors.grey.shade50),
                             errorWidget: (_, __, ___) => const Icon(Icons.shield_outlined, color: Colors.grey),
                           ),

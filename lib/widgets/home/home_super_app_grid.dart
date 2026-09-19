@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:html' as html;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -18,71 +17,7 @@ class HomeSuperAppGrid extends StatelessWidget {
   final ChampionshipService service;
   const HomeSuperAppGrid({super.key, required this.service});
 
-Widget buildSuperAppGridItem({
-    required BuildContext context,
-    required String title,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-    int badgeCount = 0,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: double.infinity,
-                height: 70,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: color.withOpacity(0.5), width: 1.5),
-                ),
-                child: Icon(icon, color: color, size: 28),
-              ),
-              if (badgeCount > 0)
-                Positioned(
-                  top: -4,
-                  right: -4,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      badgeCount.toString(),
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -96,8 +31,7 @@ Widget buildSuperAppGridItem({
           List<Widget> items = [];
 
           if (service.isFantasyEnabled) {
-            items.add(buildSuperAppGridItem(
-              context: context,
+            items.add(SuperAppGridItem(
               title: "Fantasy",
               icon: Icons.sports_soccer,
               color: const Color(0xFF002776),
@@ -109,8 +43,7 @@ Widget buildSuperAppGridItem({
           }
 
           if (service.isBolaoEnabled) {
-            items.add(buildSuperAppGridItem(
-              context: context,
+            items.add(SuperAppGridItem(
               title: "Bolão FJF - Copa do Mundo 2026",
               icon: FontAwesomeIcons.earthAmericas,
               color: const Color(0xFF009C3B),
@@ -122,8 +55,7 @@ Widget buildSuperAppGridItem({
           }
 
           if (service.isMiniBolaoEnabled) {
-            items.add(buildSuperAppGridItem(
-              context: context,
+            items.add(SuperAppGridItem(
               title: "Mini Bolão FJF",
               icon: Icons.rocket_launch,
               color: Colors.deepOrange.shade600,
@@ -138,8 +70,7 @@ Widget buildSuperAppGridItem({
           }
 
           if (service.isPhotoStoreEnabled) {
-            items.add(buildSuperAppGridItem(
-              context: context,
+            items.add(SuperAppGridItem(
               title: "Fotos",
               icon: Icons.camera_enhance,
               color: const Color(0xFF32BCAD),
@@ -151,8 +82,7 @@ Widget buildSuperAppGridItem({
           }
 
           if (activePolls.isNotEmpty) {
-            items.add(buildSuperAppGridItem(
-              context: context,
+            items.add(SuperAppGridItem(
               title: "Votações",
               icon: Icons.how_to_vote,
               color: const Color(0xFFC5A814),
@@ -173,47 +103,26 @@ Widget buildSuperAppGridItem({
           if (items.isEmpty) return const SizedBox();
 
           Widget gridLayout;
-          if (items.length <= 4) {
-            gridLayout = Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: items
-                  .map((item) => Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: item,
-                        ),
-                      ))
-                  .toList(),
-            );
-          } else {
-            // Ex: se houver 5 cards, divide 3 em cima e 2 embaixo
-            List<Widget> firstRow = items
-                .sublist(0, 3)
-                .map((item) => Expanded(
-                    child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: item)))
-                .toList();
-            List<Widget> secondRow = items
-                .sublist(3)
-                .map((item) => Expanded(
-                    child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: item)))
-                .toList();
-
-            gridLayout = Column(
-              children: [
-                Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: firstRow),
-                const SizedBox(height: 16),
-                Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: secondRow),
-              ],
-            );
+          int itemsPerRow = items.length <= 4 ? 4 : 3;
+          List<Widget> rows = [];
+          
+          for (int i = 0; i < items.length; i += itemsPerRow) {
+            List<Widget> rowItems = [];
+            for (int j = 0; j < itemsPerRow; j++) {
+              if (i + j < items.length) {
+                rowItems.add(Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: items[i + j],
+                  ),
+                ));
+              }
+            }
+            rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: rowItems));
+            if (i + itemsPerRow < items.length) rows.add(const SizedBox(height: 16));
           }
+          
+          gridLayout = Column(children: rows);
 
           return Column(
             children: [
@@ -239,5 +148,122 @@ Widget buildSuperAppGridItem({
             ],
           );
         });
+  }
+}
+
+class SuperAppGridItem extends StatefulWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final int badgeCount;
+
+  const SuperAppGridItem({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
+
+  @override
+  State<SuperAppGridItem> createState() => _SuperAppGridItemState();
+}
+
+class _SuperAppGridItemState extends State<SuperAppGridItem> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hslColor = HSLColor.fromColor(widget.color);
+    final lighterColor = hslColor.withLightness((hslColor.lightness + 0.15).clamp(0.0, 1.0)).toColor();
+
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) {
+        setState(() => _isPressed = false);
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedScale(
+        scale: _isPressed ? 0.90 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeInOut,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: 70,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [lighterColor, widget.color],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.color.withOpacity(0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(widget.icon, color: Colors.white, size: 32),
+                ),
+                if (widget.badgeCount > 0)
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 4,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        widget.badgeCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              widget.title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
+                letterSpacing: 0.2,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

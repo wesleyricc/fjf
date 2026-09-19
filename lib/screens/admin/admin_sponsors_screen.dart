@@ -59,7 +59,7 @@ class AdminSponsorsScreen extends StatelessWidget {
                     ),
                   ),
                   title: Text(data['name'] ?? 'Sem Nome (ID: ${doc.id.substring(0, 5)})', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text("Local: ${data['location']} | Ordem: ${data['order'] ?? 0}\n${data['isActive'] == true ? '🟢 ATIVO' : '🔴 INATIVO'}"),
+                  subtitle: Text("Categoria: ${data['category'] ?? 'BRONZE'}\nLocal: ${data['location']} | Ordem: ${data['order'] ?? 0}\n${data['isActive'] == true ? '🟢 ATIVO' : '🔴 INATIVO'}"),
                   isThreeLine: true,
                   trailing: IconButton(
                     icon: const Icon(Icons.edit, color: Colors.indigo),
@@ -110,6 +110,7 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
   late TextEditingController _roundController; 
   
   List<String> _selectedLocations = [];
+  String _selectedCategory = 'BRONZE';
   bool _isActive = true;
   bool _isSaving = false;
 
@@ -132,6 +133,7 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
     } else {
       _selectedLocations = ['footer_home'];
     }
+    _selectedCategory = data?['category'] ?? 'BRONZE';
     _isActive = data?['isActive'] ?? true;
   }
 
@@ -148,6 +150,7 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
         'targetUrl': _targetUrlController.text.trim(),
         'location': _selectedLocations.isNotEmpty ? _selectedLocations.first : 'footer_home',
         'locations': _selectedLocations,
+        'category': _selectedCategory,
         'displayTimeSeconds': int.tryParse(_displayTimeSecondsController.text) ?? 5,
         'order': int.tryParse(_orderController.text) ?? 1,
         'isActive': _isActive,
@@ -234,6 +237,20 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
                       decoration: const InputDecoration(labelText: 'Nome da Empresa (Controle Interno)', border: OutlineInputBorder()),
                     ),
                     const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      decoration: const InputDecoration(labelText: 'Categoria', border: OutlineInputBorder(), prefixIcon: Icon(Icons.star)),
+                      items: const [
+                        DropdownMenuItem(value: 'MASTER', child: Text('MASTER (Destaque Máximo)')),
+                        DropdownMenuItem(value: 'PREMIUM', child: Text('PREMIUM (Destaque Alto)')),
+                        DropdownMenuItem(value: 'OURO', child: Text('OURO (Destaque Médio)')),
+                        DropdownMenuItem(value: 'PRATA', child: Text('PRATA (Destaque Normal)')),
+                        DropdownMenuItem(value: 'BRONZE', child: Text('BRONZE (Padrão)')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedCategory = val);
+                      },
+                    ),
                     const SizedBox(height: 12),
                     const Text('Locais de Exibição:', style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
@@ -315,6 +332,7 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
 
   List<Widget> _buildLocationChips() {
     final Map<String, String> availableLocations = {
+      'home_partners_grid': 'Vitrine de Parceiros (Home)',
       'footer_home': 'Rodapé Fixo (Global)',
       'app_open': 'Splash Screen (Abertura)',
       'home_mid': 'Meio da Tela Inicial',

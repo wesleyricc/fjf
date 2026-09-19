@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -182,13 +183,36 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
           onTap: () => _launchURL(targetUrl, sponsorName), // 🚨 Repassa o nome do patrocinador
           child: imageUrl.isEmpty
               ? _buildHouseAd(title: sponsorName)
-              : CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: widget.fit,
-                  width: double.infinity,
-                  height: double.infinity,
-                  errorWidget: (c, u, e) => _buildHouseAd(),
-                ),
+              : (widget.fit == BoxFit.contain
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Container(color: Colors.black), // Fundo preto puro para performance
+                        Opacity(
+                          opacity: 0.3,
+                          child: CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 800,
+                            errorWidget: (c, u, e) => const SizedBox.shrink(),
+                          ),
+                        ),
+                        CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          fit: BoxFit.contain,
+                          memCacheWidth: 800,
+                          errorWidget: (c, u, e) => _buildHouseAd(),
+                        ),
+                      ],
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: widget.fit,
+                      memCacheWidth: 800,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorWidget: (c, u, e) => _buildHouseAd(),
+                    )),
         ),
       );
     }
