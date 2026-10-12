@@ -145,7 +145,16 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Painel Admin Fantasy")),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/logo_fjf_fantasy.webp', height: 28),
+            const SizedBox(width: 8),
+            const Text("Painel Admin Cartola FJF"),
+          ],
+        ),
+      ),
       body: StreamBuilder<Map<String, dynamic>>(
         stream: Provider.of<FantasyService>(context).streamMarketStatus(),
         builder: (context, snapshot) {
@@ -217,7 +226,11 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
 
                     ElevatedButton.icon(
                       onPressed: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminSponsoredLeaguesScreen()));
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const AdminSponsoredLeaguesScreen()));
                       },
                       icon: const Icon(Icons.star),
                       label: const Text("Gerenciar Ligas Patrocinadas"),

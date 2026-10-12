@@ -75,7 +75,7 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
               leading: CircleAvatar(
                 radius: 30,
                 backgroundColor: Colors.grey.shade200,
-                backgroundImage: agent.photoUrl.isNotEmpty ? CachedNetworkImageProvider(agent.photoUrl) : null,
+                backgroundImage: agent.photoUrl.isNotEmpty ? CachedNetworkImageProvider(agent.photoUrl, maxWidth: 120) : null,
                 child: agent.photoUrl.isEmpty ? const Icon(Icons.person, size: 30, color: Colors.grey) : null,
               ),
               title: Text(agent.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
@@ -186,7 +186,7 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
         title: const Text("Mercado de Atletas"),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
         actions: [
@@ -245,6 +245,7 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(12),
+                  addAutomaticKeepAlives: false,
                   itemCount: agents.length,
                   itemBuilder: (context, index) {
                     final agent = agents[index];
@@ -259,7 +260,7 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
                           child: CircleAvatar(
                             radius: 26,
                             backgroundColor: Colors.grey.shade200,
-                            backgroundImage: agent.photoUrl.isNotEmpty ? CachedNetworkImageProvider(agent.photoUrl) : null,
+                            backgroundImage: agent.photoUrl.isNotEmpty ? CachedNetworkImageProvider(agent.photoUrl, maxWidth: 100) : null,
                             child: agent.photoUrl.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
                           ),
                         ),
@@ -296,7 +297,7 @@ class _FreeAgentsMarketScreenState extends State<FreeAgentsMarketScreen> {
         title: const Text("Mercado de Atletas"),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
       ),

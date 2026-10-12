@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/custom_cache_manager.dart';
 import '../models/fantasy_models.dart';
 
 class FantasyPitchWidget extends StatelessWidget {
-  final Map<int, FantasyPlayer?> lineup; 
+  final Map<int, FantasyPlayer?> lineup;
   final Function(int slotIndex, String position) onSlotTap;
   final Function(int slotIndex) onRemovePlayer;
   final String? captainId;
@@ -21,7 +22,7 @@ class FantasyPitchWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color courtColor = Colors.blue[800]!; 
+    final Color courtColor = Colors.blue[800]!;
     final Color courtLines = Colors.white54;
 
     return Container(
@@ -32,7 +33,7 @@ class FantasyPitchWidget extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Center(child: Container(height: 2, color: courtLines)), 
+          Center(child: Container(height: 2, color: courtLines)),
           Center(
             child: Container(
               width: 80,
@@ -44,7 +45,9 @@ class FantasyPitchWidget extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: 0, left: 100, right: 100,
+            top: 0,
+            left: 100,
+            right: 100,
             child: Container(
               height: 60,
               decoration: BoxDecoration(
@@ -56,13 +59,22 @@ class FantasyPitchWidget extends StatelessWidget {
               ),
             ),
           ),
-
-          _buildPlayerNode(context, slotIndex: 1, positionLabel: 'Goleiro', top: 0.88, left: 0.40),
-          _buildPlayerNode(context, slotIndex: 2, positionLabel: 'Fixo', top: 0.65, left: 0.40),
-          _buildPlayerNode(context, slotIndex: 3, positionLabel: 'Ala', top: 0.45, left: 0.08), 
-          _buildPlayerNode(context, slotIndex: 4, positionLabel: 'Ala', top: 0.45, left: 0.72), 
-          _buildPlayerNode(context, slotIndex: 5, positionLabel: 'Pivô', top: 0.15, left: 0.40),
-          _buildPlayerNode(context, slotIndex: 6, positionLabel: 'Técnico', top: 0.90, left: 0.80, isCoach: true),
+          _buildPlayerNode(context,
+              slotIndex: 1, positionLabel: 'Goleiro', top: 0.88, left: 0.40),
+          _buildPlayerNode(context,
+              slotIndex: 2, positionLabel: 'Fixo', top: 0.65, left: 0.40),
+          _buildPlayerNode(context,
+              slotIndex: 3, positionLabel: 'Ala', top: 0.45, left: 0.08),
+          _buildPlayerNode(context,
+              slotIndex: 4, positionLabel: 'Ala', top: 0.45, left: 0.72),
+          _buildPlayerNode(context,
+              slotIndex: 5, positionLabel: 'Pivô', top: 0.15, left: 0.40),
+          _buildPlayerNode(context,
+              slotIndex: 6,
+              positionLabel: 'Técnico',
+              top: 0.90,
+              left: 0.80,
+              isCoach: true),
         ],
       ),
     );
@@ -97,25 +109,28 @@ class FantasyPitchWidget extends StatelessWidget {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 50, 
+                  width: 50,
                   height: 50,
                   decoration: BoxDecoration(
-                    color: isEmpty ? Colors.white.withOpacity(0.3) : Colors.white,
-                    shape: BoxShape.circle,
+                    color:
+                        isEmpty ? Colors.white.withOpacity(0.3) : Colors.white,
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: isCaptain ? Colors.orangeAccent : Colors.white, 
-                      width: isCaptain ? 3 : 2
-                    ),
+                        color: isCaptain ? Colors.orangeAccent : Colors.white,
+                        width: isCaptain ? 3 : 2),
                     // ---> OTIMIZAÇÃO DE MEMÓRIA (RAM) AQUI <---
                     image: (!isEmpty && player.photoUrl.isNotEmpty)
                         ? DecorationImage(
-                            image: CachedNetworkImageProvider(
-                              player.photoUrl,
-                              cacheManager: PlayerCacheManager.instance,
-                              maxWidth: 150,
-                              maxHeight: 150,
-                            ),
+                            image: (kIsWeb
+                                ? NetworkImage(player.photoUrl) as ImageProvider
+                                : CachedNetworkImageProvider(
+                                    player.photoUrl,
+                                    cacheManager: PlayerCacheManager.instance,
+                                    maxWidth: 200,
+                                  )),
+                            onError: (e, s) {},
                             fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
                           )
                         : null,
                   ),
@@ -133,8 +148,16 @@ class FantasyPitchWidget extends StatelessWidget {
                         color: Colors.orange,
                         shape: BoxShape.circle,
                       ),
-                      child: const Text("C", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
+                      child: const Text("C",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 10)),
                     ),
+                  ),
+                if (!isEmpty)
+                  Positioned(
+                    top: -5,
+                    left: -5,
+                    child: _buildStatusIcon(player!.status),
                   ),
               ],
             ),
@@ -149,14 +172,18 @@ class FantasyPitchWidget extends StatelessWidget {
                 children: [
                   Text(
                     isEmpty ? positionLabel : _getShortName(player.name),
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold),
                     overflow: TextOverflow.ellipsis,
                   ),
                   if (!isEmpty)
-                  Text(
-                    "C\$ ${player.currentPrice.toStringAsFixed(1)}",
-                    style: TextStyle(color: Colors.greenAccent[100], fontSize: 9),
-                  ),
+                    Text(
+                      "C\$ ${player.currentPrice.toStringAsFixed(1)}",
+                      style: TextStyle(
+                          color: Colors.greenAccent[100], fontSize: 9),
+                    ),
                 ],
               ),
             )
@@ -172,21 +199,43 @@ class FantasyPitchWidget extends StatelessWidget {
     return parts[0];
   }
 
-  void _showPlayerOptions(BuildContext context, FantasyPlayer player, int slotIndex) {
+  void _showPlayerOptions(
+      BuildContext context, FantasyPlayer player, int slotIndex) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) {
         return Wrap(
           children: [
             ListTile(
-              // Cache também na modal para não piscar
-              leading: CircleAvatar(
-                backgroundImage: CachedNetworkImageProvider(
-                  player.photoUrl,
-                  cacheManager: PlayerCacheManager.instance,
-                  maxWidth: 100,
-                  maxHeight: 100,
-                )
+              leading: Container(
+                width: 48,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: player.photoUrl.isNotEmpty
+                      ? (kIsWeb
+                          ? Image.network(
+                              player.photoUrl,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.topCenter,
+                              errorBuilder: (c, e, s) =>
+                                  const Icon(Icons.person, color: Colors.grey),
+                            )
+                          : CachedNetworkImage(
+                              imageUrl: player.photoUrl,
+                              cacheManager: PlayerCacheManager.instance,
+                              memCacheWidth: 200,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.topCenter,
+                              errorWidget: (c, u, e) =>
+                                  const Icon(Icons.person, color: Colors.grey),
+                            ))
+                      : const Icon(Icons.person, color: Colors.grey),
+                ),
               ),
               title: Text(player.name),
               subtitle: Text("${player.position} - ${player.teamId}"),
@@ -220,6 +269,40 @@ class FantasyPitchWidget extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildStatusIcon(String status) {
+    Color color;
+    IconData icon;
+    switch (status.toLowerCase()) {
+      case 'injured':
+        color = Colors.red;
+        icon = Icons.local_hospital;
+        break;
+      case 'suspended':
+        color = Colors.red;
+        icon = Icons.block;
+        break;
+      case 'doubt':
+      case 'doubtful':
+        color = Colors.orange;
+        icon = Icons.help_outline;
+        break;
+      case 'probable':
+      default:
+        color = Colors.green;
+        icon = Icons.check;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 10, color: Colors.white),
     );
   }
 }

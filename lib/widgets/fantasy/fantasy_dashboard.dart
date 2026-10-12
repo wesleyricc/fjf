@@ -7,7 +7,9 @@ import '../../viewmodels/fantasy_home_viewmodel.dart';
 import '../team_logo_widget.dart';
 import 'fantasy_lineup_preview.dart';
 import '../../screens/fantasy/fantasy_edit_team_screen.dart';
-import '../sponsor_banner_rotator.dart';
+import '../styled_sponsor_banner.dart';
+import 'fantasy_bottom_nav_bar.dart';
+import 'round_summary_dialog.dart';
 
 class FantasyDashboard extends StatelessWidget {
   final FantasyAuthService authService;
@@ -24,7 +26,14 @@ class FantasyDashboard extends StatelessWidget {
     final team = vm.team!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Meu Time"),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/logo_fjf_fantasy.webp', height: 32),
+            const SizedBox(width: 8),
+            const Text("Meu Time"),
+          ],
+        ),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -36,6 +45,8 @@ class FantasyDashboard extends StatelessWidget {
               onPressed: () async => await authService.signOut())
         ],
       ),
+      bottomNavigationBar:
+          const FantasyBottomNavBar(currentRoute: '/fantasy-home'),
       body: RefreshIndicator(
         onRefresh: () => vm.init(
             authService.user!.uid,
@@ -70,7 +81,6 @@ class FantasyDashboard extends StatelessWidget {
                               Colors.amber[800]!)),
                     ]),
                     const SizedBox(height: 24),
-                    
                     if (vm.lastRoundNumber != null) ...[
                       const Text("Desempenho (Rodada Anterior)",
                           style: TextStyle(
@@ -79,7 +89,6 @@ class FantasyDashboard extends StatelessWidget {
                       _buildPerformanceCard(context, vm),
                       const SizedBox(height: 24),
                     ],
-
                     Text(
                         vm.isMarketOpen
                             ? "Última Performance"
@@ -100,80 +109,6 @@ class FantasyDashboard extends StatelessWidget {
                       _buildRoundStatsCarousel(context, vm),
                       const SizedBox(height: 24),
                     ],
-                    
-                    const SponsorBannerRotator(location: 'fantasy'),
-                    const SizedBox(height: 24),
-
-                    const Text("Gerenciar",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.5,
-                      children: [
-                        _buildActionCard(
-                            context,
-                            "Escalar Time",
-                            Icons.shield,
-                            vm.isMarketOpen ? Colors.blueAccent : Colors.grey,
-                            vm.isMarketOpen
-                                ? () => Navigator.of(context)
-                                    .pushNamed('/fantasy-lineup')
-                                : () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                "Mercado Fechado! Escalações bloqueadas.")));
-                                  }),
-                        _buildActionCard(
-                            context,
-                            "Mercado",
-                            Icons.shopping_cart,
-                            Colors.orangeAccent,
-                            () => Navigator.pushNamed(
-                                context, '/fantasy-market')),
-                        _buildActionCard(
-                            context,
-                            "Ranking Geral",
-                            Icons.groups,
-                            Colors.purpleAccent,
-                            () => Navigator.of(context)
-                                .pushNamed('/fantasy-rankings')),
-                        _buildActionCard(
-                            context,
-                            "Ligas Privadas",
-                            Icons.diversity_3,
-                            Colors.lightGreen,
-                            () => Navigator.of(context)
-                                .pushNamed('/fantasy-leagues')),
-                        _buildActionCard(
-                            context,
-                            "Regras",
-                            Icons.menu_book,
-                            Colors.blueGrey,
-                            () => Navigator.of(context)
-                                .pushNamed('/fantasy-rules')),
-                        _buildActionCard(
-                            context,
-                            "Histórico",
-                            Icons.history,
-                            Colors.teal,
-                            () => Navigator.of(context)
-                                .pushNamed('/fantasy-history')),
-                        _buildActionCard(
-                            context,
-                            "Central Scouts",
-                            Icons.analytics,
-                            Colors.indigoAccent,
-                            () => Navigator.of(context)
-                                .pushNamed('/fantasy-scouts')),
-                      ],
-                    ),
                   ],
                 ),
               ),
@@ -435,8 +370,7 @@ class FantasyDashboard extends StatelessWidget {
                     ],
                   ),
                 )
-              ]))
-          ,
+              ])),
           const SizedBox(width: 8),
           Container(
             decoration: BoxDecoration(
@@ -472,11 +406,35 @@ class FantasyDashboard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+        boxShadow: const [
+          BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+        ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber.shade600,
+                foregroundColor: Colors.white,
+                elevation: 4,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.star, size: 28),
+              label: const Text('VER RESUMO DA ÚLTIMA RODADA',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      letterSpacing: 0.5)),
+              onPressed: () {
+                RoundSummaryDialog.show(context, points, app);
+              },
+            ),
+          ),
+          /*
           // Pontuação
           Column(
             children: [
@@ -524,6 +482,7 @@ class FantasyDashboard extends StatelessWidget {
               ),
             ],
           ),
+          */
         ],
       ),
     );

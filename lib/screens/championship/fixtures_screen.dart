@@ -190,7 +190,7 @@ class _FixturesScreenState extends State<FixturesScreen> {
           appBar: AppBar(
             flexibleSpace: Container(
               decoration: const BoxDecoration(
-                gradient: AppTheme.brazilGradient,
+                image: AppTheme.headerImage,
               ),
             ),
             title: Column(
@@ -438,10 +438,10 @@ class _FixturesScreenState extends State<FixturesScreen> {
       tag: heroTag,
       child: SizedBox(
         height: 45, width: 45,
-        child: CachedNetworkImage(
-          imageUrl: url, fit: BoxFit.contain,
-          placeholder: (_,__) => Container(color: Colors.transparent),
-          errorWidget: (_,__,___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
+        child: Image.network(
+          url, 
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
         ),
       ),
     );

@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../services/fantasy_service.dart';
-import '../../widgets/sponsor_banner_rotator.dart';
+import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
 
 class FantasyHistoryScreen extends StatefulWidget {
   const FantasyHistoryScreen({super.key});
@@ -31,11 +31,19 @@ class _FantasyHistoryScreenState extends State<FantasyHistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Minha Evolução"),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/logo_fjf_fantasy.webp', height: 28),
+            const SizedBox(width: 8),
+            const Text("Minha Evolução"),
+          ],
+        ),
         //backgroundColor: Colors.green[800],
         //foregroundColor: Colors.white,
       ),
-      bottomNavigationBar: const SponsorBannerRotator(location: 'fantasy'),
+      bottomNavigationBar:
+          const FantasyBottomNavBar(currentRoute: '/fantasy-history'),
       body: StreamBuilder<QuerySnapshot>(
         stream: FantasyService().streamHistory(userId),
         builder: (context, snapshot) {

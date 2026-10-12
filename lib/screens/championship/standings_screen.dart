@@ -112,7 +112,7 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
           appBar: AppBar(
             flexibleSpace: Container(
               decoration: const BoxDecoration(
-                gradient: AppTheme.brazilGradient,
+                image: AppTheme.headerImage,
               ),
             ),
             title: Column(
@@ -206,6 +206,7 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
               standings: _memoizedOfficialStandings!, 
               allMatches: _cachedMatches,
               liveScores: _memoizedLiveScores!, 
+              heroTagPrefix: 'official_shield_',
             ),
           ),
           SliverToBoxAdapter(
@@ -262,7 +263,10 @@ class _StandingsScreenState extends State<StandingsScreen> with SingleTickerProv
         SliverToBoxAdapter(
           child: Column(
             children: [
-              StandingsTableWidget(standings: simulatedStandings),
+              StandingsTableWidget(
+                standings: simulatedStandings,
+                heroTagPrefix: 'sim_shield_',
+              ),
               _buildDetailedLegend(hideCriteria: true),
               const Divider(thickness: 2),
             ],

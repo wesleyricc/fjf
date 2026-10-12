@@ -21,8 +21,10 @@ class EditPlayerViewModel extends ChangeNotifier {
   bool isGoalkeeper = false;
   
   String? selectedPosition;
+  String? secondaryPosition; // NEW FIELD
   String? selectedFoot;
   String? selectedStaffRole;
+  double? fantasyInitialPrice; // NEW FIELD
   
   bool createPortalAccess = false;
   String portalPassword = '';
@@ -43,10 +45,14 @@ class EditPlayerViewModel extends ChangeNotifier {
         selectedPosition = ['Fixo', 'Ala', 'Pivô'].contains(_existingPlayer.position) 
             ? _existingPlayer.position 
             : null;
+        secondaryPosition = ['Fixo', 'Ala', 'Pivô'].contains(_existingPlayer.secondaryPosition) 
+            ? _existingPlayer.secondaryPosition 
+            : null;
       }
       selectedFoot = ['Destro', 'Canhoto', 'Ambidestro'].contains(_existingPlayer.preferredFoot) 
           ? _existingPlayer.preferredFoot 
           : null;
+      fantasyInitialPrice = _existingPlayer.fantasyInitialPrice;
     }
   }
 
@@ -55,6 +61,7 @@ class EditPlayerViewModel extends ChangeNotifier {
     if (isStaff) {
       isGoalkeeper = false;
       selectedPosition = null;
+      secondaryPosition = null;
     } else {
       selectedStaffRole = null;
     }
@@ -68,8 +75,10 @@ class EditPlayerViewModel extends ChangeNotifier {
   }
 
   void setPosition(String? pos) { selectedPosition = pos; notifyListeners(); }
+  void setSecondaryPosition(String? pos) { secondaryPosition = pos; notifyListeners(); }
   void setFoot(String? foot) { selectedFoot = foot; notifyListeners(); }
   void setStaffRole(String? role) { selectedStaffRole = role; notifyListeners(); }
+  void setFantasyInitialPrice(double? val) { fantasyInitialPrice = val; notifyListeners(); }
   
   void setCreatePortalAccess(bool value) { createPortalAccess = value; notifyListeners(); }
   void setPortalPassword(String value) { portalPassword = value; notifyListeners(); }
@@ -91,7 +100,12 @@ class EditPlayerViewModel extends ChangeNotifier {
       }
     } else {
       final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 1000,
+        imageQuality: 80,
+      );
       if (pickedFile != null) {
         imageFile = File(pickedFile.path);
         photoUrl = null;
@@ -154,6 +168,8 @@ class EditPlayerViewModel extends ChangeNotifier {
         'name': name.trim(),
         'jersey_number': jerseyNumber,
         'position': isStaff ? null : (isGoalkeeper ? 'Goleiro' : selectedPosition),
+        'secondary_position': isStaff ? null : (isGoalkeeper ? null : secondaryPosition),
+        'fantasy_initial_price': fantasyInitialPrice,
         'date_of_birth': dobTimestamp,
         'height_cm': heightCm,
         'weight_kg': weightKg,

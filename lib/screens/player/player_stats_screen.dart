@@ -90,7 +90,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
            return Scaffold(
             appBar: AppBar(
               title: const Text("Estatísticas"),
-              flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+              flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage)),
             ),
 
             body: CustomEmptyState.offline(
@@ -108,7 +108,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
            return Scaffold(
             appBar: AppBar(
               title: const Text("Estatísticas"),
-              flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+              flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage)),
             ),
 
             body: ListView.separated(
@@ -169,7 +169,7 @@ class _PlayerStatsScreenState extends State<PlayerStatsScreen> with SingleTicker
           appBar: AppBar(
             flexibleSpace: Container(
               decoration: const BoxDecoration(
-                gradient: AppTheme.brazilGradient,
+                image: AppTheme.headerImage,
               ),
             ),
             title: Column(

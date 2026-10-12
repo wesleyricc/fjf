@@ -26,7 +26,7 @@ class _AboutHistoryScreenState extends State<AboutHistoryScreen> {
         title: const Text('Nossa História'),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
       ),

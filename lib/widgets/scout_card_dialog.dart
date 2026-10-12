@@ -106,6 +106,10 @@ class _ScoutCardDialogState extends State<ScoutCardDialog> {
         title = "TIRO LIVRE PERDIDO";
         color = Colors.indigo;
         break;
+      case MatchEventType.difficultSave:
+        title = "DEFESA DIFÍCIL";
+        color = Colors.cyan;
+        break;
       default:
         title = "EVENTO";
         color = Colors.blue;

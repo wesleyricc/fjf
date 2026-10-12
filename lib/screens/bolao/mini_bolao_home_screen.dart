@@ -64,7 +64,7 @@ class _MiniBolaoHomeScreenState extends State<MiniBolaoHomeScreen> {
       backgroundColor: Colors.white, 
       appBar: AppBar(
         title: const Text("Mini Bolão FJF", style: TextStyle(fontWeight: FontWeight.bold)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+        flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage)),
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -82,7 +82,7 @@ class _MiniBolaoHomeScreenState extends State<MiniBolaoHomeScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(FontAwesomeIcons.rocket, size: 80, color: Colors.amber), 
+              const FaIcon(FontAwesomeIcons.rocket, size: 80, color: Colors.amber), 
               const SizedBox(height: 24),
               const Text("Identificação Necessária", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
@@ -206,7 +206,7 @@ class _MiniBolaoHomeScreenState extends State<MiniBolaoHomeScreen> {
           backgroundColor: Colors.grey[100],
           appBar: AppBar(
             title: const Text("Mini Bolão FJF", style: TextStyle(fontWeight: FontWeight.bold)),
-            flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+            flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage)),
             foregroundColor: Colors.white,
             elevation: 0,
             actions: [

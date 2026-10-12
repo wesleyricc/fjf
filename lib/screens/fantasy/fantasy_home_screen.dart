@@ -14,7 +14,6 @@ import '../../widgets/fantasy/fantasy_landing_page.dart';
 import '../../widgets/fantasy/fantasy_dashboard.dart';
 import '../../widgets/skeleton_loader.dart';
 
-
 class FantasyHomeScreen extends StatefulWidget {
   const FantasyHomeScreen({super.key});
 
@@ -55,7 +54,17 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
           builder: (context, vm, child) {
             if (vm.isOffline && vm.team == null) {
               return Scaffold(
-                appBar: AppBar(title: const Text("Fantasy FJF"), elevation: 0),
+                appBar: AppBar(
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset('assets/logo_fjf_fantasy.webp', height: 32),
+                      const SizedBox(width: 8),
+                      const Text("Cartola FJF"),
+                    ],
+                  ),
+                  elevation: 0,
+                ),
                 body: CustomEmptyState.offline(
                     onRetry: () => vm.init(
                         authService.user!.uid,
@@ -67,7 +76,17 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
 
             if (vm.errorMessage != null && vm.team == null) {
               return Scaffold(
-                appBar: AppBar(title: const Text("Fantasy FJF"), elevation: 0),
+                appBar: AppBar(
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset('assets/logo_fjf_fantasy.webp', height: 32),
+                      const SizedBox(width: 8),
+                      const Text("Cartola FJF"),
+                    ],
+                  ),
+                  elevation: 0,
+                ),
                 body: CustomEmptyState(
                     icon: Icons.error_outline,
                     title: "Erro ao carregar",
@@ -85,7 +104,17 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
 
             if (vm.team == null) {
               return Scaffold(
-                appBar: AppBar(title: const Text("Fantasy FJF"), elevation: 0),
+                appBar: AppBar(
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset('assets/logo_fjf_fantasy.webp', height: 32),
+                      const SizedBox(width: 8),
+                      const Text("Cartola FJF"),
+                    ],
+                  ),
+                  elevation: 0,
+                ),
                 body: CustomEmptyState(
                   icon: Icons.sync_problem,
                   title: "Sincronizando...",
@@ -101,11 +130,14 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
                   onSecondaryButtonPressed: () async {
                     final error = await authService.signInWithGoogle();
                     if (error != null && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text(error)));
                     } else if (context.mounted) {
                       vm.init(
                           authService.user!.uid,
-                          Provider.of<ChampionshipService>(context, listen: false).currentSeasonId,
+                          Provider.of<ChampionshipService>(context,
+                                  listen: false)
+                              .currentSeasonId,
                           force: true);
                     }
                   },
@@ -122,7 +154,17 @@ class _FantasyHomeScreenState extends State<FantasyHomeScreen> {
 
   Widget _buildLoadingSkeleton(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Meu Time"), elevation: 0),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/logo_fjf_fantasy.webp', height: 32),
+            const SizedBox(width: 8),
+            const Text("Meu Time"),
+          ],
+        ),
+        elevation: 0,
+      ),
       body: SingleChildScrollView(
         child: Column(
           children: [

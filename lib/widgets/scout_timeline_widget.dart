@@ -37,8 +37,7 @@ class ScoutTimelineWidget extends StatelessWidget {
         .doc(matchId)
         .collection('timeline');
 
-    return Expanded(
-      child: StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<QuerySnapshot>(
         stream: timelineQuery.snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -70,7 +69,8 @@ class ScoutTimelineWidget extends StatelessWidget {
                 case MatchEventType.penaltyMissed: return 4;
                 case MatchEventType.directFreeKickMissed: return 3;
                 case MatchEventType.shotOnPost: return 2;
-                case MatchEventType.assist: return 1;
+                case MatchEventType.difficultSave: return 1;
+                case MatchEventType.assist: return 0;
               }
             }
 
@@ -111,6 +111,8 @@ class ScoutTimelineWidget extends StatelessWidget {
                   icon = Icons.sports_soccer; color = Colors.black87; typeLabel = "GOL CONTRA"; break;
                 case MatchEventType.directFreeKickMissed:
                   icon = Icons.close; color = Colors.indigo; typeLabel = "TL PERDIDO"; break;
+                case MatchEventType.difficultSave:
+                  icon = Icons.back_hand; color = Colors.cyan; typeLabel = "DEFESA DIFÍCIL"; break;
               }
 
               if (evt.type == MatchEventType.goal && evt.concededByPlayerId != null) {
@@ -147,8 +149,7 @@ class ScoutTimelineWidget extends StatelessWidget {
             },
           );
         },
-      ),
-    );
+      );
   }
 
   void _openEditDialog(BuildContext context, MatchEvent evt, List<MatchEvent> allEvents) {
@@ -179,7 +180,10 @@ class ScoutTimelineWidget extends StatelessWidget {
         evt.type == MatchEventType.redCard ||
         evt.type == MatchEventType.penaltyMissed ||
         evt.type == MatchEventType.penaltySaved ||
-        evt.type == MatchEventType.shotOnPost
+        evt.type == MatchEventType.shotOnPost ||
+        evt.type == MatchEventType.ownGoal ||
+        evt.type == MatchEventType.directFreeKickMissed ||
+        evt.type == MatchEventType.difficultSave
     ) {
       // 🚨 AGORA OS NOVOS SCOUTS TAMBÉM ABREM A CAIXA GENÉRICA DE EDIÇÃO 🚨
       showDialog(

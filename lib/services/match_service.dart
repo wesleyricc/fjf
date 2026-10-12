@@ -73,6 +73,7 @@ class MatchService {
       Map<String, int> shotsOnPost = {};
       Map<String, int> ownGoals = {};
       Map<String, int> directFreeKicksMissed = {};
+      Map<String, int> difficultSaves = {};
 
       final matchSnap = await matchRef.get();
       if (!matchSnap.exists) return;
@@ -143,6 +144,9 @@ class MatchService {
           else if (event.type == MatchEventType.directFreeKickMissed) {
             directFreeKicksMissed[pid] = (directFreeKicksMissed[pid] ?? 0) + 1;
           }
+          else if (event.type == MatchEventType.difficultSave) {
+            difficultSaves[pid] = (difficultSaves[pid] ?? 0) + 1;
+          }
         }
 
         transaction.update(matchRef, {
@@ -161,6 +165,7 @@ class MatchService {
             'shots_on_post': shotsOnPost,
             'own_goals': ownGoals,
             'direct_free_kicks_missed': directFreeKicksMissed,
+            'difficult_saves': difficultSaves,
           }
         });
       });

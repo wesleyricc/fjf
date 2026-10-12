@@ -38,7 +38,7 @@ dependencies:
   url_launcher: ^6.1.11
   youtube_player_flutter: ^9.1.3
   crypto: ^3.0.3
-  font_awesome_flutter: ^10.12.0
+  font_awesome_flutter: ^11.0.0
   cached_network_image: ^3.3.0
   video_player: ^2.10.0
   chewie: ^1.13.0
@@ -58,7 +58,6 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   youtube_player_iframe: ^5.2.2
-  material_design_icons_flutter: ^7.0.7296
   image_picker: ^1.2.2
   http: ^1.2.0
   share_plus: ^12.0.1  # Para compartilhar a imagem
@@ -90,10 +89,12 @@ flutter:
     - assets/logo_fjf.jpg
     - assets/logo2_fjf.png
     - assets/logo3_fjf.png
+    - assets/logo_fjf_fantasy.webp
     - assets/data/teams.json
     - assets/data/players.json
     - assets/data/matches.json
     - assets/
+    - assets/images/
 
 
 flutter_launcher_icons:

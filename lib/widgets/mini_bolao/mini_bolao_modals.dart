@@ -96,7 +96,12 @@ class MiniBolaoModals {
                     child: GestureDetector(
                       onTap: () async {
                         final picker = ImagePicker();
-                        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+                        final pickedFile = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 50,
+                          maxWidth: 512,
+                          maxHeight: 512,
+                        );
                         if (pickedFile != null) {
                           final bytes = await pickedFile.readAsBytes();
                           setModalState(() => selectedImageBytes = bytes);
@@ -107,7 +112,7 @@ class MiniBolaoModals {
                         children: [
                           CircleAvatar(
                             radius: 50, backgroundColor: Colors.grey.shade200,
-                            backgroundImage: selectedImageBytes != null ? MemoryImage(selectedImageBytes!) as ImageProvider : (userData?['photo_url'] != null ? NetworkImage(userData!['photo_url']) : null),
+                            backgroundImage: selectedImageBytes != null ? MemoryImage(selectedImageBytes!) as ImageProvider : (userData?['photo_url'] != null ? ResizeImage(NetworkImage(userData!['photo_url']), width: 100, height: 100) : null),
                             child: (selectedImageBytes == null && userData?['photo_url'] == null) ? const Icon(Icons.person, size: 50, color: Colors.grey) : null,
                           ),
                           Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Color(0xFF1B5E20), shape: BoxShape.circle), child: const Icon(Icons.camera_alt, color: Colors.white, size: 20))

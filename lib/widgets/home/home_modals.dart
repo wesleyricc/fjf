@@ -55,11 +55,11 @@ class HomeModals {
                       leading: CircleAvatar(
                         backgroundColor: hasVoted
                             ? Colors.green.withOpacity(0.1)
-                            : const Color(0xFFC5A814).withOpacity(0.2),
+                            : const Color(0xFFC25F22).withOpacity(0.2),
                         child: Icon(hasVoted ? Icons.check : Icons.how_to_vote,
                             color: hasVoted
                                 ? Colors.green
-                                : const Color(0xFFC5A814)),
+                                : const Color(0xFFC25F22)),
                       ),
                       title: Text(poll.title,
                           style: TextStyle(
@@ -76,7 +76,7 @@ class HomeModals {
                           ? const Icon(Icons.check_circle, color: Colors.green)
                           : ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFC5A814),
+                                  backgroundColor: const Color(0xFFC25F22),
                                   foregroundColor: Colors.black87,
                                   elevation: 0),
                               onPressed: () {

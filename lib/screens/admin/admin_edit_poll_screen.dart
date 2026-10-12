@@ -200,7 +200,7 @@ class _AdminEditPollScreenState extends State<AdminEditPollScreen> {
                       final nom = nominees[index];
                       return ListTile(
                         leading: CircleAvatar(
-                          backgroundImage: nom.playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(nom.playerPhotoUrl) : null,
+                          backgroundImage: nom.playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(nom.playerPhotoUrl, maxWidth: 100, maxHeight: 100) : null,
                           child: nom.playerPhotoUrl.isEmpty ? const Icon(Icons.person) : null,
                         ),
                         title: Text(nom.playerName, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -274,12 +274,13 @@ class _PlayerSearchModalState extends State<_PlayerSearchModal> {
             const SizedBox(height: 16),
             Expanded(
               child: ListView.builder(
+                addAutomaticKeepAlives: false,
                 itemCount: filteredPlayers.length,
                 itemBuilder: (context, index) {
                   final p = filteredPlayers[index];
                   return ListTile(
                     leading: CircleAvatar(
-                      backgroundImage: p.photoUrl.isNotEmpty ? CachedNetworkImageProvider(p.photoUrl) : null,
+                      backgroundImage: p.photoUrl.isNotEmpty ? CachedNetworkImageProvider(p.photoUrl, maxWidth: 100, maxHeight: 100) : null,
                       child: p.photoUrl.isEmpty ? const Icon(Icons.person) : null,
                     ),
                     title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),

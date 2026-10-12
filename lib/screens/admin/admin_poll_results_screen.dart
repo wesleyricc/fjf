@@ -159,6 +159,7 @@ class AdminPollResultsScreen extends StatelessWidget {
 
     return ListView.separated(
       padding: const EdgeInsets.all(16),
+      addAutomaticKeepAlives: false,
       itemCount: nominees.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -194,7 +195,7 @@ class AdminPollResultsScreen extends StatelessWidget {
             CircleAvatar(
               radius: 24,
               backgroundColor: Colors.grey.shade200,
-              backgroundImage: nominee.playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(nominee.playerPhotoUrl) : null,
+              backgroundImage: nominee.playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(nominee.playerPhotoUrl, maxWidth: 100, maxHeight: 100) : null,
               child: nominee.playerPhotoUrl.isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
             ),
             const SizedBox(width: 16),

@@ -107,7 +107,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> with SingleTickerProv
           appBar: AppBar(
             flexibleSpace: Container(
               decoration: const BoxDecoration(
-                gradient: AppTheme.brazilGradient,
+                image: AppTheme.headerImage,
               ),
             ),
             title: Column(
@@ -326,14 +326,11 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> with SingleTickerProv
                     padding: const EdgeInsets.only(right: 8.0),
                     child: Hero(
                       tag: 'stat_shield_${team.id}_$suffix', 
-                      child: CachedNetworkImage(
-                        imageUrl: team.shieldUrl, 
+                      child: Image.network(
+                        team.shieldUrl, 
                         width: 25, height: 25, 
                         fit: BoxFit.contain,
-                        memCacheWidth: 100,
-                        memCacheHeight: 100,
-                        placeholder: (_,__) => Container(color: Colors.transparent),
-                        errorWidget: (_,__,___) => const Icon(Icons.shield, size: 25, color: Colors.grey),
+                        errorBuilder: (_,__,___) => const Icon(Icons.shield, size: 25, color: Colors.grey),
                       ),
                     ),
                   ),

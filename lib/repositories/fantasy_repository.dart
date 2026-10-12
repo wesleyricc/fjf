@@ -85,7 +85,7 @@ class FantasyRepository {
     }
 
     if (missingIds.isNotEmpty) {
-      final fetchedPlayers = await _api.getPlayersByIds(missingIds);
+      final fetchedPlayers = await _api.getPlayersByIds(missingIds, forceRefresh: forceRefresh);
       for (var p in fetchedPlayers) {
         _cachedIndividualPlayers[p.playerId] = p;
         resultPlayers.add(p);
@@ -99,6 +99,8 @@ class FantasyRepository {
     required String userId,
     required List<String> playerIds,
     required List<String> benchIds,
+    Map<String, String>? lineupSlots,
+    Map<String, String>? benchSlots,
     required String? captainId,
     required String? luxuryReserveId,
     required double expectedOldTeamCost,
@@ -108,6 +110,8 @@ class FantasyRepository {
       userId: userId,
       playerIds: playerIds,
       benchIds: benchIds,
+      lineupSlots: lineupSlots,
+      benchSlots: benchSlots,
       captainId: captainId,
       luxuryReserveId: luxuryReserveId,
       expectedOldTeamCost: expectedOldTeamCost,

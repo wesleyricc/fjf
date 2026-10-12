@@ -67,7 +67,7 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
       appBar: AppBar(
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
         title: Column(
@@ -221,7 +221,7 @@ class _PlayerComparisonScreenState extends State<PlayerComparisonScreen> {
                child: CircleAvatar(
                 radius: 45,
                 backgroundColor: Colors.white,
-                backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl, cacheManager: PlayerCacheManager.instance) : null,
+                backgroundImage: photoUrl.isNotEmpty ? CachedNetworkImageProvider(photoUrl, cacheManager: PlayerCacheManager.instance, maxWidth: 180, maxHeight: 180) : null,
                 child: photoUrl.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.grey) : null,
               ),
             ),

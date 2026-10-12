@@ -269,7 +269,12 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
                     child: GestureDetector(
                       onTap: () async {
                         final picker = ImagePicker();
-                        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+                        final pickedFile = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 50,
+                          maxWidth: 512,
+                          maxHeight: 512,
+                        );
                         if (pickedFile != null) {
                           final bytes = await pickedFile.readAsBytes();
                           setModalState(() => selectedImageBytes = bytes);
@@ -280,7 +285,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
                         children: [
                           CircleAvatar(
                             radius: 50, backgroundColor: Colors.grey.shade200,
-                            backgroundImage: selectedImageBytes != null ? MemoryImage(selectedImageBytes!) as ImageProvider : (bUser.photoUrl != null ? NetworkImage(bUser.photoUrl!) : null),
+                            backgroundImage: selectedImageBytes != null ? MemoryImage(selectedImageBytes!) as ImageProvider : (bUser.photoUrl != null ? ResizeImage(NetworkImage(bUser.photoUrl!), width: 100, height: 100) : null),
                             child: (selectedImageBytes == null && bUser.photoUrl == null) ? const Icon(Icons.person, size: 50, color: Colors.grey) : null,
                           ),
                           Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Color(0xFF1B5E20), shape: BoxShape.circle), child: const Icon(Icons.camera_alt, color: Colors.white, size: 20))
@@ -360,7 +365,7 @@ class _BolaoPredictionsScreenState extends State<BolaoPredictionsScreen> with Ti
               backgroundColor: Colors.grey[100],
               appBar: AppBar(
                 title: const Text("Bolão Copa do Mundo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+                flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage)),
                 iconTheme: const IconThemeData(color: Colors.white),
                 actions: [
                   IconButton(

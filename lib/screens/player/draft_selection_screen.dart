@@ -193,7 +193,7 @@ class _DraftSelectionScreenState extends State<DraftSelectionScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: CircleAvatar(
           backgroundColor: player == null ? Colors.grey.shade200 : Colors.purple.shade50,
-          backgroundImage: player != null && player.photoUrl.isNotEmpty ? CachedNetworkImageProvider(player.photoUrl) : null,
+          backgroundImage: player != null && player.photoUrl.isNotEmpty ? CachedNetworkImageProvider(player.photoUrl, maxWidth: 100, maxHeight: 100) : null,
           child: player == null ? const Icon(Icons.add, color: Colors.grey) : (player.photoUrl.isEmpty ? const Icon(Icons.person, color: Colors.purple) : null),
         ),
         title: Text(
@@ -347,6 +347,7 @@ class _DraftSearchModalState extends State<_DraftSearchModal> {
             child: filteredPlayers.isEmpty
                 ? const Center(child: Text("Nenhum atleta encontrado para esta posição.", style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
+                    addAutomaticKeepAlives: false,
                     itemCount: filteredPlayers.length,
                     itemBuilder: (context, index) {
                       final p = filteredPlayers[index];
@@ -357,7 +358,7 @@ class _DraftSearchModalState extends State<_DraftSearchModal> {
                       
                       return ListTile(
                         leading: CircleAvatar(
-                          backgroundImage: p.photoUrl.isNotEmpty ? CachedNetworkImageProvider(p.photoUrl) : null,
+                          backgroundImage: p.photoUrl.isNotEmpty ? CachedNetworkImageProvider(p.photoUrl, maxWidth: 100, maxHeight: 100) : null,
                           child: p.photoUrl.isEmpty ? const Icon(Icons.person) : null,
                         ),
                         title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),

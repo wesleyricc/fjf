@@ -16,7 +16,6 @@ import '../../widgets/team_stats_summary.dart';
 import '../../widgets/trophy_room_widget.dart';
 import '../../widgets/recent_form_widget.dart';
 import '../../widgets/team_roster_list.dart';
-import '../../utils/custom_cache_manager.dart';
 
 import 'extra_points_log_screen.dart';
 import '../admin/edit_player_screen.dart';
@@ -357,7 +356,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       : null,
                   flexibleSpace: Container(
                     decoration: const BoxDecoration(
-                      gradient: AppTheme.brazilGradient,
+                      image: AppTheme.headerImage,
                     ),
                     child: FlexibleSpaceBar(
                       centerTitle: true,
@@ -375,7 +374,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                               child: CachedNetworkImage(
                                 imageUrl: widget.team.shieldUrl,
                                 fit: BoxFit.contain,
-                                cacheManager: PlayerCacheManager.instance,
                                 memCacheHeight: 300,
                                 placeholder: (_, __) => const Icon(Icons.shield, size: 50, color: Colors.white24),
                                 errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 50, color: Colors.white24),

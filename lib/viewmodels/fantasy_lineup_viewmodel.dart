@@ -6,6 +6,7 @@ import '../models/fantasy_models.dart';
 import '../repositories/fantasy_repository.dart';
 import '../services/fantasy_scout_service.dart';
 import '../services/analytics_service.dart';
+import '../services/firestore_cache_service.dart';
 import 'package:flutter/widgets.dart';
 
 enum SyncStatus { idle, syncing, saved, error }
@@ -39,6 +40,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   Timer? _debounceTimer;
   SyncStatus _syncStatus = SyncStatus.idle;
 
+  FantasyGameConfig _gameConfig = FantasyGameConfig.defaults();
   FantasyTeam? _team;
   final Map<int, FantasyPlayer> _lineup = {}; 
   final Map<int, FantasyPlayer> _bench = {};
@@ -51,6 +53,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   double _expectedOldTeamCost = 0.0;
 
   bool _isMarketOpen = true;
+  DateTime? _closingTime;
   int _currentRound = 1;
   Map<String, FantasyScoutDetail> _liveScores = {};
 
@@ -63,6 +66,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   String? get errorMessage => _errorMessage;
   String? get successMessage => _successMessage;
   bool get isMarketOpen => _isMarketOpen;
+  DateTime? get closingTime => _closingTime;
   int get currentRound => _currentRound;
   SyncStatus get syncStatus => _syncStatus;
   Map<int, FantasyPlayer> get lineup => _lineup;
@@ -72,6 +76,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   double get currentBalance => _currentBalance;
   double get totalPatrimony => _totalPatrimony;
   Map<String, FantasyScoutDetail> get liveScores => _liveScores;
+  FantasyGameConfig get gameConfig => _gameConfig;
 
   final List<Map<String, dynamic>> slotsConfig = [
     {'index': 1, 'pos': 'Goleiro'},
@@ -90,28 +95,49 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     {'index': 16, 'pos': 'Técnico'},
   ];
 
+  void _updateMarketStatus(Map<String, dynamic> data, String seasonId) {
+    final bool isOpenFlag = data['is_open'] ?? true;
+    final dynamic closingRaw = data['closing_time'];
+    _closingTime = closingRaw is Timestamp ? closingRaw.toDate() : null;
+    final bool isExpired = _closingTime != null && DateTime.now().isAfter(_closingTime!);
+
+    _isMarketOpen = isOpenFlag && !isExpired;
+    _currentRound = data['current_round'] ?? 1;
+    _checkScoutSubscription(seasonId);
+    if (!_isDisposed) notifyListeners();
+  }
+
   void init(String userId, String seasonId) {
     _userId = userId;
     _isLoading = true;
     notifyListeners();
 
-    // 🚨 CORREÇÃO DO BUG: Busca o status inicial manualmente porque o broadcast stream 
-    // pode não re-emitir o último valor para a tela de escalação que foi aberta depois.
-    _firestore.collection('fantasy_config').doc('status').get(const GetOptions(source: Source.serverAndCache)).then((doc) {
+    // 🚨 CORREÇÃO DO BUG & FINOPS: Busca o status inicial do cache local para não pagar leitura dupla 
+    // (a leitura real do servidor já será cobrada ao se conectar no .snapshots() logo abaixo).
+    FirestoreCacheService.getDocumentWithCache(
+      docRef: _firestore.collection('fantasy_config').doc('status'),
+      cacheKey: 'fantasy_status',
+      ttl: const Duration(minutes: 5),
+    ).then((doc) {
       if (doc.exists && doc.data() != null) {
-        _isMarketOpen = doc.data()!['is_open'] ?? true;
-        _currentRound = doc.data()!['current_round'] ?? 1;
-        _checkScoutSubscription(seasonId);
+        _updateMarketStatus(doc.data() as Map<String, dynamic>, seasonId);
+      }
+    });
+
+    FirestoreCacheService.getDocumentWithCache(
+      docRef: _firestore.collection('fantasy_config').doc('rules'),
+      cacheKey: 'fantasy_rules',
+      ttl: const Duration(hours: 24),
+    ).then((doc) {
+      if (doc.exists && doc.data() != null) {
+        _gameConfig = FantasyGameConfig.fromMap(doc.data() as Map<String, dynamic>);
         if (!_isDisposed) notifyListeners();
       }
     });
 
     _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
-      _isMarketOpen = status['is_open'] ?? true;
-      _currentRound = status['current_round'] ?? 1;
-      _checkScoutSubscription(seasonId);
-      if (!_isDisposed) notifyListeners();
+      _updateMarketStatus(status, seasonId);
     });
 
     _teamSub?.cancel();
@@ -142,23 +168,37 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
         double calculatedTeamPrice = 0.0;
 
         for (var p in players) {
-          final pos = p.position.toLowerCase();
-
-          if (team.lineupPlayerIds.contains(p.playerId)) {
-            calculatedTeamPrice += p.currentPrice;
-            if (pos.contains('gol')) _lineup[1] = p;
-            else if (pos.contains('fix')) _lineup[2] = p;
-            else if (pos.contains('piv')) _lineup[5] = p;
-            else if (pos.contains('téc')) _lineup[6] = p;
-            else if (pos.contains('ala')) {
-              if (!_lineup.containsKey(3)) _lineup[3] = p; else _lineup[4] = p;
+          if (team.lineupSlots != null && team.lineupSlots!.isNotEmpty) {
+            if (team.lineupPlayerIds.contains(p.playerId)) {
+              calculatedTeamPrice += p.currentPrice;
+              team.lineupSlots!.forEach((slot, id) {
+                if (id == p.playerId) _lineup[int.parse(slot)] = p;
+              });
+            } else if (team.benchPlayerIds.contains(p.playerId)) {
+              team.benchSlots?.forEach((slot, id) {
+                if (id == p.playerId) _bench[int.parse(slot)] = p;
+              });
             }
-          } else if (team.benchPlayerIds.contains(p.playerId)) {
-            if (pos.contains('gol')) _bench[11] = p;
-            else if (pos.contains('fix')) _bench[12] = p;
-            else if (pos.contains('ala')) _bench[13] = p;
-            else if (pos.contains('piv')) _bench[15] = p;
-            else if (pos.contains('téc')) _bench[16] = p;
+          } else {
+            // BACKWARD COMPATIBILITY
+            final pos = p.position.toLowerCase();
+
+            if (team.lineupPlayerIds.contains(p.playerId)) {
+              calculatedTeamPrice += p.currentPrice;
+              if (pos.contains('gol')) _lineup[1] = p;
+              else if (pos.contains('fix')) _lineup[2] = p;
+              else if (pos.contains('piv')) _lineup[5] = p;
+              else if (pos.contains('téc')) _lineup[6] = p;
+              else if (pos.contains('ala')) {
+                if (!_lineup.containsKey(3)) _lineup[3] = p; else _lineup[4] = p;
+              }
+            } else if (team.benchPlayerIds.contains(p.playerId)) {
+              if (pos.contains('gol')) _bench[11] = p;
+              else if (pos.contains('fix')) _bench[12] = p;
+              else if (pos.contains('ala')) _bench[13] = p;
+              else if (pos.contains('piv')) _bench[15] = p;
+              else if (pos.contains('téc')) _bench[16] = p;
+            }
           }
         }
         _teamPrice = calculatedTeamPrice;
@@ -319,10 +359,18 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
       final playerIds = _lineup.values.map((p) => p.playerId).toList();
       final benchIds = _bench.values.map((p) => p.playerId).toList();
       
+      final Map<String, String> lineupSlots = {};
+      _lineup.forEach((key, value) => lineupSlots[key.toString()] = value.playerId);
+      
+      final Map<String, String> benchSlots = {};
+      _bench.forEach((key, value) => benchSlots[key.toString()] = value.playerId);
+      
       final result = await _repository.saveLineup(
         userId: _userId!,
         playerIds: playerIds,
         benchIds: benchIds,
+        lineupSlots: lineupSlots,
+        benchSlots: benchSlots,
         captainId: _captainId,
         luxuryReserveId: _luxuryReserveId,
         expectedOldTeamCost: _expectedOldTeamCost,

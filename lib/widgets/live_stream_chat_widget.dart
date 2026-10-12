@@ -127,6 +127,7 @@ class _LiveStreamChatWidgetState extends State<LiveStreamChatWidget> {
                   controller: _scrollController,
                   reverse: true,
                   padding: const EdgeInsets.all(12),
+                  addAutomaticKeepAlives: false,
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
@@ -153,7 +154,7 @@ class _LiveStreamChatWidgetState extends State<LiveStreamChatWidget> {
                               if (!isMe)
                                 CircleAvatar(
                                   radius: 10, backgroundColor: Colors.grey[300],
-                                  backgroundImage: msg['photoUrl'] != null && msg['photoUrl'].toString().isNotEmpty ? CachedNetworkImageProvider(msg['photoUrl']) : null,
+                                  backgroundImage: msg['photoUrl'] != null && msg['photoUrl'].toString().isNotEmpty ? CachedNetworkImageProvider(msg['photoUrl'], maxWidth: 60, maxHeight: 60) : null,
                                   child: msg['photoUrl'] == null || msg['photoUrl'].toString().isEmpty ? const Icon(Icons.person, size: 12, color: Colors.black54) : null,
                                 ),
                               if (!isMe) const SizedBox(width: 6),
@@ -209,7 +210,7 @@ class _LiveStreamChatWidgetState extends State<LiveStreamChatWidget> {
                             if (isMe)
                               CircleAvatar(
                                 radius: 10, backgroundColor: Colors.grey[300],
-                                backgroundImage: msg['photoUrl'] != null && msg['photoUrl'].toString().isNotEmpty ? CachedNetworkImageProvider(msg['photoUrl']) : null,
+                                backgroundImage: msg['photoUrl'] != null && msg['photoUrl'].toString().isNotEmpty ? CachedNetworkImageProvider(msg['photoUrl'], maxWidth: 60, maxHeight: 60) : null,
                                 child: msg['photoUrl'] == null || msg['photoUrl'].toString().isEmpty ? const Icon(Icons.person, size: 12, color: Colors.black54) : null,
                               ),
                           ],

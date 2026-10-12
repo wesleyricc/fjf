@@ -153,9 +153,9 @@ class _AdminUploadPhotoScreenState extends State<AdminUploadPhotoScreen> {
   // Helper para preview da imagem selecionada (suporte nativo para Web e Mobile)
   Widget _buildImagePreview(XFile image) {
     if (kIsWeb) {
-      return Image.network(image.path, fit: BoxFit.cover);
+      return Image.network(image.path, fit: BoxFit.cover, cacheWidth: 200, cacheHeight: 240);
     } else {
-      return Image.file(File(image.path), fit: BoxFit.cover);
+      return Image.file(File(image.path), fit: BoxFit.cover, cacheWidth: 200, cacheHeight: 240);
     }
   }
 
@@ -223,6 +223,7 @@ class _AdminUploadPhotoScreenState extends State<AdminUploadPhotoScreen> {
                         height: 120,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
+                          addAutomaticKeepAlives: false,
                           itemCount: _selectedImages.length,
                           itemBuilder: (context, index) {
                             return Stack(

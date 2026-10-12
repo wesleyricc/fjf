@@ -45,7 +45,12 @@ class _AdminEditSponsoredLeagueScreenState extends State<AdminEditSponsoredLeagu
 
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+      maxWidth: 1000,
+      maxHeight: 1000,
+    );
     if (image != null) {
       setState(() {
         _imageFile = image;

@@ -118,7 +118,7 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
       appBar: AppBar(
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
         title: Column(
@@ -202,6 +202,7 @@ class _SuspensionHistoryScreenState extends State<SuspensionHistoryScreen> {
             onRefresh: () => vm.loadSuspensions(seasonId, force: true),
             child: ListView.separated(
               padding: const EdgeInsets.all(12.0),
+              addAutomaticKeepAlives: false,
               itemCount: logs.length,
               separatorBuilder: (ctx, i) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
@@ -337,7 +338,7 @@ class _SuspensionCard extends StatelessWidget {
                               child: CircleAvatar(
                                 radius: 24,
                                 backgroundColor: Colors.grey.shade200,
-                                backgroundImage: playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(playerPhotoUrl) : null,
+                                backgroundImage: playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(playerPhotoUrl, maxWidth: 100, maxHeight: 100) : null,
                                 child: playerPhotoUrl.isEmpty ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) : null,
                               ),
                             ),

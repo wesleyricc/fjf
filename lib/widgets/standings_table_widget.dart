@@ -9,12 +9,14 @@ class StandingsTableWidget extends StatelessWidget {
   final List<TeamStanding> standings;
   final List<MatchModel> allMatches;
   final Map<String, Map<String, dynamic>> liveScores; 
+  final String heroTagPrefix;
 
   const StandingsTableWidget({
     super.key,
     required this.standings,
     this.allMatches = const [],
     this.liveScores = const {},
+    this.heroTagPrefix = 'standings_shield_',
   });
 
   @override
@@ -77,13 +79,13 @@ class StandingsTableWidget extends StatelessWidget {
                 InkWell(
                   onTap: () {
                     // --- AJUSTE: Passagem de Hero Tag ---
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: 'standings_shield_${team.id}')));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => TeamDetailScreen(team: team, heroTag: '$heroTagPrefix${team.id}')));
                   },
                   child: Row(
                     children: [
                       if (team.shieldUrl.isNotEmpty)
                         Hero(
-                          tag: 'standings_shield_${team.id}', // --- AJUSTE: Hero Tag ---
+                          tag: '$heroTagPrefix${team.id}', // --- AJUSTE: Hero Tag ---
                           child: CachedNetworkImage(
                             imageUrl: team.shieldUrl, width: 20, height: 20, fit: BoxFit.contain, 
                             errorWidget: (_,__,___) => const Icon(Icons.shield, size: 18)

@@ -64,7 +64,7 @@ class _LiveVideoScreenState extends State<LiveVideoScreen> {
       appBar: AppBar(
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
         title: const Row(

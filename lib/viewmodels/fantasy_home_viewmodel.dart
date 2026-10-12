@@ -11,6 +11,7 @@ import '../models/fantasy_models.dart';
 import '../repositories/fantasy_repository.dart'; 
 import '../services/fantasy_service.dart';
 import '../services/fantasy_scout_service.dart';
+import '../services/firestore_cache_service.dart';
 
 class FantasyHomeViewModel extends ChangeNotifier {
   final FantasyRepository _repository = FantasyRepository();
@@ -28,6 +29,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
   String? _errorMessage;
 
   bool _isMarketOpen = true;
+  DateTime? _closingTime;
   int _currentRound = 1;
   FantasyGameConfig _gameConfig = FantasyGameConfig.defaults();
 
@@ -57,6 +59,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isMarketOpen => _isMarketOpen;
+  DateTime? get closingTime => _closingTime;
   int get currentRound => _currentRound;
   FantasyTeam? get team => _team;
   Map<String, LiveScoreData> get liveScores => _liveScores;
@@ -78,6 +81,8 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
   Future<bool> updateTeamProfile({
     required String newName,
+    String? cpf,
+    String? phone,
     String? selectedPresetUrl, // Nova opção: URL de escudo pronto
     XFile? imageFile,          // Opção existente: Upload de arquivo
   }) async {
@@ -106,6 +111,8 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
       final Map<String, dynamic> updates = {
         'team_name': newName.trim(),
+        if (cpf != null) 'owner_cpf': cpf.trim(),
+        if (phone != null) 'owner_phone': phone.trim(),
         'updated_at': FieldValue.serverTimestamp(),
       };
 
@@ -138,6 +145,30 @@ class FantasyHomeViewModel extends ChangeNotifier {
     return !_isOffline;
   }
 
+  void _updateMarketStatus(Map<String, dynamic> data, String seasonId) {
+    final bool isOpenFlag = data['is_open'] ?? true;
+    final dynamic closingRaw = data['closing_time'];
+    _closingTime = closingRaw is Timestamp ? closingRaw.toDate() : null;
+    final bool isExpired = _closingTime != null && DateTime.now().isAfter(_closingTime!);
+
+    _isMarketOpen = isOpenFlag && !isExpired;
+    _currentRound = data['current_round'] ?? 1;
+
+    if (!_isMarketOpen) {
+      _subscribeToLiveMatches(seasonId, _currentRound);
+      _listenToMarketStats();
+    } else {
+      _matchesSub?.cancel();
+      _marketStatsSub?.cancel();
+      if (_currentRound > 1) {
+        _fetchPreviousRoundScouts(seasonId, _currentRound - 1);
+      } else {
+        _liveScores = {}; 
+      }
+    }
+    if (!_isDisposed) notifyListeners();
+  }
+
   Future<void> init(String userId, String seasonId, {bool force = false}) async {
     // 🚨 CORREÇÃO DO BUG 2: Impede o loop infinito ao não exigir que !_isLoading seja true para retornar
     if (!force && _loadedUserId == userId && _loadedSeasonId == seasonId) return;
@@ -161,46 +192,21 @@ class FantasyHomeViewModel extends ChangeNotifier {
       debugPrint("Aviso: Falha ao carregar configurações: $e");
     }
 
-    // 🚨 CORREÇÃO DO BUG 1: Busca o status inicial manualmente porque o stream pode não emitir
-    // o valor imediatamente e ficar cacheado com o mercado aberto.
-    _firestore.collection('fantasy_config').doc('status').get(const GetOptions(source: Source.serverAndCache)).then((doc) {
+    // 🚨 CORREÇÃO DO BUG 1 & FINOPS: Busca o status inicial do cache local para não pagar leitura dupla 
+    // (a leitura real do servidor já será cobrada ao se conectar no .snapshots() logo abaixo).
+    FirestoreCacheService.getDocumentWithCache(
+      docRef: _firestore.collection('fantasy_config').doc('status'),
+      cacheKey: 'fantasy_status',
+      ttl: const Duration(minutes: 5),
+    ).then((doc) {
       if (doc.exists && doc.data() != null && !_isDisposed) {
-        _isMarketOpen = doc.data()!['is_open'] ?? true;
-        _currentRound = doc.data()!['current_round'] ?? 1;
-        if (!_isMarketOpen) {
-          _subscribeToLiveMatches(seasonId, _currentRound);
-          _listenToMarketStats();
-        } else {
-          _matchesSub?.cancel();
-          _marketStatsSub?.cancel();
-          if (_currentRound > 1) {
-            _fetchPreviousRoundScouts(seasonId, _currentRound - 1);
-          } else {
-            _liveScores = {}; 
-          }
-        }
-        notifyListeners();
+        _updateMarketStatus(doc.data() as Map<String, dynamic>, seasonId);
       }
     });
 
     _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
-      _isMarketOpen = status['is_open'] ?? true;
-      _currentRound = status['current_round'] ?? 1;
-      
-      if (!_isMarketOpen) {
-        _subscribeToLiveMatches(seasonId, _currentRound);
-        _listenToMarketStats();
-      } else {
-        _matchesSub?.cancel();
-        _marketStatsSub?.cancel();
-        if (_currentRound > 1) {
-          _fetchPreviousRoundScouts(seasonId, _currentRound - 1);
-        } else {
-          _liveScores = {}; 
-        }
-      }
-      if (!_isDisposed) notifyListeners();
+      _updateMarketStatus(status, seasonId);
     });
 
     _teamSub?.cancel();
@@ -285,6 +291,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
            ownGoals: s.ownGoals,
            missedFreeKicks: s.missedFreeKicks,
            motm: s.motm,
+           difficultSaves: s.difficultSaves,
          );
       }
       
@@ -392,8 +399,9 @@ class LiveScoreData {
   final int ownGoals;
   final int missedFreeKicks;
   final int motm;
+  final int difficultSaves;
   
-  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets + ownGoals + missedFreeKicks + motm) > 0;
+  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets + ownGoals + missedFreeKicks + motm + difficultSaves) > 0;
 
   LiveScoreData({
     required this.totalScore,
@@ -410,5 +418,6 @@ class LiveScoreData {
     this.ownGoals = 0,
     this.missedFreeKicks = 0,
     this.motm = 0,
+    this.difficultSaves = 0,
   });
 }

@@ -98,7 +98,7 @@ class _MiniBolaoRankingScreenState extends State<MiniBolaoRankingScreen> {
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: Text(appBarTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+        flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage)),
         foregroundColor: Colors.white,
         elevation: 0,
       ),

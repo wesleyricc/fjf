@@ -7,7 +7,7 @@ import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/ui/custom_empty_state.dart';
 import '../../widgets/team_logo_widget.dart';
-import '../../widgets/sponsor_banner_rotator.dart';
+import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
 
 class FantasyRankingScreen extends StatefulWidget {
   const FantasyRankingScreen({super.key});
@@ -16,14 +16,15 @@ class FantasyRankingScreen extends StatefulWidget {
   State<FantasyRankingScreen> createState() => _FantasyRankingScreenState();
 }
 
-class _FantasyRankingScreenState extends State<FantasyRankingScreen> with SingleTickerProviderStateMixin {
+class _FantasyRankingScreenState extends State<FantasyRankingScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
+
     // 🚨 Analytics: Acesso inicial ao ranking (Aba da Rodada como Padrão)
     AnalyticsService.logCustomScreenView('Fantasy_Ranking_Tab_Rodada');
 
@@ -46,7 +47,14 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen> with Single
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Classificação"),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/logo_fjf_fantasy.webp', height: 28),
+            const SizedBox(width: 8),
+            const Text("Classificação"),
+          ],
+        ),
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
@@ -58,12 +66,13 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen> with Single
           ],
         ),
       ),
-      bottomNavigationBar: const SponsorBannerRotator(location: 'fantasy'),
+      bottomNavigationBar:
+          const FantasyBottomNavBar(currentRoute: '/fantasy-rankings'),
       body: TabBarView(
         controller: _tabController,
         children: const [
-          _RankingList(isGlobal: false), 
-          _RankingList(isGlobal: true),  
+          _RankingList(isGlobal: false),
+          _RankingList(isGlobal: true),
         ],
       ),
     );
@@ -88,72 +97,84 @@ class _RankingListState extends State<_RankingList> {
     final authService = Provider.of<FantasyAuthService>(context, listen: false);
     final currentUserId = authService.user?.uid;
 
-    return StreamBuilder<List<FantasyTeam>>(
-      stream: fantasyService.streamRanking(isGlobal: widget.isGlobal, limit: _currentLimit),
-      builder: (context, snapshot) {
-        
-        // 1. ESTADO OFFLINE/ERRO
-        if (snapshot.hasError) {
-          return CustomEmptyState.offline(
-            onRetry: () => setState(() {}), 
-          );
-        }
+    return RefreshIndicator(
+      onRefresh: () async {
+        await fantasyService.getRanking(
+            isGlobal: widget.isGlobal,
+            limit: _currentLimit,
+            forceRefresh: true);
+        setState(() {});
+      },
+      child: FutureBuilder<List<FantasyTeam>>(
+        future: fantasyService.getRanking(
+            isGlobal: widget.isGlobal, limit: _currentLimit),
+        builder: (context, snapshot) {
+          // 1. ESTADO OFFLINE/ERRO
+          if (snapshot.hasError) {
+            return CustomEmptyState.offline(
+              onRetry: () => setState(() {}),
+            );
+          }
 
-        // 2. LOADING
-        if (snapshot.connectionState == ConnectionState.waiting) {
+          // 2. LOADING
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return ListView.builder(
+              padding: const EdgeInsets.all(10),
+              itemCount: 8,
+              itemBuilder: (_, __) => _buildSkeletonItem(),
+            );
+          }
+
+          // 3. EMPTY STATE
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const CustomEmptyState(
+              icon: Icons.emoji_events_outlined,
+              title: "Sem Classificação",
+              message: "Nenhum time pontuou nesta liga ainda.",
+            );
+          }
+
+          final teams = snapshot.data!;
+
+          // 4. LISTA REAL
           return ListView.builder(
-            padding: const EdgeInsets.all(10),
-            itemCount: 8,
-            itemBuilder: (_, __) => _buildSkeletonItem(),
-          );
-        }
-
-        // 3. EMPTY STATE
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const CustomEmptyState(
-            icon: Icons.emoji_events_outlined,
-            title: "Sem Classificação",
-            message: "Nenhum time pontuou nesta liga ainda.",
-          );
-        }
-
-        final teams = snapshot.data!;
-
-        // 4. LISTA REAL
-        return ListView.builder(
-          itemCount: teams.length + 1,
-          padding: const EdgeInsets.only(bottom: 20, top: 10),
-          itemBuilder: (ctx, index) {
-            if (index == teams.length) {
-              if (teams.length >= _currentLimit) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                  child: Center(
-                    child: OutlinedButton.icon(
-                      onPressed: () => setState(() => _currentLimit += 20),
-                      icon: const Icon(Icons.expand_more),
-                      label: const Text("Ver Mais"),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Theme.of(context).primaryColor,
-                        side: BorderSide(color: Theme.of(context).primaryColor),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            itemCount: teams.length + 1,
+            padding: const EdgeInsets.only(bottom: 20, top: 10),
+            itemBuilder: (ctx, index) {
+              if (index == teams.length) {
+                if (teams.length >= _currentLimit) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: Center(
+                      child: OutlinedButton.icon(
+                        onPressed: () => setState(() => _currentLimit += 20),
+                        icon: const Icon(Icons.expand_more),
+                        label: const Text("Ver Mais"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).primaryColor,
+                          side:
+                              BorderSide(color: Theme.of(context).primaryColor),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20)),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              } else {
-                return const SizedBox.shrink();
+                  );
+                } else {
+                  return const SizedBox.shrink();
+                }
               }
-            }
 
-            final team = teams[index];
-            final int rank = index + 1;
-            final bool isMe = team.userId == currentUserId;
+              final team = teams[index];
+              final int rank = index + 1;
+              final bool isMe = team.userId == currentUserId;
 
-            return _buildRankingCard(context, rank, team, isMe, widget.isGlobal);
-          },
-        );
-      },
+              return _buildRankingCard(
+                  context, rank, team, isMe, widget.isGlobal);
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -165,45 +186,56 @@ class _RankingListState extends State<_RankingList> {
         padding: const EdgeInsets.all(16.0),
         child: Row(
           children: const [
-            ShimmerEffect.rectangular(height: 20, width: 30), 
+            ShimmerEffect.rectangular(height: 20, width: 30),
             SizedBox(width: 12),
-            ShimmerEffect.circular(size: 40), 
+            ShimmerEffect.circular(size: 40),
             SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ShimmerEffect.rectangular(height: 16, width: 120), 
+                  ShimmerEffect.rectangular(height: 16, width: 120),
                   SizedBox(height: 6),
-                  ShimmerEffect.rectangular(height: 12, width: 80), 
+                  ShimmerEffect.rectangular(height: 12, width: 80),
                 ],
               ),
             ),
-            ShimmerEffect.rectangular(height: 20, width: 40), 
+            ShimmerEffect.rectangular(height: 20, width: 40),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildRankingCard(BuildContext context, int rank, FantasyTeam team, bool isMe, bool isGlobal) {
+  Widget _buildRankingCard(BuildContext context, int rank, FantasyTeam team,
+      bool isMe, bool isGlobal) {
     Color? rankColor;
-    IconData? rankIcon; 
+    IconData? rankIcon;
     double elevation = 1;
 
-    if (rank == 1) { rankColor = const Color(0xFFFFD700); rankIcon = Icons.emoji_events; elevation = 4; } 
-    else if (rank == 2) { rankColor = const Color(0xFFC0C0C0); rankIcon = Icons.looks_two; } 
-    else if (rank == 3) { rankColor = const Color(0xFFCD7F32); rankIcon = Icons.looks_3; }
+    if (rank == 1) {
+      rankColor = const Color(0xFFFFD700);
+      rankIcon = Icons.emoji_events;
+      elevation = 4;
+    } else if (rank == 2) {
+      rankColor = const Color(0xFFC0C0C0);
+      rankIcon = Icons.looks_two;
+    } else if (rank == 3) {
+      rankColor = const Color(0xFFCD7F32);
+      rankIcon = Icons.looks_3;
+    }
 
     final double displayPoints = isGlobal ? team.totalPoints : team.lastScore;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       elevation: elevation,
-      color: isMe ? Colors.green[50] : Colors.white, 
+      color: isMe ? Colors.green[50] : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: isMe ? const BorderSide(color: Colors.green, width: 2) : BorderSide.none,
+        side: isMe
+            ? const BorderSide(color: Colors.green, width: 2)
+            : BorderSide.none,
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -212,26 +244,42 @@ class _RankingListState extends State<_RankingList> {
           children: [
             SizedBox(
               width: 30,
-              child: rankIcon != null 
+              child: rankIcon != null
                   ? Icon(rankIcon, color: rankColor, size: 24)
-                  : Text("$rankº", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey), textAlign: TextAlign.center),
+                  : Text("$rankº",
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.grey),
+                      textAlign: TextAlign.center),
             ),
             const SizedBox(width: 8),
-            
             TeamLogoWidget(
               logoUrl: team.customLogoUrl,
               radius: 20,
             ),
           ],
         ),
-        title: Text(team.teamName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(team.ownerName, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        title: Text(team.teamName,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis),
+        subtitle: Text(team.ownerName,
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade300)),
+          decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade300)),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(displayPoints.toStringAsFixed(2), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue[800])),
-              Text("pts", style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+            Text(displayPoints.toStringAsFixed(2),
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.blue[800])),
+            Text("pts",
+                style: TextStyle(fontSize: 10, color: Colors.grey[600])),
           ]),
         ),
       ),

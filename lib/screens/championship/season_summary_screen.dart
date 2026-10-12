@@ -59,7 +59,7 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
             title: const Text('Resumo da Temporada'),
             flexibleSpace: Container(
               decoration: const BoxDecoration(
-                gradient: AppTheme.brazilGradient,
+                image: AppTheme.headerImage,
               ),
             ),
             actions: [
@@ -368,7 +368,7 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
     cards.add(_buildStatCard(context, title: "FAIRPLAY", name: bestFairplay.name, subtitle: "${bestFairplay.disciplinaryPoints} Pts", imageUrl: bestFairplay.shieldUrl, icon: Icons.handshake, color: Colors.teal, isTeam: true));
 
     if (lastPlace != null) {
-      cards.add(_buildStatCard(context, title: "TROFÉU ABACAXI", name: lastPlace.name, subtitle: "Último Lugar", imageUrl: lastPlace.shieldUrl, icon: FontAwesomeIcons.faceSadTear, color: Colors.brown, isTeam: true));
+      cards.add(_buildStatCard(context, title: "TROFÉU ABACAXI", name: lastPlace.name, subtitle: "Último Lugar", imageUrl: lastPlace.shieldUrl, icon: Icons.sentiment_very_dissatisfied, color: Colors.brown, isTeam: true));
     }
 
     if (biggestWinMatch != null) {
@@ -474,7 +474,7 @@ class _SeasonSummaryScreenState extends State<SeasonSummaryScreen> {
             CircleAvatar(
               radius: 30,
               backgroundColor: color.withOpacity(0.1),
-              backgroundImage: imageUrl.isNotEmpty ? CachedNetworkImageProvider(imageUrl) : null,
+              backgroundImage: imageUrl.isNotEmpty ? CachedNetworkImageProvider(imageUrl, maxWidth: 120, maxHeight: 120) : null,
               child: imageUrl.isEmpty ? Icon(icon, color: color, size: 28) : null,
             ),
 

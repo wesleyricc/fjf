@@ -52,31 +52,33 @@ class FantasyService {
     }
   }
 
-  Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids) async {
+  Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids, {bool forceRefresh = false}) async {
     if (ids.isEmpty) return [];
     try {
-      final List<Future<QuerySnapshot>> futures = [];
-      for (var i = 0; i < ids.length; i += 10) {
-        final chunk = ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10);
-        futures.add(_fantasyMarketRef.where(FieldPath.documentId, whereIn: chunk).get());
-      }
-      
-      final snapshots = await Future.wait(futures);
-      final List<FantasyPlayer> allPlayers = [];
-      for (var snap in snapshots) {
-        allPlayers.addAll(snap.docs.map((doc) => FantasyPlayer.fromFirestore(doc)));
-      }
-      return allPlayers;
+      // FINOPS: Usa o cache local em memória em vez de fazer queries whereIn diretas
+      final allPlayers = await getAllPlayers(forceRefresh: forceRefresh);
+      return allPlayers.where((p) => ids.contains(p.playerId)).toList();
     } catch (e) {
       debugPrint("Erro ao buscar jogadores por IDs: $e");
       return [];
     }
   }
 
-  Stream<List<FantasyTeam>> streamRanking({bool isGlobal = true, int limit = 20}) {
+  Future<List<FantasyTeam>> getRanking({bool isGlobal = true, int limit = 20, bool forceRefresh = false}) async {
     String orderByField = isGlobal ? 'total_points' : 'last_score';
-    return _fantasyTeamsRef.orderBy(orderByField, descending: true).limit(limit).snapshots()
-        .map((snap) => snap.docs.map((doc) => FantasyTeam.fromFirestore(doc)).toList());
+    final query = _fantasyTeamsRef.orderBy(orderByField, descending: true).limit(limit);
+    try {
+      final snap = await FirestoreCacheService.getWithCache(
+        query: query,
+        cacheKey: 'fantasy_ranking_${isGlobal}_$limit',
+        ttl: const Duration(minutes: 5),
+        forceRefresh: forceRefresh,
+      );
+      return snap.docs.map((doc) => FantasyTeam.fromFirestore(doc)).toList();
+    } catch (e) {
+      debugPrint("Erro ao buscar ranking (isGlobal: $isGlobal): $e");
+      return [];
+    }
   }
 
   Stream<FantasyTeam?> streamMyTeam(String userId) {
@@ -86,13 +88,7 @@ class FantasyService {
     });
   }
 
-  Stream<List<FantasyPlayer>> streamMarket() {
-    return _fantasyMarketRef
-        .orderBy('current_price', descending: true)
-        .limit(100) // Re-adicionado o limite para evitar excesso de reads do Firebase
-        .snapshots()
-        .map((snap) => snap.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList());
-  }
+
 
   Future<String> updateTeamProfile({
     required String userId, required String teamName, required String ownerName,
@@ -130,6 +126,7 @@ class FantasyService {
 
   Future<String> saveLineup({
     required String userId, required List<String> playerIds, required List<String> benchIds, 
+    Map<String, String>? lineupSlots, Map<String, String>? benchSlots,
     required String? captainId, required String? luxuryReserveId,
     required double expectedOldTeamCost, required double newTeamCost,
   }) async {
@@ -141,8 +138,14 @@ class FantasyService {
         final statusSnap = await transaction.get(statusRef);
         
         if (statusSnap.exists) {
-          final bool isOpen = statusSnap.data()?['is_open'] ?? true;
+          final data = statusSnap.data();
+          final bool isOpen = data?['is_open'] ?? true;
           if (!isOpen) return "O Mercado está FECHADO. Não é possível salvar.";
+
+          final dynamic closingRaw = data?['closing_time'];
+          if (closingRaw is Timestamp && DateTime.now().isAfter(closingRaw.toDate())) {
+            return "O prazo para escalar encerrou 20 min antes do jogo. Mercado FECHADO.";
+          }
         }
 
         final teamRef = _fantasyTeamsRef.doc(userId);
@@ -162,6 +165,8 @@ class FantasyService {
         transaction.update(teamRef, {
           'lineup_player_ids': playerIds, 
           'bench_player_ids': benchIds,
+          'lineup_slots': lineupSlots,
+          'bench_slots': benchSlots,
           'captain_id': captainId,
           'luxury_reserve_id': luxuryReserveId,
           'current_balance': safeBalance,
@@ -188,11 +193,21 @@ class FantasyService {
     return _firestore.collection('fantasy_stats').doc('global_round_stats').snapshots();
   }
 
-  Future<void> setMarketStatus(bool isOpen, int currentRound) async {
+  Future<void> setMarketStatus(bool isOpen, int currentRound, {DateTime? closingTime}) async {
     if (!await _isOnline()) return;
-    await _firestore.collection('fantasy_config').doc('status').set({
-      'is_open': isOpen, 'current_round': currentRound, 'updated_at': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final Map<String, dynamic> data = {
+      'is_open': isOpen,
+      'current_round': currentRound,
+      'updated_at': FieldValue.serverTimestamp(),
+    };
+    if (closingTime != null) {
+      data['closing_time'] = Timestamp.fromDate(closingTime);
+    } else if (!isOpen) {
+      data['closing_time'] = FieldValue.serverTimestamp();
+    } else {
+      data['closing_time'] = null;
+    }
+    await _firestore.collection('fantasy_config').doc('status').set(data, SetOptions(merge: true));
   }
 
   Future<String> processRoundCloud(String seasonId, int round) async {
@@ -242,9 +257,10 @@ class FantasyService {
         }
         
         final String position = isHeadCoach ? 'Técnico' : (data['position'] ?? 'Desconhecido');
-        final double initialPrice = 5.0;
+        final String? secondaryPosition = isHeadCoach ? null : data['secondary_position'];
+        final double initialPrice = (data['fantasy_initial_price'] as num?)?.toDouble() ?? 5.0;
 
-        _addToBatchWithCache(batch, doc.id, data, position, initialPrice, existingMarketIds.contains(doc.id));
+        _addToBatchWithCache(batch, doc.id, data, position, secondaryPosition, initialPrice, existingMarketIds.contains(doc.id));
         count++;
       }
 
@@ -253,12 +269,12 @@ class FantasyService {
     } catch (e) { return "Erro ao popular mercado: $e"; }
   }
 
-  void _addToBatchWithCache(WriteBatch batch, String id, Map<String, dynamic> data, String position, double price, bool exists) {
+  void _addToBatchWithCache(WriteBatch batch, String id, Map<String, dynamic> data, String position, String? secondaryPosition, double price, bool exists) {
     final marketDocRef = _fantasyMarketRef.doc(id);
 
     if (!exists) {
       final Map<String, dynamic> playerData = {
-        'name': data['name'] ?? 'Sem Nome', 'position': position, 'team_id': data['team_id'] ?? '',
+        'name': data['name'] ?? 'Sem Nome', 'position': position, 'secondary_position': secondaryPosition, 'team_id': data['team_id'] ?? '',
         'team_shield_url': data['team_shield_url'] ?? '', 'photo_url': data['photo_url'] ?? '',
         'current_price': price, 'last_price_change': 0.0, 'last_score': 0.0, 'average_score': 0.0,
         'matches_played': 0, 'status': 'probable', 'history': [],
@@ -269,6 +285,7 @@ class FantasyService {
         'name': data['name'], 'photo_url': data['photo_url'],
         'team_id': data['team_id'], 'team_shield_url': data['team_shield_url'],
         'position': position,
+        'secondary_position': secondaryPosition,
       });
     }
   }

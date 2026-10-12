@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 
 class HomeSectionHeader extends StatelessWidget {
   final String title;
@@ -18,11 +19,7 @@ class HomeSectionHeader extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(10, 16, 10, 0),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFC5A814), Color(0xFF00873E)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        image: AppTheme.headerImage,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
         boxShadow: [
           BoxShadow(

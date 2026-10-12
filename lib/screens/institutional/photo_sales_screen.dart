@@ -20,6 +20,8 @@ Widget _buildResponsiveImage({required String url, BoxFit fit = BoxFit.cover}) {
   
   if (kIsWeb) {
     return Image.network(url, fit: fit,
+      cacheWidth: 350,
+      cacheHeight: 450,
       loadingBuilder: (_, child, prog) {
         if (prog == null) return child;
         return const ShimmerEffect.rectangular(height: double.infinity);
@@ -31,7 +33,10 @@ Widget _buildResponsiveImage({required String url, BoxFit fit = BoxFit.cover}) {
     imageUrl: url, 
     fit: fit,
     // O SEGREDO DA PERFORMANCE: Limita o tamanho do cache na RAM
-    memCacheWidth: 300, 
+    memCacheWidth: 350, 
+    memCacheHeight: 450,
+    maxWidthDiskCache: 350,
+    maxHeightDiskCache: 450,
     placeholder: (_, __) => const ShimmerEffect.rectangular(height: double.infinity),
     errorWidget: (_, __, ___) => const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
   );

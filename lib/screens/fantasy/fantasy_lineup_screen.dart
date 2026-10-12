@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../utils/custom_cache_manager.dart';
@@ -8,11 +9,13 @@ import '../../services/championship_service.dart';
 import '../../models/fantasy_models.dart';
 import '../../services/fantasy_scout_service.dart';
 import '../../widgets/fantasy/live_scouts_widget.dart';
-import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
+import '../../services/analytics_service.dart'; // ðŸš¨ RASTREAMENTO
 import '../../viewmodels/fantasy_lineup_viewmodel.dart';
 import 'fantasy_market_screen.dart';
 import '../../utils/app_feedback.dart';
-import '../../widgets/sponsor_banner_rotator.dart';
+import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
+import '../../widgets/fantasy/pitch_view.dart';
+import '../../widgets/fantasy/fantasy_player_details_modal.dart';
 
 class FantasyLineupScreen extends StatefulWidget {
   const FantasyLineupScreen({super.key});
@@ -25,7 +28,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
   @override
   void initState() {
     super.initState();
-    // 🚨 Analytics: Acesso à prancheta de escalação
+    // Analytics: Acesso à prancheta de escalação
     AnalyticsService.logCustomScreenView('Fantasy_Lineup_Screen');
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -76,10 +79,10 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
     );
 
     if (selectedPlayer != null) {
-      // 🚨 CORREÇÃO: Aguarda a animação de retorno (pop) terminar antes de rebuildar a tela
+      // CORREÇÃO: Aguarda a animação de retorno (pop) terminar antes de rebuildar a tela
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
-      
+
       if (isBench) {
         vm.addBenchPlayer(slotIndex, selectedPlayer);
       } else {
@@ -105,9 +108,10 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
           });
         }
 
-        if (vm.isLoading)
+        if (vm.isLoading) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
+        }
 
         double totalLiveScore = 0.0;
         if (!vm.isMarketOpen) {
@@ -123,7 +127,14 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
           appBar: AppBar(
             title: Column(
               children: [
-                const Text("Escalação"),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset('assets/logo_fjf_fantasy.webp', height: 24),
+                    const SizedBox(width: 8),
+                    const Text("Escalação"),
+                  ],
+                ),
                 Text(
                   vm.isMarketOpen
                       ? "Escalando Rodada ${vm.currentRound}"
@@ -149,7 +160,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                         builder: (ctx) => AlertDialog(
                           title: const Text("Sugerir Escalação?"),
                           content: const Text(
-                              "Isso substituirá sua escalação atual por uma gerada automaticamente focando nas maiores médias.\n\nDeseja continuar?"),
+                              "Isso substituirá a sua Escalação atual por uma gerada automaticamente focando nas maiores médias.\n\nDeseja continuar?"),
                           actions: [
                             TextButton(
                                 onPressed: () => Navigator.pop(ctx),
@@ -180,6 +191,8 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     onPressed: vm.lineup.isNotEmpty ? vm.sellAll : null),
             ],
           ),
+          bottomNavigationBar: const FantasyBottomNavBar(
+              currentRoute: '/fantasy-lineup', showSponsor: false),
           body: Column(
             children: [
               if (vm.syncStatus != SyncStatus.idle)
@@ -216,19 +229,29 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     text:
                         "Seu time está incompleto! Escale os 6 integrantes para pontuar.",
                     icon: Icons.warning_amber_rounded,
-                    color: Colors.orange),
-              if (vm
-                      .isMarketOpen &&
-                  vm.lineup.isNotEmpty &&
-                  vm.captainId == null)
+                    color: Colors.orange)
+              else if (vm.isMarketOpen && vm.captainId == null)
                 const WarningBanner(
                     text:
                         "Você não definiu um Capitão! Clique na estrela do jogador para dobrar os pontos.",
                     icon: Icons.star_border,
                     color: Colors.blue),
-
-              const SponsorBannerRotator(location: 'fantasy'),
-
+              if (vm.isMarketOpen &&
+                  vm.lineup.length == 6 &&
+                  vm.bench.length < vm.benchSlotsConfig.length)
+                const WarningBanner(
+                    text:
+                        "Seu banco de reservas está incompleto! Escale suplentes para eventuais desfalques.",
+                    icon: Icons.event_seat,
+                    color: Colors.purple)
+              else if (vm.isMarketOpen &&
+                  vm.bench.isNotEmpty &&
+                  vm.luxuryReserveId == null)
+                const WarningBanner(
+                    text:
+                        "Você não definiu o Reserva de Luxo! Escolha o diamante no seu melhor reserva.",
+                    icon: Icons.diamond,
+                    color: Colors.amber),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () => vm.refreshPlayers(),
@@ -239,13 +262,28 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                       const Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Text("Time Titular",
+                        child: Text("Sua Prancheta",
                             style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.black87)),
                       ),
-                      ...vm.slotsConfig.map((config) {
+                      PitchView(
+                        lineup: vm.lineup,
+                        liveScores: vm.liveScores,
+                        isMarketOpen: vm.isMarketOpen,
+                        captainId: vm.captainId,
+                        onEmptySlotTap: (slot, pos) =>
+                            _openMarketForSlot(vm, slot, pos),
+                        onPlayerTap: (player) {
+                          int slot = vm.lineup.entries
+                              .firstWhere(
+                                  (e) => e.value.playerId == player.playerId)
+                              .key;
+                          _showPlayerActionSheet(vm, player, slot);
+                        },
+                      ),
+                      /*
                         final int slotIndex = config['index'];
                         final String posLabel = config['pos'];
                         IconData icon = Icons.person;
@@ -256,9 +294,9 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                           icon = Icons.shield;
                         else if (posLabel == 'Ala')
                           icon = Icons.flash_on;
-                        else if (posLabel == 'Pivô')
+                        else if (posLabel == 'PivÃ´')
                           icon = Icons.sports_soccer;
-                        else if (posLabel == 'Técnico') icon = Icons.psychology;
+                        else if (posLabel == 'TÃ©cnico') icon = Icons.psychology;
 
                         final player = vm.lineup[slotIndex];
 
@@ -289,7 +327,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                             onRemove: () => vm.removePlayer(slotIndex),
                           );
                         }
-                      }).toList(),
+                      */
                       const Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -304,15 +342,16 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                         final String posLabel = config['pos'];
                         IconData icon = Icons.person;
 
-                        if (posLabel == 'Goleiro')
+                        if (posLabel == 'Goleiro') {
                           icon = Icons.sports_handball;
-                        else if (posLabel == 'Fixo')
+                        } else if (posLabel == 'Fixo')
                           icon = Icons.shield;
                         else if (posLabel == 'Ala')
                           icon = Icons.flash_on;
-                        else if (posLabel == 'Pivô')
+                        else if (posLabel == 'PivÃ´')
                           icon = Icons.sports_soccer;
-                        else if (posLabel == 'Técnico') icon = Icons.psychology;
+                        else if (posLabel == 'TÃ©cnico')
+                          icon = Icons.psychology;
 
                         final player = vm.bench[slotIndex];
 
@@ -326,25 +365,102 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                                 isBench: true),
                           );
                         } else {
-                          double displayScore = (!vm.isMarketOpen)
-                              ? (vm.liveScores[player.playerId]?.totalScore ??
-                                  0.0)
-                              : player.lastScore;
-                          return PlayerCard(
-                            player: player,
-                            score: displayScore,
-                            isCaptain: vm.captainId == player.playerId,
-                            isLuxury: vm.luxuryReserveId == player.playerId,
-                            isMarketOpen: vm.isMarketOpen,
-                            liveScouts: vm.liveScores[player.playerId],
-                            isBench: true,
-                            onSetCaptain: () => vm.setCaptain(player.playerId),
-                            onSetLuxury: () =>
-                                vm.setLuxuryReserve(player.playerId),
-                            onRemove: () => vm.removeBenchPlayer(slotIndex),
+                          final bool isLuxury =
+                              vm.luxuryReserveId == player.playerId;
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: isLuxury
+                                  ? const BorderSide(
+                                      color: Colors.amber, width: 2)
+                                  : BorderSide.none,
+                            ),
+                            child: ListTile(
+                              leading: Stack(
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: player.photoUrl.isNotEmpty
+                                          ? (kIsWeb
+                                              ? Image.network(
+                                                  player.photoUrl,
+                                                  fit: BoxFit.cover,
+                                                  alignment: Alignment.topCenter,
+                                                  errorBuilder: (context, error, stackTrace) =>
+                                                      const Icon(Icons.person, color: Colors.grey),
+                                                )
+                                              : CachedNetworkImage(
+                                                  imageUrl: player.photoUrl,
+                                                  cacheManager: PlayerCacheManager.instance,
+                                                  memCacheWidth: 200,
+                                                  fit: BoxFit.cover,
+                                                  alignment: Alignment.topCenter,
+                                                  placeholder: (context, url) =>
+                                                      const Center(
+                                                        child: SizedBox(
+                                                          width: 16,
+                                                          height: 16,
+                                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                                        ),
+                                                      ),
+                                                  errorWidget: (context, url, error) =>
+                                                      const Icon(Icons.person, color: Colors.grey),
+                                                ))
+                                          : const Icon(Icons.person, color: Colors.grey),
+                                    ),
+                                  ),
+                                  if (player.teamShieldUrl.isNotEmpty)
+                                    Positioned(
+                                      right: 0,
+                                      bottom: 0,
+                                      child: Container(
+                                        width: 20,
+                                        height: 20,
+                                        decoration: const BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.white,
+                                        ),
+                                        clipBehavior: Clip.hardEdge,
+                                        child: kIsWeb
+                                            ? Image.network(
+                                                player.teamShieldUrl,
+                                                fit: BoxFit.contain,
+                                              )
+                                            : CachedNetworkImage(
+                                                imageUrl: player.teamShieldUrl,
+                                                cacheManager: PlayerCacheManager.instance,
+                                                memCacheWidth: 60,
+                                                fit: BoxFit.contain,
+                                              ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              title: Text(player.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(
+                                  "${player.position} - C\$ ${player.currentPrice.toStringAsFixed(2)}"),
+                              trailing: isLuxury
+                                  ? const Icon(Icons.diamond,
+                                      color: Colors.amber)
+                                  : null,
+                              onTap: () => _showPlayerActionSheet(
+                                  vm, player, slotIndex,
+                                  isBench: true),
+                            ),
                           );
                         }
-                      }).toList(),
+                      }),
                     ],
                   ),
                 ),
@@ -354,6 +470,109 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
         );
       },
     );
+  }
+
+  void _showPlayerActionSheet(
+      FantasyLineupViewModel vm, FantasyPlayer player, int slotIndex,
+      {bool isBench = false}) {
+    final championshipService =
+        Provider.of<ChampionshipService>(context, listen: false);
+    final matches = championshipService.matches;
+    String? nextOpponentShieldUrl;
+    for (var m in matches) {
+      if (m.status == 'pending' &&
+          (m.homeTeamId == player.teamId || m.awayTeamId == player.teamId)) {
+        nextOpponentShieldUrl =
+            m.homeTeamId == player.teamId ? m.awayTeamShield : m.homeTeamShield;
+        break;
+      }
+    }
+
+    showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (ctx) {
+          return ChangeNotifierProvider.value(
+            value: vm,
+            child: Consumer<FantasyLineupViewModel>(builder: (ctx, vm, _) {
+              final bool isCaptain = vm.captainId == player.playerId;
+              final bool isLuxury = vm.luxuryReserveId == player.playerId;
+
+              return FantasyPlayerDetailsModal(
+                player: player,
+                nextOpponentShieldUrl: nextOpponentShieldUrl,
+                extraContent: Column(children: [
+                  if (!vm.isMarketOpen)
+                    LiveScoutsWidget(
+                        scouts: vm.liveScores[player.playerId],
+                        isCaptain: isCaptain,
+                        isMarketOpen: vm.isMarketOpen,
+                        position: player.position),
+                ]),
+                actionButton: vm.isMarketOpen
+                    ? Row(
+                        children: [
+                          if (!isBench && player.position != 'Técnico')
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                icon: Icon(Icons.star,
+                                    color: isCaptain
+                                        ? Colors.grey
+                                        : Colors.orange),
+                                label: Text(
+                                    isCaptain ? "Remover Capitão" : "Capitão",
+                                    style: const TextStyle(fontSize: 12)),
+                                onPressed: () {
+                                  vm.setCaptain(player.playerId);
+                                  Navigator.pop(ctx);
+                                },
+                              ),
+                            ),
+                          if (isBench && player.position != 'Técnico')
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                icon: Icon(Icons.diamond,
+                                    color:
+                                        isLuxury ? Colors.grey : Colors.amber),
+                                label: Text(
+                                    isLuxury ? "Remover R. Luxo" : "Reserva",
+                                    style: const TextStyle(fontSize: 12)),
+                                onPressed: () {
+                                  vm.setLuxuryReserve(player.playerId);
+                                  Navigator.pop(ctx);
+                                },
+                              ),
+                            ),
+                          if (player.position != 'Técnico')
+                            const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.sell, color: Colors.red),
+                              label: const Text("Vender",
+                                  style: TextStyle(
+                                      color: Colors.red, fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.red)),
+                              onPressed: () {
+                                if (isBench) {
+                                  vm.removeBenchPlayer(slotIndex);
+                                } else {
+                                  vm.removePlayer(slotIndex);
+                                }
+                                Navigator.pop(ctx);
+                              },
+                            ),
+                          ),
+                        ],
+                      )
+                    : null,
+              );
+            }),
+          );
+        });
   }
 }
 
@@ -529,6 +748,7 @@ class PlayerCard extends StatelessWidget {
   final bool isMarketOpen;
   final FantasyScoutDetail? liveScouts;
   final bool isBench;
+  final bool initiallyExpanded;
   final VoidCallback onSetCaptain;
   final VoidCallback onSetLuxury;
   final VoidCallback onRemove;
@@ -542,6 +762,7 @@ class PlayerCard extends StatelessWidget {
     required this.isMarketOpen,
     required this.liveScouts,
     required this.isBench,
+    this.initiallyExpanded = false,
     required this.onSetCaptain,
     required this.onSetLuxury,
     required this.onRemove,
@@ -554,7 +775,7 @@ class PlayerCard extends StatelessWidget {
     final double average = player.averageScore;
 
     final Color apprecColor = priceChange >= 0 ? Colors.green : Colors.red;
-    final String apprecIcon = priceChange >= 0 ? "▲" : "▼";
+    final String apprecIcon = priceChange >= 0 ? "â–²" : "â–¼";
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -569,23 +790,39 @@ class PlayerCard extends StatelessWidget {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           leading: SizedBox(
-            width: 40,
-            height: 40,
-            child: ClipOval(
+            width: 48,
+            height: 60,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
               child: player.photoUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: player.photoUrl,
-                      cacheManager: PlayerCacheManager.instance,
-                      memCacheWidth: 150,
-                      memCacheHeight: 150,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) =>
-                          const CircularProgressIndicator(strokeWidth: 2),
-                      errorWidget: (context, url, error) =>
-                          const Icon(Icons.person),
-                    )
+                  ? (kIsWeb
+                      ? Image.network(
+                          player.photoUrl,
+                          fit: BoxFit.cover,
+                          alignment: Alignment.topCenter,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.person),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: player.photoUrl,
+                          cacheManager: PlayerCacheManager.instance,
+                          memCacheWidth: 200,
+                          fit: BoxFit.cover,
+                          alignment: Alignment.topCenter,
+                          placeholder: (context, url) =>
+                              const Center(
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                          errorWidget: (context, url, error) =>
+                              const Icon(Icons.person),
+                        ))
                   : const Icon(Icons.person),
             ),
           ),
@@ -658,7 +895,8 @@ class PlayerCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text("Mín. para valorizar"),
-                          Text("${(player.currentPrice * 0.35).toStringAsFixed(1)} pts",
+                          Text(
+                              "${(player.currentPrice * Provider.of<FantasyLineupViewModel>(context, listen: false).gameConfig.factorExpectation).toStringAsFixed(1)} pts",
                               style: TextStyle(
                                   color: Colors.blue.shade800,
                                   fontWeight: FontWeight.bold)),
@@ -693,20 +931,23 @@ class PlayerCard extends StatelessWidget {
                         ]),
                     const Divider(),
                     LiveScoutsWidget(
-                        scouts: liveScouts, isCaptain: isCaptain, isMarketOpen: isMarketOpen, position: player.position),
+                        scouts: liveScouts,
+                        isCaptain: isCaptain,
+                        isMarketOpen: isMarketOpen,
+                        position: player.position),
                     if (isMarketOpen) ...[
                       const Divider(),
                       Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                        if (!isBench && player.position != 'Técnico')
+                        if (!isBench && player.position != 'TÃ©cnico')
                           TextButton.icon(
                             icon: Icon(Icons.star,
                                 color: isCaptain ? Colors.grey : Colors.orange),
                             label: Text(isCaptain
-                                ? "Remover Capitão"
-                                : "Tornar Capitão"),
+                                ? "Remover CapitÃ£o"
+                                : "Tornar CapitÃ£o"),
                             onPressed: onSetCaptain,
                           ),
-                        if (isBench && player.position != 'Técnico')
+                        if (isBench && player.position != 'TÃ©cnico')
                           TextButton.icon(
                             icon: Icon(Icons.diamond,
                                 color: isLuxury ? Colors.grey : Colors.amber),
@@ -730,33 +971,57 @@ class PlayerCard extends StatelessWidget {
   }
 
   Widget _buildStatusBadge(String status) {
-    IconData icon;
     Color color;
+    IconData icon;
+    String label;
 
     switch (status.toLowerCase()) {
-      case 'probable':
-        icon = Icons.check_circle;
-        color = Colors.green;
-        break;
-      case 'doubt':
-        icon = Icons.help;
-        color = Colors.orange;
+      case 'injured':
+        color = Colors.red;
+        icon = Icons.local_hospital;
+        label = 'Contundido';
         break;
       case 'suspended':
+        color = Colors.red;
         icon = Icons.block;
-        color = Colors.red;
+        label = 'Suspenso';
         break;
-      case 'injured':
-        icon = Icons.local_hospital;
-        color = Colors.red;
+      case 'doubt':
+      case 'doubtful':
+        color = Colors.orange;
+        icon = Icons.help_outline;
+        label = 'DÃºvida';
         break;
+      case 'probable':
       default:
-        icon = Icons.info;
-        color = Colors.grey;
+        color = Colors.green;
+        icon = Icons.check_circle;
+        label = 'ProvÃ¡vel';
+        break;
     }
 
-    return Icon(icon, color: color, size: 16);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 2),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 9,
+              color: color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
-
-

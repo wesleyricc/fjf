@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
+import '../theme/app_theme.dart';
 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
@@ -146,11 +147,7 @@ class MainBottomNavBar extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(10, 16, 10, 0),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFC5A814), Color(0xFF00873E)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        image: AppTheme.headerImage,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
         boxShadow: [
           BoxShadow(
@@ -248,16 +245,19 @@ class MainBottomNavBar extends StatelessWidget {
             boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
             border: Border.all(color: Colors.grey.shade200),
           ),
-          child: Column(
-            children: [
-              _buildListTile(context, Icons.query_stats, "Estatísticas de Equipes", '/team-stats'),
-              const Divider(height: 1),
-              _buildListTile(context, Icons.person_search, "Estatísticas de Atletas", '/player-stats'),
-              const Divider(height: 1),
-              _buildListTile(context, Icons.history_toggle_off, "Suspensões", '/suspension-history'),
-              const Divider(height: 1),
-              _buildListTile(context, Icons.compare_arrows, "Comparador de Atletas", '/player-comparison'),
-            ],
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              children: [
+                _buildListTile(context, Icons.query_stats, "Estatísticas de Equipes", '/team-stats'),
+                const Divider(height: 1),
+                _buildListTile(context, Icons.person_search, "Estatísticas de Atletas", '/player-stats'),
+                const Divider(height: 1),
+                _buildListTile(context, Icons.history_toggle_off, "Suspensões", '/suspension-history'),
+                const Divider(height: 1),
+                _buildListTile(context, Icons.compare_arrows, "Comparador de Atletas", '/player-comparison'),
+              ],
+            ),
           ),
         ),
       ],
@@ -274,14 +274,17 @@ class MainBottomNavBar extends StatelessWidget {
             gradient: LinearGradient(colors: [Colors.blue.shade900, Colors.blue.shade700]),
             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
             boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
-            border: Border.all(color: const Color(0xFFC5A814)),
+            border: Border.all(color: AppTheme.yellowColor),
           ),
-          child: Column(
-            children: [
-              _buildListTile(context, Icons.assignment_ind, "Seja um Atleta FJF", '/free-agents-registration', isDark: true),
-              Divider(height: 1, color: Colors.white.withOpacity(0.2)),
-              _buildListTile(context, Icons.security, "Acessar Portal", '/portal', isDark: true),
-            ],
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              children: [
+                _buildListTile(context, Icons.assignment_ind, "Seja um Atleta FJF", '/free-agents-registration', isDark: true),
+                Divider(height: 1, color: Colors.white.withOpacity(0.2)),
+                _buildListTile(context, Icons.security, "Acessar Portal", '/portal', isDark: true),
+              ],
+            ),
           ),
         ),
       ],
@@ -302,46 +305,49 @@ class MainBottomNavBar extends StatelessWidget {
                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
                 border: Border.all(color: Colors.grey.shade200),
               ),
-              child: Column(
-                children: [
-                  _buildListTile(context, Icons.history_edu, "Nossa História", '/about-history'),
-                  const Divider(height: 1),
-                  _buildListTile(context, Icons.groups_2, "Diretoria", '/about-board'),
-                  const Divider(height: 1),
-                  _buildListTile(context, Icons.bug_report_outlined, "Reportar Erro", '/report-bug'),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: Icon(authService.isAdmin ? Icons.admin_panel_settings : Icons.settings_outlined, color: authService.isAdmin ? Colors.green : Colors.grey),
-                    title: Text(authService.isAdmin ? 'Painel Admin' : 'Acesso Restrito', style: TextStyle(color: authService.isAdmin ? Colors.green[700] : Colors.grey[700], fontWeight: FontWeight.w600)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                    onTap: () async {
-                      Navigator.pop(context); // Fecha o modal
-                      if (authService.isAdmin) {
-                        Navigator.of(context).pushNamed('/admin-menu');
-                      } else {
-                        final String? error = await authService.signInWithGoogle();
-                        if (error != null && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
-                        } else if (authService.isAdmin && context.mounted) {
-                          Navigator.of(context).pushNamed('/admin-menu');
-                        } else if (authService.isPresident && context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bem-vindo, Presidente! Acesso ao Mercado liberado.")));
-                        }
-                      }
-                    },
-                  ),
-                  if (authService.isAuthenticated) ...[
+              child: Material(
+                color: Colors.transparent,
+                child: Column(
+                  children: [
+                    _buildListTile(context, Icons.history_edu, "Nossa História", '/about-history'),
+                    const Divider(height: 1),
+                    _buildListTile(context, Icons.groups_2, "Diretoria", '/about-board'),
+                    const Divider(height: 1),
+                    _buildListTile(context, Icons.bug_report_outlined, "Reportar Erro", '/report-bug'),
                     const Divider(height: 1),
                     ListTile(
-                      leading: const Icon(Icons.logout, color: Colors.red),
-                      title: const Text('Sair', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                      leading: Icon(authService.isAdmin ? Icons.admin_panel_settings : Icons.settings_outlined, color: authService.isAdmin ? Colors.green : Colors.grey),
+                      title: Text(authService.isAdmin ? 'Painel Admin' : 'Acesso Restrito', style: TextStyle(color: authService.isAdmin ? Colors.green[700] : Colors.grey[700], fontWeight: FontWeight.w600)),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                       onTap: () async {
                         Navigator.pop(context); // Fecha o modal
-                        await authService.logout();
+                        if (authService.isAdmin) {
+                          Navigator.of(context).pushNamed('/admin-menu');
+                        } else {
+                          final String? error = await authService.signInWithGoogle();
+                          if (error != null && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+                          } else if (authService.isAdmin && context.mounted) {
+                            Navigator.of(context).pushNamed('/admin-menu');
+                          } else if (authService.isPresident && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bem-vindo, Presidente! Acesso ao Mercado liberado.")));
+                          }
+                        }
                       },
                     ),
+                    if (authService.isAuthenticated) ...[
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.logout, color: Colors.red),
+                        title: const Text('Sair', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+                        onTap: () async {
+                          Navigator.pop(context); // Fecha o modal
+                          await authService.logout();
+                        },
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ],

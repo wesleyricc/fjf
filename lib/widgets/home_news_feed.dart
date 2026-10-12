@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/championship_service.dart';
 import '../viewmodels/news_viewmodel.dart';
+import '../theme/app_theme.dart';
 import 'sponsor_banner_rotator.dart';
 
 class HomeNewsFeed extends StatefulWidget {
@@ -68,11 +69,7 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFC5A814), Color(0xFF00873E)], 
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        image: AppTheme.headerImage,
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       child: const Row(
@@ -179,12 +176,14 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
           fit: StackFit.expand,
           children: [
             if (imageUrl.isNotEmpty)
-              CachedNetworkImage(
-                imageUrl: imageUrl, 
+              Image.network(
+                imageUrl, 
                 fit: BoxFit.cover,
-                memCacheWidth: 600,
-                placeholder: (c, u) => Container(color: Colors.grey[200]),
-                errorWidget: (c, u, e) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(color: Colors.grey[200]);
+                },
+                errorBuilder: (c, e, s) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
               )
             else
               const Center(child: Icon(Icons.image, color: Colors.grey, size: 40)),
@@ -272,12 +271,14 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
               flex: 3,
               child: imageUrl.isEmpty
                   ? Container(color: Colors.grey[200], child: const Icon(Icons.image, color: Colors.grey))
-                  : CachedNetworkImage(
-                      imageUrl: imageUrl,
+                  : Image.network(
+                      imageUrl,
                       fit: BoxFit.cover,
-                      memCacheWidth: 300,
-                      placeholder: (c, u) => Container(color: Colors.grey[300]),
-                      errorWidget: (c, u, e) => Container(color: Colors.grey[300], child: const Icon(Icons.broken_image, color: Colors.grey)),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(color: Colors.grey[300]);
+                      },
+                      errorBuilder: (c, e, s) => Container(color: Colors.grey[300], child: const Icon(Icons.broken_image, color: Colors.grey)),
                     ),
             ),
             Expanded(
@@ -323,11 +324,7 @@ class _HomeNewsFeedState extends State<HomeNewsFeed> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFFC5A814), Color(0xFFE8CA3B)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  image: AppTheme.headerImage,
                   borderRadius: BorderRadius.only(bottomLeft: Radius.circular(8)),
                   boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(-1, 2))],
                 ),

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart'; // Necessário
@@ -12,12 +11,6 @@ class HomeFooter extends StatelessWidget {
     super.key, 
     this.appVersion
   });
-
-  final List<Map<String, dynamic>> _socialLinks = const [
-    {'icon': FontAwesomeIcons.facebook, 'url': 'https://www.facebook.com/forcajovemfumacense', 'color': Colors.white},
-    {'icon': FontAwesomeIcons.instagram, 'url': 'https://www.instagram.com/fjf.forcajovem', 'color': Colors.white},
-    {'icon': FontAwesomeIcons.youtube, 'url': 'https://www.youtube.com/@forcajovemfumacense', 'color': Colors.white},
-  ];
 
   Future<void> _launchURL(String urlString) async {
     if (urlString.isEmpty) return;
@@ -79,18 +72,32 @@ class HomeFooter extends StatelessWidget {
           ),
           const SizedBox(height: 10),
 
-          // Ícones Sociais
+          // Ícones Sociais Nativos (Material) - À prova de adblockers e compatíveis com a web
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: _socialLinks.map((link) {
-              return Padding(
+            children: [
+              Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: IconButton(
-                  icon: FaIcon(link['icon'], color: link['color'], size: 22),
-                  onPressed: () => _launchURL(link['url']),
+                  icon: const Icon(Icons.facebook, color: Colors.white, size: 26),
+                  onPressed: () => _launchURL('https://www.facebook.com/forcajovemfumacense'),
                 ),
-              );
-            }).toList(),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: IconButton(
+                  icon: const Icon(Icons.photo_camera, color: Colors.white, size: 24), // Representando o Instagram
+                  onPressed: () => _launchURL('https://www.instagram.com/fjf.forcajovem'),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: IconButton(
+                  icon: const Icon(Icons.smart_display, color: Colors.white, size: 26), // Representando o YouTube
+                  onPressed: () => _launchURL('https://www.youtube.com/@forcajovemfumacense'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
 

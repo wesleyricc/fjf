@@ -1,22 +1,28 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Paleta de Cores Oficial da Seleção Brasileira (Tema Copa do Mundo)
-  static const Color primaryColor = Color(0xFF00873E);      // Verde Bandeira Oficial
-  static const Color secondaryColor = Color(0xFF002776);    // Azul Anil para Contrastes
-  static const Color yellowColor = Color(0xFFFFDF00);       // Amarelo Canarinho para Destaques
-  static const Color scaffoldBackground = Color(0xFFFAFAFA); // Cinza muito suave
+  // Nova Paleta de Cores Premium (Textura Escura e Cobre)
+  static const Color primaryColor = Color(0xFF2A1110);      // Vinho/Bordô muito escuro (Base do background)
+  static const Color secondaryColor = Color(0xFFAD3B56);    // Rosa/Magenta quente para detalhes
+  static const Color yellowColor = Color(0xFFC25F22);       // Cobre/Laranja Fogo para destaques (mantivemos o nome da variável para não quebrar referências)
+  static const Color scaffoldBackground = Color(0xFFFAFAFA); // Cinza muito suave (mantido para contraste de leitura)
   static const Color errorColor = Color(0xFFD32F2F);
 
-  // Gradiente Global para Botões Especiais e Cards de Destaque
-  // Pode ser acessado em qualquer tela chamando: AppTheme.brazilGradient
+  // Textura Global para Cabeçalhos e Cards de Destaque
+  static const DecorationImage headerImage = DecorationImage(
+    image: AssetImage('assets/images/bg_texture.png'),
+    fit: BoxFit.cover,
+  );
+
+  // Gradiente Global (mantido como fallback se necessário)
   static const LinearGradient brazilGradient = LinearGradient(
     colors: [
-      Color(0xFF00873E), // Verde Bandeira
-      Color(0xFFC5A814), // Ouro/Amarelo Canarinho
+      Color(0xFF2A1110), // Bordô escuro
+      Color(0xFF632B1C), // Ferrugem/Terra
+      Color(0xFFC25F22), // Laranja/Cobre brilhante
     ],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
+    begin: Alignment.bottomLeft,
+    end: Alignment.topRight,
   );
 
   static ThemeData get lightTheme {

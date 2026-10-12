@@ -153,5 +153,42 @@
     }
   });
 </script>
+  <script>
+  // PWA Update Detector
+  window.pwaUpdateAvailable = false;
+  
+  window.forcePwaUpdate = async function() {
+    if ('serviceWorker' in navigator) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      } catch (e) {
+        console.error('Erro ao desregistrar SW:', e);
+      }
+    }
+    window.location.reload();
+  };
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('flutter_service_worker.js').then((reg) => {
+        reg.addEventListener('updatefound', () => {
+          const installingWorker = reg.installing;
+          if (installingWorker) {
+            installingWorker.addEventListener('statechange', () => {
+              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('Nova versão do PWA disponível!');
+                window.pwaUpdateAvailable = true;
+                window.dispatchEvent(new Event('pwa_update_available'));
+              }
+            });
+          }
+        });
+      });
+    });
+  }
+  </script>
 </body>
 </html>

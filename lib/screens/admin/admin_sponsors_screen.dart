@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/firebase_storage_service.dart';
 
 class AdminSponsorsScreen extends StatelessWidget {
   const AdminSponsorsScreen({super.key});
@@ -40,6 +42,7 @@ class AdminSponsorsScreen extends StatelessWidget {
 
               return Card(
                 elevation: 2,
+                clipBehavior: Clip.antiAlias,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   leading: ClipRRect(
@@ -47,13 +50,10 @@ class AdminSponsorsScreen extends StatelessWidget {
                     child: SizedBox(
                       width: 50, height: 50,
                       child: data['imageUrl'] != null && data['imageUrl'].toString().isNotEmpty
-                          // ---> OTIMIZAÇÃO: LIMITADOR DE RAM <---
-                          ? CachedNetworkImage(
-                              imageUrl: data['imageUrl'], 
+                          ? Image.network(
+                              data['imageUrl'], 
                               fit: BoxFit.cover,
-                              memCacheWidth: 150,
-                              memCacheHeight: 150,
-                              errorWidget: (_,__,___) => const Icon(Icons.broken_image)
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.red),
                             )
                           : const Icon(Icons.image, color: Colors.grey),
                     ),
@@ -113,6 +113,7 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
   String _selectedCategory = 'BRONZE';
   bool _isActive = true;
   bool _isSaving = false;
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
@@ -135,6 +136,45 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
     }
     _selectedCategory = data?['category'] ?? 'BRONZE';
     _isActive = data?['isActive'] ?? true;
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
+    if (image == null) return;
+
+    setState(() => _isUploadingImage = true);
+
+    try {
+      final downloadUrl = await FirebaseStorageService.uploadImage(
+        image: image,
+        bucketUrl: 'gs://acefjf-us-storage',
+        folderPath: 'sponsors',
+      );
+      
+      setState(() {
+        _imageUrlController.text = downloadUrl ?? '';
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Upload de imagem concluído!'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro no upload: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
   }
 
   Future<void> _saveSponsor() async {
@@ -273,10 +313,29 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    TextFormField(
-                      controller: _imageUrlController,
-                      decoration: const InputDecoration(labelText: 'Link da Imagem (URL)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.image)),
-                      validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _imageUrlController,
+                            decoration: const InputDecoration(labelText: 'Link da Imagem (URL)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.image)),
+                            validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: _isUploadingImage ? null : _pickAndUploadImage,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                            backgroundColor: Colors.blueGrey[800],
+                            foregroundColor: Colors.white,
+                          ),
+                          icon: _isUploadingImage 
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                            : const Icon(Icons.upload_file),
+                          label: const Text('Upload'),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     TextFormField(

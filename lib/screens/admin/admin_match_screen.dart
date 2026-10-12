@@ -81,10 +81,10 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
   Widget build(BuildContext context) {
     return Consumer<AdminMatchViewModel>(
       builder: (context, vm, child) {
-        final matchData = vm.matchSnap.data() as Map<String, dynamic>;
+        final matchData = vm.matchSnap.data() as Map<String, dynamic>? ?? {};
         
         final motmCandidates = vm.allPlayers.where((p) { 
-          final d = p.data() as Map<String, dynamic>; 
+          final d = p.data() as Map<String, dynamic>? ?? {}; 
           return d['is_staff'] != true; 
         }).toList();
 
@@ -246,7 +246,7 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
         (context, index) {
           final player = players[index];
           final pid = player.id;
-          final data = player.data() as Map<String, dynamic>;
+          final data = player.data() as Map<String, dynamic>? ?? {};
           
           final bool isStaff = data['is_staff'] ?? false;
           final name = data['name'] ?? '?';

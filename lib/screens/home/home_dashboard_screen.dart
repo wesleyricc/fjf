@@ -31,11 +31,13 @@ import '../../widgets/home_footer.dart';
 import '../../widgets/home/home_super_app_grid.dart';
 import '../../widgets/home/home_section_header.dart';
 
-import '../bolao/mini_bolao_home_screen.dart';
-import '../championship/team_detail_screen.dart';
-
 extension type BeforeInstallPromptEvent._(JSObject _) implements web.Event {
   external void prompt();
+}
+
+extension type WindowPwaExt(web.Window _) implements web.Window {
+  external bool? get pwaUpdateAvailable;
+  external void forcePwaUpdate();
 }
 
 class HomeDashboardScreen extends StatefulWidget {
@@ -52,6 +54,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   bool _isDrawerOpen = false;
   BeforeInstallPromptEvent? _installPromptEvent;
   bool _showInstallButton = false;
+  bool _showUpdateBanner = false;
   bool _hasError = false;
   String _debugStatus = "Iniciando...";
 
@@ -65,16 +68,35 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     AnalyticsService.logCustomScreenView('App_Home_Dashboard');
 
     if (kIsWeb) {
-      web.window.addEventListener('beforeinstallprompt', ((web.Event e) {
-        final event = e as BeforeInstallPromptEvent;
-        event.preventDefault();
-        if (mounted) {
-          setState(() {
-            _installPromptEvent = event;
-            _showInstallButton = true;
-          });
+      try {
+        final windowExt = web.window as WindowPwaExt;
+        if (windowExt.pwaUpdateAvailable == true) {
+          _showUpdateBanner = true;
         }
-      }).toJS);
+      } catch (_) {}
+
+      web.window.addEventListener(
+          'pwa_update_available',
+          ((web.Event e) {
+            if (mounted) {
+              setState(() {
+                _showUpdateBanner = true;
+              });
+            }
+          }).toJS);
+
+      web.window.addEventListener(
+          'beforeinstallprompt',
+          ((web.Event e) {
+            final event = e as BeforeInstallPromptEvent;
+            event.preventDefault();
+            if (mounted) {
+              setState(() {
+                _installPromptEvent = event;
+                _showInstallButton = true;
+              });
+            }
+          }).toJS);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -378,8 +400,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     fit: StackFit.expand,
                     children: [
                       Container(
-                          decoration: const BoxDecoration(
-                              gradient: AppTheme.brazilGradient)),
+                          decoration:
+                              const BoxDecoration(image: AppTheme.headerImage)),
                       SafeArea(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -424,7 +446,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                                   color: Colors.white.withOpacity(0.95),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
-                                      color: const Color(0xFFC5A814),
+                                      color: const Color(0xFFC25F22),
                                       width: 1.5),
                                   boxShadow: const [
                                     BoxShadow(
@@ -456,6 +478,52 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_showUpdateBanner)
+                        Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                  colors: [Colors.blue.shade50, Colors.white]),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: Colors.blue.withOpacity(0.3)),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.blue.withOpacity(0.05),
+                                    blurRadius: 5,
+                                    offset: const Offset(0, 2))
+                              ]),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.system_update,
+                                  color: Colors.blue),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                  child: Text(
+                                      "Nova versão disponível! Atualize o app.",
+                                      style: TextStyle(
+                                          color: Colors.blue,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13))),
+                              TextButton(
+                                  onPressed: () {
+                                    final windowExt = web.window as WindowPwaExt;
+                                    windowExt.forcePwaUpdate();
+                                  },
+                                  style: TextButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8))),
+                                  child: const Text("Atualizar")),
+                            ],
+                          ),
+                        ),
                       if (_showInstallButton)
                         Container(
                           margin: const EdgeInsets.all(16),
@@ -597,7 +665,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   child: Container(
                     decoration: const BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(12)),
                     ),
                     child: Column(
                       children: [

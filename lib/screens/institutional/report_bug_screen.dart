@@ -77,7 +77,7 @@ class _ReportBugScreenState extends State<ReportBugScreen> {
         title: const Text('Reportar via WhatsApp'),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
       ),

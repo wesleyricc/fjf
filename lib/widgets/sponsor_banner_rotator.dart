@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -78,15 +77,35 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       return true;
     }).toList();
 
-    setState(() {
-      _filteredSponsors = filtered;
-      _currentIndex = 0;
-    });
+    // Check if the filtered list actually changed before resetting state
+    bool hasChanged = _filteredSponsors.length != filtered.length;
+    if (!hasChanged) {
+      for (int i = 0; i < filtered.length; i++) {
+        if (_filteredSponsors[i]['name'] != filtered[i]['name'] ||
+            _filteredSponsors[i]['imageUrl'] != filtered[i]['imageUrl']) {
+          hasChanged = true;
+          break;
+        }
+      }
+    }
 
-    // Registra a impressão do primeiro banner assim que os dados carregam
-    if (_filteredSponsors.isNotEmpty && !_firstImpressionLogged) {
-      _firstImpressionLogged = true;
-      _logImpression(_filteredSponsors[_currentIndex]);
+    if (hasChanged) {
+      setState(() {
+        _filteredSponsors = filtered;
+        _currentIndex = 0;
+      });
+
+      // Registra a impressão do primeiro banner assim que os novos dados carregam
+      if (_filteredSponsors.isNotEmpty && !_firstImpressionLogged) {
+        _firstImpressionLogged = true;
+        _logImpression(_filteredSponsors[_currentIndex]);
+      }
+    } else {
+      // If the list is the same, but we haven't logged the impression yet, do it.
+      if (_filteredSponsors.isNotEmpty && !_firstImpressionLogged) {
+        _firstImpressionLogged = true;
+        _logImpression(_filteredSponsors[_currentIndex]);
+      }
     }
   }
 
@@ -101,7 +120,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         
         // 🚨 RASTREIA A IMPRESSÃO A CADA GIRO DO BANNER
         _logImpression(_filteredSponsors[_currentIndex]);
-        _precacheNextImage();
+
 
         if (_currentIndex == 0) {
           widget.onCycleComplete?.call();
@@ -117,17 +136,6 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     AnalyticsService.logAdImpression(name, widget.location);
   }
 
-  void _precacheNextImage() {
-    if (_filteredSponsors.isEmpty) return;
-    try {
-      final int nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
-      final nextData = _filteredSponsors[nextIndex];
-      final String? url = nextData['imageUrl'];
-      if (url != null && url.isNotEmpty) {
-        precacheImage(CachedNetworkImageProvider(url), context);
-      }
-    } catch (_) {}
-  }
 
   @override
   void dispose() {
@@ -171,10 +179,10 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       content = _buildHouseAd();
     } else {
       final data = _filteredSponsors[_currentIndex];
-      final imageUrl = data['imageUrl'] ?? '';
+      final imageUrl = (data['imageUrl']?.toString() ?? '').trim();
       final targetUrl = data['targetUrl'] ?? '';
       final sponsorName = data['name'] ?? 'sponsor_$_currentIndex';
-      final String uniqueKey = imageUrl.isNotEmpty ? imageUrl : sponsorName;
+      final String uniqueKey = "${_currentIndex}_${imageUrl.isNotEmpty ? imageUrl : sponsorName}";
 
       content = AnimatedSwitcher(
         duration: const Duration(milliseconds: 800),
@@ -201,17 +209,17 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                           imageUrl: imageUrl,
                           fit: BoxFit.contain,
                           memCacheWidth: 800,
-                          errorWidget: (c, u, e) => _buildHouseAd(),
+                          errorWidget: (c, u, e) => _buildHouseAd(title: "$sponsorName (Sem Imagem)"),
                         ),
                       ],
                     )
                   : CachedNetworkImage(
                       imageUrl: imageUrl,
                       fit: widget.fit,
-                      memCacheWidth: 800,
                       width: double.infinity,
                       height: double.infinity,
-                      errorWidget: (c, u, e) => _buildHouseAd(),
+                      memCacheWidth: 800,
+                      errorWidget: (c, u, e) => _buildHouseAd(title: "$sponsorName (Sem Imagem)"),
                     )),
         ),
       );
@@ -244,6 +252,9 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   }
 
   Widget _buildHouseAd({String? title}) {
+    if (widget.location == 'grid_teams') {
+      return _buildGridHouseAd(title: title);
+    }
     return InkWell(
       onTap: () => _launchURL(null, title ?? "Seja Parceiro (House Ad)"),
       child: Container(
@@ -255,7 +266,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: const Color(0xFFC5A814).withOpacity(0.5), width: 1.5),
+          border: Border.all(color: const Color(0xFFC25F22).withOpacity(0.5), width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -264,16 +275,16 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFC5A814), Color(0xFFE8CA3B)],
+                  colors: [Color(0xFFC25F22), Color(0xFFC25F22)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: const Color(0xFFC5A814).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(color: const Color(0xFFC25F22).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4)),
                 ],
               ),
-              child: const Icon(FontAwesomeIcons.bullhorn, color: Colors.white, size: 24),
+              child: const FaIcon(FontAwesomeIcons.bullhorn, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -283,7 +294,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                 children: [
                   Text(
                     title ?? "SUA MARCA AQUI",
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFE8CA3B), letterSpacing: 1.0),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFC25F22), letterSpacing: 1.0),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -296,11 +307,59 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFC5A814),
+                color: const Color(0xFFC25F22),
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
               ),
               child: const Text("Saber Mais", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGridHouseAd({String? title}) {
+    return InkWell(
+      onTap: () => _launchURL(null, title ?? "Seja Parceiro (House Ad)"),
+      child: Container(
+        decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF2A1110), Color(0xFF2A1110)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -20,
+              bottom: -20,
+              child: Icon(Icons.all_inclusive, size: 100, color: Colors.white.withOpacity(0.05)),
+            ),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFFFCC00).withOpacity(0.2), // AppTheme.yellowColor
+                        shape: BoxShape.circle),
+                    child: const FaIcon(FontAwesomeIcons.handshake, color: Color(0xFFFFCC00), size: 24),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text("SEJA PARCEIRO",
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                          color: Color(0xFFC25F22),
+                          letterSpacing: 0.5)),
+                  const SizedBox(height: 2),
+                  const Text("Anuncie aqui", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Colors.white70)),
+                ],
+              ),
             ),
           ],
         ),

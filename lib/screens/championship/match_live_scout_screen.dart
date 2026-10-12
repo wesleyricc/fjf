@@ -279,6 +279,7 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
           _buildActionTab('NA TRAVE', MatchEventType.shotOnPost, Colors.brown),
           _buildActionTab('TIRO LIVRE PERDIDO',
               MatchEventType.directFreeKickMissed, Colors.indigo),
+          _buildActionTab('DEFESA DIFÍCIL', MatchEventType.difficultSave, Colors.cyan),
         ],
       ),
     );
@@ -332,6 +333,9 @@ class _MatchLiveScoutScreenState extends State<MatchLiveScoutScreen> {
     } else if (_activeAction == MatchEventType.directFreeKickMissed) {
       title = '🚫 TL PERDIDO';
       color = Colors.indigo;
+    } else if (_activeAction == MatchEventType.difficultSave) {
+      title = '🖐️ DEFESA DIFÍCIL';
+      color = Colors.cyan;
     } else {
       title = '🎯 AÇÃO';
       color = Colors.purple;

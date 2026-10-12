@@ -26,7 +26,7 @@ class _AboutBoardScreenState extends State<AboutBoardScreen> {
         title: const Text('Diretoria Atual'),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
       ),

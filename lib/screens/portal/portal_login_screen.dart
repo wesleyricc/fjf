@@ -61,7 +61,7 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
       appBar: AppBar(
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
         title: const Text('Portal FJF', style: TextStyle(color: Colors.white)),

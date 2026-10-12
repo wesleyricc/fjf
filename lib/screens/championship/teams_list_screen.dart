@@ -108,7 +108,7 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
           appBar: AppBar(
             flexibleSpace: Container(
               decoration: const BoxDecoration(
-                gradient: AppTheme.brazilGradient,
+                image: AppTheme.headerImage,
               ),
             ),
             title: Column(
@@ -223,6 +223,7 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
                   return _buildTeamGridCard(context, team, seasonId, isAdmin);
                 },
                 childCount: teams.length,
+                addAutomaticKeepAlives: false,
               ),
             ),
           ),
@@ -253,8 +254,7 @@ class _TeamsListScreenState extends State<TeamsListScreen> {
                       ? CachedNetworkImage(
                           imageUrl: team.shieldUrl,
                           fit: BoxFit.contain,
-                          memCacheHeight: 300, 
-                          memCacheWidth: 300,
+                          memCacheHeight: 300,
                           placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                           errorWidget: (_, __, ___) => const Icon(Icons.shield, size: 60, color: Colors.grey),
                         )

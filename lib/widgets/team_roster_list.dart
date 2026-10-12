@@ -69,6 +69,7 @@ class SliverTeamPlayersGrid extends StatelessWidget {
             );
           },
           childCount: players.length,
+          addAutomaticKeepAlives: false,
         ),
       ),
     );
@@ -118,6 +119,7 @@ class SliverTeamStaffList extends StatelessWidget {
             );
           },
           childCount: staff.length,
+          addAutomaticKeepAlives: false,
         ),
       ),
     );
@@ -189,20 +191,22 @@ class _MemberCard extends StatelessWidget {
     final bool isGoalkeeper = member.isGoalkeeper;
     final bool isStaff = member.isStaff;
 
-    return RepaintBoundary(
-      child: Card(
-        elevation: 3,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: member.id))),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    flex: 5,
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.none,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerProfileScreen(playerId: member.id))),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
@@ -221,8 +225,11 @@ class _MemberCard extends StatelessWidget {
                             fit: BoxFit.cover,
                             alignment: Alignment.topCenter,
                             cacheManager: PlayerCacheManager.instance,
-                            memCacheWidth: 200, 
-                            fadeInDuration: const Duration(milliseconds: 200),
+                            memCacheWidth: 200,
+                            memCacheHeight: 280,
+                            maxWidthDiskCache: 200,
+                            maxHeightDiskCache: 280,
+                            fadeInDuration: const Duration(milliseconds: 150),
                             placeholder: (c, u) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 40, color: Colors.grey.shade400)),
                             errorWidget: (c, u, e) => Center(child: Icon(isStaff ? Icons.assignment_ind : Icons.person, size: 40, color: Colors.grey.shade400)),
                           )
@@ -249,6 +256,7 @@ class _MemberCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
 
                   Container(
                     padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
@@ -321,8 +329,7 @@ class _MemberCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

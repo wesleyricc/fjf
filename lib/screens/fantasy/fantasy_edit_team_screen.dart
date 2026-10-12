@@ -17,6 +17,8 @@ class FantasyEditTeamScreen extends StatefulWidget {
 class _FantasyEditTeamScreenState extends State<FantasyEditTeamScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
+  late TextEditingController _cpfController;
+  late TextEditingController _phoneController;
   
   String? _selectedPresetName; 
   XFile? _imageFile;
@@ -36,6 +38,16 @@ class _FantasyEditTeamScreenState extends State<FantasyEditTeamScreen> {
 
     final team = Provider.of<FantasyHomeViewModel>(context, listen: false).team;
     _nameController = TextEditingController(text: team?.teamName ?? '');
+    _cpfController = TextEditingController(text: team?.ownerCpf ?? '');
+    _phoneController = TextEditingController(text: team?.ownerPhone ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _cpfController.dispose();
+    _phoneController.dispose();
+    super.dispose();
   }
 
   Future<void> _saveProfile() async {
@@ -46,6 +58,8 @@ class _FantasyEditTeamScreenState extends State<FantasyEditTeamScreen> {
     
     final success = await viewModel.updateTeamProfile(
       newName: _nameController.text.trim(),
+      cpf: _cpfController.text.trim(),
+      phone: _phoneController.text.trim(),
       selectedPresetUrl: _selectedPresetName, // O ViewModel vai salvar 'preset_X' no Firebase
       imageFile: _imageFile,
     );
@@ -149,6 +163,32 @@ class _FantasyEditTeamScreenState extends State<FantasyEditTeamScreen> {
                               fillColor: Colors.grey[100],
                             ),
                             validator: (v) => (v == null || v.trim().isEmpty) ? 'O nome da equipe é obrigatório' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _cpfController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: "CPF do Gestor",
+                              prefixIcon: Icon(Icons.badge, color: primaryColor),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              filled: true,
+                              fillColor: Colors.grey[100],
+                            ),
+                            validator: (v) => (v == null || v.trim().isEmpty) ? 'O CPF é obrigatório' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _phoneController,
+                            keyboardType: TextInputType.phone,
+                            decoration: InputDecoration(
+                              labelText: "Telefone para contato",
+                              prefixIcon: Icon(Icons.phone, color: primaryColor),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              filled: true,
+                              fillColor: Colors.grey[100],
+                            ),
+                            validator: (v) => (v == null || v.trim().isEmpty) ? 'O telefone é obrigatório' : null,
                           ),
                         ],
                       ),
@@ -256,7 +296,12 @@ class _FantasyEditTeamScreenState extends State<FantasyEditTeamScreen> {
                     onPressed: () async {
                       Navigator.pop(ctx);
                       final picker = ImagePicker();
-                      final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+                      final img = await picker.pickImage(
+                        source: ImageSource.gallery,
+                        imageQuality: 70,
+                        maxWidth: 512,
+                        maxHeight: 512,
+                      );
                       if (img != null) {
                         setState(() { _imageFile = img; _selectedPresetName = null; });
                       }

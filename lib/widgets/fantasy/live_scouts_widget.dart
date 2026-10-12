@@ -77,7 +77,7 @@ class LiveScoutsWidget extends StatelessWidget {
     addBadge(Icons.sports_martial_arts, "Pênalti Defendido", scouts!.penaltiesSaved, Colors.orange);
     addBadge(Icons.adjust, "Finalização na Trave", scouts!.shotsOnPost, Colors.brown);
     addBadge(Icons.star, "Craque da Partida", scouts!.motm, Colors.amber);
-    
+    addBadge(Icons.back_hand, "Defesa Difícil", scouts!.difficultSaves, Colors.cyan);
     addBadge(Icons.style, "Cartão Amarelo", scouts!.yellows, Colors.amber.shade800);
     addBadge(Icons.cancel, "Pênalti Perdido", scouts!.penaltiesMissed, Colors.deepPurple);
     addBadge(Icons.warning, "Falta/Tiro Livre Perdido", scouts!.missedFreeKicks, Colors.deepOrange);

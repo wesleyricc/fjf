@@ -166,72 +166,76 @@ class FantasyLineupPreviewWidget extends StatelessWidget {
           leading: SizedBox(
             width: 48,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(player.position.substring(0, 1),
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                        fontSize: 12)),
-                CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Colors.grey[200],
-                    backgroundImage: player.photoUrl.isNotEmpty
-                        ? NetworkImage(player.photoUrl)
-                        : null,
-                    child: player.photoUrl.isEmpty
-                        ? const Icon(Icons.person, size: 14)
-                        : null),
-              ]
-            ),
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                        child: Text(player.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14),
-                            overflow: TextOverflow.ellipsis)),
-                    if (isCaptain)
-                      Container(
-                          margin: const EdgeInsets.only(left: 8),
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                              color: Colors.orange, shape: BoxShape.circle),
-                          child:
-                              const Icon(Icons.star, color: Colors.white, size: 10)),
-                  ],
-                ),
-              ),
-              (!isMarketOpen)
-                  ? Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(player.position.substring(0, 1),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                          fontSize: 12)),
+                  Container(
+                      width: 24,
+                      height: 32,
                       decoration: BoxDecoration(
-                          color: scoreColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6)),
-                      child: Text(finalScore.toStringAsFixed(2),
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              color: scoreColor,
-                              fontSize: 14)))
-                  : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      Text(finalScore.toStringAsFixed(2),
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              color: finalScore >= 0
-                                  ? Colors.blue[700]
-                                  : Colors.red[700],
-                              fontSize: 14)),
-                      const Text("pts",
-                          style: TextStyle(fontSize: 9, color: Colors.grey)),
-                    ]),
-            ]
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: player.photoUrl.isNotEmpty
+                            ? Image.network(player.photoUrl, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (c,e,s) => const Icon(Icons.person, size: 14))
+                            : const Icon(Icons.person, size: 14),
+                      )),
+                ]),
           ),
+          title: Row(children: [
+            Expanded(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                      child: Text(player.name,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 14),
+                          overflow: TextOverflow.ellipsis)),
+                  if (isCaptain)
+                    Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                            color: Colors.orange, shape: BoxShape.circle),
+                        child: const Icon(Icons.star,
+                            color: Colors.white, size: 10)),
+                ],
+              ),
+            ),
+            (!isMarketOpen)
+                ? Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                        color: scoreColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6)),
+                    child: Text(finalScore.toStringAsFixed(2),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: scoreColor,
+                            fontSize: 14)))
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                        Text(finalScore.toStringAsFixed(2),
+                            style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                color: finalScore >= 0
+                                    ? Colors.blue[700]
+                                    : Colors.red[700],
+                                fontSize: 14)),
+                        const Text("pts",
+                            style: TextStyle(fontSize: 9, color: Colors.grey)),
+                      ]),
+          ]),
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -255,6 +259,7 @@ class FantasyLineupPreviewWidget extends StatelessWidget {
                         ownGoals: score.ownGoals,
                         missedFreeKicks: score.missedFreeKicks,
                         motm: score.motm,
+                        difficultSaves: score.difficultSaves,
                       ),
                       isCaptain: isCaptain,
                       isMarketOpen: isMarketOpen,

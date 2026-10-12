@@ -348,7 +348,11 @@ class _MatchStatsScreenState extends State<MatchStatsScreen> with SingleTickerPr
       tag: heroTag,
       child: SizedBox(
         width: 60, height: 60,
-        child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain),
+        child: Image.network(
+          url, 
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(Icons.shield, size: 60, color: Colors.grey),
+        ),
       ),
     );
   }

@@ -12,11 +12,12 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
-  
+
   Timer? _bannerTimer;
   Timer? _navigationTimer;
   int _currentBannerIndex = 0;
@@ -24,23 +25,23 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    
+
     // Configuração das animações da Logo
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    
+
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
-    
+
     _animationController.forward();
-    
+
     // Configura o timer para trocar os banners a cada 3 segundos
     _bannerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       if (!mounted) return;
@@ -56,9 +57,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         });
       }
     });
-    
-    // Configura a navegação para a home após 9 segundos
-    _navigationTimer = Timer(const Duration(seconds: 9), () {
+
+    // Configura a navegação para a home após 5 segundos
+    _navigationTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/home');
       }
@@ -87,18 +88,20 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           // Background usando o gradiente do tema
           Container(
             decoration: const BoxDecoration(
-              gradient: AppTheme.brazilGradient,
+              image: AppTheme.headerImage,
             ),
           ),
-          
+
           // Animação da Logo e Barra de Carregamento
           Center(
             child: FadeTransition(
               opacity: _fadeAnimation,
               child: ScaleTransition(
                 scale: _scaleAnimation,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                   children: [
                     Hero(
                       tag: 'app_logo',
@@ -106,13 +109,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         'assets/logo3_fjf.png',
                         width: 220,
                         height: 220,
+                        fit: BoxFit.contain,
                       ),
                     ),
                     const SizedBox(height: 30),
                     // Barra de Carregamento Animada 0 a 100%
                     TweenAnimationBuilder<double>(
                       tween: Tween<double>(begin: 0.0, end: 1.0),
-                      duration: const Duration(seconds: 9),
+                      duration: const Duration(seconds: 5),
                       builder: (context, value, child) {
                         return Column(
                           mainAxisSize: MainAxisSize.min,
@@ -137,7 +141,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
                                 shadows: [
-                                  Shadow(color: Colors.black45, blurRadius: 2, offset: Offset(1, 1))
+                                  Shadow(
+                                      color: Colors.black45,
+                                      blurRadius: 2,
+                                      offset: Offset(1, 1))
                                 ],
                               ),
                             ),
@@ -145,12 +152,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         );
                       },
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-          
+
           // Banner Rotativo de Parceiros na parte inferior
           Positioned(
             bottom: 50,
@@ -167,7 +175,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       shadows: [
-                        Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(1, 1))
+                        Shadow(
+                            color: Colors.black45,
+                            blurRadius: 4,
+                            offset: Offset(1, 1))
                       ],
                     ),
                   ),
@@ -180,8 +191,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         )
                       : AnimatedSwitcher(
                           duration: const Duration(milliseconds: 800),
-                          transitionBuilder: (Widget child, Animation<double> animation) {
-                            return FadeTransition(opacity: animation, child: child);
+                          transitionBuilder:
+                              (Widget child, Animation<double> animation) {
+                            return FadeTransition(
+                                opacity: animation, child: child);
                           },
                           child: _buildSponsorGrid(
                             sponsors,
@@ -198,16 +211,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildSponsorGrid(List<Map<String, dynamic>> sponsors, int chunkIndex, Key key) {
+  Widget _buildSponsorGrid(
+      List<Map<String, dynamic>> sponsors, int chunkIndex, Key key) {
     // Calculando a parte do array que corresponde a esse chunk (exibe até 6 por vez)
     final int startIndex = chunkIndex * 6;
-    final int endIndex = (startIndex + 6 > sponsors.length) ? sponsors.length : startIndex + 6;
-    
+    final int endIndex =
+        (startIndex + 6 > sponsors.length) ? sponsors.length : startIndex + 6;
+
     // Se o startIndex for maior que o tamanho, provavelmente houve uma mudança nos dados. Redefine pra zero.
     if (startIndex >= sponsors.length) {
       return Container(key: key);
     }
-    
+
     final chunkSponsors = sponsors.sublist(startIndex, endIndex);
 
     return Container(
@@ -219,7 +234,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         crossAxisAlignment: WrapCrossAlignment.center,
         spacing: 4,
         runSpacing: 4,
-        children: chunkSponsors.map((sponsor) => _buildSponsorItem(sponsor)).toList(),
+        children:
+            chunkSponsors.map((sponsor) => _buildSponsorItem(sponsor)).toList(),
       ),
     );
   }
@@ -246,14 +262,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       child: ClipRRect(
         borderRadius: BorderRadius.circular(11),
         child: (imageUrl != null && imageUrl.isNotEmpty)
-            ? CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.contain,
-                placeholder: (context, url) => const Center(
+            ? Padding(
+                padding: const EdgeInsets.all(6.0),
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.contain,
+                  memCacheWidth: 200,
+                  placeholder: (context, url) => const Center(
                   child: SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(color: Colors.grey, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                        color: Colors.grey, strokeWidth: 2),
                   ),
                 ),
                 errorWidget: (context, url, error) => Center(
@@ -267,8 +287,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     ),
                   ),
                 ),
-              )
-            : Center(
+              ),
+            )
+          : Center(
                 child: Text(
                   name,
                   textAlign: TextAlign.center,

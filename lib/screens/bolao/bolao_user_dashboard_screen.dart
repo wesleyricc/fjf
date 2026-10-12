@@ -90,7 +90,7 @@ class _BolaoUserDashboardScreenState extends State<BolaoUserDashboardScreen> {
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text("Raio-X do Treinador", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-        flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient)),
+        flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage)),
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),

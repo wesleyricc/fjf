@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/fantasy_service.dart';
 import '../../utils/custom_cache_manager.dart';
-import '../../widgets/sponsor_banner_rotator.dart';
+import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
 
 class FantasyScoutsScreen extends StatelessWidget {
   const FantasyScoutsScreen({super.key});
@@ -14,7 +15,14 @@ class FantasyScoutsScreen extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text("Central de Scouts"),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/logo_fjf_fantasy.webp', height: 28),
+              const SizedBox(width: 8),
+              const Text("Central de Scouts"),
+            ],
+          ),
           bottom: const TabBar(
             tabs: [
               Tab(text: "Mais Escalados", icon: Icon(Icons.groups)),
@@ -22,7 +30,8 @@ class FantasyScoutsScreen extends StatelessWidget {
             ],
           ),
         ),
-        bottomNavigationBar: const SponsorBannerRotator(location: 'fantasy'),
+        bottomNavigationBar:
+            const FantasyBottomNavBar(currentRoute: '/fantasy-scouts'),
         body: StreamBuilder<DocumentSnapshot>(
           stream: FantasyService().streamGlobalScouts(),
           builder: (context, snapshot) {
@@ -34,15 +43,19 @@ class FantasyScoutsScreen extends StatelessWidget {
               return const Center(
                 child: Padding(
                   padding: EdgeInsets.all(32.0),
-                  child: Text("As estatísticas globais ainda não foram geradas para esta rodada.", 
-                  textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  child: Text(
+                      "As estatísticas globais ainda não foram geradas para esta rodada.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey, fontSize: 16)),
                 ),
               );
             }
 
             final data = snapshot.data!.data() as Map<String, dynamic>;
-            final mostSelected = List<Map<String, dynamic>>.from(data['most_selected'] ?? []);
-            final dreamTeam = List<Map<String, dynamic>>.from(data['dream_team'] ?? []);
+            final mostSelected =
+                List<Map<String, dynamic>>.from(data['most_selected'] ?? []);
+            final dreamTeam =
+                List<Map<String, dynamic>>.from(data['dream_team'] ?? []);
 
             return TabBarView(
               children: [
@@ -58,7 +71,9 @@ class FantasyScoutsScreen extends StatelessWidget {
 
   Widget _buildMostSelectedList(List<Map<String, dynamic>> players) {
     if (players.isEmpty) {
-      return const Center(child: Text("Nenhum dado disponível.", style: TextStyle(color: Colors.grey)));
+      return const Center(
+          child: Text("Nenhum dado disponível.",
+              style: TextStyle(color: Colors.grey)));
     }
 
     return ListView.builder(
@@ -68,24 +83,42 @@ class FantasyScoutsScreen extends StatelessWidget {
         final p = players[index];
         return Card(
           elevation: 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.symmetric(vertical: 6),
           child: ListTile(
             leading: CircleAvatar(
               radius: 24,
               backgroundColor: Colors.grey[200],
-              backgroundImage: p['photo_url'] != null && p['photo_url'].toString().isNotEmpty
-                  ? CachedNetworkImageProvider(p['photo_url'], cacheManager: PlayerCacheManager.instance, maxWidth: 100, maxHeight: 100)
+              backgroundImage:
+                  p['photo_url'] != null && p['photo_url'].toString().isNotEmpty
+                      ? (kIsWeb
+                          ? NetworkImage(p['photo_url']) as ImageProvider
+                          : CachedNetworkImageProvider(p['photo_url'],
+                              cacheManager: PlayerCacheManager.instance,
+                              maxWidth: 100))
+                      : null,
+              onBackgroundImageError: (p['photo_url'] != null &&
+                      p['photo_url'].toString().isNotEmpty)
+                  ? (e, s) {}
                   : null,
-              child: p['photo_url'] == null || p['photo_url'].toString().isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
+              child: p['photo_url'] == null || p['photo_url'].toString().isEmpty
+                  ? const Icon(Icons.person, color: Colors.grey)
+                  : null,
             ),
-            title: Text(p['name'] ?? 'Desconhecido', style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(p['name'] ?? 'Desconhecido',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text("${p['position'] ?? ''}"),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text("${p['selections'] ?? 0}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue)),
-                const Text("times", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                Text("${p['selections'] ?? 0}",
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue)),
+                const Text("times",
+                    style: TextStyle(fontSize: 10, color: Colors.grey)),
               ],
             ),
           ),
@@ -99,8 +132,10 @@ class FantasyScoutsScreen extends StatelessWidget {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32.0),
-          child: Text("A Seleção da Rodada será gerada ao final da rodada, com base nas pontuações reais.", 
-          textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+          child: Text(
+              "A Seleção da Rodada será gerada ao final da rodada, com base nas pontuações reais.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey)),
         ),
       );
     }
@@ -112,24 +147,42 @@ class FantasyScoutsScreen extends StatelessWidget {
         final p = players[index];
         return Card(
           elevation: 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: const EdgeInsets.symmetric(vertical: 6),
           child: ListTile(
             leading: CircleAvatar(
               radius: 24,
               backgroundColor: Colors.grey[200],
-              backgroundImage: p['photo_url'] != null && p['photo_url'].toString().isNotEmpty
-                  ? CachedNetworkImageProvider(p['photo_url'], cacheManager: PlayerCacheManager.instance, maxWidth: 100, maxHeight: 100)
+              backgroundImage:
+                  p['photo_url'] != null && p['photo_url'].toString().isNotEmpty
+                      ? (kIsWeb
+                          ? NetworkImage(p['photo_url']) as ImageProvider
+                          : CachedNetworkImageProvider(p['photo_url'],
+                              cacheManager: PlayerCacheManager.instance,
+                              maxWidth: 100))
+                      : null,
+              onBackgroundImageError: (p['photo_url'] != null &&
+                      p['photo_url'].toString().isNotEmpty)
+                  ? (e, s) {}
                   : null,
-              child: p['photo_url'] == null || p['photo_url'].toString().isEmpty ? const Icon(Icons.person, color: Colors.grey) : null,
+              child: p['photo_url'] == null || p['photo_url'].toString().isEmpty
+                  ? const Icon(Icons.person, color: Colors.grey)
+                  : null,
             ),
-            title: Text(p['name'] ?? 'Desconhecido', style: const TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(p['name'] ?? 'Desconhecido',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text("${p['position'] ?? ''}"),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text("${(p['score'] ?? 0).toStringAsFixed(2)}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
-                const Text("pts", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                Text("${(p['score'] ?? 0).toStringAsFixed(2)}",
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green)),
+                const Text("pts",
+                    style: TextStyle(fontSize: 10, color: Colors.grey)),
               ],
             ),
           ),

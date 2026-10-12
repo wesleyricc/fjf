@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:url_launcher/url_launcher.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../services/championship_service.dart';
 import '../../services/analytics_service.dart';
 import '../../services/voting_service.dart';
-import '../../services/bolao_service.dart';
 import '../../models/poll_model.dart';
 import '../../theme/app_theme.dart';
 import 'package:FJF_App/screens/bolao/mini_bolao_home_screen.dart';
@@ -16,8 +11,6 @@ import 'home_modals.dart';
 class HomeSuperAppGrid extends StatelessWidget {
   final ChampionshipService service;
   const HomeSuperAppGrid({super.key, required this.service});
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +25,11 @@ class HomeSuperAppGrid extends StatelessWidget {
 
           if (service.isFantasyEnabled) {
             items.add(SuperAppGridItem(
-              title: "Fantasy",
-              icon: Icons.sports_soccer,
-              color: const Color(0xFF002776),
+              title: "Cartola FJF",
+              imageAsset: 'assets/logo_fjf_fantasy.webp',
+              color: const Color(0xFF2A1110),
+              isFeatured: true,
+              badgeText: "NOVO",
               onTap: () {
                 AnalyticsService.logCustomScreenView('Home_Click_Fantasy');
                 Navigator.pushNamed(context, '/fantasy-home');
@@ -45,7 +40,7 @@ class HomeSuperAppGrid extends StatelessWidget {
           if (service.isBolaoEnabled) {
             items.add(SuperAppGridItem(
               title: "Bolão FJF - Copa do Mundo 2026",
-              icon: FontAwesomeIcons.earthAmericas,
+              icon: Icons.public,
               color: const Color(0xFF009C3B),
               onTap: () {
                 AnalyticsService.logCustomScreenView('Home_Click_Bolao_VIP');
@@ -85,7 +80,7 @@ class HomeSuperAppGrid extends StatelessWidget {
             items.add(SuperAppGridItem(
               title: "Votações",
               icon: Icons.how_to_vote,
-              color: const Color(0xFFC5A814),
+              color: const Color(0xFFC25F22),
               badgeCount: activePolls.length,
               onTap: () {
                 if (activePolls.length == 1) {
@@ -105,7 +100,7 @@ class HomeSuperAppGrid extends StatelessWidget {
           Widget gridLayout;
           int itemsPerRow = items.length <= 4 ? 4 : 3;
           List<Widget> rows = [];
-          
+
           for (int i = 0; i < items.length; i += itemsPerRow) {
             List<Widget> rowItems = [];
             for (int j = 0; j < itemsPerRow; j++) {
@@ -118,15 +113,21 @@ class HomeSuperAppGrid extends StatelessWidget {
                 ));
               }
             }
-            rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: rowItems));
-            if (i + itemsPerRow < items.length) rows.add(const SizedBox(height: 16));
+            rows.add(Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: rowItems));
+            if (i + itemsPerRow < items.length)
+              rows.add(const SizedBox(height: 16));
           }
-          
+
           gridLayout = Column(children: rows);
 
           return Column(
             children: [
-              HomeSectionHeader(title: "Central FJF", icon: Icons.apps, color: AppTheme.primaryColor),
+              HomeSectionHeader(
+                  title: "Central FJF",
+                  icon: Icons.apps,
+                  color: AppTheme.primaryColor),
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.symmetric(horizontal: 10),
@@ -153,19 +154,26 @@ class HomeSuperAppGrid extends StatelessWidget {
 
 class SuperAppGridItem extends StatefulWidget {
   final String title;
-  final IconData icon;
+  final IconData? icon;
+  final String? imageAsset;
   final Color color;
   final VoidCallback onTap;
   final int badgeCount;
+  final String? badgeText;
+  final bool isFeatured;
 
   const SuperAppGridItem({
     super.key,
     required this.title,
-    required this.icon,
+    this.icon,
+    this.imageAsset,
     required this.color,
     required this.onTap,
     this.badgeCount = 0,
-  });
+    this.badgeText,
+    this.isFeatured = false,
+  }) : assert(icon != null || imageAsset != null,
+            'Either icon or imageAsset must be provided');
 
   @override
   State<SuperAppGridItem> createState() => _SuperAppGridItemState();
@@ -177,7 +185,9 @@ class _SuperAppGridItemState extends State<SuperAppGridItem> {
   @override
   Widget build(BuildContext context) {
     final hslColor = HSLColor.fromColor(widget.color);
-    final lighterColor = hslColor.withLightness((hslColor.lightness + 0.15).clamp(0.0, 1.0)).toColor();
+    final lighterColor = hslColor
+        .withLightness((hslColor.lightness + 0.15).clamp(0.0, 1.0))
+        .toColor();
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _isPressed = true),
@@ -199,24 +209,43 @@ class _SuperAppGridItemState extends State<SuperAppGridItem> {
               children: [
                 Container(
                   width: double.infinity,
-                  height: 70,
+                  height: 74,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [lighterColor, widget.color],
+                      colors: widget.isFeatured
+                          ? const [Color(0xFFFF6D00), Color(0xFF250C0B)]
+                          : [lighterColor, widget.color],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(16),
+                    border: widget.isFeatured
+                        ? Border.all(color: const Color(0xFFFFB300), width: 1.8)
+                        : null,
                     boxShadow: [
                       BoxShadow(
-                        color: widget.color.withOpacity(0.4),
-                        blurRadius: 10,
+                        color: widget.isFeatured
+                            ? const Color(0xFFFF6D00).withOpacity(0.55)
+                            : widget.color.withOpacity(0.4),
+                        blurRadius: widget.isFeatured ? 14 : 10,
+                        spreadRadius: widget.isFeatured ? 1.5 : 0,
                         offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: Icon(widget.icon, color: Colors.white, size: 32),
+                  child: widget.imageAsset != null
+                      ? Padding(
+                          padding: EdgeInsets.all(widget.isFeatured ? 2.0 : 7.0),
+                          child: Transform.scale(
+                            scale: widget.isFeatured ? 1.25 : 1.0,
+                            child: Image.asset(
+                              widget.imageAsset!,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        )
+                      : Icon(widget.icon, color: Colors.white, size: 32),
                 ),
                 if (widget.badgeCount > 0)
                   Positioned(
@@ -246,16 +275,54 @@ class _SuperAppGridItemState extends State<SuperAppGridItem> {
                       ),
                     ),
                   ),
+                if (widget.badgeText != null)
+                  Positioned(
+                    top: -8,
+                    right: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFD54F), Color(0xFFFF6D00)],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black38,
+                            blurRadius: 4,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.bolt, size: 9, color: Colors.black87),
+                          const SizedBox(width: 1),
+                          Text(
+                            widget.badgeText!,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 10),
             Text(
               widget.title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
+                fontWeight: widget.isFeatured ? FontWeight.w900 : FontWeight.w700,
+                color: widget.isFeatured ? const Color(0xFFD84315) : Colors.black87,
                 letterSpacing: 0.2,
               ),
               maxLines: 1,

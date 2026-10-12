@@ -124,7 +124,7 @@ class AdminMatchViewModel extends ChangeNotifier {
     }
 
     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
-      final stats = data['stats_applied']['player_stats'];
+      final stats = data['stats_applied']['player_stats'] ?? {};
       _safeFill(goals, stats['goals']);
       _safeFill(assists, stats['assists']);
       _safeFill(yellowCards, stats['yellows']);
@@ -152,7 +152,7 @@ class AdminMatchViewModel extends ChangeNotifier {
     isLoadingPlayers = true;
     notifyListeners();
     
-    final data = matchSnap.data() as Map<String, dynamic>;
+    final data = matchSnap.data() as Map<String, dynamic>? ?? {};
     final homeId = data['team_home_id'];
     final awayId = data['team_away_id'];
 

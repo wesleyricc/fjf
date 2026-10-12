@@ -109,6 +109,10 @@ void main() async {
       statusBarIconBrightness: Brightness.light, // Ícones brancos (hora/bateria)
     ));
 
+    // 🚨 Otimização de Memória de Imagens: Evita estouro de memória no WebKit / iOS Safari PWA
+    PaintingBinding.instance.imageCache.maximumSize = 50;
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 30 << 20; // 30 MB
+
     const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
     FirebaseOptions firebaseOptions = (environment == 'test')
         ? TestFirebaseOptions.currentPlatform
@@ -132,20 +136,15 @@ void main() async {
     );
     
     if (kIsWeb) {
+      // No Web (especialmente iOS Safari PWA), IndexedDB persistence ilimitada causa vazamentos de memória e crashes
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: false, 
       );
-    }
-    
-    const bool enablePersistence = !kIsWeb || kReleaseMode;
-
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: enablePersistence, 
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
-    
-    if (kIsWeb && !kReleaseMode) {
-      debugPrint("⚠️ Web Debug: Persistência do Firestore DESATIVADA para evitar conflitos.");
+    } else {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true, 
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
     }
 
     NotificationService().init();

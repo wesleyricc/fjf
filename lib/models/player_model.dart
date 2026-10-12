@@ -5,6 +5,8 @@ class Player {
   final String name;
   final int? jerseyNumber;
   final String? position;
+  final String? secondaryPosition; // NEW FIELD
+  final double? fantasyInitialPrice; // NEW FIELD
   final DateTime? dateOfBirth;
   final int? heightCm;
   final int? weightKg;
@@ -39,6 +41,8 @@ class Player {
     required this.name,
     this.jerseyNumber,
     this.position,
+    this.secondaryPosition,
+    this.fantasyInitialPrice,
     this.dateOfBirth,
     this.heightCm,
     this.weightKg,
@@ -75,6 +79,8 @@ class Player {
       'name': name,
       'jersey_number': jerseyNumber,
       'position': position,
+      'secondary_position': secondaryPosition,
+      'fantasy_initial_price': fantasyInitialPrice,
       'date_of_birth': dateOfBirth != null ? Timestamp.fromDate(dateOfBirth!) : null,
       'height_cm': heightCm,
       'weight_kg': weightKg,
@@ -106,6 +112,8 @@ class Player {
       name: data['name'] ?? 'Sem Nome',
       jerseyNumber: data['jersey_number'],
       position: data['position'],
+      secondaryPosition: data['secondary_position'],
+      fantasyInitialPrice: (data['fantasy_initial_price'] as num?)?.toDouble(),
       dateOfBirth: data['date_of_birth'] != null 
           ? (data['date_of_birth'] is Timestamp ? (data['date_of_birth'] as Timestamp).toDate() : null) 
           : null,

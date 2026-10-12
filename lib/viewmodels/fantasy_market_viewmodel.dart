@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/fantasy_models.dart';
@@ -20,6 +21,16 @@ class FantasyMarketViewModel extends ChangeNotifier {
   bool _onlyFavorites = false;
   int _displayLimit = 20;
 
+  // Filtro de intervalo de preço (null = sem filtro)
+  double _priceBoundsMin = 0;
+  double _priceBoundsMax = 0;
+  RangeValues? _priceRange;
+
+  // Dados do time do usuário (saldo disponível e atletas escalados)
+  FantasyTeam? _myTeam;
+  StreamSubscription? _teamSub;
+  bool _isDisposed = false;
+
   bool get isLoading => _isLoading;
   List<Map<String, String>> get teamOptions => _teamOptions;
   Set<String> get favoriteIds => _favoriteIds;
@@ -31,12 +42,41 @@ class FantasyMarketViewModel extends ChangeNotifier {
   bool get onlyProbable => _onlyProbable;
   bool get onlyFavorites => _onlyFavorites;
 
-  Future<void> init(List<Team> teams, {String? requiredPosition}) async {
+  double get priceBoundsMin => _priceBoundsMin;
+  double get priceBoundsMax => _priceBoundsMax;
+  RangeValues get priceRange =>
+      _priceRange ?? RangeValues(_priceBoundsMin, _priceBoundsMax);
+  bool get hasPriceFilter => _priceRange != null;
+
+  FantasyTeam? get myTeam => _myTeam;
+  double? get availableBalance => _myTeam?.currentBalance;
+  int get lineupCount => _myTeam?.lineupPlayerIds.length ?? 0;
+
+  Future<void> init(List<Team> teams,
+      {String? requiredPosition, String? userId}) async {
     if (requiredPosition != null) {
       _selectedPosition = requiredPosition;
     }
+    if (userId != null) _listenToTeam(userId);
     await _loadFavorites();
     await loadMarketData(teams);
+  }
+
+  void _listenToTeam(String userId) {
+    _teamSub?.cancel();
+    _teamSub = _repository.streamUserTeam(userId).listen((team) {
+      _myTeam = team;
+      if (!_isDisposed) notifyListeners();
+    }, onError: (e) {
+      print("Error streaming user team: $e");
+    });
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _teamSub?.cancel();
+    super.dispose();
   }
 
   Future<void> loadMarketData(List<Team> teams,
@@ -73,12 +113,52 @@ class FantasyMarketViewModel extends ChangeNotifier {
 
       _allPlayers = players;
       _teamOptions = options;
+      _updatePriceBounds();
     } catch (e) {
       print("Error loading market data: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  void _updatePriceBounds() {
+    if (_allPlayers.isEmpty) {
+      _priceBoundsMin = 0;
+      _priceBoundsMax = 0;
+      _priceRange = null;
+      return;
+    }
+    double minP = _allPlayers.first.currentPrice;
+    double maxP = minP;
+    for (var p in _allPlayers) {
+      if (p.currentPrice < minP) minP = p.currentPrice;
+      if (p.currentPrice > maxP) maxP = p.currentPrice;
+    }
+    _priceBoundsMin = minP.floorToDouble();
+    _priceBoundsMax = maxP.ceilToDouble();
+    if (_priceBoundsMax <= _priceBoundsMin) _priceBoundsMax = _priceBoundsMin + 1;
+
+    // Ajusta um filtro existente aos novos limites
+    if (_priceRange != null) {
+      final start = _priceRange!.start.clamp(_priceBoundsMin, _priceBoundsMax).toDouble();
+      final end = _priceRange!.end.clamp(_priceBoundsMin, _priceBoundsMax).toDouble();
+      _priceRange = RangeValues(start, end);
+    }
+  }
+
+  void setPriceRange(RangeValues range) {
+    _displayLimit = 20;
+    final coversAll =
+        range.start <= _priceBoundsMin && range.end >= _priceBoundsMax;
+    _priceRange = coversAll ? null : range;
+    notifyListeners();
+  }
+
+  void clearPriceRange() {
+    _displayLimit = 20;
+    _priceRange = null;
+    notifyListeners();
   }
 
   Future<void> _loadFavorites() async {
@@ -146,7 +226,7 @@ class FantasyMarketViewModel extends ChangeNotifier {
 
     // Filter by position
     if (_selectedPosition != 'Técnico') {
-      players = players.where((p) => p.position == _selectedPosition).toList();
+      players = players.where((p) => p.position == _selectedPosition || p.secondaryPosition == _selectedPosition).toList();
     } else {
       players = players.where((p) => p.position == 'Técnico').toList();
     }
@@ -170,6 +250,16 @@ class FantasyMarketViewModel extends ChangeNotifier {
               p.status == 'provável' ||
               p.status == 'confirmed' ||
               p.status == 'probable')
+          .toList();
+    }
+
+    // Filter by price range
+    if (_priceRange != null) {
+      final range = _priceRange!;
+      players = players
+          .where((p) =>
+              p.currentPrice >= range.start - 0.005 &&
+              p.currentPrice <= range.end + 0.005)
           .toList();
     }
 

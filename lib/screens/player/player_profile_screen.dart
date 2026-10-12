@@ -91,11 +91,11 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
       future: _playerFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(appBar: AppBar(flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient))), body: const Center(child: CircularProgressIndicator()));
+          return Scaffold(appBar: AppBar(flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage))), body: const Center(child: CircularProgressIndicator()));
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-          return Scaffold(appBar: AppBar(title: const Text("Perfil"), flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppTheme.brazilGradient))), body: const Center(child: Text('Jogador não encontrado.')));
+          return Scaffold(appBar: AppBar(title: const Text("Perfil"), flexibleSpace: Container(decoration: const BoxDecoration(image: AppTheme.headerImage))), body: const Center(child: Text('Jogador não encontrado.')));
         }
 
         final Player player = snapshot.data!;
@@ -104,7 +104,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
           body: CustomScrollView(
             slivers: [
               SliverAppBar(
-                expandedHeight: 280.0, 
+                expandedHeight: 410.0, 
                 floating: false,
                 pinned: true,
                 backgroundColor: primaryColor,
@@ -151,48 +151,55 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
                     children: [
                       Container(
                         decoration: const BoxDecoration(
-                          gradient: AppTheme.brazilGradient,
+                          image: AppTheme.headerImage,
                         ),
                       ),
                       Center(
-                        child: Hero(
-                          tag: widget.heroTag ?? 'player_photo_${player.id}',
-                          child: CircleAvatar(
-                            radius: 90,
-                            backgroundColor: Colors.white24,
-                            child: CircleAvatar(
-                              radius: 86,
-                              backgroundColor: Colors.grey.shade300,
-                              backgroundImage: player.photoUrl.isNotEmpty
-                                  ? CachedNetworkImageProvider(
-                                      player.photoUrl, 
-                                      cacheManager: PlayerCacheManager.instance,
-                                      maxWidth: 400, 
-                                      maxHeight: 400,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 40.0),
+                          child: Hero(
+                            tag: widget.heroTag ?? 'player_photo_${player.id}',
+                            child: Container(
+                            width: 240,
+                            height: 300,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white24, width: 4),
+                              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 15, offset: Offset(0, 8))],
+                              image: player.photoUrl.isNotEmpty
+                                  ? DecorationImage(
+                                      image: CachedNetworkImageProvider(
+                                        player.photoUrl,
+                                        cacheManager: PlayerCacheManager.instance,
+                                        maxWidth: 600,
+                                        maxHeight: 800,
+                                      ),
+                                      fit: BoxFit.cover,
                                     )
                                   : null,
-                              child: player.photoUrl.isEmpty
-                                  ? Icon(player.isStaff ? Icons.assignment_ind_outlined : Icons.person, size: 80, color: Colors.grey[700])
-                                  : null,
                             ),
+                            child: player.photoUrl.isEmpty
+                                ? Center(
+                                    child: Icon(player.isStaff ? Icons.assignment_ind_outlined : Icons.person, size: 80, color: Colors.grey[700]),
+                                  )
+                                : null,
                           ),
                         ),
                       ),
+                    ),
                       if (player.teamShieldUrl.isNotEmpty)
                         Positioned(
-                          bottom: 60,
-                          right: MediaQuery.of(context).size.width / 2 - 100, 
-                          child: CircleAvatar(
-                            radius: 22,
-                            backgroundColor: Colors.white,
-                            child: Padding(
-                              padding: const EdgeInsets.all(2.0),
-                              child: CachedNetworkImage(
-                                imageUrl: player.teamShieldUrl, 
-                                fit: BoxFit.contain,
-                                memCacheHeight: 150,
-                                memCacheWidth: 150,
-                              ),
+                          bottom: 55,
+                          right: MediaQuery.of(context).size.width / 2 - 130, 
+                          child: SizedBox(
+                            width: 64,
+                            height: 64,
+                            child: CachedNetworkImage(
+                              imageUrl: player.teamShieldUrl, 
+                              fit: BoxFit.contain,
+                              memCacheHeight: 150,
+                              memCacheWidth: 150,
                             ),
                           ),
                         ),
@@ -363,9 +370,8 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
               children: [
                 if (!p.isStaff) ...[
                   if (p.isGoalkeeper) 
-                    _buildMiniStat('GS', p.goalsConceded, Icons.pan_tool_outlined, Colors.blueGrey)
-                  else 
-                    _buildMiniStat('Gols', p.goals, Icons.sports_soccer, Colors.black),
+                    _buildMiniStat('GS', p.goalsConceded, Icons.pan_tool_outlined, Colors.blueGrey),
+                  _buildMiniStat('Gols', p.goals, Icons.sports_soccer, Colors.black),
                   
                   _buildMiniStat('Ass', p.assists, Icons.assistant, Colors.black),
                 ],

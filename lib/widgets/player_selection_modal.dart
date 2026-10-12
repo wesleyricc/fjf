@@ -146,7 +146,15 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
           leading: SizedBox(
             width: 36, height: 36,
             child: team.shieldUrl.isNotEmpty 
-                ? CachedNetworkImage(imageUrl: team.shieldUrl, fit: BoxFit.contain, errorWidget: (_,__,___)=>const Icon(Icons.shield))
+                ? CachedNetworkImage(
+                    imageUrl: team.shieldUrl,
+                    fit: BoxFit.contain,
+                    memCacheWidth: 100,
+                    memCacheHeight: 100,
+                    maxWidthDiskCache: 100,
+                    maxHeightDiskCache: 100,
+                    errorWidget: (_,__,___)=>const Icon(Icons.shield),
+                  )
                 : const Icon(Icons.shield, color: Colors.grey),
           ),
           title: Text(team.name),
@@ -170,14 +178,29 @@ class _PlayerSelectionModalState extends State<PlayerSelectionModal> {
             : (player.isGoalkeeper ? 'Goleiro' : (player.position ?? '-'));
 
         return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Colors.grey[200],
-            backgroundImage: player.photoUrl.isNotEmpty 
-                ? CachedNetworkImageProvider(player.photoUrl, cacheManager: PlayerCacheManager.instance) 
-                : null,
-            child: player.photoUrl.isEmpty 
-                ? Icon(player.isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) 
-                : null,
+          leading: Container(
+            width: 40,
+            height: 50,
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: player.photoUrl.isNotEmpty 
+                  ? CachedNetworkImage(
+                      imageUrl: player.photoUrl,
+                      cacheManager: PlayerCacheManager.instance,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 120,
+                      memCacheHeight: 150,
+                      maxWidthDiskCache: 120,
+                      maxHeightDiskCache: 150,
+                      placeholder: (c, u) => const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)),
+                      errorWidget: (c, u, e) => Icon(player.isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey),
+                    )
+                  : Icon(player.isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey),
+            ),
           ),
           title: Text(
             player.isStaff ? player.name : "${player.jerseyNumber ?? ''} ${player.name}",

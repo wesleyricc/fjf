@@ -34,16 +34,18 @@ class FantasyLandingPage extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(40)),
+                borderRadius:
+                    const BorderRadius.vertical(bottom: Radius.circular(40)),
               ),
               child: Column(
                 children: [
                   Hero(
                     tag: 'app_logo',
-                    child: Image.asset('assets/logo3_fjf.png', height: 100),
+                    child: Image.asset('assets/logo_fjf_fantasy.webp',
+                        height: 120),
                   ),
                   const SizedBox(height: 24),
-                  const Text("FANTASY FJF",
+                  const Text("CARTOLA FJF",
                       style: TextStyle(
                           color: Colors.white,
                           fontSize: 28,
@@ -63,17 +65,30 @@ class FantasyLandingPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text("Como Funciona?",
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   _buildIntroCard(context, Icons.groups, "Monte seu Esquadrão",
-                      "Escale 5 jogadores e 1 técnico com seu orçamento inicial de C\$ 50.00."),
-                  _buildIntroCard(context, Icons.trending_up, "Valorize seu Time",
+                      "Escale 5 jogadores, 1 técnico e reservas com seu orçamento inicial de C\$ 50.00."),
+                  _buildIntroCard(
+                      context,
+                      Icons.star,
+                      "Capitão e Reserva de Luxo",
+                      "O Capitão dobra os pontos. O Reserva de Luxo garante pontuação caso um titular não jogue."),
+                  _buildIntroCard(
+                      context,
+                      Icons.trending_up,
+                      "Valorize seu Time",
                       "O preço dos atletas muda a cada rodada. Compre barato e venda caro!"),
-                  _buildIntroCard(context, Icons.emoji_events, "Suba no Ranking",
+                  _buildIntroCard(
+                      context,
+                      Icons.emoji_events,
+                      "Suba no Ranking",
                       "Dispute a liderança da rodada e o prêmio de campeão geral da liga."),
                   const SizedBox(height: 32),
                   const Text("Principais Scouts",
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -83,27 +98,41 @@ class FantasyLandingPage extends StatelessWidget {
                         border: Border.all(color: Colors.grey.shade300)),
                     child: Column(
                       children: [
-                        _buildMiniScoutRow("Gol Marcado", "+8.0 pts", Colors.green),
+                        _buildMiniScoutRow(
+                            "Gol Marcado", "+8.0 pts", Colors.green),
                         const Divider(),
-                        _buildMiniScoutRow("Assistência", "+5.0 pts", Colors.blue),
+                        _buildMiniScoutRow(
+                            "Assistência", "+5.0 pts", Colors.blue),
                         const Divider(),
-                        _buildMiniScoutRow("Jogo Sem Sofrer Gol (SG)", "+5.0 pts", Colors.teal),
+                        _buildMiniScoutRow("Jogo Sem Sofrer Gol (SG)",
+                            "+5.0 pts", Colors.teal),
                         const Divider(),
-                        _buildMiniScoutRow("Pênalti Defendido (PD)", "+5.0 pts", Colors.orange),
+                        _buildMiniScoutRow("Pênalti Defendido (PD)", "+5.0 pts",
+                            Colors.orange),
                         const Divider(),
-                        _buildMiniScoutRow("Finalização na Trave (FT)", "+3.0 pts", Colors.brown),
+                        _buildMiniScoutRow(
+                            "Craque do Jogo (CJ)", "+5.0 pts", Colors.amber),
                         const Divider(),
-                        _buildMiniScoutRow("Cartão Amarelo", "-1.0 pts", Colors.amber[800]!),
+                        _buildMiniScoutRow("Finalização na Trave (FT)",
+                            "+3.0 pts", Colors.brown),
                         const Divider(),
-                        _buildMiniScoutRow("Pênalti Perdido (PP)", "-3.0 pts", Colors.deepPurple),
+                        _buildMiniScoutRow(
+                            "Defesa Difícil (DD)", "+1.0 pts", Colors.cyan),
                         const Divider(),
-                        _buildMiniScoutRow("Tiro Livre Desperdiçado", "-3.0 pts", Colors.deepOrange),
+                        _buildMiniScoutRow(
+                            "Cartão Amarelo", "-1.0 pts", Colors.amber[800]!),
                         const Divider(),
-                        _buildMiniScoutRow("Gol Contra (GC)", "-3.0 pts", Colors.red[900]!),
+                        _buildMiniScoutRow("Pênalti Perdido (PP)", "-3.0 pts",
+                            Colors.deepPurple),
                         const Divider(),
-                        _buildMiniScoutRow("Cartão Vermelho", "-3.0 pts", Colors.red),
+                        _buildMiniScoutRow("Tiro Livre Desperdiçado",
+                            "-3.0 pts", Colors.deepOrange),
                         const Divider(),
-                        _buildMiniScoutRow("Craque do Jogo (CJ)", "+5.0 pts", Colors.amber),
+                        _buildMiniScoutRow(
+                            "Gol Contra (GC)", "-3.0 pts", Colors.red[900]!),
+                        const Divider(),
+                        _buildMiniScoutRow(
+                            "Cartão Vermelho", "-3.0 pts", Colors.red),
                       ],
                     ),
                   ),
@@ -133,9 +162,11 @@ class FantasyLandingPage extends StatelessWidget {
                           .showSnackBar(SnackBar(content: Text(error)));
                     }
                   },
-                  icon: const FaIcon(FontAwesomeIcons.google, color: Colors.white),
+                  icon: const FaIcon(FontAwesomeIcons.google,
+                      color: Colors.white),
                   label: const Text("COMEÇAR MINHA ESCALAÇÃO",
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red[700],
                       minimumSize: const Size(double.infinity, 56),
@@ -147,7 +178,8 @@ class FantasyLandingPage extends StatelessWidget {
     );
   }
 
-  Widget _buildIntroCard(BuildContext context, IconData icon, String title, String desc) {
+  Widget _buildIntroCard(
+      BuildContext context, IconData icon, String title, String desc) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
@@ -158,7 +190,8 @@ class FantasyLandingPage extends StatelessWidget {
               decoration: BoxDecoration(
                   color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                   shape: BoxShape.circle),
-              child: Icon(icon, color: Theme.of(context).primaryColor, size: 24)),
+              child:
+                  Icon(icon, color: Theme.of(context).primaryColor, size: 24)),
           const SizedBox(width: 16),
           Expanded(
               child: Column(
@@ -167,7 +200,8 @@ class FantasyLandingPage extends StatelessWidget {
                 Text(title,
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 16)),
-                Text(desc, style: const TextStyle(color: Colors.grey, fontSize: 13))
+                Text(desc,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13))
               ])),
         ],
       ),

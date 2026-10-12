@@ -75,6 +75,7 @@ class _BolaoRankingTabState extends State<BolaoRankingTab> {
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                addAutomaticKeepAlives: false,
                 itemCount: itemCount,
                 itemBuilder: (context, index) {
                   if (index == displayCount) return _buildLoadMoreButton();
@@ -141,7 +142,7 @@ class _BolaoRankingTabState extends State<BolaoRankingTab> {
                           CircleAvatar(
                             backgroundColor: Colors.grey[200],
                             backgroundImage: (participant.photoUrl != null && participant.photoUrl!.isNotEmpty)
-                                ? CachedNetworkImageProvider(participant.photoUrl!)
+                                ? CachedNetworkImageProvider(participant.photoUrl!, maxWidth: 80, maxHeight: 80)
                                 : null,
                             child: (participant.photoUrl == null || participant.photoUrl!.isEmpty)
                                 ? const Icon(Icons.person, color: Colors.grey)

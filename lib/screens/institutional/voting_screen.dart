@@ -343,6 +343,7 @@ class _VotingScreenState extends State<VotingScreen> {
               ? const Center(child: Text("Nenhum atleta encontrado.", style: TextStyle(color: Colors.grey)))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
+                  addAutomaticKeepAlives: false,
                   itemCount: filteredPlayers.length,
                   itemBuilder: (context, index) {
                     final player = filteredPlayers[index];
@@ -351,7 +352,7 @@ class _VotingScreenState extends State<VotingScreen> {
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundImage: player.photoUrl.isNotEmpty ? CachedNetworkImageProvider(player.photoUrl) : null,
+                          backgroundImage: player.photoUrl.isNotEmpty ? CachedNetworkImageProvider(player.photoUrl, maxWidth: 100, maxHeight: 100) : null,
                           child: player.photoUrl.isEmpty ? const Icon(Icons.person) : null,
                         ),
                         title: Text(player.name, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -385,6 +386,7 @@ class _VotingScreenState extends State<VotingScreen> {
 
         return ListView.separated(
           padding: const EdgeInsets.all(16),
+          addAutomaticKeepAlives: false,
           itemCount: nominees.length,
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
@@ -400,7 +402,7 @@ class _VotingScreenState extends State<VotingScreen> {
                     CircleAvatar(
                       radius: 30,
                       backgroundColor: Colors.grey.shade200,
-                      backgroundImage: nominee.playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(nominee.playerPhotoUrl) : null,
+                      backgroundImage: nominee.playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(nominee.playerPhotoUrl, maxWidth: 120, maxHeight: 120) : null,
                       child: nominee.playerPhotoUrl.isEmpty ? const Icon(Icons.person, color: Colors.grey, size: 30) : null,
                     ),
                     const SizedBox(width: 16),
@@ -413,7 +415,13 @@ class _VotingScreenState extends State<VotingScreen> {
                           Row(
                             children: [
                               if (nominee.teamShieldUrl.isNotEmpty) ...[
-                                CachedNetworkImage(imageUrl: nominee.teamShieldUrl, width: 16, height: 16),
+                                CachedNetworkImage(
+                                  imageUrl: nominee.teamShieldUrl,
+                                  width: 16,
+                                  height: 16,
+                                  memCacheWidth: 48,
+                                  memCacheHeight: 48,
+                                ),
                                 const SizedBox(width: 6),
                               ],
                               Expanded(child: Text(nominee.teamName, style: TextStyle(fontSize: 13, color: Colors.grey[600]), overflow: TextOverflow.ellipsis)),

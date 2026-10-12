@@ -19,6 +19,7 @@ class FantasyScoutDetail {
   final int ownGoals;
   final int missedFreeKicks;
   final int motm;
+  final int difficultSaves;
   
   FantasyScoutDetail({
     required this.totalScore,
@@ -34,9 +35,10 @@ class FantasyScoutDetail {
     this.ownGoals = 0,
     this.missedFreeKicks = 0,
     this.motm = 0,
+    this.difficultSaves = 0,
   });
 
-  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets + ownGoals + missedFreeKicks + motm) > 0;
+  bool get hasStats => (goals + assists + yellows + reds + penaltiesSaved + penaltiesMissed + shotsOnPost + cleanSheets + ownGoals + missedFreeKicks + motm + difficultSaves) > 0;
 }
 
 class FantasyScoutService {
@@ -87,14 +89,15 @@ class FantasyScoutService {
         assists: (stats['assists'] ?? 0).toInt(),
         yellows: (stats['yellows'] ?? 0).toInt(),
         reds: (stats['reds'] ?? 0).toInt(),
-        goalsConceded: (stats['goalsConceded'] ?? 0).toInt(),
-        penaltiesSaved: (stats['penaltiesSaved'] ?? 0).toInt(),
-        penaltiesMissed: (stats['penaltiesMissed'] ?? 0).toInt(),
-        shotsOnPost: (stats['shotsOnPost'] ?? 0).toInt(),
-        cleanSheets: (stats['cleanSheets'] ?? 0).toInt(),
-        ownGoals: (stats['ownGoals'] ?? 0).toInt(),
-        missedFreeKicks: (stats['missedFreeKicks'] ?? 0).toInt(),
+        goalsConceded: (stats['goals_conceded'] ?? stats['goalsConceded'] ?? 0).toInt(),
+        penaltiesSaved: (stats['penalties_saved'] ?? stats['penaltiesSaved'] ?? 0).toInt(),
+        penaltiesMissed: (stats['penalties_missed'] ?? stats['penaltiesMissed'] ?? 0).toInt(),
+        shotsOnPost: (stats['shots_on_post'] ?? stats['shotsOnPost'] ?? 0).toInt(),
+        cleanSheets: (stats['clean_sheets'] ?? stats['cleanSheets'] ?? 0).toInt(),
+        ownGoals: (stats['own_goals'] ?? stats['ownGoals'] ?? 0).toInt(),
+        missedFreeKicks: (stats['direct_free_kicks_missed'] ?? stats['missedFreeKicks'] ?? 0).toInt(),
         motm: (stats['motm'] ?? 0).toInt(),
+        difficultSaves: (stats['difficult_saves'] ?? stats['difficultSaves'] ?? 0).toInt(),
       );
     });
     return result;

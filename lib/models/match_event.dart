@@ -1,4 +1,4 @@
-enum MatchEventType { goal, yellowCard, redCard, assist, penaltySaved, penaltyMissed, shotOnPost, ownGoal, directFreeKickMissed }
+enum MatchEventType { goal, yellowCard, redCard, assist, penaltySaved, penaltyMissed, shotOnPost, ownGoal, directFreeKickMissed, difficultSave }
 
 class MatchEvent {
   final String id;

@@ -1,6 +1,6 @@
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { onSchedule } = require("firebase-functions/v2/scheduler"); 
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const https = require("https");
@@ -15,22 +15,24 @@ const db = admin.firestore();
 // ==================================================================
 
 const DEFAULT_CONFIG = {
-  ptsGoal: 8.0,             
-  ptsAssist: 5.0,           
-  ptsYellowCard: -1.0,      
-  ptsRedCard: -3.0,         
-  ptsPenaltySaved: 5.0,     
-  ptsPenaltyMissed: -3.0,   
-  ptsShotOnPost: 3.0,       
+  ptsGoal: 8.0,
+  ptsAssist: 5.0,
+  ptsYellowCard: -1.0,
+  ptsRedCard: -3.0,
+  ptsPenaltySaved: 5.0,
+  ptsPenaltyMissed: -3.0,
+  ptsShotOnPost: 3.0,
   ptsCleanSheet: 5.0,
-  ptsOwnGoal: -5.0,
+  ptsOwnGoal: -3.0,
   ptsDirectFreeKickMissed: -3.0,
-  ptsManOfTheMatch: 3.0,
-  
-  factorExpectation: 0.42, 
-  factorVariation: 0.18, 
-  capLimitPercent: 0.25,   
+  ptsManOfTheMatch: 5.0,
+  ptsDifficultSave: 1.0,
+
+  factorExpectation: 0.30,
+  factorVariation: 0.18,
+  capLimitPercent: 0.25,
   minPrice: 1.0,
+
 };
 
 // ==================================================================
@@ -41,7 +43,7 @@ const SICOOB_CLIENT_ID = "7b0b3a94-9783-4129-bef6-166eb52370a0";
 const SICOOB_AUTH_URL = "https://auth.sicoob.com.br/auth/realms/cooperado/protocol/openid-connect/token";
 const SICOOB_API_URL = "https://api.sicoob.com.br/pix/api/v2";
 
-const CHAVE_PIX = "04441635000185"; 
+const CHAVE_PIX = "04441635000185";
 
 const httpsAgent = new https.Agent({
   cert: fs.readFileSync(path.join(__dirname, 'certificado.pem')),
@@ -52,12 +54,12 @@ async function getSicoobToken(scope) {
   const params = new URLSearchParams();
   params.append('grant_type', 'client_credentials');
   params.append('client_id', SICOOB_CLIENT_ID);
-  params.append('scope', scope); 
+  params.append('scope', scope);
 
   try {
     const response = await axios.post(SICOOB_AUTH_URL, params.toString(), {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      httpsAgent: httpsAgent 
+      httpsAgent: httpsAgent
     });
     return response.data.access_token;
   } catch (error) {
@@ -81,15 +83,15 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
   let description = customDescription || "";
 
   if (type === 'bolao') {
-    valorInscricao = "20.00"; 
+    valorInscricao = "20.00";
     if (!description) description = `Inscrição Bolão Copa 2026 - ${userId}`;
-  } 
+  }
   else if (type === 'mini_bolao') {
     if (!miniBolaoId) throw new HttpsError('invalid-argument', 'ID do Mini Bolão não informado.');
-    
+
     const mbSnap = await db.collection('bolao_mini_leagues').doc(miniBolaoId).get();
     if (!mbSnap.exists) throw new HttpsError('not-found', 'Mini Bolão não encontrado.');
-    
+
     const mbData = mbSnap.data();
 
     if (mbData.deadline) {
@@ -98,22 +100,22 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
         throw new HttpsError('permission-denied', 'O prazo de inscrição para este Mini Bolão já encerrou!');
       }
     }
-    
+
     const entryFee = parseFloat(mbData.entry_fee || 0);
     if (entryFee <= 0) throw new HttpsError('invalid-argument', 'Valor do Mini Bolão é inválido.');
-    
+
     valorInscricao = entryFee.toFixed(2);
     if (!description) description = `Mini Bolão: ${mbData.title}`.substring(0, 140);
-  } 
+  }
   else if (type === 'portal') {
     const dueId = request.data.dueId;
     if (!dueId) throw new HttpsError('invalid-argument', 'ID do débito não informado.');
     const dueSnap = await db.collection('portal_financial_dues').doc(dueId).get();
     if (!dueSnap.exists) throw new HttpsError('not-found', 'Débito não encontrado.');
-    
+
     const dueData = dueSnap.data();
     if (dueData.status === 'paid') throw new HttpsError('failed-precondition', 'Este débito já está pago.');
-    
+
     valorInscricao = parseFloat(dueData.amount).toFixed(2);
     if (!description) description = dueData.title.substring(0, 140);
   }
@@ -140,7 +142,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
       calendario: { expiracao: 3600 },
       valor: { original: valorInscricao },
       chave: CHAVE_PIX,
-      solicitacaoPagador: description.substring(0, 140), 
+      solicitacaoPagador: description.substring(0, 140),
     };
 
     const responseCob = await axios.post(`${SICOOB_API_URL}/cob`, payloadCobranca, {
@@ -171,7 +173,7 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
       amount: valorInscricao,
       txid: cobranca.txid,
       items: itemsToSave,
-      mini_bolao_id: miniBolaoId || null, 
+      mini_bolao_id: miniBolaoId || null,
       due_id: type === 'portal' ? request.data.dueId : null,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -187,11 +189,11 @@ exports.createPixPayment = onCall({ cors: true, enforceAppCheck: false }, async 
 exports.checkPixStatus = onCall({ cors: true, enforceAppCheck: false }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
 
-  const { txid, userId, type } = request.data; 
+  const { txid, userId, type } = request.data;
 
   try {
     const accessToken = await getSicoobToken('cob.read');
-    
+
     const response = await axios.get(`${SICOOB_API_URL}/cob/${txid}`, {
       headers: { "client_id": SICOOB_CLIENT_ID, "Authorization": `Bearer ${accessToken}` },
       httpsAgent: httpsAgent
@@ -208,7 +210,7 @@ exports.checkPixStatus = onCall({ cors: true, enforceAppCheck: false }, async (r
         await processOrderApproval(txid, orderSnap.data(), cobranca.pix ? cobranca.pix[0].valor : null);
       }
     }
-    
+
     return { status: cobranca.status, is_paid: isPaid };
 
   } catch (error) {
@@ -237,7 +239,7 @@ exports.sicoobWebhook = onRequest(async (req, res) => {
 
       if (orderSnap.exists) {
         const orderData = orderSnap.data();
-        
+
         if (orderData.status !== 'approved') {
           batchHandler.update(orderRef, {
             status: 'approved',
@@ -257,7 +259,7 @@ exports.sicoobWebhook = onRequest(async (req, res) => {
           else if (orderData.type === 'mini_bolao' && orderData.user_id && orderData.mini_bolao_id) {
             const miniBolaoRef = db.collection('bolao_mini_leagues').doc(orderData.mini_bolao_id);
             const participantRef = miniBolaoRef.collection('participants').doc(orderData.user_id);
-            
+
             batchHandler.set(participantRef, {
               joined_at: admin.firestore.FieldValue.serverTimestamp(),
               points: 0
@@ -283,7 +285,7 @@ exports.sicoobWebhook = onRequest(async (req, res) => {
     }
 
     await batchHandler.commit();
-    res.status(200).send("OK"); 
+    res.status(200).send("OK");
 
   } catch (error) {
     console.error("🔥 Erro Webhook Sicoob:", error);
@@ -311,11 +313,11 @@ async function processOrderApproval(txid, orderData, valorPago = null) {
       payment_id: txid,
       approved_at: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-  } 
+  }
   else if (orderData.type === 'mini_bolao' && orderData.user_id && orderData.mini_bolao_id) {
     const miniBolaoRef = db.collection('bolao_mini_leagues').doc(orderData.mini_bolao_id);
     const participantRef = miniBolaoRef.collection('participants').doc(orderData.user_id);
-    
+
     batchHandler.set(participantRef, {
       joined_at: admin.firestore.FieldValue.serverTimestamp(),
       points: 0
@@ -326,7 +328,7 @@ async function processOrderApproval(txid, orderData, valorPago = null) {
       participants_count: admin.firestore.FieldValue.increment(1)
     });
 
-     console.log(`✅ [POLLING MANUAL] Mini Bolão liberado. TXID: ${txid}`);
+    console.log(`✅ [POLLING MANUAL] Mini Bolão liberado. TXID: ${txid}`);
   }
   else if (orderData.type === 'portal' && orderData.due_id) {
     const dueRef = db.collection('portal_financial_dues').doc(orderData.due_id);
@@ -346,10 +348,10 @@ async function processOrderApproval(txid, orderData, valorPago = null) {
 exports.registerWebhookSicoob = onRequest(async (req, res) => {
   try {
     const accessToken = await getSicoobToken('webhook.write');
-    const myWebhookBaseUrl = "https://us-central1-acefjf.cloudfunctions.net/sicoobWebhook"; 
-    
-    const response = await axios.put(`${SICOOB_API_URL}/webhook/${CHAVE_PIX}`, 
-      { webhookUrl: myWebhookBaseUrl }, 
+    const myWebhookBaseUrl = "https://us-central1-acefjf.cloudfunctions.net/sicoobWebhook";
+
+    const response = await axios.put(`${SICOOB_API_URL}/webhook/${CHAVE_PIX}`,
+      { webhookUrl: myWebhookBaseUrl },
       {
         headers: {
           "client_id": SICOOB_CLIENT_ID,
@@ -370,12 +372,12 @@ exports.registerWebhookSicoob = onRequest(async (req, res) => {
 // ⚽ MÓDULO FANTASY (Fechamento de Rodada)
 // ==================================================================
 
-exports.closeRound = onCall({ 
-  cors: true, 
-  timeoutSeconds: 540, 
-  memory: '1GB'        
+exports.closeRound = onCall({
+  cors: true,
+  timeoutSeconds: 540,
+  memory: '1GB'
 }, async (request) => {
-  
+
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Acesso negado. O usuário precisa estar logado.');
   }
@@ -400,17 +402,17 @@ exports.closeRound = onCall({
       .collection('matches').where('round', '==', round).get();
 
     const scoresMap = {};
-    const teamCleanSheets = {}; 
+    const teamCleanSheets = {};
     const playersPlayedSet = new Set();
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
-      
+
       // Mapeamento de Presença (quem jogou)
       if (data.lineup_played && Array.isArray(data.lineup_played)) {
         data.lineup_played.forEach(pid => playersPlayedSet.add(pid.toString()));
       }
-      
+
       const scoreHome = data.score_home || 0;
       const scoreAway = data.score_away || 0;
       if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
@@ -424,14 +426,15 @@ exports.closeRound = onCall({
         assists: config.ptsAssist,
         yellows: config.ptsYellowCard,
         reds: config.ptsRedCard,
-        penalties_saved: config.ptsPenaltySaved,     
-        penalties_missed: config.ptsPenaltyMissed,   
+        penalties_saved: config.ptsPenaltySaved,
+        penalties_missed: config.ptsPenaltyMissed,
         shots_on_post: config.ptsShotOnPost,
         own_goals: config.ptsOwnGoal,
-        direct_free_kicks_missed: config.ptsDirectFreeKickMissed
+        direct_free_kicks_missed: config.ptsDirectFreeKickMissed,
+        difficult_saves: config.ptsDifficultSave
       };
 
-      ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post', 'own_goals', 'direct_free_kicks_missed'].forEach(cat => {
+      ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post', 'own_goals', 'direct_free_kicks_missed', 'difficult_saves'].forEach(cat => {
         if (stats[cat]) {
           Object.entries(stats[cat]).forEach(([pid, val]) => {
             const points = (Number(val) || 0) * (ptsRules[cat] || 0);
@@ -447,17 +450,17 @@ exports.closeRound = onCall({
     });
 
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
-    
-    const teamScores = {};    
-    const teamLogDetails = {}; 
-    const teamCoaches = {};   
-    const playersInfo = {}; 
+
+    const teamScores = {};
+    const teamLogDetails = {};
+    const teamCoaches = {};
+    const playersInfo = {};
 
     allPlayersSnap.forEach(doc => {
       const p = doc.data();
       const pid = doc.id;
-      const teamId = p.team_id; 
-      
+      const teamId = p.team_id;
+
       playersInfo[pid] = p;
 
       if (!teamId) return;
@@ -470,7 +473,7 @@ exports.closeRound = onCall({
         teamCoaches[teamId] = pid;
       }
 
-      if (scoresMap[pid] !== undefined) {
+      if (scoresMap[pid] !== undefined && p.position !== 'Técnico') {
         const points = scoresMap[pid];
         if (!teamScores[teamId]) {
           teamScores[teamId] = [];
@@ -499,17 +502,17 @@ exports.closeRound = onCall({
       const p = doc.data();
       const pid = doc.id;
       const score = scoresMap[pid] || 0;
-      
+
       // Busca o histórico caso seja um reprocessamento da rodada
       const existingHistory = Array.isArray(p.history) ? p.history.find(h => h.round === round) : null;
       // Se já existir, usamos o price_before original para não acumular variações de preço
-      const currentPrice = existingHistory ? (existingHistory.price_before || config.minPrice) : (p.current_price || config.minPrice); 
+      const currentPrice = existingHistory ? (existingHistory.price_before || config.minPrice) : (p.current_price || config.minPrice);
 
       const expectation = currentPrice * config.factorExpectation;
       const performance = score - expectation;
       let variation = performance * config.factorVariation;
       let limit = currentPrice * config.capLimitPercent;
-      
+
       // Clamp garante que o limite nunca seja menor que 2.0 nem maior que 5.0
       if (limit < 2.0) limit = 2.0;
       if (limit > 5.0) limit = 5.0;
@@ -556,14 +559,14 @@ exports.closeRound = onCall({
     });
 
     const userTeamsSnap = await db.collection('fantasy_teams').get();
-    
+
     const playerPickedCount = {};
     const teamRoundScores = {};
     const teamPatrimony = {}; // NOVO
 
     userTeamsSnap.forEach(doc => {
       const team = doc.data();
-      const originalLineup = team.lineup_player_ids || []; 
+      const originalLineup = team.lineup_player_ids || [];
       const benchIds = team.bench_player_ids || [];
       const captainId = team.captain_id || null;
       const luxuryReserveId = team.luxury_reserve_id || null;
@@ -578,43 +581,43 @@ exports.closeRound = onCall({
 
       const benchByPos = {};
       benchIds.forEach(bId => {
-        if(playersInfo[bId]) benchByPos[playersInfo[bId].position] = bId;
+        if (playersInfo[bId]) benchByPos[playersInfo[bId].position] = bId;
       });
 
       const positions = ['Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
-      
+
       positions.forEach(pos => {
         const startersOfPos = originalLineup.filter(pid => playersInfo[pid] && playersInfo[pid].position === pos);
         const benchId = benchByPos[pos];
 
         if (startersOfPos.length && benchId && playersPlayedSet.has(benchId)) {
-           const allPlayed = startersOfPos.every(pid => playersPlayedSet.has(pid));
-           
-           if (!allPlayed) {
-              const missedStarter = startersOfPos.find(pid => !playersPlayedSet.has(pid));
-              if (missedStarter) {
-                 finalLineup = finalLineup.filter(p => p !== missedStarter);
-                 finalLineup.push(benchId);
-                 substitutedList.push({ out: missedStarter, in: benchId, type: 'normal' });
-              }
-           } else {
-              if (luxuryReserveId === benchId) {
-                 const benchScore = scoresMap[benchId] || 0;
-                 let worstStarter = startersOfPos[0];
-                 let worstScore = scoresMap[worstStarter] || 0;
+          const allPlayed = startersOfPos.every(pid => playersPlayedSet.has(pid));
 
-                 startersOfPos.forEach(pid => {
-                    const s = scoresMap[pid] || 0;
-                    if (s < worstScore) { worstScore = s; worstStarter = pid; }
-                 });
+          if (!allPlayed) {
+            const missedStarter = startersOfPos.find(pid => !playersPlayedSet.has(pid));
+            if (missedStarter) {
+              finalLineup = finalLineup.filter(p => p !== missedStarter);
+              finalLineup.push(benchId);
+              substitutedList.push({ out: missedStarter, in: benchId, type: 'normal' });
+            }
+          } else {
+            if (luxuryReserveId === benchId) {
+              const benchScore = scoresMap[benchId] || 0;
+              let worstStarter = startersOfPos[0];
+              let worstScore = scoresMap[worstStarter] || 0;
 
-                 if (benchScore > worstScore) {
-                    finalLineup = finalLineup.filter(p => p !== worstStarter);
-                    finalLineup.push(benchId);
-                    substitutedList.push({ out: worstStarter, in: benchId, type: 'luxury' });
-                 }
+              startersOfPos.forEach(pid => {
+                const s = scoresMap[pid] || 0;
+                if (s < worstScore) { worstScore = s; worstStarter = pid; }
+              });
+
+              if (benchScore > worstScore) {
+                finalLineup = finalLineup.filter(p => p !== worstStarter);
+                finalLineup.push(benchId);
+                substitutedList.push({ out: worstStarter, in: benchId, type: 'luxury' });
               }
-           }
+            }
+          }
         }
       });
 
@@ -635,18 +638,18 @@ exports.closeRound = onCall({
       roundPoints = Number(roundPoints.toFixed(2));
       teamRoundScores[doc.id] = roundPoints; // Guarda pra usar no mata-mata
 
-      const currentBalance = team.current_balance || 0; 
+      const currentBalance = team.current_balance || 0;
       const totalPatrimony = Number((currentBalance + playersCurrentValue).toFixed(2));
       teamPatrimony[doc.id] = totalPatrimony; // NOVO
 
       const teamHistoryRef = doc.ref.collection('history').doc(round.toString());
-      
+
       batchHandler.set(teamHistoryRef, {
         round: round,
         points: roundPoints,
         patrimony: totalPatrimony,
         processed_at: admin.firestore.Timestamp.now(),
-        captain_id: captainId, 
+        captain_id: captainId,
         lineup_snapshot: originalLineup,
         final_lineup: finalLineup,
         substitutions: substitutedList
@@ -654,15 +657,15 @@ exports.closeRound = onCall({
 
       let baseTotalPoints = team.total_points || 0;
       if (oldTeamPointsMap[doc.id] !== undefined) {
-         baseTotalPoints -= oldTeamPointsMap[doc.id]; // Subtrai a pontuação anterior para não duplicar no reprocessamento
+        baseTotalPoints -= oldTeamPointsMap[doc.id]; // Subtrai a pontuação anterior para não duplicar no reprocessamento
       }
       const newTotalPoints = Number((baseTotalPoints + roundPoints).toFixed(2));
 
       batchHandler.update(doc.ref, {
-        total_points: newTotalPoints, 
-        last_score: roundPoints,                                                   
-        team_value: totalPatrimony,                                                
-        updated_at: admin.firestore.Timestamp.now()                                 
+        total_points: newTotalPoints,
+        last_score: roundPoints,
+        team_value: totalPatrimony,
+        updated_at: admin.firestore.Timestamp.now()
       });
     });
 
@@ -731,21 +734,21 @@ exports.closeRound = onCall({
 
     for (let leagueDoc of knockoutLeaguesSnap.docs) {
       const leagueId = leagueDoc.id;
-      
+
       const kMatchesSnap = await db.collection('fantasy_leagues').doc(leagueId)
         .collection('matches')
         .where('round', '==', round)
         .get();
-        
+
       if (kMatchesSnap.empty) continue;
 
       let totalMatchesInRound = kMatchesSnap.size;
-      
+
       for (let kMatchDoc of kMatchesSnap.docs) {
         const kMatch = kMatchDoc.data();
         const scoreA = teamRoundScores[kMatch.teamAId] || 0;
         const scoreB = teamRoundScores[kMatch.teamBId] || 0;
-        
+
         let winnerId = null;
         let loserId = null;
 
@@ -758,12 +761,12 @@ exports.closeRound = onCall({
           const patA = teamPatrimony[kMatch.teamAId] || 0;
           const patB = teamPatrimony[kMatch.teamBId] || 0;
           if (patA !== patB) {
-             winnerId = patA > patB ? kMatch.teamAId : kMatch.teamBId;
-             loserId = patA > patB ? kMatch.teamBId : kMatch.teamAId;
+            winnerId = patA > patB ? kMatch.teamAId : kMatch.teamBId;
+            loserId = patA > patB ? kMatch.teamBId : kMatch.teamAId;
           } else {
-             // Sorteio em caso de empate total
-             winnerId = Math.random() > 0.5 ? kMatch.teamAId : kMatch.teamBId;
-             loserId = winnerId === kMatch.teamAId ? kMatch.teamBId : kMatch.teamAId;
+            // Sorteio em caso de empate total
+            winnerId = Math.random() > 0.5 ? kMatch.teamAId : kMatch.teamBId;
+            loserId = winnerId === kMatch.teamAId ? kMatch.teamBId : kMatch.teamAId;
           }
         }
 
@@ -778,9 +781,9 @@ exports.closeRound = onCall({
           const nextMatchIndex = Math.floor(kMatch.matchIndex / 2);
           const isTeamAForNext = kMatch.matchIndex % 2 === 0;
 
-          const nextPhase = totalMatchesInRound === 2 ? 'Final' : 
-                            totalMatchesInRound === 4 ? 'Semi' : 
-                            totalMatchesInRound === 8 ? 'Quartas' : 'Oitavas';
+          const nextPhase = totalMatchesInRound === 2 ? 'Final' :
+            totalMatchesInRound === 4 ? 'Semi' :
+              totalMatchesInRound === 8 ? 'Quartas' : 'Oitavas';
 
           const nextMatchId = `match_${round + 1}_${nextMatchIndex}`;
           const nextMatchRef = db.collection('fantasy_leagues').doc(leagueId).collection('matches').doc(nextMatchId);
@@ -792,11 +795,11 @@ exports.closeRound = onCall({
             [`team${isTeamAForNext ? 'A' : 'B'}Id`]: winnerId
           }, { merge: true });
         } else {
-           // É a Final, temos um Campeão!
-           batchHandler.update(leagueDoc.ref, {
-             status: 'finished',
-             champion_id: winnerId
-           });
+          // É a Final, temos um Campeão!
+          batchHandler.update(leagueDoc.ref, {
+            status: 'finished',
+            champion_id: winnerId
+          });
         }
       }
     }
@@ -807,23 +810,23 @@ exports.closeRound = onCall({
     const liveDocRef = db.collection('championships').doc(seasonId).collection('fantasy_live').doc(`round_${round}`);
     const liveDocSnap = await liveDocRef.get();
     let liveScoresObj = liveDocSnap.exists ? (liveDocSnap.data().scores || {}) : {};
-    
+
     Object.keys(scoresMap).forEach(pid => {
-       if (!liveScoresObj[pid]) liveScoresObj[pid] = {};
-       liveScoresObj[pid].totalScore = scoresMap[pid]; // Pontuação FINAL (já consolidada com técnicos, MOTM, etc)
+      if (!liveScoresObj[pid]) liveScoresObj[pid] = {};
+      liveScoresObj[pid].totalScore = scoresMap[pid]; // Pontuação FINAL (já consolidada com técnicos, MOTM, etc)
     });
-    
+
     batchHandler.set(liveDocRef, {
-       scores: liveScoresObj,
-       is_final: true,
-       updated_at: admin.firestore.Timestamp.now()
+      scores: liveScoresObj,
+      is_final: true,
+      updated_at: admin.firestore.Timestamp.now()
     }, { merge: true });
 
     await batchHandler.commit();
 
-    return { 
-      success: true, 
-      message: `Rodada ${round} finalizada com sucesso.` 
+    return {
+      success: true,
+      message: `Rodada ${round} finalizada com sucesso.`
     };
 
   } catch (error) {
@@ -853,16 +856,16 @@ exports.updateLiveScouts = onDocumentWritten({
     const oldAway = previousData.score_away;
     const newHome = matchData.score_home;
     const newAway = matchData.score_away;
-    
+
     if (oldStats === newStats && oldHome === newHome && oldAway === newAway) {
-      return; 
+      return;
     }
   }
 
   try {
     const liveDocRef = db.collection('championships').doc(seasonId).collection('fantasy_live').doc(`round_${round}`);
     const liveDocSnap = await liveDocRef.get();
-    
+
     let scoresMap = liveDocSnap.exists ? (liveDocSnap.data().scores || {}) : {};
 
     const configSnap = await db.collection('fantasy_config').doc('rules').get();
@@ -882,22 +885,36 @@ exports.updateLiveScouts = onDocumentWritten({
     const matchesSnap = await db.collection('championships').doc(seasonId)
       .collection('matches').where('round', '==', round).get();
 
-    const teamCleanSheets = {}; 
+    // Reset scores to rebuild fresh from matches
+    Object.keys(scoresMap).forEach(pid => {
+      scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
+    });
+
+    const teamCleanSheets = {};
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
-      
-      const scoreHome = data.score_home || 0;
-      const scoreAway = data.score_away || 0;
-      if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
-      if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+
+      if (data.status === 'in_progress' || data.status === 'finished') {
+        const scoreHome = data.score_home || 0;
+        const scoreAway = data.score_away || 0;
+        if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
+        if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+
+        const lineups = data.lineup_played || [];
+        lineups.forEach(pid => {
+          if (!scoresMap[pid]) {
+            scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
+          }
+        });
+      }
 
       if (data.stats_applied && data.stats_applied.man_of_the_match) {
         const motmPid = data.stats_applied.man_of_the_match;
         if (!scoresMap[motmPid]) {
-           scoresMap[motmPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, motm: 0 };
+          scoresMap[motmPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
         }
-        scoresMap[motmPid].motm = 1;
+        scoresMap[motmPid].motm += 1;
       }
 
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
@@ -908,23 +925,23 @@ exports.updateLiveScouts = onDocumentWritten({
         assists: config.ptsAssist,
         yellows: config.ptsYellowCard,
         reds: config.ptsRedCard,
-        penalties_saved: config.ptsPenaltySaved,     
-        penalties_missed: config.ptsPenaltyMissed,   
-        shots_on_post: config.ptsShotOnPost          
+        penalties_saved: config.ptsPenaltySaved,
+        penalties_missed: config.ptsPenaltyMissed,
+        shots_on_post: config.ptsShotOnPost,
+        own_goals: config.ptsOwnGoal,
+        direct_free_kicks_missed: config.ptsDirectFreeKickMissed,
+        difficult_saves: config.ptsDifficultSave
       };
 
-      ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post'].forEach(cat => {
+      ['goals', 'assists', 'yellows', 'reds', 'goals_conceded', 'penalties_saved', 'penalties_missed', 'shots_on_post', 'own_goals', 'direct_free_kicks_missed', 'difficult_saves'].forEach(cat => {
         if (stats[cat]) {
           Object.entries(stats[cat]).forEach(([pid, val]) => {
             if (!scoresMap[pid]) {
-              scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0 };
-            } else {
-              scoresMap[pid][cat] = 0;
-              scoresMap[pid].totalScore = 0; 
+              scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
             }
-            
+
             const count = Number(val) || 0;
-            scoresMap[pid][cat] = count;
+            scoresMap[pid][cat] += count;
           });
         }
       });
@@ -932,27 +949,32 @@ exports.updateLiveScouts = onDocumentWritten({
 
     const teamScores = {};
     Object.keys(scoresMap).forEach(pid => {
-       let total = 0;
-       total += (scoresMap[pid].goals || 0) * config.ptsGoal;
-       total += (scoresMap[pid].assists || 0) * config.ptsAssist;
-       total += (scoresMap[pid].yellows || 0) * config.ptsYellowCard;
-       total += (scoresMap[pid].reds || 0) * config.ptsRedCard;
-       total += (scoresMap[pid].penalties_saved || 0) * config.ptsPenaltySaved;
-       total += (scoresMap[pid].penalties_missed || 0) * config.ptsPenaltyMissed;
-       total += (scoresMap[pid].shots_on_post || 0) * config.ptsShotOnPost;
-       total += (scoresMap[pid].motm || 0) * (config.ptsManOfTheMatch || 3.0);
-       
-       const p = playersInfo[pid];
-       if (p && p.team_id) {
-         if (teamCleanSheets[p.team_id] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
-             scoresMap[pid].clean_sheets = 1;
-             total += config.ptsCleanSheet;
-         }
-         if (!teamScores[p.team_id]) teamScores[p.team_id] = [];
-         teamScores[p.team_id].push(total);
-       }
-       
-       scoresMap[pid].totalScore = total;
+      let total = 0;
+      total += (scoresMap[pid].goals || 0) * config.ptsGoal;
+      total += (scoresMap[pid].assists || 0) * config.ptsAssist;
+      total += (scoresMap[pid].yellows || 0) * config.ptsYellowCard;
+      total += (scoresMap[pid].reds || 0) * config.ptsRedCard;
+      total += (scoresMap[pid].penalties_saved || 0) * config.ptsPenaltySaved;
+      total += (scoresMap[pid].penalties_missed || 0) * config.ptsPenaltyMissed;
+      total += (scoresMap[pid].shots_on_post || 0) * config.ptsShotOnPost;
+      total += (scoresMap[pid].own_goals || 0) * config.ptsOwnGoal;
+      total += (scoresMap[pid].direct_free_kicks_missed || 0) * config.ptsDirectFreeKickMissed;
+      total += (scoresMap[pid].difficult_saves || 0) * config.ptsDifficultSave;
+      total += (scoresMap[pid].motm || 0) * (config.ptsManOfTheMatch || 3.0);
+
+      const p = playersInfo[pid];
+      if (p && p.team_id) {
+        if (teamCleanSheets[p.team_id] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
+          scoresMap[pid].clean_sheets = 1;
+          total += config.ptsCleanSheet;
+        }
+        if (p.position !== 'Técnico') {
+          if (!teamScores[p.team_id]) teamScores[p.team_id] = [];
+          teamScores[p.team_id].push(total);
+        }
+      }
+
+      scoresMap[pid].totalScore = total;
     });
 
     Object.entries(teamCoaches).forEach(([tId, coachPid]) => {
@@ -966,10 +988,10 @@ exports.updateLiveScouts = onDocumentWritten({
     });
 
     await liveDocRef.set({
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
-        scores: scoresMap
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      scores: scoresMap
     }, { merge: true });
-      
+
   } catch (error) {
     console.error("🔥 Erro ao atualizar Live Scouts:", error);
   }
@@ -980,18 +1002,18 @@ exports.updateLiveScouts = onDocumentWritten({
 // ==================================================================
 
 exports.autoCloseMarket = onSchedule({
-  schedule: "every 10 minutes",
+  schedule: "every 2 minutes",
   timeZone: "America/Sao_Paulo",
 }, async (event) => {
   try {
     const statusRef = db.collection('fantasy_config').doc('status');
     const statusSnap = await statusRef.get();
-    
+
     if (!statusSnap.exists) return;
-    
+
     const statusData = statusSnap.data();
     if (statusData.is_open === false) {
-      return; 
+      return;
     }
 
     const currentRound = statusData.current_round || 1;
@@ -1000,7 +1022,7 @@ exports.autoCloseMarket = onSchedule({
       .where('is_active', '==', true)
       .limit(1)
       .get();
-      
+
     if (seasonsSnap.empty) return;
     const seasonId = seasonsSnap.docs[0].id;
 
@@ -1019,15 +1041,27 @@ exports.autoCloseMarket = onSchedule({
 
     const matchTimeMs = nextMatch.datetime.toDate().getTime();
     const nowMs = Date.now();
-    
-    const diffMinutes = (matchTimeMs - nowMs) / (1000 * 60);
 
-    if (diffMinutes <= 20) {
+    // Fechamento exato: 20 minutos antes do início do primeiro jogo da rodada
+    const closingTimeMs = matchTimeMs - (20 * 60 * 1000);
+    const closingTimestamp = admin.firestore.Timestamp.fromMillis(closingTimeMs);
+
+    if (nowMs >= closingTimeMs) {
       await statusRef.update({
         is_open: false,
+        closing_time: closingTimestamp,
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
       console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO para a rodada ${currentRound}.`);
+    } else {
+      // Sincroniza closing_time com antecedência para Security Rules e app
+      const currentClosingMs = statusData.closing_time ? statusData.closing_time.toMillis() : null;
+      if (currentClosingMs !== closingTimeMs) {
+        await statusRef.update({
+          closing_time: closingTimestamp
+        });
+        console.log(`⏰ PILOTO AUTOMÁTICO: Prazo do mercado atualizado para R${currentRound}: ${new Date(closingTimeMs).toISOString()}`);
+      }
     }
 
   } catch (error) {
@@ -1049,47 +1083,47 @@ exports.processMarketClosed = onDocumentWritten({
   if (before.is_open === true && after.is_open === false) {
     console.log("🔒 Mercado fechou! Processando estatísticas de escalação...");
     const currentRound = after.current_round || 1;
-    
+
     try {
       const teamsSnap = await db.collection('fantasy_teams').get();
-      
+
       const playerCounts = {};
       const captainCounts = {};
-      
+
       teamsSnap.forEach(doc => {
         const team = doc.data();
         const lineup = team.lineup_player_ids || [];
         const captainId = team.captain_id;
-        
+
         lineup.forEach(pid => {
           playerCounts[pid] = (playerCounts[pid] || 0) + 1;
         });
-        
+
         if (captainId) {
           captainCounts[captainId] = (captainCounts[captainId] || 0) + 1;
         }
       });
-      
+
       let mostSelectedPlayer = null;
       let mostSelectedPlayerCount = 0;
-      
+
       Object.entries(playerCounts).forEach(([pid, count]) => {
         if (count > mostSelectedPlayerCount) {
           mostSelectedPlayer = pid;
           mostSelectedPlayerCount = count;
         }
       });
-      
+
       let mostSelectedCaptain = null;
       let mostSelectedCaptainCount = 0;
-      
+
       Object.entries(captainCounts).forEach(([pid, count]) => {
         if (count > mostSelectedCaptainCount) {
           mostSelectedCaptain = pid;
           mostSelectedCaptainCount = count;
         }
       });
-      
+
       await db.collection('fantasy_config').doc('market_stats').set({
         round: currentRound,
         most_selected_player_id: mostSelectedPlayer,
@@ -1098,7 +1132,7 @@ exports.processMarketClosed = onDocumentWritten({
         most_selected_captain_count: mostSelectedCaptainCount,
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
-      
+
       console.log(`✅ Estatísticas da rodada ${currentRound} geradas com sucesso!`);
     } catch (error) {
       console.error("🔥 Erro ao processar estatísticas do mercado:", error);
@@ -1112,7 +1146,7 @@ exports.processMarketClosed = onDocumentWritten({
 
 exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Acesso negado. O utilizador precisa de estar logado.');
-  
+
   const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
   if (!adminDoc.exists) throw new HttpsError('permission-denied', 'Apenas administradores podem calcular os resultados do bolão.');
 
@@ -1125,7 +1159,7 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
     const realHome = parseInt(realHomeScore);
     const realAway = parseInt(realAwayScore);
     const realDiff = realHome - realAway;
-    
+
     let realOutcome = 'draw';
     if (realHome > realAway) realOutcome = 'home_win';
     if (realHome < realAway) realOutcome = 'away_win';
@@ -1136,7 +1170,7 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
     for (const userDoc of usersSnap.docs) {
       const userId = userDoc.id;
       const predDoc = await db.collection('bolao_users').doc(userId).collection('predictions').doc(matchId).get();
-      
+
       if (predDoc.exists) {
         const predData = predDoc.data();
         const predHome = parseInt(predData.score_home);
@@ -1154,7 +1188,7 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
 
         if (predHome === realHome && predAway === realAway) {
           pointsEarned = 5; isExact = 1;
-        } 
+        }
         else if (predOutcome === realOutcome) {
           if (predDiff === realDiff) {
             pointsEarned = 3; isGoalDiff = 1;
@@ -1165,7 +1199,7 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
 
         const oldPoints = predData.points_earned || 0;
         let oldExact = 0; let oldGoalDiff = 0; let oldWinner = 0;
-        
+
         if (oldPoints === 5) oldExact = 1;
         else if (oldPoints === 3) oldGoalDiff = 1;
         else if (oldPoints === 2) oldWinner = 1;
@@ -1201,11 +1235,11 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
 
     try {
       await admin.database().ref(`live_ranking/${matchId}`).remove();
-      
+
       const liveMatchesSnap = await db.collection('bolao_matches')
-                                      .where('status', '==', 'in_progress')
-                                      .get();
-      
+        .where('status', '==', 'in_progress')
+        .get();
+
       if (!liveMatchesSnap.empty) {
         const touchBatch = db.batch();
         liveMatchesSnap.forEach(liveDoc => {
@@ -1243,19 +1277,19 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
   try {
     const configDoc = await db.collection('bolao_config').doc('settings').get();
     const settings = configDoc.data();
-    
+
     if (settings && settings.is_predictions_open === false) {
       throw new HttpsError('permission-denied', 'Mercado Geral encerrado pelo Administrador!');
     }
 
     const matchDoc = await db.collection('bolao_matches').doc(matchId).get();
     if (!matchDoc.exists) throw new HttpsError('not-found', 'Jogo não encontrado.');
-    
+
     const matchData = matchDoc.data();
     if (matchData.status !== 'pending') throw new HttpsError('permission-denied', 'Este jogo já terminou ou está a decorrer.');
 
-    const matchDate = matchData.date.toDate(); 
-    const serverNow = new Date(); 
+    const matchDate = matchData.date.toDate();
+    const serverNow = new Date();
     const deadlineTime = new Date(matchDate.getTime() - (30 * 60000));
 
     if (serverNow > deadlineTime) {
@@ -1263,7 +1297,7 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
     }
 
     const predRef = db.collection('bolao_users').doc(userId).collection('predictions').doc(matchId);
-    
+
     await predRef.set({
       score_home: parseInt(scoreHome),
       score_away: parseInt(scoreAway),
@@ -1281,7 +1315,7 @@ exports.submitBolaoPrediction = onCall({ cors: true }, async (request) => {
 // 🚨 PALPITES DO MINI BOLÃO VIP (ATUALIZADO COM MINUTO DO 1º GOL) 🚨
 exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Login obrigatório.');
-  
+
   const { miniBolaoId, scoreHome, scoreAway, goalScorers, firstGoalTeam, firstGoalMinute, halfTimeDraw, highestScoringHalf } = request.data;
   const userId = request.auth.uid;
 
@@ -1292,9 +1326,9 @@ exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
   try {
     const mbSnap = await db.collection('bolao_mini_leagues').doc(miniBolaoId).get();
     if (!mbSnap.exists) throw new HttpsError('not-found', 'Mini Bolão não encontrado.');
-    
+
     const mbData = mbSnap.data();
-    
+
     if (mbData.status === 'finished') {
       throw new HttpsError('permission-denied', 'Esta sala VIP já foi encerrada.');
     }
@@ -1308,7 +1342,7 @@ exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
     }
 
     const participantRef = db.collection('bolao_mini_leagues').doc(miniBolaoId).collection('participants').doc(userId);
-    
+
     const pSnap = await participantRef.get();
     if (!pSnap.exists) {
       throw new HttpsError('permission-denied', 'Você não está participando desta sala VIP.');
@@ -1320,8 +1354,8 @@ exports.submitMiniBolaoPrediction = onCall({ cors: true }, async (request) => {
       pred_goal_scorers: goalScorers || [],
       pred_first_goal_team: firstGoalTeam,
       pred_first_goal_minute: parseInt(firstGoalMinute), // 🚨 NOVO CAMPO
-      pred_half_time_draw: halfTimeDraw,         
-      pred_highest_scoring_half: highestScoringHalf, 
+      pred_half_time_draw: halfTimeDraw,
+      pred_highest_scoring_half: highestScoringHalf,
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
@@ -1366,7 +1400,7 @@ exports.submitBolaoBonus = onCall({ cors: true }, async (request) => {
 // ==================================================================
 exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Login obrigatório.');
-  
+
   const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
   if (!adminDoc.exists) throw new HttpsError('permission-denied', 'Apenas admins.');
 
@@ -1384,11 +1418,11 @@ exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async
       const userData = userDoc.data();
       let championPts = (userData.bonus_champion === officialChampion) ? 20 : 0;
       let runnerUpPts = (userData.bonus_runner_up === officialRunnerUp) ? 10 : 0;
-      
+
       // 🚨 VALIDAÇÃO EM LISTA (Array) PARA EMPATES
       let offensePts = (userData.bonus_best_offense && bestOffenseArray.includes(userData.bonus_best_offense)) ? 10 : 0;
       let defensePts = (userData.bonus_worst_defense && worstDefenseArray.includes(userData.bonus_worst_defense)) ? 10 : 0;
-      
+
       let disappointmentPts = (userData.bonus_disappointment === officialDisappointment) ? 10 : 0;
 
       let extraPoints = championPts + runnerUpPts + offensePts + defensePts + disappointmentPts;
@@ -1432,9 +1466,9 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
 
   try {
     const liveMatchesSnap = await db.collection('bolao_matches')
-                                    .where('status', '==', 'in_progress')
-                                    .get();
-    
+      .where('status', '==', 'in_progress')
+      .get();
+
     if (liveMatchesSnap.empty) return;
 
     const liveMatchesData = {};
@@ -1445,14 +1479,14 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
     });
 
     const usersSnap = await db.collection('bolao_users').get();
-    
+
     const predMap = {};
     const predictionPromises = [];
 
     usersSnap.forEach(userDoc => {
       const uid = userDoc.id;
       predMap[uid] = {};
-      
+
       liveMatchIds.forEach(mId => {
         const p = db.collection('bolao_users').doc(uid).collection('predictions').doc(mId).get()
           .then(snap => {
@@ -1474,7 +1508,7 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
     usersSnap.forEach(userDoc => {
       const uid = userDoc.id;
       const userData = userDoc.data();
-      
+
       const basePoints = userData.total_points || 0;
       const baseExactHits = userData.exact_hits || 0;
       const baseGoalDiffHits = userData.goal_difference_hits || 0;
@@ -1483,7 +1517,7 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
 
       const userMatchesPoints = {};
       let totalLivePoints = 0;
-      
+
       let liveExactHits = 0;
       let liveGoalDiffHits = 0;
       let liveWinnerHits = 0;
@@ -1507,19 +1541,19 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
           if (pHome < pAway) pOutcome = 'away_win';
 
           if (pHome === liveHome && pAway === liveAway) {
-            points = 5; 
+            points = 5;
             liveExactHits++;
           } else if (pOutcome === liveOutcome) {
             if (pDiff === liveDiff) {
-              points = 3; 
+              points = 3;
               liveGoalDiffHits++;
             } else {
-              points = 2; 
+              points = 2;
               liveWinnerHits++;
             }
           }
         }
-        
+
         userMatchesPoints[mId] = points;
         totalLivePoints += points;
       });
@@ -1528,7 +1562,7 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
         name: userData.name || 'Treinador',
         photoUrl: userData.photo_url || '',
         basePoints: basePoints,
-        globalTotalPoints: basePoints + totalLivePoints, 
+        globalTotalPoints: basePoints + totalLivePoints,
         globalExactHits: baseExactHits + liveExactHits,
         globalGoalDiffHits: baseGoalDiffHits + liveGoalDiffHits,
         globalWinnerHits: baseWinnerHits + liveWinnerHits,
@@ -1555,23 +1589,23 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
           name: state.name,
           photoUrl: state.photoUrl,
           basePoints: state.basePoints,
-          matchPoints: state.userMatchesPoints[mId], 
-          totalPoints: state.globalTotalPoints,      
-          exactHits: state.globalExactHits,          
-          goalDiffHits: state.globalGoalDiffHits,    
-          winnerHits: state.globalWinnerHits,        
-          bonusPoints: state.bonusPoints,            
+          matchPoints: state.userMatchesPoints[mId],
+          totalPoints: state.globalTotalPoints,
+          exactHits: state.globalExactHits,
+          goalDiffHits: state.globalGoalDiffHits,
+          winnerHits: state.globalWinnerHits,
+          bonusPoints: state.bonusPoints,
           prediction: predText
         });
       });
 
-      rankingList.sort((a, b) => 
-        (b.totalPoints - a.totalPoints) ||         
-        (b.exactHits - a.exactHits) ||             
-        (b.goalDiffHits - a.goalDiffHits) ||       
-        (b.winnerHits - a.winnerHits) ||           
-        (b.bonusPoints - a.bonusPoints) ||         
-        a.name.localeCompare(b.name)               
+      rankingList.sort((a, b) =>
+        (b.totalPoints - a.totalPoints) ||
+        (b.exactHits - a.exactHits) ||
+        (b.goalDiffHits - a.goalDiffHits) ||
+        (b.winnerHits - a.winnerHits) ||
+        (b.bonusPoints - a.bonusPoints) ||
+        a.name.localeCompare(b.name)
       );
 
       rankingList.forEach((u, index) => u.rank = index + 1);
@@ -1599,12 +1633,12 @@ exports.updateLiveBolaoRanking = onDocumentWritten({
 // ==================================================================
 exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Acesso negado.');
-  
+
   const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
   if (!adminDoc.exists) throw new HttpsError('permission-denied', 'Apenas administradores podem calcular resultados.');
 
   const { miniBolaoId, realHomeScore, realAwayScore, realScorers, realFirstGoalTeam, realFirstGoalMinute, realHalfTimeDraw, realHighestScoringHalf, isPartial } = request.data;
-  
+
   if (!miniBolaoId || realHomeScore === undefined || realAwayScore === undefined) {
     throw new HttpsError('invalid-argument', 'Faltam dados da partida real.');
   }
@@ -1613,7 +1647,7 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
     const realHome = parseInt(realHomeScore);
     const realAway = parseInt(realAwayScore);
     const realDiff = realHome - realAway;
-    
+
     let realOutcome = 'draw';
     if (realHome > realAway) realOutcome = 'home_win';
     if (realHome < realAway) realOutcome = 'away_win';
@@ -1625,7 +1659,7 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
     participantsSnap.forEach(partDoc => {
       const pData = partDoc.data();
       let points = 0;
-      
+
       // 1. Cálculo de Placar 
       if (pData.pred_score_home !== undefined && pData.pred_score_away !== undefined) {
         const pHome = parseInt(pData.pred_score_home);
@@ -1636,10 +1670,10 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
         if (pHome < pAway) pOutcome = 'away_win';
 
         if (pHome === realHome && pAway === realAway) {
-          points += 50; 
+          points += 50;
         } else if (pOutcome === realOutcome) {
-          if (pDiff === realDiff) points += 30; 
-          else points += 15; 
+          if (pDiff === realDiff) points += 30;
+          else points += 15;
         }
       }
 
@@ -1648,12 +1682,12 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
       if (pData.pred_goal_scorers && Array.isArray(pData.pred_goal_scorers)) {
         let realList = [...(realScorers || [])];
         let predList = [...pData.pred_goal_scorers];
-        
+
         for (const pred of predList) {
           const idx = realList.indexOf(pred);
           if (idx !== -1) {
             scorersPoints += 2;
-            realList.splice(idx, 1); 
+            realList.splice(idx, 1);
           }
         }
       }
@@ -1669,7 +1703,7 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
       // 🚨 3.1. CÁLCULO DE DESEMPATE DO MINUTO (Aproximação) 🚨
       let minuteDiff = 999;
       if (pData.pred_first_goal_minute !== undefined) {
-         minuteDiff = Math.abs(parseInt(pData.pred_first_goal_minute) - (parseInt(realFirstGoalMinute) || 0));
+        minuteDiff = Math.abs(parseInt(pData.pred_first_goal_minute) - (parseInt(realFirstGoalMinute) || 0));
       }
 
       // 4. Cálculo de Perguntas Extras
@@ -1687,7 +1721,7 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
         points: points,
         breakdown_scorers: scorersPoints,
         breakdown_first_goal: firstGoalPoints,
-        breakdown_extras: extrasPoints, 
+        breakdown_extras: extrasPoints,
         first_goal_minute_diff: minuteDiff, // 🚨 GRAVADO NO PARTICIPANTE PARA O APP PODER ORDENAR
         updated_at: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -1699,8 +1733,8 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
       real_scorers: realScorers || [],
       real_first_goal_team: realFirstGoalTeam || '',
       real_first_goal_minute: parseInt(realFirstGoalMinute) || 0, // 🚨 GRAVA NO CABEÇALHO DA SALA
-      real_half_time_draw: realHalfTimeDraw,                 
-      real_highest_scoring_half: realHighestScoringHalf || '', 
+      real_half_time_draw: realHalfTimeDraw,
+      real_highest_scoring_half: realHighestScoringHalf || '',
       updated_at: admin.firestore.FieldValue.serverTimestamp()
     };
 
@@ -1742,7 +1776,7 @@ class BatchHandler {
 
   async checkCommit() {
     this.count++;
-    if (this.count >= 490) { 
+    if (this.count >= 490) {
       await this.batch.commit();
       this.batch = this.db.batch();
       this.count = 0;
@@ -1767,115 +1801,115 @@ exports.updateTeamStatsOnMatchUpdate = onDocumentWritten({
   const seasonId = event.params.seasonId;
   const before = event.data.before?.data();
   const after = event.data.after?.data();
-  
+
   // Se não tem time definido, ignora
   if (!after?.team_home_id && !before?.team_home_id) return;
-  
+
   const hId = after?.team_home_id || before?.team_home_id;
   const aId = after?.team_away_id || before?.team_away_id;
-  
+
   const calculatePoints = (h, a) => {
-      if (h > a) return { pHome: 3, pAway: 0, wH: 1, dH: 0, lH: 0, wA: 0, dA: 0, lA: 1 };
-      if (h < a) return { pHome: 0, pAway: 3, wH: 0, dH: 0, lH: 1, wA: 1, dA: 0, lA: 0 };
-      return { pHome: 1, pAway: 1, wH: 0, dH: 1, lH: 0, wA: 0, dA: 1, lA: 0 };
+    if (h > a) return { pHome: 3, pAway: 0, wH: 1, dH: 0, lH: 0, wA: 0, dA: 0, lA: 1 };
+    if (h < a) return { pHome: 0, pAway: 3, wH: 0, dH: 0, lH: 1, wA: 1, dA: 0, lA: 0 };
+    return { pHome: 1, pAway: 1, wH: 0, dH: 1, lH: 0, wA: 0, dA: 1, lA: 0 };
   };
 
   const getStatsContributed = (match) => {
-      if (!match || match.status !== 'finished') {
-          return { home: null, away: null };
+    if (!match || match.status !== 'finished') {
+      return { home: null, away: null };
+    }
+    const hScore = match.score_home || 0;
+    const aScore = match.score_away || 0;
+    const res = calculatePoints(hScore, aScore);
+    const isPhase1 = match.phase === 'first';
+
+    return {
+      home: {
+        match_points: isPhase1 ? res.pHome : 0,
+        points: isPhase1 ? res.pHome : 0,
+        games_played: isPhase1 ? 1 : 0,
+        wins: isPhase1 ? res.wH : 0,
+        draws: isPhase1 ? res.dH : 0,
+        losses: isPhase1 ? res.lH : 0,
+        goals_for: isPhase1 ? hScore : 0,
+        goals_against: isPhase1 ? aScore : 0,
+        goal_difference: isPhase1 ? (hScore - aScore) : 0,
+
+        overall_match_points: res.pHome,
+        overall_points: res.pHome,
+        overall_games_played: 1,
+        overall_wins: res.wH,
+        overall_draws: res.dH,
+        overall_losses: res.lH,
+        overall_goals_for: hScore,
+        overall_goals_against: aScore,
+        overall_goal_difference: hScore - aScore,
+      },
+      away: {
+        match_points: isPhase1 ? res.pAway : 0,
+        points: isPhase1 ? res.pAway : 0,
+        games_played: isPhase1 ? 1 : 0,
+        wins: isPhase1 ? res.wA : 0,
+        draws: isPhase1 ? res.dA : 0,
+        losses: isPhase1 ? res.lA : 0,
+        goals_for: isPhase1 ? aScore : 0,
+        goals_against: isPhase1 ? hScore : 0,
+        goal_difference: isPhase1 ? (aScore - hScore) : 0,
+
+        overall_match_points: res.pAway,
+        overall_points: res.pAway,
+        overall_games_played: 1,
+        overall_wins: res.wA,
+        overall_draws: res.dA,
+        overall_losses: res.lA,
+        overall_goals_for: aScore,
+        overall_goals_against: hScore,
+        overall_goal_difference: aScore - hScore,
       }
-      const hScore = match.score_home || 0;
-      const aScore = match.score_away || 0;
-      const res = calculatePoints(hScore, aScore);
-      const isPhase1 = match.phase === 'first';
-      
-      return {
-          home: {
-              match_points: isPhase1 ? res.pHome : 0,
-              points: isPhase1 ? res.pHome : 0,
-              games_played: isPhase1 ? 1 : 0,
-              wins: isPhase1 ? res.wH : 0,
-              draws: isPhase1 ? res.dH : 0,
-              losses: isPhase1 ? res.lH : 0,
-              goals_for: isPhase1 ? hScore : 0,
-              goals_against: isPhase1 ? aScore : 0,
-              goal_difference: isPhase1 ? (hScore - aScore) : 0,
-              
-              overall_match_points: res.pHome,
-              overall_points: res.pHome,
-              overall_games_played: 1,
-              overall_wins: res.wH,
-              overall_draws: res.dH,
-              overall_losses: res.lH,
-              overall_goals_for: hScore,
-              overall_goals_against: aScore,
-              overall_goal_difference: hScore - aScore,
-          },
-          away: {
-              match_points: isPhase1 ? res.pAway : 0,
-              points: isPhase1 ? res.pAway : 0,
-              games_played: isPhase1 ? 1 : 0,
-              wins: isPhase1 ? res.wA : 0,
-              draws: isPhase1 ? res.dA : 0,
-              losses: isPhase1 ? res.lA : 0,
-              goals_for: isPhase1 ? aScore : 0,
-              goals_against: isPhase1 ? hScore : 0,
-              goal_difference: isPhase1 ? (aScore - hScore) : 0,
-              
-              overall_match_points: res.pAway,
-              overall_points: res.pAway,
-              overall_games_played: 1,
-              overall_wins: res.wA,
-              overall_draws: res.dA,
-              overall_losses: res.lA,
-              overall_goals_for: aScore,
-              overall_goals_against: hScore,
-              overall_goal_difference: aScore - hScore,
-          }
-      };
+    };
   };
 
   const oldStats = getStatsContributed(before);
   const newStats = getStatsContributed(after);
-  
+
   // Calcular deltas
   const calcDelta = (oldS, newS) => {
-      if (!oldS && !newS) return null;
-      const result = {};
-      let hasChanges = false;
-      const keys = [
-          'match_points', 'points', 'games_played', 'wins', 'draws', 'losses', 'goals_for', 'goals_against', 'goal_difference',
-          'overall_match_points', 'overall_points', 'overall_games_played', 'overall_wins', 'overall_draws', 'overall_losses', 'overall_goals_for', 'overall_goals_against', 'overall_goal_difference'
-      ];
-      keys.forEach(k => {
-          const oldVal = oldS ? (oldS[k] || 0) : 0;
-          const newVal = newS ? (newS[k] || 0) : 0;
-          const diff = newVal - oldVal;
-          if (diff !== 0) {
-              result[k] = admin.firestore.FieldValue.increment(diff);
-              hasChanges = true;
-          }
-      });
-      return hasChanges ? result : null;
+    if (!oldS && !newS) return null;
+    const result = {};
+    let hasChanges = false;
+    const keys = [
+      'match_points', 'points', 'games_played', 'wins', 'draws', 'losses', 'goals_for', 'goals_against', 'goal_difference',
+      'overall_match_points', 'overall_points', 'overall_games_played', 'overall_wins', 'overall_draws', 'overall_losses', 'overall_goals_for', 'overall_goals_against', 'overall_goal_difference'
+    ];
+    keys.forEach(k => {
+      const oldVal = oldS ? (oldS[k] || 0) : 0;
+      const newVal = newS ? (newS[k] || 0) : 0;
+      const diff = newVal - oldVal;
+      if (diff !== 0) {
+        result[k] = admin.firestore.FieldValue.increment(diff);
+        hasChanges = true;
+      }
+    });
+    return hasChanges ? result : null;
   };
-  
+
   const homeDelta = calcDelta(oldStats.home, newStats.home);
   const awayDelta = calcDelta(oldStats.away, newStats.away);
-  
-  if (!homeDelta && !awayDelta) return; 
-  
+
+  if (!homeDelta && !awayDelta) return;
+
   const batch = db.batch();
-  
+
   if (homeDelta && hId) {
-      const tHomeRef = db.collection('championships').doc(seasonId).collection('teams_participation').doc(hId);
-      batch.update(tHomeRef, homeDelta);
+    const tHomeRef = db.collection('championships').doc(seasonId).collection('teams_participation').doc(hId);
+    batch.update(tHomeRef, homeDelta);
   }
-  
+
   if (awayDelta && aId) {
-      const tAwayRef = db.collection('championships').doc(seasonId).collection('teams_participation').doc(aId);
-      batch.update(tAwayRef, awayDelta);
+    const tAwayRef = db.collection('championships').doc(seasonId).collection('teams_participation').doc(aId);
+    batch.update(tAwayRef, awayDelta);
   }
-  
+
   await batch.commit();
   console.log(`✅ FINOPS: Estatísticas do time atualizadas via Cloud Functions para o jogo ${event.params.matchId}`);
 });

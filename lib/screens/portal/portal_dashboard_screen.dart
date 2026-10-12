@@ -50,7 +50,7 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
       appBar: AppBar(
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
         title: Column(

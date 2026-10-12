@@ -267,7 +267,7 @@ class _FreeAgentRegistrationScreenState extends State<FreeAgentRegistrationScree
         title: const Text("FJF - Inscrição"),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
-            gradient: AppTheme.brazilGradient,
+            image: AppTheme.headerImage,
           ),
         ),
       ),

@@ -4,6 +4,7 @@ class FantasyPlayer {
   final String playerId;
   final String name;
   final String position;
+  final String? secondaryPosition; // NEW FIELD
   final String teamId;
   final String teamShieldUrl;
   final String photoUrl;
@@ -13,14 +14,15 @@ class FantasyPlayer {
   final double averageScore;
   final int matchesPlayed;
   final String status;
-  
+
   // Histórico
-  final List<Map<String, dynamic>> history; 
+  final List<Map<String, dynamic>> history;
 
   FantasyPlayer({
     required this.playerId,
     required this.name,
     required this.position,
+    this.secondaryPosition,
     required this.teamId,
     required this.teamShieldUrl,
     required this.photoUrl,
@@ -30,7 +32,7 @@ class FantasyPlayer {
     required this.averageScore,
     required this.matchesPlayed,
     required this.status,
-    required this.history, 
+    required this.history,
   });
 
   factory FantasyPlayer.fromFirestore(DocumentSnapshot doc) {
@@ -39,6 +41,7 @@ class FantasyPlayer {
       playerId: doc.id,
       name: data['name'] ?? '',
       position: data['position'] ?? '',
+      secondaryPosition: data['secondary_position'],
       teamId: data['team_id'] ?? '',
       teamShieldUrl: data['team_shield_url'] ?? '',
       photoUrl: data['photo_url'] ?? '',
@@ -56,6 +59,7 @@ class FantasyPlayer {
     return {
       'name': name,
       'position': position,
+      'secondary_position': secondaryPosition,
       'team_id': teamId,
       'team_shield_url': teamShieldUrl,
       'photo_url': photoUrl,
@@ -65,27 +69,31 @@ class FantasyPlayer {
       'average_score': averageScore,
       'matches_played': matchesPlayed,
       'status': status,
-      'history': history, 
+      'history': history,
     };
   }
 }
 
 class FantasyTeam {
   final String id;
-  final String userId; 
+  final String userId;
   final String ownerId;
   final String ownerName;
   final String teamName;
   final double totalPoints;
-  final double lastScore; 
+  final double lastScore;
   final double teamValue;
   final double currentBalance;
   final List<String> lineupPlayerIds;
   final List<String> benchPlayerIds;
+  final Map<String, String>? lineupSlots;
+  final Map<String, String>? benchSlots;
   final String? captainId;
   final String? luxuryReserveId;
-  final String shieldType; 
+  final String shieldType;
   final String? customLogoUrl;
+  final String? ownerCpf;
+  final String? ownerPhone;
 
   FantasyTeam({
     required this.id,
@@ -94,20 +102,24 @@ class FantasyTeam {
     required this.ownerName,
     required this.teamName,
     required this.totalPoints,
-    required this.lastScore, 
+    required this.lastScore,
     required this.teamValue,
     required this.currentBalance,
     required this.lineupPlayerIds,
     this.benchPlayerIds = const [],
+    this.lineupSlots,
+    this.benchSlots,
     this.captainId,
     this.luxuryReserveId,
     required this.shieldType,
     this.customLogoUrl,
+    this.ownerCpf,
+    this.ownerPhone,
   });
 
   factory FantasyTeam.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    
+
     return FantasyTeam(
       id: doc.id,
       userId: data['user_id'] ?? doc.id,
@@ -115,19 +127,24 @@ class FantasyTeam {
       ownerName: data['owner_name'] ?? 'Cartoleiro',
       teamName: data['team_name'] ?? 'Time sem nome',
       totalPoints: (data['total_points'] ?? 0).toDouble(),
-      lastScore: (data['last_score'] ?? 0).toDouble(), 
-      teamValue: (data['team_value'] ?? 100).toDouble(),
-      currentBalance: (data['current_balance'] ?? 100).toDouble(),
-      lineupPlayerIds: List<String>.from(
-          data['lineup_player_ids'] ?? data['lineup'] ?? []
-      ),
-      benchPlayerIds: List<String>.from(
-          data['bench_player_ids'] ?? []
-      ),
+      lastScore: (data['last_score'] ?? 0).toDouble(),
+      teamValue: (data['team_value'] ?? 50).toDouble(),
+      currentBalance: (data['current_balance'] ?? 50).toDouble(),
+      lineupPlayerIds:
+          List<String>.from(data['lineup_player_ids'] ?? data['lineup'] ?? []),
+      benchPlayerIds: List<String>.from(data['bench_player_ids'] ?? []),
+      lineupSlots: data['lineup_slots'] != null
+          ? Map<String, String>.from(data['lineup_slots'])
+          : null,
+      benchSlots: data['bench_slots'] != null
+          ? Map<String, String>.from(data['bench_slots'])
+          : null,
       captainId: data['captain_id'],
       luxuryReserveId: data['luxury_reserve_id'],
       shieldType: data['shield_type'] ?? '1',
       customLogoUrl: data['custom_logo_url'],
+      ownerCpf: data['owner_cpf'],
+      ownerPhone: data['owner_phone'],
     );
   }
 
@@ -143,10 +160,14 @@ class FantasyTeam {
       'current_balance': currentBalance,
       'lineup_player_ids': lineupPlayerIds,
       'bench_player_ids': benchPlayerIds,
+      'lineup_slots': lineupSlots,
+      'bench_slots': benchSlots,
       'captain_id': captainId,
       'luxury_reserve_id': luxuryReserveId,
       'shield_type': shieldType,
       'custom_logo_url': customLogoUrl,
+      'owner_cpf': ownerCpf,
+      'owner_phone': ownerPhone,
     };
   }
 }
@@ -156,18 +177,19 @@ class FantasyGameConfig {
   final double ptsAssist;
   final double ptsYellowCard;
   final double ptsRedCard;
-  
+
   // Novos
   final double ptsPenaltySaved;
   final double ptsPenaltyMissed;
   final double ptsShotOnPost;
   final double ptsCleanSheet;
-  
+
   // Novíssimos
   final double ptsOwnGoal;
   final double ptsMissedFreeKick;
   final double ptsMotm;
-  
+  final double ptsDifficultSave;
+
   final double factorExpectation;
   final double factorVariation;
   final double capLimitPercent;
@@ -185,6 +207,7 @@ class FantasyGameConfig {
     required this.ptsOwnGoal,
     required this.ptsMissedFreeKick,
     required this.ptsMotm,
+    required this.ptsDifficultSave,
     required this.factorExpectation,
     required this.factorVariation,
     required this.capLimitPercent,
@@ -204,7 +227,8 @@ class FantasyGameConfig {
       ptsOwnGoal: -3.0,
       ptsMissedFreeKick: -3.0,
       ptsMotm: 5.0,
-      factorExpectation: 0.42,
+      ptsDifficultSave: 1.0,
+      factorExpectation: 0.30,
       factorVariation: 0.18,
       capLimitPercent: 0.25,
       minPrice: 1.0,
@@ -222,18 +246,29 @@ class FantasyGameConfig {
     return FantasyGameConfig(
       ptsGoal: toDouble(map['ptsGoal'] ?? map['pts_goal'], 8.0),
       ptsAssist: toDouble(map['ptsAssist'] ?? map['pts_assist'], 5.0),
-      ptsYellowCard: toDouble(map['ptsYellowCard'] ?? map['pts_yellow_card'], -1.0),
+      ptsYellowCard:
+          toDouble(map['ptsYellowCard'] ?? map['pts_yellow_card'], -1.0),
       ptsRedCard: toDouble(map['ptsRedCard'] ?? map['pts_red_card'], -3.0),
-      ptsPenaltySaved: toDouble(map['ptsPenaltySaved'] ?? map['pts_penalty_saved'], 5.0),
-      ptsPenaltyMissed: toDouble(map['ptsPenaltyMissed'] ?? map['pts_penalty_missed'], -3.0),
-      ptsShotOnPost: toDouble(map['ptsShotOnPost'] ?? map['pts_shot_on_post'], 3.0),
-      ptsCleanSheet: toDouble(map['ptsCleanSheet'] ?? map['pts_clean_sheet'], 5.0),
+      ptsPenaltySaved:
+          toDouble(map['ptsPenaltySaved'] ?? map['pts_penalty_saved'], 5.0),
+      ptsPenaltyMissed:
+          toDouble(map['ptsPenaltyMissed'] ?? map['pts_penalty_missed'], -3.0),
+      ptsShotOnPost:
+          toDouble(map['ptsShotOnPost'] ?? map['pts_shot_on_post'], 3.0),
+      ptsCleanSheet:
+          toDouble(map['ptsCleanSheet'] ?? map['pts_clean_sheet'], 5.0),
       ptsOwnGoal: toDouble(map['ptsOwnGoal'] ?? map['pts_own_goal'], -3.0),
-      ptsMissedFreeKick: toDouble(map['ptsMissedFreeKick'] ?? map['pts_missed_free_kick'], -3.0),
+      ptsMissedFreeKick: toDouble(
+          map['ptsMissedFreeKick'] ?? map['pts_missed_free_kick'], -3.0),
       ptsMotm: toDouble(map['ptsMotm'] ?? map['pts_motm'], 5.0),
-      factorExpectation: toDouble(map['factorExpectation'] ?? map['factor_expectation'], 0.35),
-      factorVariation: toDouble(map['factorVariation'] ?? map['factor_variation'], 0.25),
-      capLimitPercent: toDouble(map['capLimitPercent'] ?? map['cap_limit_percent'], 0.25),
+      ptsDifficultSave:
+          toDouble(map['ptsDifficultSave'] ?? map['pts_difficult_save'], 1.0),
+      factorExpectation:
+          toDouble(map['factorExpectation'] ?? map['factor_expectation'], 0.30),
+      factorVariation:
+          toDouble(map['factorVariation'] ?? map['factor_variation'], 0.18),
+      capLimitPercent:
+          toDouble(map['capLimitPercent'] ?? map['cap_limit_percent'], 0.25),
       minPrice: toDouble(map['minPrice'] ?? map['min_price'], 1.0),
     );
   }
@@ -251,6 +286,7 @@ class FantasyGameConfig {
       'ptsOwnGoal': ptsOwnGoal,
       'ptsMissedFreeKick': ptsMissedFreeKick,
       'ptsMotm': ptsMotm,
+      'ptsDifficultSave': ptsDifficultSave,
       'factorExpectation': factorExpectation,
       'factorVariation': factorVariation,
       'capLimitPercent': capLimitPercent,

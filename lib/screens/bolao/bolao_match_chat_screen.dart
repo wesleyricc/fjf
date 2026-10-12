@@ -156,6 +156,7 @@ class _BolaoMatchChatScreenState extends State<BolaoMatchChatScreen> {
                   Flexible(
                     child: ListView.builder(
                       shrinkWrap: true,
+                      addAutomaticKeepAlives: false,
                       itemCount: reactorsData.length,
                       itemBuilder: (context, index) {
                         final userMap = reactorsData[index] as Map<dynamic, dynamic>;
@@ -166,7 +167,7 @@ class _BolaoMatchChatScreenState extends State<BolaoMatchChatScreen> {
                           leading: CircleAvatar(
                             radius: 18,
                             backgroundColor: Colors.grey[200],
-                            backgroundImage: (photoUrl != null && photoUrl.isNotEmpty) ? CachedNetworkImageProvider(photoUrl) : null,
+                            backgroundImage: (photoUrl != null && photoUrl.isNotEmpty) ? CachedNetworkImageProvider(photoUrl, maxWidth: 80, maxHeight: 80) : null,
                             child: (photoUrl == null || photoUrl.isEmpty) ? const Icon(Icons.person, color: Colors.grey, size: 20) : null,
                           ),
                           title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
@@ -627,7 +628,7 @@ class _BolaoMatchChatScreenState extends State<BolaoMatchChatScreen> {
                       const SizedBox(width: 8),
                       CircleAvatar(
                         radius: 18, backgroundColor: Colors.grey[200],
-                        backgroundImage: (userMap['photoUrl'] != null && userMap['photoUrl'].toString().isNotEmpty) ? CachedNetworkImageProvider(userMap['photoUrl']) : null,
+                        backgroundImage: (userMap['photoUrl'] != null && userMap['photoUrl'].toString().isNotEmpty) ? CachedNetworkImageProvider(userMap['photoUrl'], maxWidth: 80, maxHeight: 80) : null,
                         child: (userMap['photoUrl'] == null || userMap['photoUrl'].toString().isEmpty) ? const Icon(Icons.person, color: Colors.grey) : null,
                       ),
                       const SizedBox(width: 12),
@@ -747,6 +748,7 @@ class _BolaoMatchChatScreenState extends State<BolaoMatchChatScreen> {
               );
             },
             childCount: filteredUsers.length,
+            addAutomaticKeepAlives: false,
           ),
         ),
       ],

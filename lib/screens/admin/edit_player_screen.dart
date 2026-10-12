@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart'; 
@@ -61,6 +62,7 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
   late TextEditingController _weightController;
   late TextEditingController _instagramController;
   late TextEditingController _phoneController;
+  late TextEditingController _fantasyPriceController; // NEW FIELD
 
   final List<String> _positionOptions = ['Fixo', 'Ala', 'Pivô'];
   final List<String> _footOptions = ['Destro', 'Canhoto', 'Ambidestro'];
@@ -81,6 +83,7 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
     _weightController = TextEditingController(text: widget.player?.weightKg?.toString() ?? '');
     _instagramController = TextEditingController();
     _phoneController = TextEditingController();
+    _fantasyPriceController = TextEditingController(text: widget.player?.fantasyInitialPrice?.toStringAsFixed(2) ?? '');
   }
 
   @override
@@ -92,6 +95,7 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
     _weightController.dispose();
     _instagramController.dispose();
     _phoneController.dispose();
+    _fantasyPriceController.dispose();
     super.dispose();
   }
 
@@ -177,7 +181,9 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
                           : vm.webImageBytes != null
                               ? MemoryImage(vm.webImageBytes!)
                               : (vm.photoUrl != null && vm.photoUrl!.isNotEmpty)
-                                  ? CachedNetworkImageProvider(vm.photoUrl!) as ImageProvider
+                                  ? (kIsWeb 
+                                      ? ResizeImage(NetworkImage(vm.photoUrl!), width: 240, height: 240) as ImageProvider
+                                      : CachedNetworkImageProvider(vm.photoUrl!, maxWidth: 240, maxHeight: 240) as ImageProvider)
                                   : null,
                       child: (vm.imageFile == null && vm.webImageBytes == null && (vm.photoUrl == null || vm.photoUrl!.isEmpty))
                           ? Icon(Icons.camera_alt, size: 40, color: Colors.grey.shade400)
@@ -229,17 +235,23 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
                   decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
                   child: Column(
                     children: [
-                      SwitchListTile(
-                        title: const Text('Membro da Comissão Técnica?'),
-                        subtitle: const Text('Técnico, Auxiliar, etc.'),
-                        value: vm.isStaff,
-                        onChanged: vm.setStaff,
+                      Material(
+                        color: Colors.transparent,
+                        child: SwitchListTile(
+                          title: const Text('Membro da Comissão Técnica?'),
+                          subtitle: const Text('Técnico, Auxiliar, etc.'),
+                          value: vm.isStaff,
+                          onChanged: vm.setStaff,
+                        ),
                       ),
                       if (!vm.isStaff)
-                        SwitchListTile(
-                          title: const Text('É Goleiro?'),
-                          value: vm.isGoalkeeper,
-                          onChanged: vm.setGoalkeeper,
+                        Material(
+                          color: Colors.transparent,
+                          child: SwitchListTile(
+                            title: const Text('É Goleiro?'),
+                            value: vm.isGoalkeeper,
+                            onChanged: vm.setGoalkeeper,
+                          ),
                         ),
                     ],
                   ),
@@ -255,13 +267,45 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
                   ),
 
                 if (!vm.isStaff && !vm.isGoalkeeper)
-                  DropdownButtonFormField<String>(
-                    value: vm.selectedPosition,
-                    decoration: const InputDecoration(labelText: 'Posição', border: OutlineInputBorder()),
-                    items: _positionOptions.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                    onChanged: vm.setPosition,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: vm.selectedPosition,
+                          decoration: const InputDecoration(labelText: 'Posição', border: OutlineInputBorder()),
+                          items: _positionOptions.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                          onChanged: vm.setPosition,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: vm.secondaryPosition,
+                          decoration: const InputDecoration(labelText: 'Posição Secundária (Opcional)', border: OutlineInputBorder()),
+                          items: [
+                            const DropdownMenuItem<String>(value: null, child: Text('Nenhuma')),
+                            ..._positionOptions.map((p) => DropdownMenuItem(value: p, child: Text(p))),
+                          ],
+                          onChanged: vm.setSecondaryPosition,
+                        ),
+                      ),
+                    ],
                   ),
 
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _fantasyPriceController,
+                  decoration: const InputDecoration(
+                    labelText: 'Preço Inicial Fantasy (Opcional)', 
+                    border: OutlineInputBorder(),
+                    prefixText: 'C\$ ',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (val) {
+                    vm.setFantasyInitialPrice(double.tryParse(val.replaceAll(',', '.')));
+                  },
+                ),
+                  
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -288,12 +332,15 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SwitchListTile(
-                        title: const Text('Gerar Acesso ao Portal do Atleta?', style: TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: const Text('Cria um login para o atleta acessar o aplicativo.'),
-                        value: vm.createPortalAccess,
-                        onChanged: vm.setCreatePortalAccess,
-                        contentPadding: EdgeInsets.zero,
+                      Material(
+                        color: Colors.transparent,
+                        child: SwitchListTile(
+                          title: const Text('Gerar Acesso ao Portal do Atleta?', style: TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: const Text('Cria um login para o atleta acessar o aplicativo.'),
+                          value: vm.createPortalAccess,
+                          onChanged: vm.setCreatePortalAccess,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
                       if (vm.createPortalAccess)
                         TextFormField(

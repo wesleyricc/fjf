@@ -297,7 +297,9 @@ class _EditAwardScreenState extends State<EditAwardScreen> {
                           backgroundImage: CachedNetworkImageProvider(
                             _selectedCategory == 'team' 
                                 ? _selectedTeamObj!.shieldUrl 
-                                : (_selectedPlayerObj!.photoUrl.isNotEmpty ? _selectedPlayerObj!.photoUrl : _selectedTeamObj!.shieldUrl)
+                                : (_selectedPlayerObj!.photoUrl.isNotEmpty ? _selectedPlayerObj!.photoUrl : _selectedTeamObj!.shieldUrl),
+                            maxWidth: 160,
+                            maxHeight: 160,
                           ),
                         ),
                         const SizedBox(height: 4),
