@@ -20,14 +20,9 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'firebase_options.dart'; 
 import 'firebase_options_test.dart'; 
 import 'screens/bolao/bolao_paywall_screen.dart';
-import 'screens/fantasy/fantasy_admin_control_screen.dart';
-import 'screens/fantasy/fantasy_history_screen.dart';
-import 'screens/fantasy/fantasy_ranking_screen.dart';
 import 'screens/fantasy/fantasy_scouts_screen.dart';
 import 'screens/fantasy/fantasy_knockout_bracket_screen.dart';
 import 'models/fantasy_league_model.dart';
-import 'models/fantasy_models.dart';
-import 'screens/fantasy/fantasy_rules_screen.dart';
 import 'screens/player/free_agent_registration_screen.dart';
 import 'screens/player/free_agents_market_screen.dart';
 import 'screens/championship/teams_list_screen.dart';
@@ -76,6 +71,9 @@ import 'screens/fantasy/fantasy_market_screen.dart';
 import 'screens/fantasy/fantasy_lineup_screen.dart';
 import 'screens/fantasy/fantasy_ranking_screen.dart';
 import 'screens/fantasy/fantasy_admin_control_screen.dart';
+import 'screens/fantasy/admin_fantasy_scout_audit_screen.dart';
+import 'screens/fantasy/fantasy_scout_review_screen.dart';
+import 'screens/fantasy/admin_fantasy_scout_reviews_screen.dart';
 import 'screens/fantasy/fantasy_rules_screen.dart';
 import 'screens/fantasy/fantasy_history_screen.dart';
 import 'screens/institutional/about_history_screen.dart';
@@ -268,6 +266,9 @@ class FjfApp extends StatelessWidget {
           ),
           '/fantasy-rankings': (ctx) => const FantasyRankingScreen(),
           '/fantasy-admin': (ctx) => const FantasyAdminControlScreen(),
+          '/fantasy-audit': (ctx) => const AdminFantasyScoutAuditScreen(),
+          '/fantasy-scout-review': (ctx) => const FantasyScoutReviewScreen(),
+          '/admin-fantasy-scout-reviews': (ctx) => const AdminFantasyScoutReviewsScreen(),
           '/fantasy-rules': (ctx) => const FantasyRulesScreen(),
           '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
           '/fantasy-scouts': (ctx) => const FantasyScoutsScreen(),

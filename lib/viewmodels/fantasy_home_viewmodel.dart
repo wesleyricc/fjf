@@ -140,7 +140,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
   Future<bool> _checkConnectivity() async {
     final result = await Connectivity().checkConnectivity();
-    _isOffline = result == ConnectivityResult.none;
+    _isOffline = result.contains(ConnectivityResult.none);
     if (!_isDisposed) notifyListeners();
     return !_isOffline;
   }
@@ -274,7 +274,8 @@ class FantasyHomeViewModel extends ChangeNotifier {
         }
       });
       
-      for (String pid in _team!.lineupPlayerIds) {
+      final allTeamPids = <String>{..._team!.lineupPlayerIds, ..._team!.benchPlayerIds};
+      for (String pid in allTeamPids) {
          final s = scores[pid] ?? FantasyScoutDetail(totalScore: 0.0);
          calculatedScores[pid] = LiveScoreData(
            totalScore: s.totalScore,

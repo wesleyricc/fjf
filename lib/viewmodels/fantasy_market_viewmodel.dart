@@ -20,6 +20,7 @@ class FantasyMarketViewModel extends ChangeNotifier {
   bool _onlyProbable = false;
   bool _onlyFavorites = false;
   int _displayLimit = 20;
+  int _totalMatchingCount = 0;
 
   // Filtro de intervalo de preço (null = sem filtro)
   double _priceBoundsMin = 0;
@@ -29,9 +30,12 @@ class FantasyMarketViewModel extends ChangeNotifier {
   // Dados do time do usuário (saldo disponível e atletas escalados)
   FantasyTeam? _myTeam;
   StreamSubscription? _teamSub;
+  StreamSubscription? _marketSub;
+  bool _isMarketOpen = true;
   bool _isDisposed = false;
 
   bool get isLoading => _isLoading;
+  bool get isMarketOpen => _isMarketOpen;
   List<Map<String, String>> get teamOptions => _teamOptions;
   Set<String> get favoriteIds => _favoriteIds;
 
@@ -41,6 +45,8 @@ class FantasyMarketViewModel extends ChangeNotifier {
   String get searchTerm => _searchTerm;
   bool get onlyProbable => _onlyProbable;
   bool get onlyFavorites => _onlyFavorites;
+  int get displayLimit => _displayLimit;
+  int get totalMatchingCount => _totalMatchingCount;
 
   double get priceBoundsMin => _priceBoundsMin;
   double get priceBoundsMax => _priceBoundsMax;
@@ -57,6 +63,11 @@ class FantasyMarketViewModel extends ChangeNotifier {
     if (requiredPosition != null) {
       _selectedPosition = requiredPosition;
     }
+    _marketSub?.cancel();
+    _marketSub = _repository.streamMarketStatus().listen((status) {
+      _isMarketOpen = status['is_open'] ?? true;
+      if (!_isDisposed) notifyListeners();
+    });
     if (userId != null) _listenToTeam(userId);
     await _loadFavorites();
     await loadMarketData(teams);
@@ -76,6 +87,7 @@ class FantasyMarketViewModel extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _teamSub?.cancel();
+    _marketSub?.cancel();
     super.dispose();
   }
 
@@ -221,15 +233,29 @@ class FantasyMarketViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  static String normalizePosition(String pos) {
+    final lower = pos.trim().toLowerCase();
+    if (lower.contains('gol')) return 'goleiro';
+    if (lower.contains('fix')) return 'fixo';
+    if (lower.contains('ala')) return 'ala';
+    if (lower.contains('piv')) return 'pivo';
+    if (lower.contains('téc') || lower.contains('tec')) return 'tecnico';
+    return lower;
+  }
+
+  static bool matchesPosition(String playerPos, String? secondaryPos, String targetPos) {
+    final targetNorm = normalizePosition(targetPos);
+    if (normalizePosition(playerPos) == targetNorm) return true;
+    if (secondaryPos != null && secondaryPos.isNotEmpty && normalizePosition(secondaryPos) == targetNorm) return true;
+    return false;
+  }
+
   List<FantasyPlayer> get filteredPlayers {
     List<FantasyPlayer> players = List.from(_allPlayers);
 
-    // Filter by position
-    if (_selectedPosition != 'Técnico') {
-      players = players.where((p) => p.position == _selectedPosition || p.secondaryPosition == _selectedPosition).toList();
-    } else {
-      players = players.where((p) => p.position == 'Técnico').toList();
-    }
+    // Filter by position (robusto contra variações de acentuação e posições secundárias)
+    final targetPos = _selectedPosition;
+    players = players.where((p) => matchesPosition(p.position, p.secondaryPosition, targetPos)).toList();
 
     // Filter by team
     if (_selectedTeamId != 'Todos') {
@@ -280,6 +306,7 @@ class FantasyMarketViewModel extends ChangeNotifier {
       players.sort((a, b) => b.lastPriceChange.compareTo(a.lastPriceChange));
     }
 
-    return players;
+    _totalMatchingCount = players.length;
+    return players.take(_displayLimit).toList();
   }
 }

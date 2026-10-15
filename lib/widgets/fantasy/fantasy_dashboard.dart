@@ -7,7 +7,6 @@ import '../../viewmodels/fantasy_home_viewmodel.dart';
 import '../team_logo_widget.dart';
 import 'fantasy_lineup_preview.dart';
 import '../../screens/fantasy/fantasy_edit_team_screen.dart';
-import '../styled_sponsor_banner.dart';
 import 'fantasy_bottom_nav_bar.dart';
 import 'round_summary_dialog.dart';
 
@@ -97,6 +96,130 @@ class FantasyDashboard extends StatelessWidget {
                             fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     FantasyLineupPreviewWidget(vm: vm),
+                    if (!vm.isMarketOpen) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/fantasy-scouts',
+                                arguments: 0);
+                          },
+                          icon: const Icon(Icons.bolt, color: Colors.orange),
+                          label: const Text(
+                            "Consultar Parciais de Todos os Atletas",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange.shade800,
+                            side: BorderSide(color: Colors.orange.shade300),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+
+                    // Card de Solicitação de Revisão de Scouts (Acesso Direto)
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                            color: Colors.deepPurple.shade200, width: 1.2),
+                      ),
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.pushNamed(context, '/fantasy-scout-review');
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.deepPurple.shade50,
+                                Colors.white,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple.shade100,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.fact_check_outlined,
+                                  color: Colors.deepPurple.shade800,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          "Revisão de Scouts",
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.deepPurple.shade900,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: Colors.deepPurple.shade700,
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            "NOVO",
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      "Viu algum lance não computado? Solicite a análise da nossa equipe de scouts.",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade700,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                size: 16,
+                                color: Colors.deepPurple.shade700,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 24),
                     if (!vm.isMarketOpen &&
                         (vm.topScorer != null ||
@@ -253,28 +376,6 @@ class FantasyDashboard extends StatelessWidget {
         ]));
   }
 
-  Widget _buildActionCard(BuildContext context, String title, IconData icon,
-      Color color, VoidCallback? onTap) {
-    final bool isDisabled = onTap == null;
-    return Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        elevation: isDisabled ? 0 : 2,
-        child: Opacity(
-            opacity: isDisabled ? 0.6 : 1.0,
-            child: InkWell(
-                onTap: onTap,
-                borderRadius: BorderRadius.circular(12),
-                child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, color: color, size: 28),
-                      const SizedBox(height: 8),
-                      Text(title,
-                          style: const TextStyle(fontWeight: FontWeight.bold))
-                    ]))));
-  }
-
   Widget _buildTeamHeader(
       BuildContext context, FantasyTeam team, bool isMarketOpen, int round) {
     return Container(
@@ -399,7 +500,6 @@ class FantasyDashboard extends StatelessWidget {
   Widget _buildPerformanceCard(BuildContext context, FantasyHomeViewModel vm) {
     final points = vm.lastRoundPoints ?? 0.0;
     final app = vm.lastRoundAppreciation ?? 0.0;
-    final isAppPositive = app >= 0;
 
     return Container(
       padding: const EdgeInsets.all(16),

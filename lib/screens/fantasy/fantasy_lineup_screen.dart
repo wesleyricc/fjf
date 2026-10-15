@@ -1,9 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../../utils/custom_cache_manager.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/championship_service.dart';
 import '../../models/fantasy_models.dart';
@@ -16,6 +13,8 @@ import '../../utils/app_feedback.dart';
 import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
 import '../../widgets/fantasy/pitch_view.dart';
 import '../../widgets/fantasy/fantasy_player_details_modal.dart';
+import '../../widgets/fantasy/fantasy_landing_page.dart';
+import '../../widgets/ui/optimized_network_image.dart';
 
 class FantasyLineupScreen extends StatefulWidget {
   const FantasyLineupScreen({super.key});
@@ -32,6 +31,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
     AnalyticsService.logCustomScreenView('Fantasy_Lineup_Screen');
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final auth = Provider.of<FantasyAuthService>(context, listen: false);
       final champ = Provider.of<ChampionshipService>(context, listen: false);
 
@@ -52,10 +52,13 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
 
     double? budget;
     if (isBench) {
-      final starters =
-          vm.lineup.values.where((p) => p.position == position).toList();
+      final starters = vm.lineup.values
+          .where((p) => FantasyLineupViewModel.matchesPosition(
+              p.position, p.secondaryPosition, position))
+          .toList();
       if (starters.isEmpty) {
-        AppFeedback.showWarning(context, "Escale um titular primeiro!");
+        AppFeedback.showWarning(
+            context, "Escale um titular de $position primeiro!");
         return;
       }
       budget =
@@ -67,34 +70,57 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
       }
     }
 
-    final selectedPlayer = await Navigator.push<FantasyPlayer>(
-      context,
-      MaterialPageRoute(
-        builder: (ctx) => FantasyMarketScreen(
-          isSelectionMode: true,
-          requiredPosition: position,
-          maxBudget: budget,
+    try {
+      final selectedPlayer = await Navigator.push<FantasyPlayer>(
+        context,
+        MaterialPageRoute(
+          builder: (ctx) => FantasyMarketScreen(
+            isSelectionMode: true,
+            requiredPosition: position,
+            maxBudget: budget,
+          ),
         ),
-      ),
-    );
+      );
 
-    if (selectedPlayer != null) {
-      // CORREÇÃO: Aguarda a animação de retorno (pop) terminar antes de rebuildar a tela
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
+      if (selectedPlayer != null && mounted) {
+        // Aguarda a animação de retorno (pop) terminar completamente antes de rebuildar a tela (essencial para iOS)
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
 
-      if (isBench) {
-        vm.addBenchPlayer(slotIndex, selectedPlayer);
-      } else {
-        vm.addPlayer(slotIndex, selectedPlayer);
+        if (isBench) {
+          vm.addBenchPlayer(slotIndex, selectedPlayer);
+        } else {
+          vm.addPlayer(slotIndex, selectedPlayer);
+        }
       }
+    } catch (e) {
+      debugPrint("Erro ao abrir mercado para vaga: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<FantasyLineupViewModel>(
-      builder: (context, vm, child) {
+    return Consumer2<FantasyAuthService, FantasyLineupViewModel>(
+      builder: (context, authService, vm, child) {
+        if (!authService.isGoogleAuthenticated) {
+          return FantasyLandingPage(authService: authService);
+        }
+
+        if (authService.isLoading) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+
+        // Auto-inicialização quando a autenticação restaurar do IndexedDB em PWAs/navegadores
+        if (authService.user != null && vm.userId != authService.user!.uid) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final champ =
+                Provider.of<ChampionshipService>(context, listen: false);
+            vm.init(authService.user!.uid, champ.currentSeasonId);
+          });
+        }
+
         if (vm.errorMessage != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             AppFeedback.showError(context, vm.errorMessage!);
@@ -189,6 +215,13 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     icon: const Icon(Icons.delete_outline),
                     tooltip: "Limpar Time",
                     onPressed: vm.lineup.isNotEmpty ? vm.sellAll : null),
+              if (!vm.isMarketOpen)
+                IconButton(
+                    icon: const Icon(Icons.bolt, color: Colors.orangeAccent),
+                    tooltip: "Todas as Parciais",
+                    onPressed: () => Navigator.pushNamed(
+                        context, '/fantasy-scouts',
+                        arguments: 0)),
             ],
           ),
           bottomNavigationBar: const FantasyBottomNavBar(
@@ -344,14 +377,15 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
 
                         if (posLabel == 'Goleiro') {
                           icon = Icons.sports_handball;
-                        } else if (posLabel == 'Fixo')
+                        } else if (posLabel == 'Fixo') {
                           icon = Icons.shield;
-                        else if (posLabel == 'Ala')
+                        } else if (posLabel == 'Ala') {
                           icon = Icons.flash_on;
-                        else if (posLabel == 'PivÃ´')
+                        } else if (posLabel == 'Pivô') {
                           icon = Icons.sports_soccer;
-                        else if (posLabel == 'TÃ©cnico')
+                        } else if (posLabel == 'Técnico') {
                           icon = Icons.psychology;
+                        }
 
                         final player = vm.bench[slotIndex];
 
@@ -389,33 +423,15 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                                     ),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(6),
-                                      child: player.photoUrl.isNotEmpty
-                                          ? (kIsWeb
-                                              ? Image.network(
-                                                  player.photoUrl,
-                                                  fit: BoxFit.cover,
-                                                  alignment: Alignment.topCenter,
-                                                  errorBuilder: (context, error, stackTrace) =>
-                                                      const Icon(Icons.person, color: Colors.grey),
-                                                )
-                                              : CachedNetworkImage(
-                                                  imageUrl: player.photoUrl,
-                                                  cacheManager: PlayerCacheManager.instance,
-                                                  memCacheWidth: 200,
-                                                  fit: BoxFit.cover,
-                                                  alignment: Alignment.topCenter,
-                                                  placeholder: (context, url) =>
-                                                      const Center(
-                                                        child: SizedBox(
-                                                          width: 16,
-                                                          height: 16,
-                                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                                        ),
-                                                      ),
-                                                  errorWidget: (context, url, error) =>
-                                                      const Icon(Icons.person, color: Colors.grey),
-                                                ))
-                                          : const Icon(Icons.person, color: Colors.grey),
+                                      child: OptimizedNetworkImage(
+                                        imageUrl: player.photoUrl,
+                                        width: 48,
+                                        height: 60,
+                                        memCacheWidth: 120,
+                                        memCacheHeight: 150,
+                                        fit: BoxFit.cover,
+                                        alignment: Alignment.topCenter,
+                                      ),
                                     ),
                                   ),
                                   if (player.teamShieldUrl.isNotEmpty)
@@ -430,17 +446,14 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                                           color: Colors.white,
                                         ),
                                         clipBehavior: Clip.hardEdge,
-                                        child: kIsWeb
-                                            ? Image.network(
-                                                player.teamShieldUrl,
-                                                fit: BoxFit.contain,
-                                              )
-                                            : CachedNetworkImage(
-                                                imageUrl: player.teamShieldUrl,
-                                                cacheManager: PlayerCacheManager.instance,
-                                                memCacheWidth: 60,
-                                                fit: BoxFit.contain,
-                                              ),
+                                        child: OptimizedNetworkImage(
+                                          imageUrl: player.teamShieldUrl,
+                                          width: 20,
+                                          height: 20,
+                                          memCacheWidth: 60,
+                                          memCacheHeight: 60,
+                                          fit: BoxFit.contain,
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -449,7 +462,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                                   style: const TextStyle(
                                       fontWeight: FontWeight.bold)),
                               subtitle: Text(
-                                  "${player.position} - C\$ ${player.currentPrice.toStringAsFixed(2)}"),
+                                  "${player.position != posLabel ? '$posLabel (${player.position})' : player.position} - C\$ ${player.currentPrice.toStringAsFixed(2)}"),
                               trailing: isLuxury
                                   ? const Icon(Icons.diamond,
                                       color: Colors.amber)
@@ -798,31 +811,16 @@ class PlayerCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: player.photoUrl.isNotEmpty
-                  ? (kIsWeb
-                      ? Image.network(
-                          player.photoUrl,
-                          fit: BoxFit.cover,
-                          alignment: Alignment.topCenter,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.person),
-                        )
-                      : CachedNetworkImage(
-                          imageUrl: player.photoUrl,
-                          cacheManager: PlayerCacheManager.instance,
-                          memCacheWidth: 200,
-                          fit: BoxFit.cover,
-                          alignment: Alignment.topCenter,
-                          placeholder: (context, url) =>
-                              const Center(
-                                child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              ),
-                          errorWidget: (context, url, error) =>
-                              const Icon(Icons.person),
-                        ))
+                  ? OptimizedNetworkImage(
+                      imageUrl: player.photoUrl,
+                      width: 48,
+                      height: 60,
+                      memCacheWidth: 120,
+                      memCacheHeight: 150,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.topCenter,
+                      fallbackIcon: Icons.person,
+                    )
                   : const Icon(Icons.person),
             ),
           ),

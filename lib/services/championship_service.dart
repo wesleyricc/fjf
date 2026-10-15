@@ -182,6 +182,9 @@ class ChampionshipService with ChangeNotifier {
         }
         await _fetchConfig();
       }
+      if (forceRefresh) {
+        invalidatePlayerCache();
+      }
       debugPrint("🚀 [FinOps Boot] Sucesso: Apenas dados vitais indexados na inicialização.");
     } catch (e) {
       debugPrint("❌ Erro ao atualizar dados: $e");

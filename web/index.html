@@ -125,70 +125,155 @@
   </script>
 
   <script>
-  // A versão do service worker é injetada pelo 'flutter build'
-  const serviceWorkerVersion = "{{flutter_service_worker_version}}";
-  
-  // Carrega o service worker principal do Flutter
-  var scriptLoaded = new Promise(function(resolve, reject) {
-    var script = document.createElement('script');
-    script.src = 'flutter_service_worker.js?v=' + serviceWorkerVersion;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-
-  // Quando o script do Flutter estiver pronto...
-  scriptLoaded.then(function() {
+    // Registra o service worker do Firebase Messaging para Push Notifications
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(function(registration) {
-        
-        // --- ADIÇÃO MANUAL ---
-        // Registra o service worker do Firebase Messaging
-        // Este é o passo que o 'flutterfire configure' deveria ter feito.
-        console.log('Registrando manualmente o firebase-messaging-sw.js');
-        navigator.serviceWorker.register('firebase-messaging-sw.js');
-        // --- FIM DA ADIÇÃO MANUAL ---
-
+      navigator.serviceWorker.register('firebase-messaging-sw.js').catch(function(e) {
+        console.warn('[FCM] Registro do service worker em background:', e);
       });
     }
-  });
-</script>
+  </script>
+
   <script>
-  // PWA Update Detector
-  window.pwaUpdateAvailable = false;
-  
-  window.forcePwaUpdate = async function() {
-    if ('serviceWorker' in navigator) {
+    // =========================================================================
+    // AUTO-ATUALIZAÇÃO INSTANTÂNEA DO PWA (iOS Safari, Android Chrome e Desktop)
+    // Garante que o app baixe a versão nova SEMPRE ao abrir, sem limpar histórico.
+    // =========================================================================
+    window.pwaUpdateAvailable = false;
+
+    // Função de limpeza forçada compatível com botões/banners manuais existentes
+    window.forcePwaUpdate = async function() {
       try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const reg of registrations) {
-          await reg.unregister();
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            await reg.unregister();
+          }
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        localStorage.removeItem('fjf_pwa_version');
+        localStorage.removeItem('fjf_pwa_build_tag');
+      } catch (e) {
+        console.error('[PWA] Erro na limpeza forçada:', e);
+      }
+      window.location.reload(true);
+    };
+
+    let isCheckingUpdate = false;
+    async function checkAppUpdates() {
+      if (isCheckingUpdate) return;
+      isCheckingUpdate = true;
+
+      try {
+        // 1. Notifica os service workers registrados para buscarem atualizações no servidor
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (const reg of registrations) {
+              reg.update().catch(function() {});
+            }
+          }).catch(function() {});
+        }
+
+        const timestamp = Date.now();
+
+        // 2. Checa o arquivo version.json gerado pelo build com cache desativado
+        const res = await fetch('version.json?t=' + timestamp, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+        });
+
+        if (res.ok) {
+          const versionData = await res.json();
+          const serverVersionId = (versionData.version || '') + '+' + (versionData.build_number || '');
+          const currentSavedVersion = localStorage.getItem('fjf_pwa_version');
+
+          if (!currentSavedVersion) {
+            localStorage.setItem('fjf_pwa_version', serverVersionId);
+          } else if (currentSavedVersion !== serverVersionId) {
+            console.log('[PWA] Nova versão detectada em version.json:', currentSavedVersion, '->', serverVersionId);
+            localStorage.setItem('fjf_pwa_version', serverVersionId);
+            await applyAppUpdate();
+            return;
+          }
+        }
+
+        // 3. Checa o ETag / Last-Modified do flutter_bootstrap.js (detecta qualquer novo deploy mesmo sem alteração em pubspec)
+        const headRes = await fetch('flutter_bootstrap.js?t=' + timestamp, {
+          method: 'HEAD',
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+        });
+
+        const serverBuildTag = headRes.headers.get('etag') || headRes.headers.get('last-modified');
+        if (serverBuildTag) {
+          const savedBuildTag = localStorage.getItem('fjf_pwa_build_tag');
+          if (!savedBuildTag) {
+            localStorage.setItem('fjf_pwa_build_tag', serverBuildTag);
+          } else if (savedBuildTag !== serverBuildTag) {
+            console.log('[PWA] Novo deploy detectado por build tag:', savedBuildTag, '->', serverBuildTag);
+            localStorage.setItem('fjf_pwa_build_tag', serverBuildTag);
+            await applyAppUpdate();
+            return;
+          }
         }
       } catch (e) {
-        console.error('Erro ao desregistrar SW:', e);
+        console.debug('[PWA] Verificação offline ou de rede:', e);
+      } finally {
+        isCheckingUpdate = false;
       }
     }
-    window.location.reload();
-  };
 
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('flutter_service_worker.js').then((reg) => {
-        reg.addEventListener('updatefound', () => {
-          const installingWorker = reg.installing;
-          if (installingWorker) {
-            installingWorker.addEventListener('statechange', () => {
-              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('Nova versão do PWA disponível!');
-                window.pwaUpdateAvailable = true;
-                window.dispatchEvent(new Event('pwa_update_available'));
-              }
-            });
+    async function applyAppUpdate() {
+      try {
+        // Limpa CacheStorage (arquivos estáticos em cache)
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        // Desregistra Service Workers obsoletos
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            await reg.unregister();
           }
-        });
+        }
+      } catch (e) {
+        console.warn('[PWA] Erro ao limpar caches:', e);
+      }
+      console.log('[PWA] Reiniciando aplicação atualizada...');
+      window.location.reload(true);
+    }
+
+    // Monitora ativação de novos Service Workers
+    if ('serviceWorker' in navigator) {
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        if (!refreshing) {
+          refreshing = true;
+          console.log('[PWA] Novo Service Worker ativo. Recarregando...');
+          window.location.reload();
+        }
       });
+    }
+
+    // Checa atualização no carregamento inicial da página
+    window.addEventListener('load', checkAppUpdates);
+
+    // Checa atualização sempre que o usuário reabre ou desbloqueia o PWA no celular
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        checkAppUpdates();
+      }
     });
-  }
+
+    // Trata bfcache (Back-Forward Cache) típico do Safari/WebKit iOS
+    window.addEventListener('pageshow', function(event) {
+      if (event.persisted) {
+        checkAppUpdates();
+      }
+    });
   </script>
 </body>
 </html>

@@ -105,7 +105,7 @@ class PlayerService {
     for (var doc in query.docs) {
       final data = doc.data();
       final stats = data['stats_applied']?['player_stats'];
-      final matchMotm = data['stats_applied']?['man_of_the_match'];
+      final matchMotm = data['stats_applied']?['man_of_the_match'] ?? data['man_of_the_match'];
 
       if (stats != null) {
          goals += (stats['goals']?[playerId] as int?) ?? 0;

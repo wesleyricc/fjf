@@ -10,7 +10,6 @@ import '../../models/fantasy_models.dart';
 import '../../models/match_model.dart';
 import '../../widgets/fantasy_player_card.dart';
 import '../../widgets/ui/shimmer_effect.dart';
-import '../../widgets/ui/sparkline_widget.dart';
 import '../../widgets/ui/custom_empty_state.dart';
 import '../../widgets/fantasy/fantasy_player_details_modal.dart';
 import '../../viewmodels/fantasy_market_viewmodel.dart';
@@ -42,6 +41,31 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
 
   // Valor temporário do slider enquanto o usuário arrasta (aplicado ao soltar)
   RangeValues? _draftPriceRange;
+
+  // Controle de visibilidade dos filtros detalhados
+  bool _showFilters = false;
+
+  int get _activeFilterCount {
+    int count = 0;
+    if (_searchController.text.trim().isNotEmpty) count++;
+    if (_viewModel.hasPriceFilter) count++;
+    if (_viewModel.selectedTeamId != 'Todos') count++;
+    if (_viewModel.onlyProbable) count++;
+    if (_viewModel.onlyFavorites) count++;
+    return count;
+  }
+
+  void _clearAllFilters() {
+    _searchController.clear();
+    _viewModel.setSearchTerm('');
+    _viewModel.setTeamId('Todos');
+    _viewModel.clearPriceRange();
+    _viewModel.setOnlyProbable(false);
+    _viewModel.setOnlyFavorites(false);
+    setState(() {
+      _draftPriceRange = null;
+    });
+  }
 
   @override
   void initState() {
@@ -110,9 +134,30 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               )
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: _showFilters ? "Ocultar filtros" : "Mostrar filtros",
+            icon: _activeFilterCount > 0
+                ? Badge(
+                    label: Text('$_activeFilterCount'),
+                    child: Icon(
+                        _showFilters ? Icons.tune : Icons.filter_list),
+                  )
+                : Icon(_showFilters ? Icons.tune : Icons.filter_list),
+            onPressed: () {
+              setState(() {
+                _showFilters = !_showFilters;
+              });
+            },
+          ),
+        ],
       ),
-      bottomNavigationBar:
-          const FantasyBottomNavBar(currentRoute: '/fantasy-market'),
+      bottomNavigationBar: widget.isSelectionMode
+          ? null
+          : const FantasyBottomNavBar(
+              currentRoute: '/fantasy-market',
+              showSponsor: false,
+            ),
       body: ListenableBuilder(
           listenable: _viewModel,
           builder: (context, _) {
@@ -134,81 +179,20 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               child: Column(
                 children: [
                   _buildTeamStatusHeader(),
+                  _buildClosedMarketBanner(),
                   // Barra de Filtros (Posições)
-                  SizedBox(
-                    height: 50,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 8),
-                      children: _positions.map((pos) {
-                        final isSelected = _viewModel.selectedPosition == pos;
-                        final isDisabled = widget.requiredPosition != null &&
-                            widget.requiredPosition != pos;
-
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: FilterChip(
-                            label: Text(pos),
-                            selected: isSelected,
-                            onSelected: isDisabled
-                                ? null
-                                : (_) {
-                                    _viewModel.setPosition(pos);
-                                    AnalyticsService.logCustomScreenView(
-                                        'Fantasy_Market_Filter_Pos',
-                                        parameters: {'position': pos});
-                                  },
-                            backgroundColor: Colors.white,
-                            selectedColor:
-                                Theme.of(context).primaryColor.withOpacity(0.2),
-                            labelStyle: TextStyle(
-                              color: isSelected
-                                  ? Theme.of(context).primaryColor
-                                  : (isDisabled ? Colors.grey : Colors.black87),
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20)),
-                            showCheckmark: false,
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                  _buildPositionsBar(),
+                  // Barra de controle de filtros (resumo e botão mostrar/esconder)
+                  _buildFilterControlBar(),
+                  // Área de Filtros Expansível
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeInOut,
+                    child: _showFilters
+                        ? _buildCollapsibleFilters()
+                        : const SizedBox(width: double.infinity, height: 0),
                   ),
-
-                  // Campo de Busca e Filtros Avançados
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16.0, vertical: 4.0),
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: "Buscar atleta por nome...",
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                      ),
-                      onChanged: (val) {
-                        if (_debounce?.isActive ?? false) _debounce!.cancel();
-                        _debounce =
-                            Timer(const Duration(milliseconds: 500), () {
-                          _viewModel.setSearchTerm(val);
-                          if (val.length >= 3) {
-                            AnalyticsService.logCustomScreenView(
-                                'Fantasy_Market_Search',
-                                parameters: {'term': val.toLowerCase()});
-                          }
-                        });
-                      },
-                    ),
-                  ),
-
-                  _buildPriceRangeFilter(),
-
+                  // Lista de Atletas ou Estado Vazio
                   Expanded(
                     child: _viewModel.filteredPlayers.isEmpty
                         ? ListView(
@@ -220,273 +204,101 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                                 message:
                                     "Não encontramos atletas para os filtros selecionados.",
                                 buttonText: "Limpar Filtros",
-                                onButtonPressed: () {
-                                  _viewModel.setPosition('Goleiro');
-                                  _viewModel.setTeamId('Todos');
-                                  _viewModel.setSearchTerm('');
-                                  _viewModel.clearPriceRange();
-                                  setState(() => _draftPriceRange = null);
-                                  _searchController.clear();
-                                },
+                                onButtonPressed: _clearAllFilters,
                               ),
                             ],
                           )
-                        : Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0, vertical: 8.0),
-                                child: Row(
-                                  children: [
-                                    if (_viewModel.teamOptions.length > 1) ...[
-                                      Expanded(
-                                        flex: 3,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Text("Equipe",
-                                                style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 12),
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey.shade100,
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              child:
-                                                  DropdownButtonHideUnderline(
-                                                child: DropdownButton<String>(
-                                                  isExpanded: true,
-                                                  value: _viewModel.teamOptions
-                                                          .any((t) =>
-                                                              t['id'] ==
-                                                              _viewModel
-                                                                  .selectedTeamId)
-                                                      ? _viewModel
-                                                          .selectedTeamId
-                                                      : 'Todos',
-                                                  style: const TextStyle(
-                                                      color: Colors.black87,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      fontSize: 14),
-                                                  icon: const Icon(
-                                                      Icons.keyboard_arrow_down,
-                                                      color: Colors.grey),
-                                                  items: _viewModel.teamOptions
-                                                      .map((teamData) {
-                                                    return DropdownMenuItem<
-                                                        String>(
-                                                      value: teamData['id'],
-                                                      child: Text(
-                                                          teamData['name']!,
-                                                          overflow: TextOverflow
-                                                              .ellipsis),
-                                                    );
-                                                  }).toList(),
-                                                  onChanged: (val) {
-                                                    if (val != null) {
-                                                      _viewModel.setTeamId(val);
-                                                      AnalyticsService
-                                                          .logCustomScreenView(
-                                                              'Fantasy_Market_Filter_Team',
-                                                              parameters: {
-                                                            'team_id': val
-                                                          });
-                                                    }
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                    ],
-                                    Expanded(
-                                      flex: 2,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text("Ordenar por",
-                                              style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey,
-                                                  fontWeight: FontWeight.bold)),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12),
-                                            decoration: BoxDecoration(
-                                              color: Colors.grey.shade100,
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: DropdownButtonHideUnderline(
-                                              child: DropdownButton<String>(
-                                                isExpanded: true,
-                                                value: _viewModel.selectedSort,
-                                                style: const TextStyle(
-                                                    color: Colors.black87,
-                                                    fontWeight: FontWeight.w500,
-                                                    fontSize: 14),
-                                                icon: const Icon(Icons.sort,
-                                                    color: Colors.grey),
-                                                items: _sortOptions
-                                                    .map((sortOption) {
-                                                  return DropdownMenuItem<
-                                                      String>(
-                                                    value: sortOption,
-                                                    child: Text(sortOption,
-                                                        overflow: TextOverflow
-                                                            .ellipsis),
-                                                  );
-                                                }).toList(),
-                                                onChanged: (val) {
-                                                  if (val != null) {
-                                                    _viewModel.setSort(val);
-                                                    AnalyticsService
-                                                        .logCustomScreenView(
-                                                            'Fantasy_Market_Sort',
-                                                            parameters: {
-                                                          'sort_by': val
-                                                        });
-                                                  }
-                                                },
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.only(bottom: 24, top: 4),
+                            addAutomaticKeepAlives: false,
+                            addRepaintBoundaries: true,
+                            itemCount: _viewModel.filteredPlayers.length +
+                                (_viewModel.totalMatchingCount >
+                                        _viewModel.filteredPlayers.length
+                                    ? 1
+                                    : 0),
+                            itemBuilder: (ctx, i) {
+                              if (i == _viewModel.filteredPlayers.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
+                                  child: OutlinedButton.icon(
+                                    onPressed: _viewModel.loadMore,
+                                    icon: const Icon(Icons.add_circle_outline),
+                                    label: Text(
+                                      "Carregar mais atletas (${_viewModel.filteredPlayers.length} de ${_viewModel.totalMatchingCount})",
                                     ),
-                                  ],
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: CheckboxListTile(
-                                        title: const Text("Apenas Prováveis",
-                                            style: TextStyle(fontSize: 12)),
-                                        contentPadding: EdgeInsets.zero,
-                                        controlAffinity:
-                                            ListTileControlAffinity.leading,
-                                        value: _viewModel.onlyProbable,
-                                        onChanged: (val) => _viewModel
-                                            .setOnlyProbable(val ?? false),
-                                        visualDensity: VisualDensity.compact,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: CheckboxListTile(
-                                        title: const Text("Apenas Favoritos",
-                                            style: TextStyle(fontSize: 12)),
-                                        contentPadding: EdgeInsets.zero,
-                                        controlAffinity:
-                                            ListTileControlAffinity.leading,
-                                        value: _viewModel.onlyFavorites,
-                                        onChanged: (val) => _viewModel
-                                            .setOnlyFavorites(val ?? false),
-                                        visualDensity: VisualDensity.compact,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Divider(height: 1, thickness: 1),
-                              Expanded(
-                                child: ListView.builder(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.all(8),
-                                  itemCount: _viewModel.filteredPlayers.length,
-                                  itemBuilder: (ctx, i) {
-                                    final player =
-                                        _viewModel.filteredPlayers[i];
-                                    final bool canAfford =
-                                        widget.maxBudget == null ||
-                                            player.currentPrice <=
-                                                widget.maxBudget!;
+                                  ),
+                                );
+                              }
 
-                                    final championshipService =
-                                        Provider.of<ChampionshipService>(
-                                            context,
-                                            listen: false);
-                                    final matches = championshipService.matches;
+                              final player = _viewModel.filteredPlayers[i];
+                              final bool canAfford = widget.maxBudget == null ||
+                                  player.currentPrice <= widget.maxBudget!;
 
-                                    MatchModel? nextMatch;
-                                    for (var m in matches) {
-                                      if (m.status == 'pending' &&
-                                          (m.homeTeamId == player.teamId ||
-                                              m.awayTeamId == player.teamId)) {
-                                        nextMatch = m;
-                                        break;
-                                      }
-                                    }
+                              final championshipService =
+                                  Provider.of<ChampionshipService>(context,
+                                      listen: false);
+                              final matches = championshipService.matches;
 
-                                    String? nextOpponentName;
-                                    String? nextOpponentShieldUrl;
-                                    if (nextMatch != null) {
-                                      if (nextMatch.homeTeamId ==
-                                          player.teamId) {
-                                        nextOpponentName =
-                                            nextMatch.awayTeamName;
-                                        nextOpponentShieldUrl =
-                                            nextMatch.awayTeamShield;
+                              MatchModel? nextMatch;
+                              for (var m in matches) {
+                                if (m.status == 'pending' &&
+                                    (m.homeTeamId == player.teamId ||
+                                        m.awayTeamId == player.teamId)) {
+                                  nextMatch = m;
+                                  break;
+                                }
+                              }
+
+                              String? nextOpponentName;
+                              String? nextOpponentShieldUrl;
+                              if (nextMatch != null) {
+                                if (nextMatch.homeTeamId == player.teamId) {
+                                  nextOpponentName = nextMatch.awayTeamName;
+                                  nextOpponentShieldUrl =
+                                      nextMatch.awayTeamShield;
+                                } else {
+                                  nextOpponentName = nextMatch.homeTeamName;
+                                  nextOpponentShieldUrl =
+                                      nextMatch.homeTeamShield;
+                                }
+                              }
+
+                              return Opacity(
+                                opacity: canAfford ? 1.0 : 0.5,
+                                child: FantasyPlayerCard(
+                                  player: player,
+                                  nextOpponentName: nextOpponentName,
+                                  nextOpponentShieldUrl:
+                                      nextOpponentShieldUrl,
+                                  isFavorite: _viewModel.favoriteIds
+                                      .contains(player.playerId),
+                                  onFavorite: () => _viewModel
+                                      .toggleFavorite(player.playerId),
+                                  onTap: () {
+                                    if (widget.isSelectionMode) {
+                                      if (canAfford) {
+                                        Navigator.pop(context, player);
                                       } else {
-                                        nextOpponentName =
-                                            nextMatch.homeTeamName;
-                                        nextOpponentShieldUrl =
-                                            nextMatch.homeTeamShield;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(const SnackBar(
+                                                content: Text(
+                                                    "Saldo insuficiente."),
+                                                backgroundColor:
+                                                    Colors.red));
                                       }
+                                    } else {
+                                      _showPlayerActionModal(
+                                          context, player,
+                                          nextOpponentShieldUrl:
+                                              nextOpponentShieldUrl);
                                     }
-
-                                    return Opacity(
-                                      opacity: canAfford ? 1.0 : 0.5,
-                                      child: FantasyPlayerCard(
-                                        player: player,
-                                        nextOpponentName: nextOpponentName,
-                                        nextOpponentShieldUrl:
-                                            nextOpponentShieldUrl,
-                                        isFavorite: _viewModel.favoriteIds
-                                            .contains(player.playerId),
-                                        onFavorite: () => _viewModel
-                                            .toggleFavorite(player.playerId),
-                                        onTap: () {
-                                          if (widget.isSelectionMode) {
-                                            if (canAfford) {
-                                              Navigator.pop(context, player);
-                                            } else {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(const SnackBar(
-                                                      content: Text(
-                                                          "Saldo insuficiente."),
-                                                      backgroundColor:
-                                                          Colors.red));
-                                            }
-                                          } else {
-                                            _showPlayerActionModal(
-                                                context, player,
-                                                nextOpponentShieldUrl:
-                                                    nextOpponentShieldUrl);
-                                          }
-                                        },
-                                      ),
-                                    );
                                   },
                                 ),
-                              ),
-                            ],
+                              );
+                            },
                           ),
                   ),
                 ],
@@ -495,6 +307,409 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
           }),
     );
   }
+
+  /// Barra horizontal com os filtros rápidos por posição.
+  Widget _buildPositionsBar() {
+    return SizedBox(
+      height: 48,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        children: _positions.map((pos) {
+          final isSelected = _viewModel.selectedPosition == pos;
+          final isDisabled = widget.requiredPosition != null &&
+              widget.requiredPosition != pos;
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: FilterChip(
+              label: Text(pos),
+              selected: isSelected,
+              onSelected: isDisabled
+                  ? null
+                  : (_) {
+                      _viewModel.setPosition(pos);
+                      AnalyticsService.logCustomScreenView(
+                          'Fantasy_Market_Filter_Pos',
+                          parameters: {'position': pos});
+                    },
+              backgroundColor: Colors.white,
+              selectedColor:
+                  Theme.of(context).primaryColor.withOpacity(0.2),
+              labelStyle: TextStyle(
+                color: isSelected
+                    ? Theme.of(context).primaryColor
+                    : (isDisabled ? Colors.grey : Colors.black87),
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              showCheckmark: false,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// Barra compacta com contador de atletas e botão para exibir/ocultar filtros.
+  Widget _buildFilterControlBar() {
+    final activeCount = _activeFilterCount;
+    final primary = Theme.of(context).primaryColor;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade200),
+          bottom: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.people_outline, size: 16, color: Colors.grey.shade600),
+          const SizedBox(width: 6),
+          Text(
+            "${_viewModel.filteredPlayers.length} ${_viewModel.filteredPlayers.length == 1 ? 'atleta' : 'atletas'}",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          if (activeCount > 0 && !_showFilters) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                "$activeCount ativo${activeCount > 1 ? 's' : ''}",
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: primary,
+                ),
+              ),
+            ),
+          ],
+          const Spacer(),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _showFilters = !_showFilters;
+              });
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _showFilters
+                    ? primary.withOpacity(0.12)
+                    : (activeCount > 0
+                        ? primary.withOpacity(0.08)
+                        : Colors.white),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: (_showFilters || activeCount > 0)
+                      ? primary
+                      : Colors.grey.shade300,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _showFilters ? Icons.filter_list_off : Icons.tune,
+                    size: 14,
+                    color: (_showFilters || activeCount > 0)
+                        ? primary
+                        : Colors.grey.shade700,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _showFilters
+                        ? "Ocultar filtros"
+                        : (activeCount > 0
+                            ? "Filtros ($activeCount)"
+                            : "Filtros"),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: (_showFilters || activeCount > 0)
+                          ? primary
+                          : Colors.grey.shade800,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    _showFilters
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 16,
+                    color: (_showFilters || activeCount > 0)
+                        ? primary
+                        : Colors.grey.shade600,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Painel de filtros avançados expansível (busca, preço, time, ordenação, prováveis, favoritos).
+  Widget _buildCollapsibleFilters() {
+    final activeCount = _activeFilterCount;
+
+    return Material(
+      color: Colors.white,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Colors.grey.shade200),
+          ),
+        ),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Campo de busca com botão de limpar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: "Buscar atleta por nome...",
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          _viewModel.setSearchTerm('');
+                          setState(() {});
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              ),
+              onChanged: (val) {
+                setState(() {}); // atualiza o sufixIcon
+                if (_debounce?.isActive ?? false) _debounce!.cancel();
+                _debounce = Timer(const Duration(milliseconds: 500), () {
+                  _viewModel.setSearchTerm(val);
+                  if (val.length >= 3) {
+                    AnalyticsService.logCustomScreenView(
+                        'Fantasy_Market_Search',
+                        parameters: {'term': val.toLowerCase()});
+                  }
+                });
+              },
+            ),
+          ),
+
+          // Faixa de valor (Price Range Slider)
+          _buildPriceRangeFilter(),
+
+          // Dropdowns de Equipe e Ordenação
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            child: Row(
+              children: [
+                if (_viewModel.teamOptions.length > 1) ...[
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("Equipe",
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isExpanded: true,
+                              isDense: true,
+                              value: _viewModel.teamOptions.any(
+                                      (t) => t['id'] == _viewModel.selectedTeamId)
+                                  ? _viewModel.selectedTeamId
+                                  : 'Todos',
+                              style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13),
+                              icon: const Icon(Icons.keyboard_arrow_down,
+                                  color: Colors.grey, size: 18),
+                              items: _viewModel.teamOptions.map((teamData) {
+                                return DropdownMenuItem<String>(
+                                  value: teamData['id'],
+                                  child: Text(teamData['name']!,
+                                      overflow: TextOverflow.ellipsis),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  _viewModel.setTeamId(val);
+                                  AnalyticsService.logCustomScreenView(
+                                      'Fantasy_Market_Filter_Team',
+                                      parameters: {'team_id': val});
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Ordenar por",
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            isDense: true,
+                            value: _viewModel.selectedSort,
+                            style: const TextStyle(
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13),
+                            icon: const Icon(Icons.sort,
+                                color: Colors.grey, size: 18),
+                            items: _sortOptions.map((sortOption) {
+                              return DropdownMenuItem<String>(
+                                value: sortOption,
+                                child: Text(sortOption,
+                                    overflow: TextOverflow.ellipsis),
+                              );
+                            }).toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                _viewModel.setSort(val);
+                                AnalyticsService.logCustomScreenView(
+                                    'Fantasy_Market_Sort',
+                                    parameters: {'sort_by': val});
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Checkboxes (Prováveis / Favoritos) + Limpar Tudo se houver filtros ativos
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: () =>
+                      _viewModel.setOnlyProbable(!_viewModel.onlyProbable),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 4, horizontal: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: _viewModel.onlyProbable,
+                          onChanged: (val) =>
+                              _viewModel.setOnlyProbable(val ?? false),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        const SizedBox(width: 4),
+                        const Text("Apenas Prováveis",
+                            style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                InkWell(
+                  onTap: () =>
+                      _viewModel.setOnlyFavorites(!_viewModel.onlyFavorites),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 4, horizontal: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: _viewModel.onlyFavorites,
+                          onChanged: (val) =>
+                              _viewModel.setOnlyFavorites(val ?? false),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        const SizedBox(width: 4),
+                        const Text("Apenas Favoritos",
+                            style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                if (activeCount > 0)
+                  TextButton(
+                    onPressed: _clearAllFilters,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Text("Limpar",
+                        style: TextStyle(fontSize: 12, color: Colors.red)),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+      ),
+    ),
+  );
+}
 
   String _money(double v) => "C\$ ${v.toStringAsFixed(2)}";
 
@@ -540,6 +755,64 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               const Text("Escalados",
                   style: TextStyle(fontSize: 10, color: Colors.grey)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClosedMarketBanner() {
+    if (_viewModel.isMarketOpen || widget.isSelectionMode) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_clock, color: Colors.orange.shade800, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Mercado Fechado",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Colors.orange.shade900,
+                  ),
+                ),
+                Text(
+                  "Acompanhe as pontuações e scouts em tempo real.",
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pushNamed(context, '/fantasy-scouts', arguments: 0);
+            },
+            icon: const Icon(Icons.bolt, size: 14),
+            label: const Text("Ver Parciais",
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange.shade800,
+              foregroundColor: Colors.white,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
           ),
         ],
       ),

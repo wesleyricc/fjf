@@ -1,17 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../theme/app_theme.dart';
 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
-import '../services/fantasy_service.dart';
-import '../services/voting_service.dart';
-import '../services/analytics_service.dart';
-import '../models/poll_model.dart';
-import '../widgets/sponsor_banner_rotator.dart';
-import '../screens/bolao/mini_bolao_home_screen.dart';
 
 class MainBottomNavBar extends StatelessWidget {
   final String currentRoute;
@@ -42,37 +35,52 @@ class MainBottomNavBar extends StatelessWidget {
     final champService = Provider.of<ChampionshipService>(context);
     final bool isLive = champService.isLiveActive;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxHeight < 40 ||
+            (MediaQuery.maybeSizeOf(context)?.height ?? 0) < 60) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 10,
                 offset: const Offset(0, -2),
               ),
             ],
           ),
           child: SafeArea(
+            top: false,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildBottomNavItem(context, Icons.home, "Início", isActive: currentRoute == '/', onTap: () => _navigate(context, '/')),
-                  _buildBottomNavItem(context, Icons.calendar_month, "Jogos", isActive: currentRoute == '/fixtures', onTap: () => _navigate(context, '/fixtures')),
-                  _buildBottomNavItem(context, Icons.leaderboard, "Tabela", isActive: currentRoute == '/standings', onTap: () => _navigate(context, '/standings')),
-                  _buildBottomNavItem(context, Icons.live_tv, "Ao Vivo", isActive: currentRoute == '/live', isLive: isLive, onTap: () => _navigate(context, '/live')),
-                  _buildBottomNavItem(context, Icons.menu, "Menu", onTap: () => _showMenuBottomSheet(context)),
+                  _buildBottomNavItem(context, Icons.home, "Início",
+                      isActive: currentRoute == '/',
+                      onTap: () => _navigate(context, '/')),
+                  _buildBottomNavItem(context, Icons.calendar_month, "Jogos",
+                      isActive: currentRoute == '/fixtures',
+                      onTap: () => _navigate(context, '/fixtures')),
+                  _buildBottomNavItem(context, Icons.leaderboard, "Tabela",
+                      isActive: currentRoute == '/standings',
+                      onTap: () => _navigate(context, '/standings')),
+                  _buildBottomNavItem(context, Icons.live_tv, "Ao Vivo",
+                      isActive: currentRoute == '/live',
+                      isLive: isLive,
+                      onTap: () => _navigate(context, '/live')),
+                  _buildBottomNavItem(context, Icons.menu, "Menu",
+                      onTap: () => _showMenuBottomSheet(context)),
                 ],
               ),
             ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 

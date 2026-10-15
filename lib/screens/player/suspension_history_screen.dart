@@ -255,21 +255,33 @@ class _SuspensionCard extends StatelessWidget {
     final data = logDoc.data() as Map<String, dynamic>;
     final String playerId = data['playerId'] ?? '';
     final champService = Provider.of<ChampionshipService>(context, listen: false);
+    final suspVm = Provider.of<SuspensionViewModel>(context, listen: false);
     
-    Player? pObj;
+    Player? pObj = suspVm.playersById[playerId];
+    if (pObj == null && playerId.isNotEmpty) {
+      try {
+        pObj = champService.allPlayers.firstWhere((p) => p.id == playerId);
+      } catch (_) {}
+    }
+
+    final String teamId = (pObj?.teamId.isNotEmpty == true ? pObj?.teamId : data['teamId']) ?? '';
     Team? tObj;
-    try {
-      if (playerId.isNotEmpty) {
-         pObj = champService.allPlayers.firstWhere((p) => p.id == playerId);
-         tObj = champService.teams.firstWhere((t) => t.id == pObj!.teamId);
-      }
-    } catch (_) {} 
+    if (teamId.isNotEmpty) {
+      try {
+        tObj = champService.teams.firstWhere((t) => t.id == teamId);
+      } catch (_) {}
+    }
 
     final String playerName = pObj?.name ?? data['playerName'] ?? 'Jogador';
-    final String playerPhotoUrl = pObj?.photoUrl ?? data['playerPhotoUrl'] ?? '';
-    final String teamName = tObj?.name ?? data['teamName'] ?? 'Time';
-    final String teamLogoUrl = tObj?.shieldUrl ?? data['teamLogoUrl'] ?? '';
-    final bool isStaff = data['is_staff'] ?? false;
+    final String rawPhoto = (pObj?.photoUrl.isNotEmpty == true 
+        ? pObj?.photoUrl 
+        : (data['playerPhotoUrl'] ?? data['photo_url'] ?? data['photoUrl'] ?? '')) ?? '';
+    final String playerPhotoUrl = rawPhoto.toString().trim();
+    final String teamName = tObj?.name ?? 
+        ((data['teamName'] as String?)?.isNotEmpty == true ? data['teamName'] : pObj?.teamName) ?? 'Time';
+    final String teamLogoUrl = tObj?.shieldUrl ?? 
+        ((data['teamLogoUrl'] as String?)?.isNotEmpty == true ? data['teamLogoUrl'] : pObj?.teamShieldUrl) ?? '';
+    final bool isStaff = pObj?.isStaff ?? data['is_staff'] ?? false;
     
     final String reason = data['reason'] ?? 'Indefinido';
     final String matchInfo = data['match_description'] ?? 'Jogo não informado';
@@ -335,11 +347,46 @@ class _SuspensionCard extends StatelessWidget {
                             },
                             child: Hero(
                               tag: uniqueHeroTag,
-                              child: CircleAvatar(
-                                radius: 24,
-                                backgroundColor: Colors.grey.shade200,
-                                backgroundImage: playerPhotoUrl.isNotEmpty ? CachedNetworkImageProvider(playerPhotoUrl, maxWidth: 100, maxHeight: 100) : null,
-                                child: playerPhotoUrl.isEmpty ? Icon(isStaff ? Icons.assignment_ind : Icons.person, color: Colors.grey) : null,
+                              child: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.grey.shade200,
+                                ),
+                                child: ClipOval(
+                                  child: playerPhotoUrl.isNotEmpty
+                                      ? CachedNetworkImage(
+                                          imageUrl: playerPhotoUrl,
+                                          fit: BoxFit.cover,
+                                          cacheManager: PlayerCacheManager.instance,
+                                          memCacheWidth: 120,
+                                          memCacheHeight: 120,
+                                          maxWidthDiskCache: 150,
+                                          maxHeightDiskCache: 150,
+                                          fadeInDuration: const Duration(milliseconds: 150),
+                                          placeholder: (c, u) => Center(
+                                            child: SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.grey.shade400,
+                                              ),
+                                            ),
+                                          ),
+                                          errorWidget: (c, u, e) => Icon(
+                                            isStaff ? Icons.assignment_ind : Icons.person,
+                                            color: Colors.grey,
+                                            size: 26,
+                                          ),
+                                        )
+                                      : Icon(
+                                          isStaff ? Icons.assignment_ind : Icons.person,
+                                          color: Colors.grey,
+                                          size: 26,
+                                        ),
+                                ),
                               ),
                             ),
                           ),

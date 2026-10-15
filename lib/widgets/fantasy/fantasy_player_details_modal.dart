@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/fantasy_models.dart';
 import '../ui/sparkline_widget.dart';
+import '../ui/optimized_network_image.dart';
 
 class FantasyPlayerDetailsModal extends StatelessWidget {
   final FantasyPlayer player;
@@ -111,11 +112,13 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                       aspectRatio: 1,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: Image.network(
-                          player.photoUrl,
+                        child: OptimizedNetworkImage(
+                          imageUrl: player.photoUrl,
+                          memCacheWidth: 350,
+                          memCacheHeight: 350,
                           fit: BoxFit.cover,
                           alignment: Alignment.topCenter,
-                          errorBuilder: (context, error, stackTrace) =>
+                          errorWidget:
                               const Icon(Icons.person, size: 120, color: Colors.grey),
                         ),
                       ),
@@ -148,7 +151,15 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                         boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
                       ),
                       padding: const EdgeInsets.all(6),
-                      child: Image.network(player.teamShieldUrl, fit: BoxFit.contain),
+                      child: OptimizedNetworkImage(
+                        imageUrl: player.teamShieldUrl,
+                        width: 56,
+                        height: 56,
+                        memCacheWidth: 80,
+                        memCacheHeight: 80,
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                      ),
                     ),
                   ),
               ],

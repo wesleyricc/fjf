@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/fantasy_models.dart';
 import '../../services/fantasy_scout_service.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart';
-import '../../utils/custom_cache_manager.dart';
+import '../ui/optimized_network_image.dart';
 
 class PitchView extends StatelessWidget {
   final Map<int, FantasyPlayer> lineup;
@@ -110,9 +108,11 @@ class PitchView extends StatelessWidget {
   }
 
   Widget _buildPitchLines(double width) {
-    return CustomPaint(
-      size: Size(width, 540),
-      painter: PitchPainter(),
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size(width, 540),
+        painter: PitchPainter(),
+      ),
     );
   }
 
@@ -129,7 +129,7 @@ class PitchView extends StatelessWidget {
               width: 56,
               height: 70,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                     color: Colors.white, width: 1, style: BorderStyle.solid),
@@ -189,32 +189,15 @@ class PitchView extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: player.photoUrl.isNotEmpty
-                      ? (kIsWeb
-                          ? Image.network(
-                              player.photoUrl,
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter,
-                              errorBuilder: (ctx, _, __) =>
-                                  const Icon(Icons.person, color: Colors.grey),
-                            )
-                          : CachedNetworkImage(
-                              imageUrl: player.photoUrl,
-                              cacheManager: PlayerCacheManager.instance,
-                              memCacheWidth: 200,
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter,
-                              placeholder: (ctx, url) => const Center(
-                                child: SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) =>
-                                  const Icon(Icons.person, color: Colors.grey),
-                            ))
-                      : const Icon(Icons.person, color: Colors.grey),
+                  child: OptimizedNetworkImage(
+                    imageUrl: player.photoUrl,
+                    width: 56,
+                    height: 70,
+                    memCacheWidth: 120,
+                    memCacheHeight: 150,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                  ),
                 ),
               ),
               if (isCap)

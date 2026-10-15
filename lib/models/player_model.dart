@@ -12,12 +12,12 @@ class Player {
   final int? weightKg;
   final String? preferredFoot;
   final String photoUrl;
-  
+
   // Contexto do Time
   final String teamId;
   final String teamName;
   final String teamShieldUrl;
-  
+
   // Flags de Tipo
   final bool isStaff;
   final String? staffRole;
@@ -81,7 +81,8 @@ class Player {
       'position': position,
       'secondary_position': secondaryPosition,
       'fantasy_initial_price': fantasyInitialPrice,
-      'date_of_birth': dateOfBirth != null ? Timestamp.fromDate(dateOfBirth!) : null,
+      'date_of_birth':
+          dateOfBirth != null ? Timestamp.fromDate(dateOfBirth!) : null,
       'height_cm': heightCm,
       'weight_kg': weightKg,
       'preferred_foot': preferredFoot,
@@ -114,24 +115,23 @@ class Player {
       position: data['position'],
       secondaryPosition: data['secondary_position'],
       fantasyInitialPrice: (data['fantasy_initial_price'] as num?)?.toDouble(),
-      dateOfBirth: data['date_of_birth'] != null 
-          ? (data['date_of_birth'] is Timestamp ? (data['date_of_birth'] as Timestamp).toDate() : null) 
+      dateOfBirth: data['date_of_birth'] != null
+          ? (data['date_of_birth'] is Timestamp
+              ? (data['date_of_birth'] as Timestamp).toDate()
+              : null)
           : null,
       heightCm: (data['height_cm'] as num?)?.toInt(),
       weightKg: (data['weight_kg'] as num?)?.toInt(),
       preferredFoot: data['preferred_foot'],
       photoUrl: data['photo_url'] ?? '',
-      
       teamId: data['team_id'] ?? '',
       teamName: data['team_name'] ?? '',
       teamShieldUrl: data['team_shield_url'] ?? '',
-      
       isStaff: data['is_staff'] ?? false,
       staffRole: data['staff_role'],
       isGoalkeeper: data['is_goalkeeper'] ?? false,
       isActive: data['isActive'] ?? true,
       isSuspended: data['is_suspended'] ?? false,
-      
       goals: (data['goals'] as num?)?.toInt() ?? 0,
       assists: (data['assists'] as num?)?.toInt() ?? 0,
       yellowCards: (data['yellow_cards'] as num?)?.toInt() ?? 0,

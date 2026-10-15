@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
 import '../../viewmodels/fantasy_league_viewmodel.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../models/fantasy_league_model.dart';
 import 'fantasy_league_ranking_screen.dart';
+import '../../widgets/fantasy/league_invite_modal.dart';
 
 class FantasyLeaguesScreen extends StatefulWidget {
   const FantasyLeaguesScreen({super.key});
@@ -103,20 +103,29 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
             ElevatedButton(
               onPressed: () async {
                 if (nameController.text.trim().isEmpty) return;
-                final success = await vm.createLeague(nameController.text,
+                final leagueName = nameController.text.trim();
+                final inviteCode = await vm.createLeague(leagueName,
                     type: selectedType,
                     maxTeams: selectedType == 'knockout' ? maxTeams : null);
-                if (mounted && success) {
+                if (mounted && inviteCode != null) {
                   Navigator.pop(ctx);
 
                   AnalyticsService.logCustomScreenView('Fantasy_League_Created',
                       parameters: {
-                        'league_name': nameController.text,
+                        'league_name': leagueName,
                         'type': selectedType
                       });
 
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text("Liga criada com sucesso!")));
+                  final tempLeague = FantasyLeague(
+                    id: '',
+                    name: leagueName,
+                    inviteCode: inviteCode,
+                    ownerId: vm.userId ?? '',
+                    members: [vm.userId ?? ''],
+                    type: selectedType,
+                    maxTeams: selectedType == 'knockout' ? maxTeams : null,
+                  );
+                  LeagueInviteModal.show(context, tempLeague, isOwner: true);
                 }
               },
               child: const Text("Criar"),
@@ -137,7 +146,7 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
         content: TextField(
           controller: codeController,
           decoration: const InputDecoration(
-              labelText: "Código de Convite", hintText: "Ex: FJF-X7B9"),
+              labelText: "Código de Convite", hintText: "Ex: X7B9K2"),
           textCapitalization: TextCapitalization.characters,
         ),
         actions: [
@@ -259,8 +268,8 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (ctx, i) =>
-                          _buildPrivateLeagueCard(context, vm.myLeagues[i]),
+                      (ctx, i) => _buildPrivateLeagueCard(
+                          context, vm.myLeagues[i], currentUserId),
                       childCount: vm.myLeagues.length,
                     ),
                   ),
@@ -322,7 +331,7 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
                 builder: (ctx) => AlertDialog(
                       title: Text(league.name),
                       content: const Text(
-                          "Deseja participar desta liga patrocinada gratuitamente e concorrer aos prêmios?"),
+                          "Deseja participar desta liga patrocinada gratuitamente?"),
                       actions: [
                         TextButton(
                             onPressed: () => Navigator.pop(ctx, false),
@@ -426,8 +435,11 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
     );
   }
 
-  Widget _buildPrivateLeagueCard(BuildContext context, FantasyLeague league) {
+  Widget _buildPrivateLeagueCard(
+      BuildContext context, FantasyLeague league, String? currentUserId) {
     final primaryColor = Theme.of(context).primaryColor;
+    final isOwner = league.ownerId == currentUserId;
+
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
@@ -445,8 +457,28 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
         title: Row(
           children: [
             Expanded(
-                child: Text(league.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold))),
+              child: Text(
+                league.name,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            if (isOwner)
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  "DONO",
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.amber.shade900,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             if (league.type == 'knockout')
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -461,10 +493,60 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
               )
           ],
         ),
-        subtitle: Text(league.type == 'knockout'
-            ? "${league.members.length}/${league.maxTeams} participantes - ${league.status == 'waiting' ? 'Aguardando' : 'Em Andamento'}"
-            : "${league.members.length} participantes"),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 2),
+            Text(league.type == 'knockout'
+                ? "${league.members.length}/${league.maxTeams} participantes - ${league.status == 'waiting' ? 'Aguardando' : 'Em Andamento'}"
+                : "${league.members.length} participantes"),
+            const SizedBox(height: 6),
+            InkWell(
+              onTap: () =>
+                  LeagueInviteModal.copyCode(context, league.inviteCode),
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.vpn_key, size: 12, color: primaryColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      "Código: ${league.inviteCode}",
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                        letterSpacing: 0.5,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(Icons.copy, size: 11, color: Colors.grey.shade600),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(Icons.share, size: 20, color: primaryColor),
+              tooltip: "Convidar Amigos",
+              onPressed: () =>
+                  LeagueInviteModal.show(context, league, isOwner: isOwner),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+          ],
+        ),
         onTap: () {
           if (league.type == 'knockout') {
             Navigator.pushNamed(context, '/fantasy-knockout',
@@ -478,15 +560,6 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
               ),
             );
           }
-        },
-        onLongPress: () {
-          Clipboard.setData(ClipboardData(text: league.inviteCode));
-
-          // 🚨 Analytics: Rastreia a viralidade (O usuário está convidando amigos para a liga)
-          AnalyticsService.logShare('league_invite_code', league.id);
-
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Código ${league.inviteCode} copiado!")));
         },
       ),
     );

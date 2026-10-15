@@ -35,6 +35,23 @@ const DEFAULT_CONFIG = {
 
 };
 
+const SLOT_POSITIONS = {
+  '1': 'Goleiro',
+  '2': 'Fixo',
+  '3': 'Ala',
+  '4': 'Ala',
+  '5': 'Pivô',
+  '6': 'Técnico',
+};
+
+const BENCH_POSITIONS = {
+  '11': 'Goleiro',
+  '12': 'Fixo',
+  '13': 'Ala',
+  '15': 'Pivô',
+  '16': 'Técnico',
+};
+
 // ==================================================================
 // 🔐 CONFIGURAÇÃO mTLS E AUTENTICAÇÃO SICOOB (PRODUÇÃO)
 // ==================================================================
@@ -396,7 +413,15 @@ exports.closeRound = onCall({
 
   try {
     const configSnap = await db.collection('fantasy_config').doc('rules').get();
-    const config = configSnap.exists ? { ...DEFAULT_CONFIG, ...configSnap.data() } : DEFAULT_CONFIG;
+    const rawConfig = configSnap.exists ? configSnap.data() : {};
+    const config = { ...DEFAULT_CONFIG, ...rawConfig };
+    if (rawConfig.ptsMotm !== undefined && rawConfig.ptsManOfTheMatch === undefined) {
+      config.ptsManOfTheMatch = Number(rawConfig.ptsMotm);
+    }
+    if (rawConfig.ptsMissedFreeKick !== undefined && rawConfig.ptsDirectFreeKickMissed === undefined) {
+      config.ptsDirectFreeKickMissed = Number(rawConfig.ptsMissedFreeKick);
+    }
+    const ptsMotm = config.ptsManOfTheMatch !== undefined ? Number(config.ptsManOfTheMatch) : (config.ptsMotm !== undefined ? Number(config.ptsMotm) : 5.0);
 
     const matchesSnap = await db.collection('championships').doc(seasonId)
       .collection('matches').where('round', '==', round).get();
@@ -417,6 +442,13 @@ exports.closeRound = onCall({
       const scoreAway = data.score_away || 0;
       if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
       if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+
+      // Craque do Jogo (MOTM) pontua independentemente de stats_applied.player_stats
+      const motmPid = data.stats_applied?.man_of_the_match || data.man_of_the_match;
+      if (motmPid) {
+        const strMotm = motmPid.toString();
+        scoresMap[strMotm] = (scoresMap[strMotm] || 0) + ptsMotm;
+      }
 
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
 
@@ -442,11 +474,6 @@ exports.closeRound = onCall({
           });
         }
       });
-
-      if (data.stats_applied.man_of_the_match) {
-        const motmPid = data.stats_applied.man_of_the_match;
-        scoresMap[motmPid] = (scoresMap[motmPid] || 0) + (config.ptsManOfTheMatch || 3.0);
-      }
     });
 
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
@@ -465,7 +492,10 @@ exports.closeRound = onCall({
 
       if (!teamId) return;
 
-      if (teamCleanSheets[teamId] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
+      const hasPlayed = playersPlayedSet.has(pid.toString());
+
+      // Regra Oficial: SG só conta para atletas da posição Goleiro e Fixo confirmados na súmula (lineup_played)
+      if (hasPlayed && teamCleanSheets[teamId] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
         scoresMap[pid] = (scoresMap[pid] || 0) + config.ptsCleanSheet;
       }
 
@@ -473,8 +503,9 @@ exports.closeRound = onCall({
         teamCoaches[teamId] = pid;
       }
 
-      if (scoresMap[pid] !== undefined && p.position !== 'Técnico') {
-        const points = scoresMap[pid];
+      // Regra Oficial: Média do técnico considera a pontuação total do time dividido pelo total de atletas confirmados que jogaram em súmula (lineup_played)
+      if (hasPlayed && p.position !== 'Técnico') {
+        const points = (scoresMap[pid] !== undefined) ? scoresMap[pid] : 0.0;
         if (!teamScores[teamId]) {
           teamScores[teamId] = [];
           teamLogDetails[teamId] = [];
@@ -526,6 +557,8 @@ exports.closeRound = onCall({
       newPricesMap[pid] = Number(newPrice.toFixed(1));
       variation = Number(variation.toFixed(1));
 
+      const hasPlayed = playersPlayedSet.has(pid.toString()) || (p.position === 'Técnico' && (teamScores[p.team_id] && teamScores[p.team_id].length > 0));
+
       const updatedHistory = Array.isArray(p.history) ? p.history.filter(h => h.round !== round) : [];
       updatedHistory.push({
         round: round,
@@ -533,7 +566,7 @@ exports.closeRound = onCall({
         price_before: currentPrice,
         price_after: newPricesMap[pid],
         variation: variation,
-        played: true,
+        played: hasPlayed,
         processed_at: admin.firestore.Timestamp.now()
       });
 
@@ -578,43 +611,126 @@ exports.closeRound = onCall({
 
       let finalLineup = [...originalLineup];
       let substitutedList = [];
+      let activeCaptainId = captainId;
 
+      const lineupSlots = team.lineup_slots || {};
+      const benchSlots = team.bench_slots || {};
+
+      // Mapeia os titulares para as posições com base estritamente no SLOT onde foram escalados
+      const startersByPos = {
+        'Goleiro': [],
+        'Fixo': [],
+        'Ala': [],
+        'Pivô': [],
+        'Técnico': []
+      };
+
+      const slottedStarters = new Set();
+      Object.entries(lineupSlots).forEach(([slot, pid]) => {
+        const pos = SLOT_POSITIONS[slot];
+        if (pos && pid && originalLineup.includes(pid)) {
+          startersByPos[pos].push(pid);
+          slottedStarters.add(pid);
+        }
+      });
+
+      // Fallback para times legados que não possuem lineup_slots gravado
+      originalLineup.forEach(pid => {
+        if (!slottedStarters.has(pid) && playersInfo[pid]) {
+          const pos = playersInfo[pid].position;
+          if (startersByPos[pos]) {
+            startersByPos[pos].push(pid);
+          }
+        }
+      });
+
+      // Mapeia os reservas para as posições com base estritamente no SLOT do banco onde foram colocados
       const benchByPos = {};
+      const slottedBench = new Set();
+      Object.entries(benchSlots).forEach(([slot, bId]) => {
+        const pos = BENCH_POSITIONS[slot];
+        if (pos && bId && benchIds.includes(bId)) {
+          benchByPos[pos] = bId;
+          slottedBench.add(bId);
+        }
+      });
+
+      // Fallback para banco de times legados que não possuem bench_slots
       benchIds.forEach(bId => {
-        if (playersInfo[bId]) benchByPos[playersInfo[bId].position] = bId;
+        if (!slottedBench.has(bId) && playersInfo[bId]) {
+          const pos = playersInfo[bId].position;
+          if (!benchByPos[pos]) {
+            benchByPos[pos] = bId;
+          }
+        }
       });
 
       const positions = ['Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
 
       positions.forEach(pos => {
-        const startersOfPos = originalLineup.filter(pid => playersInfo[pid] && playersInfo[pid].position === pos);
+        const startersOfPos = startersByPos[pos] || [];
         const benchId = benchByPos[pos];
 
         if (startersOfPos.length && benchId && playersPlayedSet.has(benchId)) {
           const allPlayed = startersOfPos.every(pid => playersPlayedSet.has(pid));
 
           if (!allPlayed) {
-            const missedStarter = startersOfPos.find(pid => !playersPlayedSet.has(pid));
+            // Um ou mais titulares da posição não jogaram
+            const missedStarters = startersOfPos.filter(pid => !playersPlayedSet.has(pid));
+
+            // Se houver mais de um que não jogou (ex: duas alas), prioriza:
+            // 1) Se for o capitão, substitui o capitão primeiro para passar a braçadeira pro reserva que jogou
+            // 2) Maior preço de mercado
+            // 3) Ordem alfabética
+            missedStarters.sort((a, b) => {
+              if (a === activeCaptainId) return -1;
+              if (b === activeCaptainId) return 1;
+              const priceA = playersInfo[a]?.current_price || 0;
+              const priceB = playersInfo[b]?.current_price || 0;
+              return priceB - priceA;
+            });
+
+            const missedStarter = missedStarters[0];
             if (missedStarter) {
               finalLineup = finalLineup.filter(p => p !== missedStarter);
               finalLineup.push(benchId);
-              substitutedList.push({ out: missedStarter, in: benchId, type: 'normal' });
+              substitutedList.push({ out: missedStarter, in: benchId, type: 'normal', slot_position: pos });
+
+              // Repassa faixa de capitão se o titular ausente era o capitão
+              if (missedStarter === activeCaptainId) {
+                activeCaptainId = benchId;
+              }
             }
           } else {
+            // Todos jogaram. Avalia Reserva de Luxo.
             if (luxuryReserveId === benchId) {
               const benchScore = scoresMap[benchId] || 0;
+
+              // Reserva de luxo só entra se tiver pontuação estritamente superior ao pior titular daquela posição
               let worstStarter = startersOfPos[0];
               let worstScore = scoresMap[worstStarter] || 0;
 
               startersOfPos.forEach(pid => {
                 const s = scoresMap[pid] || 0;
-                if (s < worstScore) { worstScore = s; worstStarter = pid; }
+                if (s < worstScore) {
+                  worstScore = s;
+                  worstStarter = pid;
+                } else if (s === worstScore) {
+                  // Em empate de pior pontuação, prioriza substituir quem NÃO é capitão
+                  if (worstStarter === activeCaptainId && pid !== activeCaptainId) {
+                    worstStarter = pid;
+                  }
+                }
               });
 
               if (benchScore > worstScore) {
                 finalLineup = finalLineup.filter(p => p !== worstStarter);
                 finalLineup.push(benchId);
-                substitutedList.push({ out: worstStarter, in: benchId, type: 'luxury' });
+                substitutedList.push({ out: worstStarter, in: benchId, type: 'luxury', slot_position: pos });
+
+                if (worstStarter === activeCaptainId) {
+                  activeCaptainId = benchId;
+                }
               }
             }
           }
@@ -626,7 +742,7 @@ exports.closeRound = onCall({
 
       finalLineup.forEach(pid => {
         let pScore = scoresMap[pid] || 0;
-        if (pid === captainId) pScore *= 2;
+        if (pid === activeCaptainId) pScore *= 2;
         roundPoints += pScore;
       });
 
@@ -649,7 +765,8 @@ exports.closeRound = onCall({
         points: roundPoints,
         patrimony: totalPatrimony,
         processed_at: admin.firestore.Timestamp.now(),
-        captain_id: captainId,
+        captain_id: activeCaptainId,
+        original_captain_id: captainId,
         lineup_snapshot: originalLineup,
         final_lineup: finalLineup,
         substitutions: substitutedList
@@ -676,13 +793,17 @@ exports.closeRound = onCall({
       return { pid, count: playerPickedCount[pid], ...playersInfo[pid] };
     });
     mostPickedArr.sort((a, b) => b.count - a.count);
-    const top12Picked = mostPickedArr.slice(0, 12).map(p => ({
+    const topPickedFormatted = mostPickedArr.slice(0, 30).map(p => ({
       player_id: p.pid,
       name: p.name || 'Sem nome',
       position: p.position || 'Desconhecido',
-      photo_url: p.photo_url || '',
+      team_name: p.team_name || '',
       team_shield_url: p.team_shield_url || '',
+      photo_url: p.photo_url || '',
+      current_price: p.current_price || 0,
+      selections: p.count,
       count: p.count,
+      score: scoresMap[p.pid] || 0,
       round_score: scoresMap[p.pid] || 0
     }));
 
@@ -705,6 +826,7 @@ exports.closeRound = onCall({
             position: pos,
             photo_url: p.info.photo_url || '',
             team_shield_url: p.info.team_shield_url || '',
+            score: p.score,
             round_score: p.score
           });
         });
@@ -716,13 +838,20 @@ exports.closeRound = onCall({
     pushTop('Pivô', 1);
     pushTop('Técnico', 1);
 
-    const roundStatsRef = db.collection('fantasy_stats').doc(`round_${round}`);
-    batchHandler.set(roundStatsRef, {
+    const roundStatsPayload = {
       round: round,
-      most_picked: top12Picked,
+      most_selected: topPickedFormatted,
+      most_picked: topPickedFormatted,
       dream_team: dreamTeam,
       updated_at: admin.firestore.Timestamp.now()
-    });
+    };
+
+    const roundStatsRef = db.collection('fantasy_stats').doc(`round_${round}`);
+    batchHandler.set(roundStatsRef, roundStatsPayload, { merge: true });
+
+    const globalStatsRef = db.collection('fantasy_stats').doc('global_round_stats');
+    batchHandler.set(globalStatsRef, roundStatsPayload, { merge: true });
+
 
     // ==========================================
     // 4. LIGAS MATA-MATA (Knockout Processing)
@@ -856,8 +985,19 @@ exports.updateLiveScouts = onDocumentWritten({
     const oldAway = previousData.score_away;
     const newHome = matchData.score_home;
     const newAway = matchData.score_away;
+    const oldMotm = (previousData.stats_applied?.man_of_the_match || previousData.man_of_the_match || '').toString();
+    const newMotm = (matchData.stats_applied?.man_of_the_match || matchData.man_of_the_match || '').toString();
+    const oldStatus = previousData.status || '';
+    const newStatus = matchData.status || '';
+    const oldLineup = JSON.stringify(previousData.lineup_played || []);
+    const newLineup = JSON.stringify(matchData.lineup_played || []);
 
-    if (oldStats === newStats && oldHome === newHome && oldAway === newAway) {
+    if (oldStats === newStats &&
+        oldHome === newHome &&
+        oldAway === newAway &&
+        oldMotm === newMotm &&
+        oldStatus === newStatus &&
+        oldLineup === newLineup) {
       return;
     }
   }
@@ -869,7 +1009,15 @@ exports.updateLiveScouts = onDocumentWritten({
     let scoresMap = liveDocSnap.exists ? (liveDocSnap.data().scores || {}) : {};
 
     const configSnap = await db.collection('fantasy_config').doc('rules').get();
-    const config = configSnap.exists ? { ...DEFAULT_CONFIG, ...configSnap.data() } : DEFAULT_CONFIG;
+    const rawConfig = configSnap.exists ? configSnap.data() : {};
+    const config = { ...DEFAULT_CONFIG, ...rawConfig };
+    if (rawConfig.ptsMotm !== undefined && rawConfig.ptsManOfTheMatch === undefined) {
+      config.ptsManOfTheMatch = Number(rawConfig.ptsMotm);
+    }
+    if (rawConfig.ptsMissedFreeKick !== undefined && rawConfig.ptsDirectFreeKickMissed === undefined) {
+      config.ptsDirectFreeKickMissed = Number(rawConfig.ptsMissedFreeKick);
+    }
+    const ptsMotm = config.ptsManOfTheMatch !== undefined ? Number(config.ptsManOfTheMatch) : (config.ptsMotm !== undefined ? Number(config.ptsMotm) : 5.0);
 
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
     const playersInfo = {};
@@ -891,6 +1039,7 @@ exports.updateLiveScouts = onDocumentWritten({
     });
 
     const teamCleanSheets = {};
+    const playersPlayedSet = new Set();
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
@@ -903,18 +1052,21 @@ exports.updateLiveScouts = onDocumentWritten({
 
         const lineups = data.lineup_played || [];
         lineups.forEach(pid => {
-          if (!scoresMap[pid]) {
-            scoresMap[pid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
+          const strPid = pid.toString();
+          playersPlayedSet.add(strPid);
+          if (!scoresMap[strPid]) {
+            scoresMap[strPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
           }
         });
       }
 
-      if (data.stats_applied && data.stats_applied.man_of_the_match) {
-        const motmPid = data.stats_applied.man_of_the_match;
-        if (!scoresMap[motmPid]) {
-          scoresMap[motmPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
+      const motmPid = data.stats_applied?.man_of_the_match || data.man_of_the_match;
+      if (motmPid) {
+        const strMotm = motmPid.toString();
+        if (!scoresMap[strMotm]) {
+          scoresMap[strMotm] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
         }
-        scoresMap[motmPid].motm += 1;
+        scoresMap[strMotm].motm += 1;
       }
 
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
@@ -960,15 +1112,22 @@ exports.updateLiveScouts = onDocumentWritten({
       total += (scoresMap[pid].own_goals || 0) * config.ptsOwnGoal;
       total += (scoresMap[pid].direct_free_kicks_missed || 0) * config.ptsDirectFreeKickMissed;
       total += (scoresMap[pid].difficult_saves || 0) * config.ptsDifficultSave;
-      total += (scoresMap[pid].motm || 0) * (config.ptsManOfTheMatch || 3.0);
+      total += (scoresMap[pid].motm || 0) * ptsMotm;
 
       const p = playersInfo[pid];
+      const hasPlayed = playersPlayedSet.has(pid.toString());
+
       if (p && p.team_id) {
-        if (teamCleanSheets[p.team_id] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
+        // Regra Oficial: SG só conta para atletas da posição Goleiro e Fixo confirmados na súmula (lineup_played)
+        if (hasPlayed && teamCleanSheets[p.team_id] && (p.position === 'Goleiro' || p.position === 'Fixo')) {
           scoresMap[pid].clean_sheets = 1;
           total += config.ptsCleanSheet;
+        } else {
+          scoresMap[pid].clean_sheets = 0;
         }
-        if (p.position !== 'Técnico') {
+
+        // Regra Oficial: Média do técnico considera apenas atletas confirmados que jogaram em súmula (lineup_played)
+        if (hasPlayed && p.position !== 'Técnico') {
           if (!teamScores[p.team_id]) teamScores[p.team_id] = [];
           teamScores[p.team_id].push(total);
         }
@@ -979,11 +1138,15 @@ exports.updateLiveScouts = onDocumentWritten({
 
     Object.entries(teamCoaches).forEach(([tId, coachPid]) => {
       const scores = teamScores[tId] || [];
+      if (!scoresMap[coachPid]) {
+        scoresMap[coachPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
+      }
       if (scores.length > 0) {
         const total = scores.reduce((a, b) => a + b, 0);
         const avg = total / scores.length;
-        if (!scoresMap[coachPid]) scoresMap[coachPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, motm: 0 };
         scoresMap[coachPid].totalScore = Number(avg.toFixed(2));
+      } else {
+        scoresMap[coachPid].totalScore = 0;
       }
     });
 
@@ -1070,8 +1233,108 @@ exports.autoCloseMarket = onSchedule({
 });
 
 // ==================================================================
-// 📊 ESTATÍSTICAS DA RODADA (FinOps - Mercado Fechado)
+// 📊 ESTATÍSTICAS DA RODADA (FinOps - Mercado Fechado / Mais Escalados)
 // ==================================================================
+
+async function generateMarketStatsInternal(targetRound = null) {
+  let round = targetRound;
+  if (!round) {
+    const statusSnap = await db.collection('fantasy_config').doc('status').get();
+    round = statusSnap.data()?.current_round || 1;
+  }
+
+  const teamsSnap = await db.collection('fantasy_teams').get();
+
+  const playerCounts = {};
+  const captainCounts = {};
+  let totalTeamsWithLineup = 0;
+
+  teamsSnap.forEach(doc => {
+    const team = doc.data();
+    const lineup = team.lineup_player_ids || [];
+    const captainId = team.captain_id;
+
+    if (lineup.length > 0) totalTeamsWithLineup++;
+
+    lineup.forEach(pid => {
+      if (pid) {
+        playerCounts[pid] = (playerCounts[pid] || 0) + 1;
+      }
+    });
+
+    if (captainId) {
+      captainCounts[captainId] = (captainCounts[captainId] || 0) + 1;
+    }
+  });
+
+  const playersInfo = {};
+  const marketSnap = await db.collection('fantasy_market_players').get();
+  marketSnap.forEach(doc => {
+    playersInfo[doc.id] = doc.data();
+  });
+
+  const mostSelected = Object.keys(playerCounts).map(pid => {
+    const pInfo = playersInfo[pid] || {};
+    return {
+      player_id: pid,
+      name: pInfo.name || 'Desconhecido',
+      position: pInfo.position || 'Desconhecido',
+      team_name: pInfo.team_name || '',
+      team_shield_url: pInfo.team_shield_url || '',
+      photo_url: pInfo.photo_url || '',
+      current_price: pInfo.current_price || 0,
+      selections: playerCounts[pid] || 0,
+      count: playerCounts[pid] || 0,
+      captain_selections: captainCounts[pid] || 0
+    };
+  });
+
+  mostSelected.sort((a, b) => b.selections - a.selections);
+
+  let mostSelectedCaptain = null;
+  let mostSelectedCaptainCount = 0;
+
+  Object.entries(captainCounts).forEach(([pid, count]) => {
+    if (count > mostSelectedCaptainCount) {
+      mostSelectedCaptain = pid;
+      mostSelectedCaptainCount = count;
+    }
+  });
+
+  const top30 = mostSelected.slice(0, 30);
+
+  const payload = {
+    round: round,
+    most_selected: top30,
+    most_picked: top30,
+    most_selected_player_id: top30[0]?.player_id || null,
+    most_selected_player_count: top30[0]?.selections || 0,
+    most_selected_captain_id: mostSelectedCaptain,
+    most_selected_captain_count: mostSelectedCaptainCount,
+    total_teams: totalTeamsWithLineup,
+    updated_at: admin.firestore.FieldValue.serverTimestamp()
+  };
+
+  // 1. Atualiza documento global consumido diretamente pela Central de Scouts (streamGlobalScouts)
+  await db.collection('fantasy_stats').doc('global_round_stats').set(payload, { merge: true });
+
+  // 2. Grava histórico na coleção da rodada
+  await db.collection('fantasy_stats').doc(`round_${round}`).set(payload, { merge: true });
+
+  // 3. Grava documento para compatibilidade com Home
+  await db.collection('fantasy_config').doc('market_stats').set({
+    round: round,
+    most_selected_player_id: payload.most_selected_player_id,
+    most_selected_player_count: payload.most_selected_player_count,
+    most_selected_captain_id: payload.most_selected_captain_id,
+    most_selected_captain_count: payload.most_selected_captain_count,
+    total_teams: totalTeamsWithLineup,
+    updated_at: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  console.log(`✅ generateMarketStatsInternal: Geradas estatísticas para R${round} (${top30.length} atletas, ${totalTeamsWithLineup} times).`);
+  return payload;
+}
 
 exports.processMarketClosed = onDocumentWritten({
   document: "fantasy_config/status",
@@ -1085,58 +1348,26 @@ exports.processMarketClosed = onDocumentWritten({
     const currentRound = after.current_round || 1;
 
     try {
-      const teamsSnap = await db.collection('fantasy_teams').get();
-
-      const playerCounts = {};
-      const captainCounts = {};
-
-      teamsSnap.forEach(doc => {
-        const team = doc.data();
-        const lineup = team.lineup_player_ids || [];
-        const captainId = team.captain_id;
-
-        lineup.forEach(pid => {
-          playerCounts[pid] = (playerCounts[pid] || 0) + 1;
-        });
-
-        if (captainId) {
-          captainCounts[captainId] = (captainCounts[captainId] || 0) + 1;
-        }
-      });
-
-      let mostSelectedPlayer = null;
-      let mostSelectedPlayerCount = 0;
-
-      Object.entries(playerCounts).forEach(([pid, count]) => {
-        if (count > mostSelectedPlayerCount) {
-          mostSelectedPlayer = pid;
-          mostSelectedPlayerCount = count;
-        }
-      });
-
-      let mostSelectedCaptain = null;
-      let mostSelectedCaptainCount = 0;
-
-      Object.entries(captainCounts).forEach(([pid, count]) => {
-        if (count > mostSelectedCaptainCount) {
-          mostSelectedCaptain = pid;
-          mostSelectedCaptainCount = count;
-        }
-      });
-
-      await db.collection('fantasy_config').doc('market_stats').set({
-        round: currentRound,
-        most_selected_player_id: mostSelectedPlayer,
-        most_selected_player_count: mostSelectedPlayerCount,
-        most_selected_captain_id: mostSelectedCaptain,
-        most_selected_captain_count: mostSelectedCaptainCount,
-        updated_at: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-
+      await generateMarketStatsInternal(currentRound);
       console.log(`✅ Estatísticas da rodada ${currentRound} geradas com sucesso!`);
     } catch (error) {
       console.error("🔥 Erro ao processar estatísticas do mercado:", error);
     }
+  }
+});
+
+exports.generateGlobalMarketStats = onCall({ cors: true, enforceAppCheck: false }, async (request) => {
+  try {
+    const payload = await generateMarketStatsInternal();
+    return {
+      success: true,
+      message: "Estatísticas geradas com sucesso!",
+      count: payload.most_selected.length,
+      round: payload.round
+    };
+  } catch (error) {
+    console.error("🔥 Erro ao gerar estatísticas sob demanda:", error);
+    throw new HttpsError('internal', `Falha ao gerar estatísticas: ${error.message}`);
   }
 });
 
@@ -1913,3 +2144,10 @@ exports.updateTeamStatsOnMatchUpdate = onDocumentWritten({
   await batch.commit();
   console.log(`✅ FINOPS: Estatísticas do time atualizadas via Cloud Functions para o jogo ${event.params.matchId}`);
 });
+
+// ==================================================================
+// 🔍 MÓDULO DE AUDITORIA E VALIDAÇÃO DE SCOUTS (ADMIN ONLY)
+// ==================================================================
+const { auditFantasyRound, syncAuditToLive } = require("./fantasy_audit");
+exports.auditFantasyRound = auditFantasyRound;
+exports.syncAuditToLive = syncAuditToLive;

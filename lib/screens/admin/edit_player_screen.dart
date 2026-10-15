@@ -16,12 +16,14 @@ import '../../viewmodels/edit_player_viewmodel.dart';
 class EditPlayerScreen extends StatelessWidget {
   final String teamId;
   final String teamName;
+  final String? teamShieldUrl;
   final Player? player;
 
   const EditPlayerScreen({
     super.key,
     required this.teamId,
     required this.teamName,
+    this.teamShieldUrl,
     this.player,
   });
 
@@ -35,6 +37,7 @@ class EditPlayerScreen extends StatelessWidget {
       child: _EditPlayerScreenContent(
         teamId: teamId,
         teamName: teamName,
+        teamShieldUrl: teamShieldUrl,
         player: player,
       ),
     );
@@ -44,9 +47,15 @@ class EditPlayerScreen extends StatelessWidget {
 class _EditPlayerScreenContent extends StatefulWidget {
   final String teamId;
   final String teamName;
+  final String? teamShieldUrl;
   final Player? player;
 
-  const _EditPlayerScreenContent({required this.teamId, required this.teamName, this.player});
+  const _EditPlayerScreenContent({
+    required this.teamId,
+    required this.teamName,
+    this.teamShieldUrl,
+    this.player,
+  });
 
   @override
   State<_EditPlayerScreenContent> createState() => _EditPlayerScreenContentState();
@@ -110,12 +119,16 @@ class _EditPlayerScreenContentState extends State<_EditPlayerScreenContent> {
       } catch (_) {}
     }
 
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+    final champService = Provider.of<ChampionshipService>(context, listen: false);
+    final seasonId = champService.currentSeasonId;
+    final teamObj = champService.teams.where((t) => t.id == widget.teamId).firstOrNull;
+    final resolvedShieldUrl = widget.teamShieldUrl ?? teamObj?.shieldUrl;
 
     final result = await vm.savePlayer(
       seasonId: seasonId,
       teamId: widget.teamId,
       teamName: widget.teamName,
+      teamShieldUrl: resolvedShieldUrl,
       name: _nameController.text,
       jerseyNumber: int.tryParse(_jerseyNumberController.text),
       dobTimestamp: dobTimestamp,

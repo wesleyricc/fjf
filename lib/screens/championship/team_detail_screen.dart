@@ -346,7 +346,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                             onPressed: () async {
                               await Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => EditPlayerScreen(teamId: widget.team.id, teamName: widget.team.name, player: null),
+                                  builder: (_) => EditPlayerScreen(
+                                    teamId: widget.team.id,
+                                    teamName: widget.team.name,
+                                    teamShieldUrl: widget.team.shieldUrl,
+                                    player: null,
+                                  ),
                                 ),
                               );
                               if (context.mounted) service.fetchRoster(widget.team.id, force: true);

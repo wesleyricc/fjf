@@ -40,49 +40,59 @@ class FantasyBottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool shouldShowSponsor =
-        showSponsor && currentRoute != '/fantasy-lineup';
+        showSponsor && currentRoute != '/fantasy-lineup' && currentRoute != '/fantasy-market';
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (shouldShowSponsor) const StyledSponsorBanner(location: 'fantasy'),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildBottomNavItem(context, Icons.home, "Início",
-                      isActive: currentRoute == '/fantasy-home',
-                      onTap: () => _navigate(context, '/fantasy-home')),
-                  _buildBottomNavItem(context, Icons.shield, "Escalar",
-                      isActive: currentRoute == '/fantasy-lineup',
-                      onTap: () => _navigate(context, '/fantasy-lineup')),
-                  _buildBottomNavItem(context, Icons.shopping_cart, "Mercado",
-                      isActive: currentRoute == '/fantasy-market',
-                      onTap: () => _navigate(context, '/fantasy-market')),
-                  _buildBottomNavItem(context, Icons.groups, "Ranking",
-                      isActive: currentRoute == '/fantasy-rankings',
-                      onTap: () => _navigate(context, '/fantasy-rankings')),
-                  _buildBottomNavItem(context, Icons.menu, "Menu",
-                      onTap: () => _showMenuBottomSheet(context)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxHeight < 40 ||
+            (MediaQuery.maybeSizeOf(context)?.height ?? 0) < 60) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (shouldShowSponsor) const StyledSponsorBanner(location: 'fantasy'),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
+                  ),
                 ],
               ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildBottomNavItem(context, Icons.home, "Início",
+                          isActive: currentRoute == '/fantasy-home',
+                          onTap: () => _navigate(context, '/fantasy-home')),
+                      _buildBottomNavItem(context, Icons.shield, "Escalar",
+                          isActive: currentRoute == '/fantasy-lineup',
+                          onTap: () => _navigate(context, '/fantasy-lineup')),
+                      _buildBottomNavItem(context, Icons.shopping_cart, "Mercado",
+                          isActive: currentRoute == '/fantasy-market',
+                          onTap: () => _navigate(context, '/fantasy-market')),
+                      _buildBottomNavItem(context, Icons.groups, "Ranking",
+                          isActive: currentRoute == '/fantasy-rankings',
+                          onTap: () => _navigate(context, '/fantasy-rankings')),
+                      _buildBottomNavItem(context, Icons.menu, "Menu",
+                          onTap: () => _showMenuBottomSheet(context)),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -225,6 +235,8 @@ class FantasyBottomNavBar extends StatelessWidget {
                   '/fantasy-leagues', Colors.lightGreen),
               _buildGridItem(context, Icons.analytics, "Scouts",
                   '/fantasy-scouts', Colors.indigoAccent),
+              _buildGridItem(context, Icons.fact_check_outlined, "Revisão",
+                  '/fantasy-scout-review', Colors.deepPurpleAccent),
               _buildGridItem(context, Icons.history, "Histórico",
                   '/fantasy-history', Colors.teal),
               _buildGridItem(context, Icons.menu_book, "Regras",

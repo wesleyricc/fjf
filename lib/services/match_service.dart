@@ -82,7 +82,14 @@ class MatchService {
       final homeId = matchData['team_home_id'];
       final awayId = matchData['team_away_id'];
       final String status = matchData['status'] ?? 'pending';
-      final String matchLabel = "Rodada ${matchData['round']} - ${matchData['team_home_name']} x ${matchData['team_away_name']}";
+      final String teamHomeName = matchData['team_home_name'] ?? '';
+      final String teamAwayName = matchData['team_away_name'] ?? '';
+      final String teamHomeShield = matchData['team_home_shield'] ?? '';
+      final String teamAwayShield = matchData['team_away_shield'] ?? '';
+      final String matchLabel = "Rodada ${matchData['round']} - $teamHomeName x $teamAwayName";
+
+      String getTeamName(String tid) => tid == homeId ? teamHomeName : (tid == awayId ? teamAwayName : '');
+      String getTeamShield(String tid) => tid == homeId ? teamHomeShield : (tid == awayId ? teamAwayShield : '');
 
       await _firestore.runTransaction((transaction) async {
         for (var event in events) {
@@ -107,7 +114,12 @@ class MatchService {
             if (status == 'finished' && (yellows[pid] ?? 0) >= AdminService.suspensionYellowCards) {
                _disciplinaryService.recordDisciplinaryLog(
                  transaction, seasonId, matchId, pid, 
-                 {'name': event.playerName, 'team_id': event.teamId}, 
+                 {
+                   'name': event.playerName, 
+                   'team_id': event.teamId,
+                   'team_name': getTeamName(event.teamId),
+                   'team_shield_url': getTeamShield(event.teamId),
+                 }, 
                  matchLabel, "Acúmulo de ${AdminService.suspensionYellowCards} CA"
                );
             }
@@ -120,7 +132,12 @@ class MatchService {
             if (status == 'finished') {
               _disciplinaryService.recordDisciplinaryLog(
                 transaction, seasonId, matchId, pid, 
-                {'name': event.playerName, 'team_id': event.teamId}, 
+                {
+                  'name': event.playerName, 
+                  'team_id': event.teamId,
+                  'team_name': getTeamName(event.teamId),
+                  'team_shield_url': getTeamShield(event.teamId),
+                }, 
                 matchLabel, "Cartão Vermelho (Expulsão)"
               );
             }
@@ -214,6 +231,13 @@ class MatchService {
         if (!playerTotals.containsKey(pid.toString())) playerTotals[pid.toString()] = {};
         playerTotals[pid.toString()]!['matches_played'] = (playerTotals[pid.toString()]!['matches_played'] ?? 0) + 1;
       }
+
+      // 🚨 CRAQUE DO JOGO (MOTM): Computa premiação do melhor da partida
+      final String? motmPid = (statsApplied?['man_of_the_match'] ?? data['man_of_the_match'])?.toString();
+      if (motmPid != null && motmPid.isNotEmpty) {
+        if (!playerTotals.containsKey(motmPid)) playerTotals[motmPid] = {};
+        playerTotals[motmPid]!['motm'] = (playerTotals[motmPid]!['motm'] ?? 0) + 1;
+      }
       
       if (statsApplied != null && statsApplied['player_stats'] != null) {
         final pStats = statsApplied['player_stats'] as Map<String, dynamic>;
@@ -250,6 +274,35 @@ class MatchService {
         
     Set<String> suspendedPlayerIds = activeSuspensionsSnap.docs.map((d) => d['playerId'] as String).toSet();
 
+    // 🚨 SELF-HEAL: Atualiza dados enriquecidos (foto e escudo) no disciplinary_log se faltantes
+    final Map<String, Map<String, dynamic>> playerStatsMap = {
+      for (var d in playersQuery.docs) d.id: d.data() as Map<String, dynamic>
+    };
+
+    for (var suspDoc in activeSuspensionsSnap.docs) {
+      final sData = suspDoc.data();
+      final String sPid = sData['playerId'] as String? ?? '';
+      if (playerStatsMap.containsKey(sPid)) {
+        final pData = playerStatsMap[sPid]!;
+        final String photo = pData['photo_url'] as String? ?? '';
+        final String shield = pData['team_shield_url'] as String? ?? '';
+        final String tName = pData['team_name'] as String? ?? '';
+
+        final String currentPhoto = sData['playerPhotoUrl'] as String? ?? '';
+        final String currentShield = sData['teamLogoUrl'] as String? ?? '';
+        final String currentTeam = sData['teamName'] as String? ?? '';
+
+        final Map<String, dynamic> suspUpdates = {};
+        if (currentPhoto.isEmpty && photo.isNotEmpty) suspUpdates['playerPhotoUrl'] = photo;
+        if (currentShield.isEmpty && shield.isNotEmpty) suspUpdates['teamLogoUrl'] = shield;
+        if (currentTeam.isEmpty && tName.isNotEmpty) suspUpdates['teamName'] = tName;
+
+        if (suspUpdates.isNotEmpty) {
+          batch.update(suspDoc.reference, suspUpdates);
+        }
+      }
+    }
+
     int writesSaved = 0;
 
     // 🚨 DIRTY CHECK DOS JOGADORES: O segredo da poupança
@@ -266,6 +319,7 @@ class MatchService {
       final int newMatchesPlayed = stats['matches_played'] ?? 0;
       final int newOwnGoals = stats['own_goals'] ?? 0;
       final int newDirectFreeKicksMissed = stats['direct_free_kicks_missed'] ?? 0;
+      final int newMotm = stats['motm'] ?? 0;
 
       // Obtém os dados que estão atualmente na base de dados
       final currentData = pDoc.data() as Map<String, dynamic>;
@@ -279,7 +333,8 @@ class MatchService {
           currentData['is_suspended'] != newIsSuspended ||
           currentData['matches_played'] != newMatchesPlayed ||
           currentData['own_goals'] != newOwnGoals ||
-          currentData['direct_free_kicks_missed'] != newDirectFreeKicksMissed) {
+          currentData['direct_free_kicks_missed'] != newDirectFreeKicksMissed ||
+          ((currentData['man_of_the_match_awards'] as num?)?.toInt() ?? 0) != newMotm) {
           
         batch.update(pDoc.reference, {
           'goals': newGoals,
@@ -293,6 +348,7 @@ class MatchService {
           'matches_played': newMatchesPlayed,
           'own_goals': newOwnGoals,
           'direct_free_kicks_missed': newDirectFreeKicksMissed,
+          'man_of_the_match_awards': newMotm,
         });
       } else {
         writesSaved++;

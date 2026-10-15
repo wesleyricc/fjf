@@ -88,91 +88,205 @@ class _RankingList extends StatefulWidget {
   State<_RankingList> createState() => _RankingListState();
 }
 
-class _RankingListState extends State<_RankingList> {
+class _RankingListState extends State<_RankingList>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   int _currentLimit = 20;
+  List<FantasyTeam>? _teams;
+  bool _isLoadingInitial = true;
+  bool _isLoadingMore = false;
+  bool _hasError = false;
+  bool _hasMore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRanking(initial: true);
+  }
+
+  Future<void> _loadRanking(
+      {bool initial = false, bool forceRefresh = false}) async {
+    if (initial && !_isLoadingInitial) {
+      setState(() {
+        _isLoadingInitial = true;
+        _hasError = false;
+      });
+    }
+
+    try {
+      final fantasyService =
+          Provider.of<FantasyService>(context, listen: false);
+      final teams = await fantasyService.getRanking(
+        isGlobal: widget.isGlobal,
+        limit: _currentLimit,
+        forceRefresh: forceRefresh,
+      );
+
+      if (mounted) {
+        setState(() {
+          _teams = teams;
+          _isLoadingInitial = false;
+          _hasError = false;
+          _hasMore = teams.length >= _currentLimit;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingInitial = false;
+          if (_teams == null) {
+            _hasError = true;
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || !_hasMore) return;
+
+    final nextLimit = _currentLimit + 20;
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final fantasyService =
+          Provider.of<FantasyService>(context, listen: false);
+      final previousCount = _teams?.length ?? 0;
+      final teams = await fantasyService.getRanking(
+        isGlobal: widget.isGlobal,
+        limit: nextLimit,
+      );
+
+      if (mounted) {
+        if (teams.isEmpty && previousCount > 0) {
+          setState(() {
+            _isLoadingMore = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  "Não foi possível carregar mais times. Tente novamente."),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          return;
+        }
+
+        setState(() {
+          _currentLimit = nextLimit;
+          _teams = teams;
+          _isLoadingMore = false;
+          _hasMore = teams.length >= nextLimit && teams.length > previousCount;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text("Não foi possível carregar mais times. Tente novamente."),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    await _loadRanking(forceRefresh: true);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final fantasyService = Provider.of<FantasyService>(context, listen: false);
+    super.build(context);
+
+    // 1. LOADING INICIAL
+    if (_isLoadingInitial) {
+      return ListView.builder(
+        padding: const EdgeInsets.all(10),
+        itemCount: 8,
+        itemBuilder: (_, __) => _buildSkeletonItem(),
+      );
+    }
+
+    // 2. ERRO OFFLINE
+    if (_hasError && (_teams == null || _teams!.isEmpty)) {
+      return CustomEmptyState.offline(
+        onRetry: () => _loadRanking(initial: true),
+      );
+    }
+
+    // 3. EMPTY STATE
+    if (_teams == null || _teams!.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: const Center(
+                child: CustomEmptyState(
+                  icon: Icons.emoji_events_outlined,
+                  title: "Sem Classificação",
+                  message: "Nenhum time pontuou nesta liga ainda.",
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final teams = _teams!;
     final authService = Provider.of<FantasyAuthService>(context, listen: false);
     final currentUserId = authService.user?.uid;
 
+    // 4. LISTA REAL
     return RefreshIndicator(
-      onRefresh: () async {
-        await fantasyService.getRanking(
-            isGlobal: widget.isGlobal,
-            limit: _currentLimit,
-            forceRefresh: true);
-        setState(() {});
-      },
-      child: FutureBuilder<List<FantasyTeam>>(
-        future: fantasyService.getRanking(
-            isGlobal: widget.isGlobal, limit: _currentLimit),
-        builder: (context, snapshot) {
-          // 1. ESTADO OFFLINE/ERRO
-          if (snapshot.hasError) {
-            return CustomEmptyState.offline(
-              onRetry: () => setState(() {}),
+      onRefresh: _handleRefresh,
+      child: ListView.builder(
+        key: PageStorageKey<String>('ranking_list_${widget.isGlobal}'),
+        itemCount: teams.length + (_hasMore ? 1 : 0),
+        padding: const EdgeInsets.only(bottom: 20, top: 10),
+        itemBuilder: (ctx, index) {
+          if (index == teams.length) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(
+                child: OutlinedButton.icon(
+                  onPressed: _isLoadingMore ? null : _loadMore,
+                  icon: _isLoadingMore
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.expand_more),
+                  label: Text(_isLoadingMore ? "Carregando..." : "Ver Mais"),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).primaryColor,
+                    side: BorderSide(color: Theme.of(context).primaryColor),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+              ),
             );
           }
 
-          // 2. LOADING
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return ListView.builder(
-              padding: const EdgeInsets.all(10),
-              itemCount: 8,
-              itemBuilder: (_, __) => _buildSkeletonItem(),
-            );
-          }
+          final team = teams[index];
+          final int rank = index + 1;
+          final bool isMe = team.userId == currentUserId;
 
-          // 3. EMPTY STATE
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const CustomEmptyState(
-              icon: Icons.emoji_events_outlined,
-              title: "Sem Classificação",
-              message: "Nenhum time pontuou nesta liga ainda.",
-            );
-          }
-
-          final teams = snapshot.data!;
-
-          // 4. LISTA REAL
-          return ListView.builder(
-            itemCount: teams.length + 1,
-            padding: const EdgeInsets.only(bottom: 20, top: 10),
-            itemBuilder: (ctx, index) {
-              if (index == teams.length) {
-                if (teams.length >= _currentLimit) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    child: Center(
-                      child: OutlinedButton.icon(
-                        onPressed: () => setState(() => _currentLimit += 20),
-                        icon: const Icon(Icons.expand_more),
-                        label: const Text("Ver Mais"),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Theme.of(context).primaryColor,
-                          side:
-                              BorderSide(color: Theme.of(context).primaryColor),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20)),
-                        ),
-                      ),
-                    ),
-                  );
-                } else {
-                  return const SizedBox.shrink();
-                }
-              }
-
-              final team = teams[index];
-              final int rank = index + 1;
-              final bool isMe = team.userId == currentUserId;
-
-              return _buildRankingCard(
-                  context, rank, team, isMe, widget.isGlobal);
-            },
-          );
+          return _buildRankingCard(context, rank, team, isMe, widget.isGlobal);
         },
       ),
     );

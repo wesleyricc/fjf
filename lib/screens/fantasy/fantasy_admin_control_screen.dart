@@ -1,15 +1,13 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/fantasy_league_model.dart';
-import '../../services/fantasy_admin_service.dart';
-import '../../services/fantasy_auth_service.dart';
 import '../../services/fantasy_service.dart';
 import '../../services/championship_service.dart';
-import '../../utils/app_feedback.dart';
 import '../admin/admin_fantasy_status_screen.dart';
 import '../../viewmodels/fantasy_admin_viewmodel.dart';
 import 'admin_sponsored_leagues_screen.dart';
+import 'admin_fantasy_scout_audit_screen.dart';
+import '../../services/fantasy_scout_appeal_service.dart';
+import 'admin_fantasy_scout_reviews_screen.dart';
 
 class FantasyAdminControlScreen extends StatefulWidget {
   const FantasyAdminControlScreen({super.key});
@@ -104,6 +102,11 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
     final seasonId = Provider.of<ChampionshipService>(context, listen: false)
         .currentSeasonId;
     final result = await _viewModel.processRound(seasonId, round);
+    if (mounted) _showFeedback(result, isError: result.contains("Erro"));
+  }
+
+  Future<void> _generateMarketStats() async {
+    final result = await _viewModel.generateMarketStats();
     if (mounted) _showFeedback(result, isError: result.contains("Erro"));
   }
 
@@ -238,6 +241,84 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                         padding: const EdgeInsets.all(16),
                         backgroundColor: Colors.amber.shade600,
                         foregroundColor: Colors.black87,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const AdminFantasyScoutAuditScreen()));
+                      },
+                      icon: const Icon(Icons.fact_check),
+                      label: const Text("Central de Auditoria de Scouts"),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                        backgroundColor: Colors.teal.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const AdminFantasyScoutReviewsScreen()));
+                      },
+                      icon: const Icon(Icons.rate_review),
+                      label: StreamBuilder<int>(
+                        stream: FantasyScoutAppealService().streamPendingCount(),
+                        builder: (context, snapshot) {
+                          final count = snapshot.data ?? 0;
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Contestações de Scout"),
+                              if (count > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    "$count pendente${count > 1 ? 's' : ''}",
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                        backgroundColor: Colors.deepPurple.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    ElevatedButton.icon(
+                      onPressed: _viewModel.isLoading ? null : _generateMarketStats,
+                      icon: const Icon(Icons.groups),
+                      label: const Text("Gerar Estatísticas dos Mais Escalados"),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                        backgroundColor: Colors.indigo.shade700,
+                        foregroundColor: Colors.white,
                       ),
                     ),
 

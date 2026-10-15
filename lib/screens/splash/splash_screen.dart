@@ -67,6 +67,16 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<SponsorViewModel>().precachePriorityBanners(context);
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _animationController.dispose();
     _bannerTimer?.cancel();

@@ -62,4 +62,16 @@ class FantasyAdminViewModel extends ChangeNotifier {
       _setLoading(false);
     }
   }
+
+  Future<String> generateMarketStats() async {
+    _setLoading(true);
+    try {
+      final result = await _fantasyService.generateGlobalMarketStats();
+      return result;
+    } catch (e) {
+      return "Erro: $e";
+    } finally {
+      _setLoading(false);
+    }
+  }
 }

@@ -61,6 +61,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   StreamSubscription? _teamSub; 
   StreamSubscription? _scoutSub;
 
+  String? get userId => _userId;
   bool get isLoading => _isLoading;
   bool get isSaving => _isSaving;
   String? get errorMessage => _errorMessage;
@@ -77,6 +78,23 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   double get totalPatrimony => _totalPatrimony;
   Map<String, FantasyScoutDetail> get liveScores => _liveScores;
   FantasyGameConfig get gameConfig => _gameConfig;
+
+  static String normalizePosition(String pos) {
+    final lower = pos.trim().toLowerCase();
+    if (lower.contains('gol')) return 'goleiro';
+    if (lower.contains('fix')) return 'fixo';
+    if (lower.contains('ala')) return 'ala';
+    if (lower.contains('piv')) return 'pivo';
+    if (lower.contains('téc') || lower.contains('tec')) return 'tecnico';
+    return lower;
+  }
+
+  static bool matchesPosition(String playerPos, String? secondaryPos, String targetPos) {
+    final targetNorm = normalizePosition(targetPos);
+    if (normalizePosition(playerPos) == targetNorm) return true;
+    if (secondaryPos != null && secondaryPos.isNotEmpty && normalizePosition(secondaryPos) == targetNorm) return true;
+    return false;
+  }
 
   final List<Map<String, dynamic>> slotsConfig = [
     {'index': 1, 'pos': 'Goleiro'},
@@ -172,11 +190,13 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
             if (team.lineupPlayerIds.contains(p.playerId)) {
               calculatedTeamPrice += p.currentPrice;
               team.lineupSlots!.forEach((slot, id) {
-                if (id == p.playerId) _lineup[int.parse(slot)] = p;
+                final parsedSlot = int.tryParse(slot);
+                if (parsedSlot != null && id == p.playerId) _lineup[parsedSlot] = p;
               });
             } else if (team.benchPlayerIds.contains(p.playerId)) {
               team.benchSlots?.forEach((slot, id) {
-                if (id == p.playerId) _bench[int.parse(slot)] = p;
+                final parsedSlot = int.tryParse(slot);
+                if (parsedSlot != null && id == p.playerId) _bench[parsedSlot] = p;
               });
             }
           } else {
@@ -237,7 +257,9 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   
   bool canAddBenchPlayer(FantasyPlayer player) {
     final pos = player.position;
-    final startersOfPos = _lineup.values.where((p) => p.position == pos).toList();
+    final startersOfPos = _lineup.values
+        .where((p) => matchesPosition(p.position, p.secondaryPosition, pos))
+        .toList();
     if (startersOfPos.isEmpty) {
       _errorMessage = "Você precisa escalar um titular dessa posição primeiro.";
       if (!_isDisposed) notifyListeners();
@@ -269,8 +291,12 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   }
 
   void _validateBenchAfterLineupChange(String position) {
-    final startersOfPos = _lineup.values.where((p) => p.position == position).toList();
-    final benchPlayerEntry = _bench.entries.where((e) => e.value.position == position).firstOrNull;
+    final startersOfPos = _lineup.values
+        .where((p) => matchesPosition(p.position, p.secondaryPosition, position))
+        .toList();
+    final benchPlayerEntry = _bench.entries
+        .where((e) => matchesPosition(e.value.position, e.value.secondaryPosition, position))
+        .firstOrNull;
     
     if (benchPlayerEntry != null) {
       if (startersOfPos.isEmpty) {

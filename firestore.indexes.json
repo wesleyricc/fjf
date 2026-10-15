@@ -241,6 +241,56 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "fantasy_scout_appeals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "season_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "fantasy_scout_appeals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "season_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "fantasy_scout_appeals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "user_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "season_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

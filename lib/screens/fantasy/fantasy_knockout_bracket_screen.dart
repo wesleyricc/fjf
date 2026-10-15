@@ -4,6 +4,8 @@ import '../../models/fantasy_league_model.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../viewmodels/fantasy_league_viewmodel.dart';
 
+import '../../widgets/fantasy/league_invite_modal.dart';
+
 class FantasyKnockoutBracketScreen extends StatefulWidget {
   final FantasyLeague league;
 
@@ -21,40 +23,100 @@ class _FantasyKnockoutBracketScreenState extends State<FantasyKnockoutBracketScr
     final isWaiting = widget.league.status == 'waiting';
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.league.name)),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.league.name),
+            Text("Código: ${widget.league.inviteCode}",
+                style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: "Convidar Amigos",
+            onPressed: () => LeagueInviteModal.show(context, widget.league,
+                isOwner: isOwner),
+          ),
+        ],
+      ),
       body: Consumer<FantasyLeagueViewModel>(
         builder: (context, vm, child) {
           if (isWaiting) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.sports_kabaddi, size: 80, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(
-                    "Aguardando participantes...\n${widget.league.members.length} de ${widget.league.maxTeams}",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                  const SizedBox(height: 24),
-                  if (isOwner && widget.league.members.length == widget.league.maxTeams)
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.sports_kabaddi, size: 80, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    Text(
+                      "Aguardando participantes...\n${widget.league.members.length} de ${widget.league.maxTeams}",
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.vpn_key, size: 18, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          const Text("Código: ",
+                              style: TextStyle(fontSize: 13, color: Colors.black54)),
+                          Text(
+                            widget.league.inviteCode,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 2,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     ElevatedButton.icon(
-                      onPressed: () async {
-                        final success = await vm.generateBracket(widget.league);
-                        if (success && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chaveamento gerado!")));
-                          Navigator.pop(context); 
-                        } else if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage ?? "Erro")));
-                        }
-                      },
-                      icon: const Icon(Icons.shuffle),
-                      label: const Text("Sortear Chaves e Iniciar"),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                    )
-                  else if (isOwner)
-                    const Text("O sorteio só será liberado quando a liga lotar.", style: TextStyle(color: Colors.grey))
-                ],
+                      onPressed: () => LeagueInviteModal.show(context, widget.league,
+                          isOwner: isOwner),
+                      icon: const Icon(Icons.share),
+                      label: const Text("Convidar Amigos"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    if (isOwner && widget.league.members.length == widget.league.maxTeams)
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final success = await vm.generateBracket(widget.league);
+                          if (success && mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chaveamento gerado!")));
+                            Navigator.pop(context); 
+                          } else if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(vm.errorMessage ?? "Erro")));
+                          }
+                        },
+                        icon: const Icon(Icons.shuffle),
+                        label: const Text("Sortear Chaves e Iniciar"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      )
+                    else if (isOwner)
+                      const Text("O sorteio só será liberado quando a liga lotar.", style: TextStyle(color: Colors.grey))
+                  ],
+                ),
               ),
             );
           }

@@ -37,7 +37,10 @@ class FantasyLeagueService {
 
   // 2. Entrar na Liga com Código
   Future<String?> joinLeague(String inviteCode, String userId) async {
-    final String cleanCode = inviteCode.trim().toUpperCase();
+    String cleanCode = inviteCode.trim().toUpperCase();
+    if (cleanCode.startsWith('FJF-')) {
+      cleanCode = cleanCode.substring(4).trim();
+    }
 
     final query = await _firestore
         .collection('fantasy_leagues')
@@ -195,7 +198,7 @@ class FantasyLeagueService {
     if (league.members.length != league.maxTeams) return "A liga não atingiu a lotação máxima para sortear.";
 
     try {
-      final statusDoc = await _firestore.collection('fantasy_market').doc('status').get();
+      final statusDoc = await _firestore.collection('fantasy_config').doc('status').get();
       int currentRound = 1;
       if (statusDoc.exists) {
         currentRound = statusDoc.data()?['current_round'] ?? 1;

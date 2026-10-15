@@ -145,6 +145,7 @@ class EditPlayerViewModel extends ChangeNotifier {
     required String seasonId,
     required String teamId,
     required String teamName,
+    String? teamShieldUrl,
     required String name,
     required int? jerseyNumber,
     required Timestamp? dobTimestamp,
@@ -164,6 +165,33 @@ class EditPlayerViewModel extends ChangeNotifier {
     try {
       String? uploadedPhotoUrl = await _uploadImage();
 
+      // Garante que o team_shield_url do atleta seja sempre preenchido com o escudo do time
+      String? finalShieldUrl = teamShieldUrl;
+      if (finalShieldUrl == null || finalShieldUrl.trim().isEmpty) {
+        try {
+          final teamPartDoc = await FirebaseFirestore.instance
+              .collection('championships')
+              .doc(seasonId)
+              .collection('teams_participation')
+              .doc(teamId)
+              .get();
+          if (teamPartDoc.exists) {
+            finalShieldUrl = teamPartDoc.data()?['shield_url'];
+          }
+          if (finalShieldUrl == null || finalShieldUrl.trim().isEmpty) {
+            final teamDirDoc = await FirebaseFirestore.instance
+                .collection('teams_directory')
+                .doc(teamId)
+                .get();
+            if (teamDirDoc.exists) {
+              finalShieldUrl = teamDirDoc.data()?['shield_url'];
+            }
+          }
+        } catch (e) {
+          debugPrint("Aviso: falha ao buscar escudo do time para o atleta: $e");
+        }
+      }
+
       final Map<String, dynamic> playerData = {
         'name': name.trim(),
         'jersey_number': jerseyNumber,
@@ -182,6 +210,8 @@ class EditPlayerViewModel extends ChangeNotifier {
         'photo_url': uploadedPhotoUrl,
         'team_id': teamId,
         'team_name': teamName,
+        if (finalShieldUrl != null && finalShieldUrl.trim().isNotEmpty)
+          'team_shield_url': finalShieldUrl.trim(),
       };
 
       String currentId;

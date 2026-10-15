@@ -226,6 +226,131 @@ class FantasyService {
     }
   }
 
+  Future<Map<String, dynamic>> computeMarketStatsClientSide(int currentRound) async {
+    try {
+      final teamsSnap = await _fantasyTeamsRef.get();
+      final Map<String, int> playerCounts = {};
+      final Map<String, int> captainCounts = {};
+      int totalTeams = 0;
+
+      for (var doc in teamsSnap.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final List<dynamic> lineup = data['lineup_player_ids'] ?? [];
+        final String? captainId = data['captain_id'];
+
+        if (lineup.isNotEmpty) totalTeams++;
+
+        for (var pid in lineup) {
+          if (pid != null && pid.toString().isNotEmpty) {
+            final strPid = pid.toString();
+            playerCounts[strPid] = (playerCounts[strPid] ?? 0) + 1;
+          }
+        }
+
+        if (captainId != null && captainId.isNotEmpty) {
+          captainCounts[captainId] = (captainCounts[captainId] ?? 0) + 1;
+        }
+      }
+
+      final marketSnap = await _fantasyMarketRef.get();
+      final Map<String, Map<String, dynamic>> playersInfo = {};
+      for (var doc in marketSnap.docs) {
+        playersInfo[doc.id] = doc.data() as Map<String, dynamic>;
+      }
+
+      final List<Map<String, dynamic>> mostSelected = [];
+      playerCounts.forEach((pid, pCount) {
+        final p = playersInfo[pid] ?? {};
+        mostSelected.add({
+          'player_id': pid,
+          'name': p['name'] ?? 'Desconhecido',
+          'position': p['position'] ?? 'Desconhecido',
+          'team_name': p['team_name'] ?? '',
+          'team_shield_url': p['team_shield_url'] ?? '',
+          'photo_url': p['photo_url'] ?? '',
+          'current_price': p['current_price'] ?? 0,
+          'selections': pCount,
+          'count': pCount,
+          'captain_selections': captainCounts[pid] ?? 0,
+        });
+      });
+
+      mostSelected.sort((a, b) => (b['selections'] as int).compareTo(a['selections'] as int));
+
+      String? mostSelectedCaptain;
+      int maxCaptainCount = 0;
+      captainCounts.forEach((pid, cCount) {
+        if (cCount > maxCaptainCount) {
+          maxCaptainCount = cCount;
+          mostSelectedCaptain = pid;
+        }
+      });
+
+      final top30 = mostSelected.take(30).toList();
+      final payload = <String, dynamic>{
+        'round': currentRound,
+        'most_selected': top30,
+        'most_picked': top30,
+        'most_selected_player_id': top30.isNotEmpty ? top30[0]['player_id'] : null,
+        'most_selected_player_count': top30.isNotEmpty ? top30[0]['selections'] : 0,
+        'most_selected_captain_id': mostSelectedCaptain,
+        'most_selected_captain_count': maxCaptainCount,
+        'total_teams': totalTeams,
+        'updated_at': FieldValue.serverTimestamp(),
+      };
+
+      try {
+        await _firestore.collection('fantasy_stats').doc('global_round_stats').set(payload, SetOptions(merge: true));
+        await _firestore.collection('fantasy_stats').doc('round_$currentRound').set(payload, SetOptions(merge: true));
+        await _firestore.collection('fantasy_config').doc('market_stats').set({
+          'round': currentRound,
+          'most_selected_player_id': payload['most_selected_player_id'],
+          'most_selected_player_count': payload['most_selected_player_count'],
+          'most_selected_captain_id': payload['most_selected_captain_id'],
+          'most_selected_captain_count': payload['most_selected_captain_count'],
+          'total_teams': totalTeams,
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (writeError) {
+        debugPrint("Aviso: gravação direta no Firestore bloqueada por regras (esperado para não-admins): $writeError");
+      }
+
+      return payload;
+    } catch (e) {
+      debugPrint("Erro no computeMarketStatsClientSide: $e");
+      rethrow;
+    }
+  }
+
+  Future<String> generateGlobalMarketStats() async {
+    if (!await _isOnline()) return "Sem conexão com a internet.";
+    
+    // 1. Tenta acionar a Cloud Function
+    try {
+      final HttpsCallable callable = _functions.httpsCallable('generateGlobalMarketStats');
+      final result = await callable.call();
+      final data = result.data as Map<dynamic, dynamic>;
+      if (data['success'] == true) {
+        return "Sucesso: ${data['count']} atletas computados para a R${data['round']}.";
+      }
+      return "Retorno: ${data['message'] ?? 'OK'}";
+    } catch (e) {
+      debugPrint("Cloud Function indisponível ou bloqueada por CORS ($e). Usando fallback local...");
+      
+      // 2. Fallback de alta disponibilidade: computação no cliente
+      try {
+        final statusSnap = await _firestore.collection('fantasy_config').doc('status').get();
+        final currentRound = statusSnap.data()?['current_round'] ?? 1;
+        final payload = await computeMarketStatsClientSide(currentRound);
+        final count = (payload['most_selected'] as List).length;
+        return "Sucesso: $count atletas computados localmente com sucesso!";
+      } catch (clientErr) {
+        return "Erro ao computar estatísticas: $clientErr";
+      }
+    }
+  }
+
+
   Future<String> populateMarketFromSeason(String seasonId) async {
     if (!await _isOnline()) return "Erro de Conexão.";
     try {

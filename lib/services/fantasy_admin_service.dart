@@ -4,15 +4,26 @@ import '../models/fantasy_models.dart';
 import 'fantasy_service.dart';
 import 'dart:developer' as developer;
 
+class RoundScoutData {
+  final Map<String, double> scoresMap;
+  final Set<String> playersPlayedSet;
+
+  RoundScoutData({
+    required this.scoresMap,
+    required this.playersPlayedSet,
+  });
+}
+
 class FantasyAdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FantasyService _fantasyService = FantasyService();
 
   // --- 0. LEITURA DOS SCOUTS (ATUALIZADO PARA REGRAS CARTOLA) ---
-  Future<Map<String, double>> _fetchSeasonScores(
+  Future<RoundScoutData> _fetchSeasonScores(
       String seasonId, int round, FantasyGameConfig config) async {
     final Map<String, double> scoresMap = {};
     final Map<String, bool> teamCleanSheets = {}; // Mapeamento de SG
+    final Set<String> playersPlayedSet = {}; // Mapeamento de Presença (lineup_played)
 
     debugPrint("--- LENDO SCOUTS R$round (Temporada $seasonId) ---");
 
@@ -27,6 +38,13 @@ class FantasyAdminService {
 
       for (var matchDoc in matchesSnap.docs) {
         final data = matchDoc.data();
+
+        // 🚨 Mapeamento de Presença (quem jogou)
+        if (data['lineup_played'] != null && data['lineup_played'] is List) {
+          for (var pid in (data['lineup_played'] as List)) {
+            playersPlayedSet.add(pid.toString());
+          }
+        }
 
         // 🚨 Inteligência do Saldo de Gols (Clean Sheet)
         final int scoreHome = data['score_home'] ?? 0;
@@ -54,8 +72,16 @@ class FantasyAdminService {
         final penaltiesMissedMap = getStatMap('penalties_missed');
         final shotsOnPostMap = getStatMap('shots_on_post');
         final ownGoalsMap = getStatMap('own_goals');
-        final missedFreeKicksMap = getStatMap('missed_free_kicks');
-        final motmMap = getStatMap('motm');
+        final missedFreeKicksMap = getStatMap('direct_free_kicks_missed').isNotEmpty
+            ? getStatMap('direct_free_kicks_missed')
+            : getStatMap('missed_free_kicks');
+        final difficultSavesMap = getStatMap('difficult_saves');
+
+        // MOTM fica em stats_applied['man_of_the_match'] ou data['man_of_the_match']
+        final String? motmPid = (statsApplied['man_of_the_match'] ?? data['man_of_the_match'])?.toString();
+        final Map<String, int> motmMap = (motmPid != null && motmPid.isNotEmpty)
+            ? {motmPid: 1}
+            : getStatMap('motm');
 
         final Set<String> allPlayerIds = {
           ...goalsMap.keys,
@@ -67,6 +93,7 @@ class FantasyAdminService {
           ...shotsOnPostMap.keys,
           ...ownGoalsMap.keys,
           ...missedFreeKicksMap.keys,
+          ...difficultSavesMap.keys,
           ...motmMap.keys
         };
 
@@ -81,13 +108,14 @@ class FantasyAdminService {
           points += (shotsOnPostMap[pid] ?? 0) * config.ptsShotOnPost;
           points += (ownGoalsMap[pid] ?? 0) * config.ptsOwnGoal;
           points += (missedFreeKicksMap[pid] ?? 0) * config.ptsMissedFreeKick;
+          points += (difficultSavesMap[pid] ?? 0) * config.ptsDifficultSave;
           points += (motmMap[pid] ?? 0) * config.ptsMotm;
 
           scoresMap[pid] = (scoresMap[pid] ?? 0.0) + points;
         }
       }
 
-      // 🚨 Aplica o Saldo de Gols (SG) para Goleiros e Fixos
+      // 🚨 Aplica o Saldo de Gols (SG) APENAS para Goleiros e Fixos confirmados em súmula
       if (teamCleanSheets.isNotEmpty) {
         final marketSnap =
             await _firestore.collection('fantasy_market_players').get();
@@ -95,18 +123,24 @@ class FantasyAdminService {
           final p = doc.data();
           final teamId = p['team_id'];
           final pos = p['position'];
-          if (teamId != null &&
+          final pid = doc.id;
+          final bool hasPlayed = playersPlayedSet.contains(pid);
+          if (hasPlayed &&
+              teamId != null &&
               teamCleanSheets.containsKey(teamId) &&
               (pos == 'Goleiro' || pos == 'Fixo')) {
-            scoresMap[doc.id] =
-                (scoresMap[doc.id] ?? 0.0) + config.ptsCleanSheet;
+            scoresMap[pid] =
+                (scoresMap[pid] ?? 0.0) + config.ptsCleanSheet;
           }
         }
       }
     } catch (e) {
       debugPrint("Erro scouts: $e");
     }
-    return scoresMap;
+    return RoundScoutData(
+      scoresMap: scoresMap,
+      playersPlayedSet: playersPlayedSet,
+    );
   }
 
   Map<String, int> _safeCastMap(dynamic rawMap) {
@@ -116,7 +150,8 @@ class FantasyAdminService {
   }
 
   // --- CÁLCULO DA MÉDIA DO TÉCNICO ---
-  Future<void> _calculateCoachesAverages(Map<String, double> scoresMap) async {
+  Future<void> _calculateCoachesAverages(
+      Map<String, double> scoresMap, Set<String> playersPlayedSet) async {
     try {
       developer.log('--- 🔍 INICIANDO CÁLCULO DE MÉDIA DOS TÉCNICOS ---',
           name: 'FJF.Fantasy');
@@ -135,10 +170,13 @@ class FantasyAdminService {
           if (player.teamId.isNotEmpty) {
             teamCoaches[player.teamId] = player.playerId;
           }
+          continue;
         }
 
-        if (scoresMap.containsKey(player.playerId)) {
-          final score = scoresMap[player.playerId]!;
+        // Regra Oficial: Apenas atletas que confirmaram presença em súmula (lineup_played)
+        final bool hasPlayed = playersPlayedSet.contains(player.playerId);
+        if (hasPlayed) {
+          final score = scoresMap[player.playerId] ?? 0.0;
           if (player.teamId.isNotEmpty) {
             teamScores.putIfAbsent(player.teamId, () => []).add(score);
 
@@ -166,7 +204,7 @@ class FantasyAdminService {
 
           developer.log(
               '📊 TIME: $teamId | TÉCNICO ID: $coachId\n'
-              '   Atletas/Comissão: $logMembros\n'
+              '   Atletas presentes em súmula (${scores.length}): $logMembros\n'
               '   🧮 CONTA: ${total.toStringAsFixed(2)} / ${scores.length} = ${average.toStringAsFixed(2)}',
               name: 'FJF.Fantasy');
         }
@@ -222,7 +260,7 @@ class FantasyAdminService {
 
   Future<Map<String, double>> processMarketValuation(String seasonId,
       Map<String, double> actualScores, FantasyGameConfig config,
-      {int? roundForHistory}) async {
+      {int? roundForHistory, Set<String>? playersPlayedSet}) async {
     final Map<String, double> newPricesMap = {};
     final WriteBatch batch = _firestore.batch();
 
@@ -234,7 +272,10 @@ class FantasyAdminService {
 
       double score = actualScores[player.playerId] ?? 0.0;
       double currentPrice = player.currentPrice;
-      bool played = true;
+      bool played = playersPlayedSet != null
+          ? (playersPlayedSet.contains(player.playerId) ||
+              (player.position == 'Técnico' && actualScores.containsKey(player.playerId)))
+          : true;
 
       final result = _calculateNewPriceState(
           currentPrice, score, played, roundForHistory ?? 0, config);
@@ -339,16 +380,18 @@ class FantasyAdminService {
     try {
       final config = await _fantasyService.getGameConfig();
 
-      final Map<String, double> scores =
+      final scoutData =
           await _fetchSeasonScores(seasonId, round, config);
+      final scores = scoutData.scoresMap;
 
-      await _calculateCoachesAverages(scores);
+      await _calculateCoachesAverages(scores, scoutData.playersPlayedSet);
 
       if (scores.isEmpty)
         return "AVISO: Nenhum scout encontrado na Rodada $round.";
 
       final newPrices = await processMarketValuation(seasonId, scores, config,
-          roundForHistory: round);
+          roundForHistory: round,
+          playersPlayedSet: scoutData.playersPlayedSet);
 
       final resultTeams = await processUserTeams(newPrices, scores, round);
 
@@ -400,15 +443,17 @@ class FantasyAdminService {
       for (int r = 1; r <= maxRound; r++) {
         debugPrint("> Processando Rodada $r...");
 
-        final Map<String, double> roundScores =
+        final scoutData =
             await _fetchSeasonScores(seasonId, r, config);
+        final roundScores = scoutData.scoresMap;
 
-        await _calculateCoachesAverages(roundScores);
+        await _calculateCoachesAverages(roundScores, scoutData.playersPlayedSet);
 
         playerSimulationState.forEach((pid, state) {
           double priceBefore = state['current_price'];
           double score = roundScores[pid] ?? 0.0;
-          bool played = true;
+          bool played = scoutData.playersPlayedSet.contains(pid) ||
+              (state['position'] == 'Técnico' && roundScores.containsKey(pid));
 
           final result =
               _calculateNewPriceState(priceBefore, score, played, r, config);

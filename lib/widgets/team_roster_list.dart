@@ -315,7 +315,17 @@ class _MemberCard extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     onSelected: (value) {
                       if (value == 'edit') {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => EditPlayerScreen(teamId: teamId, teamName: teamName, player: member)));
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EditPlayerScreen(
+                              teamId: teamId,
+                              teamName: teamName,
+                              teamShieldUrl: member.teamShieldUrl,
+                              player: member,
+                            ),
+                          ),
+                        );
                       } else if (value == 'delete') {
                         onDelete();
                       }

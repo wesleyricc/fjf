@@ -16,6 +16,7 @@ class FantasyLeagueViewModel extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  String? get userId => _userId;
   List<FantasyLeague> get myLeagues => _myLeagues;
   List<FantasyLeague> get sponsoredLeagues => _sponsoredLeagues;
 
@@ -40,18 +41,18 @@ class FantasyLeagueViewModel extends ChangeNotifier {
     });
   }
 
-  Future<bool> createLeague(String name, {String type = 'classic', int? maxTeams}) async {
-    if (_userId == null || name.trim().isEmpty) return false;
+  Future<String?> createLeague(String name, {String type = 'classic', int? maxTeams}) async {
+    if (_userId == null || name.trim().isEmpty) return null;
     
     _setLoading(true);
     try {
-      await _leagueService.createLeague(name, _userId!, type: type, maxTeams: maxTeams);
+      final inviteCode = await _leagueService.createLeague(name, _userId!, type: type, maxTeams: maxTeams);
       _setLoading(false);
-      return true;
+      return inviteCode;
     } catch (e) {
       _errorMessage = "Erro ao criar liga: $e";
       _setLoading(false);
-      return false;
+      return null;
     }
   }
 

@@ -234,7 +234,12 @@ class _EditTeamScreenState extends State<EditTeamScreen> {
             
             TextFormField(
               controller: _shieldUrlController,
-              decoration: const InputDecoration(labelText: 'URL do Escudo', border: OutlineInputBorder(), prefixIcon: Icon(Icons.link)),
+              decoration: const InputDecoration(
+                labelText: 'URL do Escudo',
+                helperText: 'Padrão recomendado: formato .webp (alta performance)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.link),
+              ),
               keyboardType: TextInputType.url,
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Obrigatório';

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../utils/custom_cache_manager.dart';
 import '../models/fantasy_models.dart';
 import 'ui/sparkline_widget.dart';
+import 'ui/optimized_network_image.dart';
 
 class FantasyPlayerCard extends StatelessWidget {
   final FantasyPlayer player;
@@ -35,144 +33,99 @@ class FantasyPlayerCard extends StatelessWidget {
         ? "▲"
         : (player.lastPriceChange < 0 ? "▼" : "-");
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+    // Layout compacto: uma única linha com foto, nome/detalhes, forma e preço.
+    return RepaintBoundary(
+      child: Card(
+      elevation: 1,
+      margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         side: isSelected
             ? BorderSide(color: Theme.of(context).primaryColor, width: 2)
             : BorderSide.none,
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
-                  // 1. Foto e Escudo (OTIMIZADOS COM CACHE)
+                  // 1. Foto e Escudo (OTIMIZADOS)
                   Stack(
                     children: [
                       Container(
-                        width: 48,
-                        height: 60,
+                        width: 40,
+                        height: 48,
                         decoration: BoxDecoration(
                           color: Colors.grey[200],
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: player.photoUrl.isNotEmpty
-                              ? (kIsWeb
-                                  ? Image.network(
-                                      player.photoUrl,
-                                      fit: BoxFit.cover,
-                                      alignment: Alignment.topCenter,
-                                      errorBuilder: (context, error, stackTrace) =>
-                                          const Icon(Icons.person, color: Colors.grey),
-                                    )
-                                  : CachedNetworkImage(
-                                      imageUrl: player.photoUrl,
-                                      cacheManager: PlayerCacheManager.instance,
-                                      memCacheWidth: 200,
-                                      fit: BoxFit.cover,
-                                      alignment: Alignment.topCenter,
-                                      placeholder: (context, url) =>
-                                          const Center(
-                                            child: SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            ),
-                                          ),
-                                      errorWidget: (context, url, error) =>
-                                          const Icon(Icons.person, color: Colors.grey),
-                                    ))
-                              : const Icon(Icons.person, color: Colors.grey),
+                          child: OptimizedNetworkImage(
+                            imageUrl: player.photoUrl,
+                            width: 40,
+                            height: 48,
+                            memCacheWidth: 100,
+                            memCacheHeight: 120,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
+                          ),
                         ),
                       ),
                       Positioned(
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          width: 20,
-                          height: 20,
+                          width: 16,
+                          height: 16,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
                             color: Colors.white,
                           ),
                           clipBehavior: Clip.hardEdge,
-                          child: player.teamShieldUrl.isNotEmpty
-                              ? (kIsWeb
-                                  ? Image.network(
-                                      player.teamShieldUrl,
-                                      fit: BoxFit.contain,
-                                    )
-                                  : CachedNetworkImage(
-                                      imageUrl: player.teamShieldUrl,
-                                      cacheManager: PlayerCacheManager.instance,
-                                      memCacheWidth: 60,
-                                      fit: BoxFit.contain,
-                                    ))
-                              : null,
+                          child: OptimizedNetworkImage(
+                            imageUrl: player.teamShieldUrl,
+                            width: 16,
+                            height: 16,
+                            memCacheWidth: 40,
+                            memCacheHeight: 40,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.center,
+                            errorWidget: const SizedBox.shrink(),
+                          ),
                         ),
                       )
                     ],
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 10),
 
-                  // 2. Dados Principais
+                  // 2. Nome + posição, status e próximo adversário
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           player.name,
                           style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16),
+                              fontWeight: FontWeight.bold, fontSize: 14),
                           overflow: TextOverflow.ellipsis,
                         ),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          crossAxisAlignment: WrapCrossAlignment.center,
+                        const SizedBox(height: 3),
+                        Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                player.position.toUpperCase(),
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey[800],
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            ),
+                            _buildPositionChip(player.position),
                             if (player.secondaryPosition != null &&
-                                player.secondaryPosition!.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  player.secondaryPosition!.toUpperCase(),
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.grey[800],
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ),
+                                player.secondaryPosition!.isNotEmpty) ...[
+                              const SizedBox(width: 4),
+                              _buildPositionChip(player.secondaryPosition!),
+                            ],
+                            const SizedBox(width: 6),
                             _buildStatusBadge(player.status),
                           ],
                         ),
@@ -180,130 +133,148 @@ class FantasyPlayerCard extends StatelessWidget {
                     ),
                   ),
 
-                  // 3. Preço e Variação
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  // 3. Gráfico de Forma (Últimas 5 rodadas)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: SparklineWidget(
+                      data: _extractLastScores(player.history),
+                      width: 40,
+                      height: 24,
+                    ),
+                  ),
+
+                  // 4. Preço e Variação
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          if (onFavorite != null)
-                            GestureDetector(
-                              onTap: onFavorite,
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 8.0),
-                                child: Icon(
-                                  isFavorite
-                                      ? Icons.favorite
-                                      : Icons.favorite_border,
-                                  color: isFavorite
-                                      ? Colors.red
-                                      : Colors.grey.shade400,
-                                  size: 20,
-                                ),
-                              ),
+                      if (onFavorite != null)
+                        GestureDetector(
+                          onTap: onFavorite,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 6.0),
+                            child: Icon(
+                              isFavorite
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              color: isFavorite
+                                  ? Colors.red
+                                  : Colors.grey.shade400,
+                              size: 18,
                             ),
+                          ),
+                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                           Text(
                             "C\$ ${player.currentPrice.toStringAsFixed(2)}",
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                                fontSize: 14,
                                 color: Colors.black87),
                           ),
+                          Text(
+                            "$variationIcon ${player.lastPriceChange.toStringAsFixed(2)}",
+                            style: TextStyle(
+                              color: variationColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ],
-                      ),
-                      Text(
-                        "$variationIcon ${player.lastPriceChange.toStringAsFixed(2)}",
-                        style: TextStyle(
-                          color: variationColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: Colors.blue.shade100),
-                        ),
-                        child: Text(
-                          "Mín. valorizar: ${(player.currentPrice * 0.35).toStringAsFixed(1)} pts",
-                          style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.blue.shade800,
-                              fontWeight: FontWeight.bold),
-                        ),
                       ),
                     ],
                   ),
                 ],
               ),
 
-              // 4. Nova Seção UI/UX: Gráfico de Fase e Próximo Jogo
-              if (player.history.isNotEmpty || true) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12.0),
-                  child: Divider(height: 1, color: Colors.black12),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Próximo Adversário (Com Avaliação de Dificuldade)
-                      Row(
-                        children: [
-                          const Text("Próx:",
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey,
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 4),
-                          // Escudo adversário
-                          CircleAvatar(
-                              radius: 8,
-                              backgroundColor: Colors.black12,
-                              backgroundImage: nextOpponentShieldUrl != null &&
-                                      nextOpponentShieldUrl!.isNotEmpty
-                                  ? NetworkImage(nextOpponentShieldUrl!)
-                                  : null,
-                              child: nextOpponentShieldUrl == null ||
-                                      nextOpponentShieldUrl!.isEmpty
-                                  ? const Icon(Icons.shield,
-                                      size: 10, color: Colors.black38)
-                                  : null),
-
-                        ],
-                      ),
-
-                      // Gráfico de Forma (Últimas 5 rodadas)
-                      Row(
-                        children: [
-                          const Text("Fase:",
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey,
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 6),
-                          SparklineWidget(
-                            data: _extractLastScores(player.history),
-                            width: 50,
-                            height: 18,
-                          ),
-                        ],
-                      )
-                    ],
+              // 5. Rodapé: próximo adversário (legendado) e mínimo para valorizar
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Text("Próx. adversário:",
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 4),
+                  Container(
+                    width: 16,
+                    height: 16,
+                    clipBehavior: Clip.hardEdge,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black12,
+                    ),
+                    child: nextOpponentShieldUrl != null &&
+                            nextOpponentShieldUrl!.isNotEmpty
+                        ? OptimizedNetworkImage(
+                            imageUrl: nextOpponentShieldUrl!,
+                            width: 16,
+                            height: 16,
+                            memCacheWidth: 40,
+                            memCacheHeight: 40,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.center,
+                            errorWidget: const Icon(Icons.shield,
+                                size: 10, color: Colors.black38),
+                          )
+                        : const Icon(Icons.shield,
+                            size: 10, color: Colors.black38),
                   ),
-                )
-              ] // end if spread
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      nextOpponentName ?? "A definir",
+                      style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.blue.shade100),
+                    ),
+                    child: Text(
+                      "Mín. valorizar: ${(player.currentPrice * 0.35).toStringAsFixed(1)} pts",
+                      style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.blue.shade800,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
             ],
-          ), // end Column
-        ), // end Padding
-      ), // end InkWell
-    ); // end Card
+          ),
+        ),
+      ),
+    ),
+    );
   }
+}
+
+Widget _buildPositionChip(String position) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+    decoration: BoxDecoration(
+      color: Colors.grey[200],
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(
+      position.toUpperCase(),
+      style: TextStyle(
+          fontSize: 9, color: Colors.grey[800], fontWeight: FontWeight.bold),
+    ),
+  );
 }
 
 // Extrai as últimas 5 pontuações
@@ -325,7 +296,6 @@ List<double> _extractLastScores(List<Map<String, dynamic>> history) {
 
   return scores.reversed.toList();
 }
-
 
 Widget _buildStatusBadge(String status) {
   Color color;
@@ -357,27 +327,9 @@ Widget _buildStatusBadge(String status) {
       break;
   }
 
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(4),
-      border: Border.all(color: color.withOpacity(0.5)),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 10, color: color),
-        const SizedBox(width: 2),
-        Text(
-          label.toUpperCase(),
-          style: TextStyle(
-            fontSize: 9,
-            color: color,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    ),
+  // Versão minimalista: apenas o ícone colorido (rótulo no tooltip).
+  return Tooltip(
+    message: label,
+    child: Icon(icon, size: 14, color: color),
   );
 }

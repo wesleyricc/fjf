@@ -100,13 +100,43 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         _firstImpressionLogged = true;
         _logImpression(_filteredSponsors[_currentIndex]);
       }
+      _precacheCurrentAndNext();
     } else {
       // If the list is the same, but we haven't logged the impression yet, do it.
       if (_filteredSponsors.isNotEmpty && !_firstImpressionLogged) {
         _firstImpressionLogged = true;
         _logImpression(_filteredSponsors[_currentIndex]);
       }
+      _precacheCurrentAndNext();
     }
+  }
+
+  void _precacheCurrentAndNext() {
+    if (!mounted || _filteredSponsors.isEmpty) return;
+    try {
+      final currentUrl = (_filteredSponsors[_currentIndex]['imageUrl']?.toString() ?? '').trim();
+      if (currentUrl.isNotEmpty) {
+        precacheImage(CachedNetworkImageProvider(currentUrl, maxWidth: 800), context);
+      }
+      if (_filteredSponsors.length > 1) {
+        final nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
+        final nextUrl = (_filteredSponsors[nextIndex]['imageUrl']?.toString() ?? '').trim();
+        if (nextUrl.isNotEmpty) {
+          precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context);
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _precacheNextImage() {
+    if (!mounted || _filteredSponsors.isEmpty) return;
+    try {
+      final int nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
+      final String? nextUrl = _filteredSponsors[nextIndex]['imageUrl']?.toString().trim();
+      if (nextUrl != null && nextUrl.isNotEmpty) {
+        precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context);
+      }
+    } catch (_) {}
   }
 
   void _startTimer() {
@@ -120,7 +150,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         
         // 🚨 RASTREIA A IMPRESSÃO A CADA GIRO DO BANNER
         _logImpression(_filteredSponsors[_currentIndex]);
-
+        _precacheNextImage();
 
         if (_currentIndex == 0) {
           widget.onCycleComplete?.call();
@@ -155,8 +185,30 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     }
   }
 
+  Widget _buildPlaceholder() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.white,
+      child: Center(
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              const Color(0xFFC25F22).withOpacity(0.5),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final sponsorVm = Provider.of<SponsorViewModel>(context, listen: true);
+
     // PADRÕES DE TAMANHO DE BANNERS PARA OS ANUNCIANTES:
     // location == 'app_open'        -> Proporção 9:16  (1080x1920 px) - Formato Vertical / Tela Cheia
     // location == 'news_feed'       -> Proporção 1:1   (1080x1080 px) - Formato Quadrado
@@ -176,7 +228,11 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     Widget content;
 
     if (_filteredSponsors.isEmpty) {
-      content = _buildHouseAd();
+      if (sponsorVm.isLoading) {
+        content = _buildPlaceholder();
+      } else {
+        content = _buildHouseAd();
+      }
     } else {
       final data = _filteredSponsors[_currentIndex];
       final imageUrl = (data['imageUrl']?.toString() ?? '').trim();
@@ -185,33 +241,25 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       final String uniqueKey = "${_currentIndex}_${imageUrl.isNotEmpty ? imageUrl : sponsorName}";
 
       content = AnimatedSwitcher(
-        duration: const Duration(milliseconds: 800),
+        duration: const Duration(milliseconds: 600),
         child: InkWell(
           key: ValueKey<String>(uniqueKey),
           onTap: () => _launchURL(targetUrl, sponsorName), // 🚨 Repassa o nome do patrocinador
           child: imageUrl.isEmpty
               ? _buildHouseAd(title: sponsorName)
               : (widget.fit == BoxFit.contain
-                  ? Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Container(color: Colors.black), // Fundo preto puro para performance
-                        Opacity(
-                          opacity: 0.3,
-                          child: CachedNetworkImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 800,
-                            errorWidget: (c, u, e) => const SizedBox.shrink(),
-                          ),
-                        ),
-                        CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.contain,
-                          memCacheWidth: 800,
-                          errorWidget: (c, u, e) => _buildHouseAd(title: "$sponsorName (Sem Imagem)"),
-                        ),
-                      ],
+                  ? Container(
+                      width: double.infinity,
+                      height: double.infinity,
+                      color: Colors.white,
+                      alignment: Alignment.center,
+                      child: CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.contain,
+                        memCacheWidth: 800,
+                        placeholder: (c, u) => _buildPlaceholder(),
+                        errorWidget: (c, u, e) => _buildHouseAd(title: "$sponsorName (Sem Imagem)"),
+                      ),
                     )
                   : CachedNetworkImage(
                       imageUrl: imageUrl,
@@ -219,6 +267,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                       width: double.infinity,
                       height: double.infinity,
                       memCacheWidth: 800,
+                      placeholder: (c, u) => _buildPlaceholder(),
                       errorWidget: (c, u, e) => _buildHouseAd(title: "$sponsorName (Sem Imagem)"),
                     )),
         ),
