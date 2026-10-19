@@ -207,7 +207,7 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
                   child: ListTile(
                     leading: CircleAvatar(
                       backgroundImage: player.photoUrl.isNotEmpty
-                          ? NetworkImage(player.photoUrl)
+                          ? ResizeImage(NetworkImage(player.photoUrl), width: 100, height: 100)
                           : null,
                       child: player.photoUrl.isEmpty
                           ? const Icon(Icons.person)

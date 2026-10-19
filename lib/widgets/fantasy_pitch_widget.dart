@@ -122,7 +122,7 @@ class FantasyPitchWidget extends StatelessWidget {
                     image: (!isEmpty && player.photoUrl.isNotEmpty)
                         ? DecorationImage(
                             image: (kIsWeb
-                                ? NetworkImage(player.photoUrl) as ImageProvider
+                                ? ResizeImage(NetworkImage(player.photoUrl), width: 160, height: 200) as ImageProvider
                                 : CachedNetworkImageProvider(
                                     player.photoUrl,
                                     cacheManager: PlayerCacheManager.instance,
@@ -157,7 +157,7 @@ class FantasyPitchWidget extends StatelessWidget {
                   Positioned(
                     top: -5,
                     left: -5,
-                    child: _buildStatusIcon(player!.status),
+                    child: _buildStatusIcon(player.status),
                   ),
               ],
             ),
@@ -222,6 +222,8 @@ class FantasyPitchWidget extends StatelessWidget {
                               player.photoUrl,
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
+                              cacheWidth: 160,
+                              cacheHeight: 200,
                               errorBuilder: (c, e, s) =>
                                   const Icon(Icons.person, color: Colors.grey),
                             )

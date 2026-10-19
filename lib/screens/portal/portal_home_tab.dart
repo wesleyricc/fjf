@@ -106,7 +106,7 @@ class PortalHomeTab extends StatelessWidget {
                   CircleAvatar(
                     radius: 36,
                     backgroundColor: Colors.white,
-                    backgroundImage: player.photoUrl.isNotEmpty ? NetworkImage(player.photoUrl) : null,
+                    backgroundImage: player.photoUrl.isNotEmpty ? ResizeImage(NetworkImage(player.photoUrl), width: 150, height: 150) : null,
                     child: player.photoUrl.isEmpty ? const Icon(Icons.person, size: 36, color: Colors.grey) : null,
                   ),
                   const SizedBox(width: 16),

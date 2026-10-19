@@ -375,7 +375,7 @@ class FantasyDashboard extends StatelessWidget {
             radius: 22,
             backgroundColor: Colors.grey[200],
             backgroundImage: player.photoUrl.isNotEmpty
-                ? NetworkImage(player.photoUrl)
+                ? ResizeImage(NetworkImage(player.photoUrl), width: 90, height: 90)
                 : null,
             child: player.photoUrl.isEmpty
                 ? const Icon(Icons.person, color: Colors.grey)

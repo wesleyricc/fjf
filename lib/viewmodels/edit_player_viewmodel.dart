@@ -91,14 +91,7 @@ class EditPlayerViewModel extends ChangeNotifier {
   }
 
   Future<void> pickImage() async {
-    if (kIsWeb) {
-      final result = await FilePicker.platform.pickFiles(type: FileType.image);
-      if (result != null && result.files.single.bytes != null) {
-        webImageBytes = result.files.single.bytes;
-        photoUrl = null;
-        notifyListeners();
-      }
-    } else {
+    try {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
@@ -107,9 +100,23 @@ class EditPlayerViewModel extends ChangeNotifier {
         imageQuality: 80,
       );
       if (pickedFile != null) {
-        imageFile = File(pickedFile.path);
+        if (kIsWeb) {
+          webImageBytes = await pickedFile.readAsBytes();
+        } else {
+          imageFile = File(pickedFile.path);
+        }
         photoUrl = null;
         notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Erro ao selecionar imagem com ImagePicker: $e");
+      if (kIsWeb) {
+        final result = await FilePicker.platform.pickFiles(type: FileType.image);
+        if (result != null && result.files.single.bytes != null) {
+          webImageBytes = result.files.single.bytes;
+          photoUrl = null;
+          notifyListeners();
+        }
       }
     }
   }
@@ -218,8 +225,8 @@ class EditPlayerViewModel extends ChangeNotifier {
       if (_existingPlayer == null) {
         currentId = await _playerService.createPlayer(seasonId: seasonId, data: playerData);
       } else {
-        await _playerService.updatePlayer(seasonId: seasonId, playerId: _existingPlayer!.id, data: playerData);
-        currentId = _existingPlayer!.id;
+        await _playerService.updatePlayer(seasonId: seasonId, playerId: _existingPlayer.id, data: playerData);
+        currentId = _existingPlayer.id;
       }
 
       // Criar acesso ao Portal se marcado

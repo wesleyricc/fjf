@@ -46,7 +46,20 @@ class OptimizedNetworkImage extends StatelessWidget {
         height: height,
         fit: fit,
         alignment: alignment,
+        cacheWidth: memCacheWidth,
+        cacheHeight: memCacheHeight,
         filterQuality: FilterQuality.low,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return placeholder ??
+              Center(
+                child: SizedBox(
+                  width: (width != null && width! < 30) ? 12 : 16,
+                  height: (height != null && height! < 30) ? 12 : 16,
+                  child: const CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+        },
         errorBuilder: (context, error, stackTrace) => _buildErrorWidget(),
       );
     }
