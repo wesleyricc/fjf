@@ -180,7 +180,7 @@ class FantasyPitchWidget extends StatelessWidget {
                   ),
                   if (!isEmpty)
                     Text(
-                      "C\$ ${player.currentPrice.toStringAsFixed(1)}",
+                      "C\$ ${player.currentPrice.toStringAsFixed(2)}",
                       style: TextStyle(
                           color: Colors.greenAccent[100], fontSize: 9),
                     ),

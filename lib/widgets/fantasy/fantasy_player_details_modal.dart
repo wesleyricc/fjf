@@ -23,7 +23,8 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
       children: [
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -38,6 +39,11 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
         color = Colors.red;
         icon = Icons.local_hospital;
         label = 'Contundido';
+        break;
+      case 'eternal':
+        color = Colors.yellow;
+        icon = Icons.star;
+        label = 'Eterno';
         break;
       case 'suspended':
         color = Colors.red;
@@ -72,7 +78,8 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
           const SizedBox(width: 2),
           Text(
             label.toUpperCase(),
-            style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                fontSize: 9, color: color, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -97,7 +104,8 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -118,8 +126,8 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                           memCacheHeight: 350,
                           fit: BoxFit.cover,
                           alignment: Alignment.topCenter,
-                          errorWidget:
-                              const Icon(Icons.person, size: 120, color: Colors.grey),
+                          errorWidget: const Icon(Icons.person,
+                              size: 120, color: Colors.grey),
                         ),
                       ),
                     ),
@@ -134,7 +142,8 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                           color: Colors.grey.shade200,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Icon(Icons.person, size: 120, color: Colors.grey),
+                        child: const Icon(Icons.person,
+                            size: 120, color: Colors.grey),
                       ),
                     ),
                   ),
@@ -148,7 +157,9 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                       decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white,
-                        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                        boxShadow: [
+                          BoxShadow(color: Colors.black26, blurRadius: 4)
+                        ],
                       ),
                       padding: const EdgeInsets.all(6),
                       child: OptimizedNetworkImage(
@@ -174,14 +185,18 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                     children: [
                       Text(
                         player.name,
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
                           Text(
                             player.position.toUpperCase(),
-                            style: TextStyle(fontSize: 14, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade700,
+                                fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(width: 8),
                           _buildStatusBadge(player.status),
@@ -195,16 +210,19 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                   children: [
                     Text(
                       "C\$ ${player.currentPrice.toStringAsFixed(2)}",
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      "${player.lastPriceChange > 0 ? '▲' : (player.lastPriceChange < 0 ? '▼' : '-')} ${player.lastPriceChange.toStringAsFixed(2)}",
+                      "${player.lastPriceChange > 0 ? '▲' : (player.lastPriceChange < 0 ? '▼' : '-')} ${player.lastPriceChange.abs().toStringAsFixed(2)}",
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: player.lastPriceChange > 0
                             ? Colors.green
-                            : (player.lastPriceChange < 0 ? Colors.red : Colors.grey),
+                            : (player.lastPriceChange < 0
+                                ? Colors.red
+                                : Colors.grey),
                       ),
                     ),
                   ],
@@ -223,7 +241,10 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                 ),
                 child: Text(
                   "Mín. valorizar: ${(player.currentPrice * 0.35).toStringAsFixed(1)} pts",
-                  style: TextStyle(fontSize: 11, color: Colors.blue.shade800, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.blue.shade800,
+                      fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -231,7 +252,8 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildStatColumn("Média", player.averageScore.toStringAsFixed(2)),
+                _buildStatColumn(
+                    "Média", player.averageScore.toStringAsFixed(2)),
                 _buildStatColumn("Última", player.lastScore.toStringAsFixed(2)),
                 _buildStatColumn("Jogos", player.matchesPlayed.toString()),
               ],
@@ -239,7 +261,8 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
             const SizedBox(height: 16),
             if (player.history.isNotEmpty || true)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
@@ -249,23 +272,34 @@ class FantasyPlayerDetailsModal extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Text("Próx:", style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+                        const Text("Próx:",
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold)),
                         const SizedBox(width: 8),
                         CircleAvatar(
                           radius: 12,
                           backgroundColor: Colors.black12,
-                          backgroundImage: nextOpponentShieldUrl != null && nextOpponentShieldUrl!.isNotEmpty
+                          backgroundImage: nextOpponentShieldUrl != null &&
+                                  nextOpponentShieldUrl!.isNotEmpty
                               ? NetworkImage(nextOpponentShieldUrl!)
                               : null,
-                          child: nextOpponentShieldUrl == null || nextOpponentShieldUrl!.isEmpty
-                              ? const Icon(Icons.shield, size: 14, color: Colors.black38)
+                          child: nextOpponentShieldUrl == null ||
+                                  nextOpponentShieldUrl!.isEmpty
+                              ? const Icon(Icons.shield,
+                                  size: 14, color: Colors.black38)
                               : null,
                         ),
                       ],
                     ),
                     Row(
                       children: [
-                        const Text("Fase:", style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+                        const Text("Fase:",
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold)),
                         const SizedBox(width: 12),
                         SparklineWidget(
                           data: _extractLastScores(player.history),

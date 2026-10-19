@@ -27,6 +27,14 @@ class FantasyAdminService {
 
     debugPrint("--- LENDO SCOUTS R$round (Temporada $seasonId) ---");
 
+    if (seasonId.trim().isEmpty) {
+      debugPrint("AVISO: seasonId está vazio ao buscar scouts da rodada $round.");
+      return RoundScoutData(
+        scoresMap: scoresMap,
+        playersPlayedSet: playersPlayedSet,
+      );
+    }
+
     try {
       final matchesRef = _firestore
           .collection('championships')
@@ -225,6 +233,22 @@ class FantasyAdminService {
     int round,
     FantasyGameConfig config,
   ) {
+    if (!played) {
+      return {
+        'new_price': currentPrice,
+        'variation': 0.0,
+        'history_entry': {
+          'round': round,
+          'score': 0.0,
+          'price_before': currentPrice,
+          'price_after': currentPrice,
+          'variation': 0.0,
+          'played': false,
+          'processed_at': Timestamp.now(),
+        }
+      };
+    }
+
     double expectation = currentPrice * config.factorExpectation;
     double performance = score - expectation;
     double rawVariation = performance * config.factorVariation;
@@ -235,11 +259,12 @@ class FantasyAdminService {
     if (finalVariation > limit) finalVariation = limit;
     if (finalVariation < -limit) finalVariation = -limit;
 
-    double newPrice = currentPrice + finalVariation;
-    if (newPrice < config.minPrice) newPrice = config.minPrice;
-
-    finalVariation = double.parse(finalVariation.toStringAsFixed(1));
-    newPrice = double.parse(newPrice.toStringAsFixed(1));
+    finalVariation = double.parse(finalVariation.toStringAsFixed(2));
+    double newPrice = double.parse((currentPrice + finalVariation).toStringAsFixed(2));
+    if (newPrice < config.minPrice) {
+      newPrice = config.minPrice;
+      finalVariation = double.parse((newPrice - currentPrice).toStringAsFixed(2));
+    }
 
     return {
       'new_price': newPrice,
@@ -302,10 +327,23 @@ class FantasyAdminService {
 
       double newAverage = countMatches > 0 ? sumScores / countMatches : 0.0;
 
+      final playedMatches =
+          updatedHistory.where((h) => h['played'] == true).toList();
+      double lastScore = played
+          ? score
+          : (playedMatches.isNotEmpty
+              ? (playedMatches.last['score'] as num).toDouble()
+              : 0.0);
+      double lastVariation = played
+          ? result['variation']
+          : (playedMatches.isNotEmpty
+              ? (playedMatches.last['variation'] as num).toDouble()
+              : 0.0);
+
       batch.update(doc.reference, {
         'current_price': newPrice,
-        'last_price_change': result['variation'],
-        'last_score': score,
+        'last_price_change': lastVariation,
+        'last_score': lastScore,
         'average_score': double.parse(newAverage.toStringAsFixed(2)),
         'matches_played': countMatches,
         'history': updatedHistory,
@@ -354,6 +392,7 @@ class FantasyAdminService {
           'round': round,
           'points': roundPoints,
           'patrimony': newTotalPatrimony,
+          'balance': team.currentBalance,
           'processed_at': FieldValue.serverTimestamp(),
           'lineup_snapshot': team.lineupPlayerIds,
           'captain_id': team.captainId,
@@ -407,6 +446,33 @@ class FantasyAdminService {
     try {
       debugPrint("=== INICIANDO RECONSTRUÇÃO DA TEMPORADA (1 a $maxRound) ===");
 
+      if (seasonId.trim().isEmpty) {
+        debugPrint("Aviso: seasonId veio vazio. Buscando temporada ativa no Firestore...");
+        try {
+          final activeSnap = await _firestore
+              .collection('championships')
+              .where('isActive', isEqualTo: true)
+              .limit(1)
+              .get();
+          if (activeSnap.docs.isNotEmpty) {
+            seasonId = activeSnap.docs.first.id;
+          } else {
+            final anySnap =
+                await _firestore.collection('championships').limit(1).get();
+            if (anySnap.docs.isNotEmpty) {
+              seasonId = anySnap.docs.first.id;
+            }
+          }
+        } catch (e) {
+          debugPrint("Erro ao buscar temporada fallback: $e");
+        }
+        debugPrint("Temporada resolvida para reprocessamento: $seasonId");
+      }
+
+      if (seasonId.trim().isEmpty) {
+        return "Erro: Nenhuma temporada ativa encontrada para reprocessamento.";
+      }
+
       final config = await _fantasyService.getGameConfig();
 
       final playersSnap =
@@ -438,6 +504,9 @@ class FantasyAdminService {
       Map<String, double> teamTotalPointsMap = {
         for (var d in teamsSnap.docs) d.id: 0.0
       };
+      Map<String, double> teamLastScoreMap = {
+        for (var d in teamsSnap.docs) d.id: 0.0
+      };
 
       // LOOP RODADA A RODADA
       for (int r = 1; r <= maxRound; r++) {
@@ -446,6 +515,12 @@ class FantasyAdminService {
         final scoutData =
             await _fetchSeasonScores(seasonId, r, config);
         final roundScores = scoutData.scoresMap;
+
+        // Se a rodada não possui jogadores em súmula nem pontuações (rodada ainda não disputada), ignora
+        if (scoutData.playersPlayedSet.isEmpty && roundScores.isEmpty) {
+          debugPrint("Rodada $r ignorada no reprocessamento por não possuir partidas finalizadas.");
+          continue;
+        }
 
         await _calculateCoachesAverages(roundScores, scoutData.playersPlayedSet);
 
@@ -459,8 +534,10 @@ class FantasyAdminService {
               _calculateNewPriceState(priceBefore, score, played, r, config);
 
           state['current_price'] = result['new_price'];
-          state['last_score'] = score;
-          state['last_price_change'] = result['variation'];
+          if (played) {
+            state['last_score'] = score;
+            state['last_price_change'] = result['variation'];
+          }
           (state['history'] as List).add(result['history_entry']);
 
           if (played) {
@@ -479,8 +556,10 @@ class FantasyAdminService {
           if (!historySnap.exists) continue;
 
           final historyData = historySnap.data()!;
-          final List<String> lineup =
-              List<String>.from(historyData['lineup_snapshot'] ?? []);
+          final List<String> lineup = (historyData['final_lineup'] != null &&
+                  (historyData['final_lineup'] as List).isNotEmpty)
+              ? List<String>.from(historyData['final_lineup'])
+              : List<String>.from(historyData['lineup_snapshot'] ?? []);
 
           String? captainId = historyData['captain_id'] as String?;
           if (captainId == null) {
@@ -499,10 +578,43 @@ class FantasyAdminService {
 
           teamTotalPointsMap[teamDoc.id] =
               (teamTotalPointsMap[teamDoc.id] ?? 0.0) + roundPoints;
+          teamLastScoreMap[teamDoc.id] = roundPoints;
+
+          final team = FantasyTeam.fromFirestore(teamDoc);
+          final startersPids = team.lineupPlayerIds;
+          double roundPlayersValue = 0.0;
+          double startersInitialCost = 0.0;
+          for (var pid in startersPids) {
+            final pState = playerSimulationState[pid];
+            if (pState != null) {
+              roundPlayersValue += (pState['current_price'] as num).toDouble();
+              final historyList = pState['history'] as List<dynamic>?;
+              final hist = historyList?.cast<Map<String, dynamic>?>().firstWhere(
+                (h) => h != null && h['round'] == r,
+                orElse: () => null,
+              );
+              startersInitialCost += (hist?['price_before'] as num?)?.toDouble() ?? (pState['current_price'] as num).toDouble();
+            } else {
+              final pDoc = playersSnap.docs.firstWhere(
+                (p) => p.id == pid,
+                orElse: () => playersSnap.docs.first,
+              );
+              final price = (pDoc.data()['current_price'] as num?)?.toDouble() ?? 5.0;
+              roundPlayersValue += price;
+              startersInitialCost += price;
+            }
+          }
+
+          final double maxPossibleBalance = (team.teamValue - startersInitialCost) > 0 ? (team.teamValue - startersInitialCost) : 0.0;
+          final double safeBalance = team.currentBalance > maxPossibleBalance ? maxPossibleBalance : team.currentBalance;
+
+          final roundPatrimony = double.parse(
+              (safeBalance + roundPlayersValue).toStringAsFixed(2));
 
           roundBatch.update(historyDocRef, {
             'points': roundPoints,
             'captain_id': captainId,
+            'patrimony': roundPatrimony,
             'reprocessed_at': FieldValue.serverTimestamp(),
           });
         }
@@ -545,25 +657,38 @@ class FantasyAdminService {
       for (var teamDoc in teamsSnap.docs) {
         final team = FantasyTeam.fromFirestore(teamDoc);
         final newTotalPoints = teamTotalPointsMap[teamDoc.id] ?? 0.0;
+        final currentLastScore = teamLastScoreMap[teamDoc.id] ?? 0.0;
         double currentPlayersValue = 0.0;
-        double currentLastScore = 0.0;
-        for (var pid in team.lineupPlayerIds) {
+        double startersInitialCost = 0.0;
+        final startersPids = team.lineupPlayerIds;
+        for (var pid in startersPids) {
           final pState = playerSimulationState[pid];
           if (pState != null) {
             currentPlayersValue += (pState['current_price'] as num).toDouble();
-            final historyList = pState['history'] as List<Map<String, dynamic>>;
-            if (historyList.isNotEmpty &&
-                historyList.last['round'] == maxRound) {
-              double pScore = (historyList.last['score'] as num).toDouble();
-              if (team.captainId == pid) pScore *= 2;
-              currentLastScore += pScore;
-            }
+            final historyList = pState['history'] as List<dynamic>?;
+            final hist = historyList?.cast<Map<String, dynamic>?>().firstWhere(
+              (h) => h != null && h['round'] == 1,
+              orElse: () => null,
+            );
+            startersInitialCost += (hist?['price_before'] as num?)?.toDouble() ?? (pState['current_price'] as num).toDouble();
+          } else {
+            final pDoc = playersSnap.docs.firstWhere(
+              (p) => p.id == pid,
+              orElse: () => playersSnap.docs.first,
+            );
+            final price = (pDoc.data()['current_price'] as num?)?.toDouble() ?? 5.0;
+            currentPlayersValue += price;
+            startersInitialCost += price;
           }
         }
-        double newTeamValue = team.currentBalance + currentPlayersValue;
+        final double maxPossibleBalance = (team.teamValue - startersInitialCost) > 0 ? (team.teamValue - startersInitialCost) : 0.0;
+        final double safeBalance = team.currentBalance > maxPossibleBalance ? maxPossibleBalance : team.currentBalance;
+        double newTeamValue = safeBalance + currentPlayersValue;
         batchTeams.update(teamDoc.reference, {
           'total_points': newTotalPoints,
           'team_value': double.parse(newTeamValue.toStringAsFixed(2)),
+          'current_balance': double.parse(safeBalance.toStringAsFixed(2)),
+          'balance': FieldValue.delete(),
           'last_score': currentLastScore,
         });
       }

@@ -8,15 +8,18 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/analytics_service.dart';
 import '../models/fantasy_models.dart';
+import '../models/match_model.dart';
 import '../repositories/fantasy_repository.dart'; 
 import '../services/fantasy_service.dart';
 import '../services/fantasy_scout_service.dart';
 import '../services/firestore_cache_service.dart';
+import '../services/match_service.dart';
 
 class FantasyHomeViewModel extends ChangeNotifier {
   final FantasyRepository _repository = FantasyRepository();
   final FantasyService _fantasyService = FantasyService();
   final FantasyScoutService _scoutService = FantasyScoutService();
+  final MatchService _matchService = MatchService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance; 
 
@@ -40,6 +43,13 @@ class FantasyHomeViewModel extends ChangeNotifier {
   StreamSubscription? _teamSub;
   StreamSubscription? _matchesSub;
   StreamSubscription? _marketStatsSub;
+  StreamSubscription? _leaderboardSub;
+  StreamSubscription? _roundMatchesSub;
+  List<MatchModel> _roundMatches = [];
+  bool _areAllMatchesFinished = false;
+  FantasyLiveLeaderboard? _liveLeaderboard;
+  double? _leaderboardScore;
+  FantasyLiveTeamScore? _liveTeamScore;
 
   FantasyPlayer? mostSelectedPlayer;
   FantasyPlayer? mostSelectedCaptain;
@@ -55,6 +65,9 @@ class FantasyHomeViewModel extends ChangeNotifier {
   double? lastRoundPoints;
   double? lastRoundAppreciation;
 
+  // 🏆 FinOps: Resumo oficial da rodada anterior (Média, Mito, Maior/Menor Valorização, Menor Pontuação)
+  FantasyRoundSummary? _roundSummary;
+
   bool get isOffline => _isOffline; 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -64,8 +77,42 @@ class FantasyHomeViewModel extends ChangeNotifier {
   FantasyTeam? get team => _team;
   Map<String, LiveScoreData> get liveScores => _liveScores;
   FantasyGameConfig get config => _gameConfig;
+  FantasyLiveTeamScore? get liveTeamScore => _liveTeamScore;
+  FantasyLiveLeaderboard? get liveLeaderboard => _liveLeaderboard;
+  FantasyRoundSummary? get roundSummary => _roundSummary;
+  List<MatchModel> get roundMatches => _roundMatches;
+  bool get areAllMatchesFinished => _areAllMatchesFinished;
+
+  /// Retorna verdadeiro quando a rodada está no período de validação de scouts:
+  /// o mercado está fechado e todos os jogos da rodada foram encerrados.
+  bool get isScoutsValidationPeriod =>
+      !_isMarketOpen && (_areAllMatchesFinished || (_liveLeaderboard?.isFinal == true));
+
+  String _positionForSlot(int slotIndex) {
+    switch (slotIndex) {
+      case 1:
+      case 11:
+        return 'Goleiro';
+      case 2:
+      case 12:
+        return 'Fixo';
+      case 3:
+      case 4:
+      case 13:
+        return 'Ala';
+      case 5:
+      case 15:
+        return 'Pivô';
+      case 6:
+      case 16:
+        return 'Técnico';
+      default:
+        return '';
+    }
+  }
 
   double get teamPartialScore {
+    if (_leaderboardScore != null) return _leaderboardScore!;
     if (_team == null || _liveScores.isEmpty) return 0.0;
     double total = 0.0;
     for (String pid in _team!.lineupPlayerIds) {
@@ -76,6 +123,62 @@ class FantasyHomeViewModel extends ChangeNotifier {
         total += pScore;
       }
     }
+
+    // Fallback: Adiciona ganho do reserva de luxo caso ativado
+    if (_team!.luxuryReserveId != null &&
+        _team!.benchPlayerIds.contains(_team!.luxuryReserveId)) {
+      final luxuryPid = _team!.luxuryReserveId!;
+      final luxuryScoreData = _liveScores[luxuryPid];
+      if (luxuryScoreData != null && _team!.benchSlots != null && _team!.lineupSlots != null) {
+        String? luxuryPos;
+        for (final entry in _team!.benchSlots!.entries) {
+          if (entry.value == luxuryPid) {
+            final slot = int.tryParse(entry.key);
+            if (slot != null) luxuryPos = _positionForSlot(slot);
+            break;
+          }
+        }
+
+        if (luxuryPos != null && luxuryPos.isNotEmpty) {
+          final startersSamePos = <String>[];
+          for (final entry in _team!.lineupSlots!.entries) {
+            final slot = int.tryParse(entry.key);
+            if (slot != null && _positionForSlot(slot) == luxuryPos) {
+              if (entry.value.isNotEmpty && _team!.lineupPlayerIds.contains(entry.value)) {
+                startersSamePos.add(entry.value);
+              }
+            }
+          }
+
+          if (startersSamePos.isNotEmpty) {
+            String worstStarterId = startersSamePos.first;
+            double worstScore = _liveScores[worstStarterId]?.totalScore ?? 0.0;
+
+            for (final pid in startersSamePos.skip(1)) {
+              final sScore = _liveScores[pid]?.totalScore ?? 0.0;
+              if (sScore < worstScore) {
+                worstScore = sScore;
+                worstStarterId = pid;
+              } else if (sScore == worstScore &&
+                  worstStarterId == _team!.captainId &&
+                  pid != _team!.captainId) {
+                worstStarterId = pid;
+              }
+            }
+
+            final benchScore = luxuryScoreData.totalScore;
+            if (benchScore > worstScore) {
+              final isWorstCaptain = (_team!.captainId == worstStarterId);
+              final starterEffective = isWorstCaptain ? (worstScore * 2) : worstScore;
+              final benchEffective = isWorstCaptain ? (benchScore * 2) : benchScore;
+              final netGain = benchEffective - starterEffective;
+              total += netGain;
+            }
+          }
+        }
+      }
+    }
+
     return double.parse(total.toStringAsFixed(2));
   }
 
@@ -160,10 +263,16 @@ class FantasyHomeViewModel extends ChangeNotifier {
     } else {
       _matchesSub?.cancel();
       _marketStatsSub?.cancel();
+      _roundMatchesSub?.cancel();
+      _roundMatches = [];
+      _areAllMatchesFinished = false;
+      _liveLeaderboard = null;
       if (_currentRound > 1) {
         _fetchPreviousRoundScouts(seasonId, _currentRound - 1);
+        _fetchRoundSummary(_currentRound - 1);
       } else {
         _liveScores = {}; 
+        _roundSummary = null;
       }
     }
     if (!_isDisposed) notifyListeners();
@@ -217,6 +326,20 @@ class FantasyHomeViewModel extends ChangeNotifier {
       }
       _isLoading = false;
 
+      // 🚨 Sincroniza a valorização da rodada caso o histórico tenha ficado defasado
+      if (team != null && lastRoundNumber == 1) {
+        lastRoundAppreciation = double.parse((team.teamValue - 50.0).toStringAsFixed(2));
+        _firestore
+            .collection('fantasy_teams')
+            .doc(userId)
+            .collection('history')
+            .doc('1')
+            .update({'patrimony': team.teamValue})
+            .catchError((e) {
+          debugPrint("Aviso ao sincronizar patrimônio R1 no Firestore: $e");
+        });
+      }
+
       // 🚨 EVENTO DE NEGÓCIO: O usuário carregou o painel do time
       if (team != null) AnalyticsService.logFantasyAccess(userId);
       
@@ -254,8 +377,36 @@ class FantasyHomeViewModel extends ChangeNotifier {
   }
 
   void _subscribeToLiveMatches(String seasonId, int round) {
+    // 📡 Escuta as partidas da rodada para verificar encerramento de todos os jogos
+    _roundMatchesSub?.cancel();
+    _roundMatchesSub = _matchService.streamRoundMatches(seasonId, round).listen((matches) {
+      if (_isDisposed) return;
+      _roundMatches = matches;
+      _areAllMatchesFinished = matches.isNotEmpty && matches.every((m) => m.isFinished);
+      notifyListeners();
+    }, onError: (e) {
+      debugPrint("Erro ao escutar partidas da rodada $round: $e");
+    });
+
     if (_team == null) return;
     _matchesSub?.cancel(); 
+    _leaderboardSub?.cancel();
+
+    // 🏆 FINOPS: Escuta o leaderboard consolidado da rodada para pontuação oficial sincronizada
+    _leaderboardSub = _fantasyService
+        .streamLiveLeaderboard(seasonId: seasonId, round: round)
+        .listen((leaderboard) {
+      if (_isDisposed || leaderboard == null) return;
+      _liveLeaderboard = leaderboard;
+      try {
+        final myEntry = leaderboard.teams.firstWhere(
+          (t) => t.teamId == _team?.userId || t.userId == _team?.userId,
+        );
+        _leaderboardScore = myEntry.roundScore;
+        _liveTeamScore = myEntry;
+        if (!_isDisposed) notifyListeners();
+      } catch (_) {}
+    });
     
     // 📡 Escuta o documento único da rodada
     _matchesSub = _scoutService.streamLiveScores(seasonId, round).listen((scores) async {
@@ -327,24 +478,56 @@ class FantasyHomeViewModel extends ChangeNotifier {
     _teamSub?.cancel();
     _matchesSub?.cancel();
     _marketStatsSub?.cancel();
+    _leaderboardSub?.cancel();
+    _roundMatchesSub?.cancel();
     super.dispose();
   }
 
   Future<void> _fetchLastRoundPerformance(String userId) async {
     try {
-      final snap = await _firestore.collection('fantasy_teams').doc(userId).collection('history').orderBy('round', descending: true).limit(2).get();
+      QuerySnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await _firestore
+            .collection('fantasy_teams')
+            .doc(userId)
+            .collection('history')
+            .orderBy('round', descending: true)
+            .limit(2)
+            .get();
+      } catch (e) {
+        debugPrint("Aviso: fallback em memória para histórico da última rodada ($e)");
+        snap = await _firestore
+            .collection('fantasy_teams')
+            .doc(userId)
+            .collection('history')
+            .get();
+      }
+
       if (snap.docs.isNotEmpty) {
-        final lastDoc = snap.docs.first.data();
+        final docs = snap.docs.toList()
+          ..sort((a, b) => ((b.data()['round'] ?? 0) as num)
+              .compareTo((a.data()['round'] ?? 0) as num));
+
+        final lastDoc = docs.first.data();
         lastRoundNumber = lastDoc['round'];
         lastRoundPoints = (lastDoc['points'] ?? 0).toDouble();
-        double lastPatrimony = (lastDoc['patrimony'] ?? 50.0).toDouble();
         
-        double prevPatrimony = 50.0;
-        if (snap.docs.length > 1) {
-          prevPatrimony = (snap.docs[1].data()['patrimony'] ?? 50.0).toDouble();
+        double lastPatrimony = (lastDoc['patrimony'] ?? 50.0).toDouble();
+        if (lastRoundNumber == 1 && _team != null) {
+          lastPatrimony = _team!.teamValue;
+          if ((lastDoc['patrimony'] as num?)?.toDouble() != _team!.teamValue) {
+            docs.first.reference.update({'patrimony': _team!.teamValue}).catchError((e) {
+              debugPrint("Aviso ao sincronizar patrimônio no histórico: $e");
+            });
+          }
         }
         
-        lastRoundAppreciation = lastPatrimony - prevPatrimony;
+        double prevPatrimony = 50.0;
+        if (docs.length > 1) {
+          prevPatrimony = (docs[1].data()['patrimony'] ?? 50.0).toDouble();
+        }
+        
+        lastRoundAppreciation = double.parse((lastPatrimony - prevPatrimony).toStringAsFixed(2));
         if (!_isDisposed) notifyListeners();
       }
     } catch (e) {
@@ -379,6 +562,20 @@ class FantasyHomeViewModel extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
     } catch (e) {
       debugPrint("Erro ao buscar scouts anteriores: $e");
+    }
+  }
+
+  /// 🏆 FINOPS: Busca o resumo consolidado da rodada em documento único com cache
+  Future<void> _fetchRoundSummary(int round, {bool force = false}) async {
+    try {
+      FantasyRoundSummary? summary = await _fantasyService.getRoundSummary(round: round, forceRefresh: force);
+      summary ??= await _fantasyService.getRoundSummary(forceRefresh: force);
+      if (summary != null && !_isDisposed) {
+        _roundSummary = summary;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Aviso: Falha ao carregar resumo da rodada no ViewModel: $e");
     }
   }
 }

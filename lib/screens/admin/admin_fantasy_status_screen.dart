@@ -9,7 +9,8 @@ class AdminFantasyStatusScreen extends StatefulWidget {
   const AdminFantasyStatusScreen({super.key});
 
   @override
-  State<AdminFantasyStatusScreen> createState() => _AdminFantasyStatusScreenState();
+  State<AdminFantasyStatusScreen> createState() =>
+      _AdminFantasyStatusScreenState();
 }
 
 class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
@@ -17,12 +18,13 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
   List<FantasyPlayer> _allPlayers = [];
   String _searchQuery = '';
   String? _selectedTeamId;
-  
+
   final Map<String, String> _statusOptions = {
     'probable': 'Provável (Verde)',
     'doubt': 'Dúvida (Laranja)',
     'suspended': 'Suspenso (Vermelho)',
     'injured': 'Contundido (Vermelho)',
+    'eternal': 'Eterno (Amarelo)',
     'null': 'Nulo (Cinza)',
   };
 
@@ -35,16 +37,19 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
   Future<void> _loadPlayers() async {
     setState(() => _isLoading = true);
     try {
-      final snapshot = await FirebaseFirestore.instance.collection('fantasy_market_players').get();
-      final players = snapshot.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
-      
+      final snapshot = await FirebaseFirestore.instance
+          .collection('fantasy_market_players')
+          .get();
+      final players =
+          snapshot.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
+
       // Ordenar por time e depois nome
       players.sort((a, b) {
         int teamCompare = a.teamId.compareTo(b.teamId);
         if (teamCompare != 0) return teamCompare;
         return a.name.compareTo(b.name);
       });
-      
+
       setState(() {
         _allPlayers = players;
         _isLoading = false;
@@ -59,10 +64,11 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
 
   Future<void> _updateStatus(FantasyPlayer player, String newStatus) async {
     final oldStatus = player.status;
-    
+
     // Otimistic UI update
     setState(() {
-      final index = _allPlayers.indexWhere((p) => p.playerId == player.playerId);
+      final index =
+          _allPlayers.indexWhere((p) => p.playerId == player.playerId);
       if (index != -1) {
         // Criar uma cópia do jogador com o novo status
         _allPlayers[index] = FantasyPlayer(
@@ -85,13 +91,20 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
 
     try {
       final batch = FirebaseFirestore.instance.batch();
-      
-      final marketRef = FirebaseFirestore.instance.collection('fantasy_market_players').doc(player.playerId);
+
+      final marketRef = FirebaseFirestore.instance
+          .collection('fantasy_market_players')
+          .doc(player.playerId);
       batch.update(marketRef, {'status': newStatus});
-      
-      final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
+
+      final seasonId = Provider.of<ChampionshipService>(context, listen: false)
+          .currentSeasonId;
       if (seasonId.isNotEmpty) {
-        final statsRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('player_stats').doc(player.playerId);
+        final statsRef = FirebaseFirestore.instance
+            .collection('championships')
+            .doc(seasonId)
+            .collection('player_stats')
+            .doc(player.playerId);
         batch.update(statsRef, {'status': newStatus});
       }
 
@@ -100,23 +113,24 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
     } catch (e) {
       // Revert in case of error
       setState(() {
-        final index = _allPlayers.indexWhere((p) => p.playerId == player.playerId);
+        final index =
+            _allPlayers.indexWhere((p) => p.playerId == player.playerId);
         if (index != -1) {
-           _allPlayers[index] = FantasyPlayer(
-              playerId: player.playerId,
-              name: player.name,
-              position: player.position,
-              teamId: player.teamId,
-              teamShieldUrl: player.teamShieldUrl,
-              photoUrl: player.photoUrl,
-              currentPrice: player.currentPrice,
-              lastPriceChange: player.lastPriceChange,
-              lastScore: player.lastScore,
-              averageScore: player.averageScore,
-              matchesPlayed: player.matchesPlayed,
-              status: oldStatus,
-              history: player.history,
-            );
+          _allPlayers[index] = FantasyPlayer(
+            playerId: player.playerId,
+            name: player.name,
+            position: player.position,
+            teamId: player.teamId,
+            teamShieldUrl: player.teamShieldUrl,
+            photoUrl: player.photoUrl,
+            currentPrice: player.currentPrice,
+            lastPriceChange: player.lastPriceChange,
+            lastScore: player.lastScore,
+            averageScore: player.averageScore,
+            matchesPlayed: player.matchesPlayed,
+            status: oldStatus,
+            history: player.history,
+          );
         }
       });
       if (mounted) AppFeedback.showError(context, "Erro ao salvar status: $e");
@@ -148,7 +162,9 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none),
                   ),
                   onChanged: (val) => setState(() => _searchQuery = val),
                 ),
@@ -157,15 +173,20 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   ),
                   value: _selectedTeamId,
                   hint: const Text("Filtrar por Equipe"),
                   isExpanded: true,
                   items: [
-                    const DropdownMenuItem(value: null, child: Text("Todas as Equipes")),
-                    ...teams.map((t) => DropdownMenuItem(value: t.id, child: Text(t.name))),
+                    const DropdownMenuItem(
+                        value: null, child: Text("Todas as Equipes")),
+                    ...teams.map((t) =>
+                        DropdownMenuItem(value: t.id, child: Text(t.name))),
                   ],
                   onChanged: (val) => setState(() => _selectedTeamId = val),
                 ),
@@ -174,28 +195,38 @@ class _AdminFantasyStatusScreenState extends State<AdminFantasyStatusScreen> {
           ),
         ),
       ),
-      body: _isLoading 
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
               itemCount: filteredPlayers.length,
               itemBuilder: (ctx, i) {
                 final player = filteredPlayers[i];
                 return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundImage: player.photoUrl.isNotEmpty ? NetworkImage(player.photoUrl) : null,
-                      child: player.photoUrl.isEmpty ? const Icon(Icons.person) : null,
+                      backgroundImage: player.photoUrl.isNotEmpty
+                          ? NetworkImage(player.photoUrl)
+                          : null,
+                      child: player.photoUrl.isEmpty
+                          ? const Icon(Icons.person)
+                          : null,
                     ),
-                    title: Text(player.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("${player.position} • Média: ${player.averageScore.toStringAsFixed(1)}"),
+                    title: Text(player.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(
+                        "${player.position} • Média: ${player.averageScore.toStringAsFixed(1)}"),
                     trailing: DropdownButton<String>(
-                      value: _statusOptions.containsKey(player.status) ? player.status : 'null',
+                      value: _statusOptions.containsKey(player.status)
+                          ? player.status
+                          : 'null',
                       underline: const SizedBox(),
                       items: _statusOptions.entries.map((entry) {
                         return DropdownMenuItem<String>(
                           value: entry.key,
-                          child: Text(entry.value, style: const TextStyle(fontSize: 12)),
+                          child: Text(entry.value,
+                              style: const TextStyle(fontSize: 12)),
                         );
                       }).toList(),
                       onChanged: (newStatus) {

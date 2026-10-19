@@ -44,12 +44,16 @@ class FantasyLiveAthletesViewModel extends ChangeNotifier {
 
   StreamSubscription? _scoutSub;
   StreamSubscription? _marketSub;
+  StreamSubscription? _roundMatchesSub;
+  bool _areAllMatchesFinished = false;
 
   // Getters
   bool get isLoading => _isLoading;
   int get currentRound => _currentRound;
   int get selectedRound => _selectedRound;
   bool get isMarketOpen => _isMarketOpen;
+  bool get areAllMatchesFinished => _areAllMatchesFinished;
+  bool get isScoutsValidationPeriod => !_isMarketOpen && _areAllMatchesFinished;
   String get searchTerm => _searchTerm;
   String get selectedPosition => _selectedPosition;
   String get selectedTeamId => _selectedTeamId;
@@ -174,7 +178,18 @@ class FantasyLiveAthletesViewModel extends ChangeNotifier {
 
   void _subscribeToScouts() {
     _scoutSub?.cancel();
+    _roundMatchesSub?.cancel();
     if (_seasonId.isEmpty) return;
+
+    if (!_isMarketOpen && _selectedRound > 0) {
+      _roundMatchesSub = _repository.streamRoundMatches(_seasonId, _selectedRound).listen((matches) {
+        if (_isDisposed) return;
+        _areAllMatchesFinished = matches.isNotEmpty && matches.every((m) => m.isFinished);
+        notifyListeners();
+      });
+    } else {
+      _areAllMatchesFinished = false;
+    }
 
     _scoutSub = _scoutService.streamLiveScores(_seasonId, _selectedRound).listen((scores) {
       _liveScores = scores;
@@ -235,6 +250,7 @@ class FantasyLiveAthletesViewModel extends ChangeNotifier {
     _isDisposed = true;
     _scoutSub?.cancel();
     _marketSub?.cancel();
+    _roundMatchesSub?.cancel();
     super.dispose();
   }
 }

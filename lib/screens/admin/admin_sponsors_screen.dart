@@ -393,7 +393,8 @@ class _SponsorFormModalState extends State<_SponsorFormModal> {
     final Map<String, String> availableLocations = {
       'home_partners_grid': 'Vitrine de Parceiros (Home)',
       'footer_home': 'Rodapé Fixo (Global)',
-      'app_open': 'Splash Screen (Abertura)',
+      'splash_loading': 'Parceiros na Splash (Carregamento)',
+      'app_open': 'Pop-up de Entrada (Tela Cheia)',
       'home_mid': 'Meio da Tela Inicial',
       'header_fixtures': 'Topo da Tabela de Jogos',
       'news_feed': 'Feed de Notícias',

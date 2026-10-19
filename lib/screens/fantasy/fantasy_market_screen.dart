@@ -78,7 +78,9 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
       final userId =
           Provider.of<FantasyAuthService>(context, listen: false).user?.uid;
       _viewModel.init(championshipService.teams,
-          requiredPosition: widget.requiredPosition, userId: userId);
+          requiredPosition: widget.requiredPosition,
+          userId: userId,
+          seasonId: championshipService.currentSeasonId);
     });
   }
 
@@ -766,32 +768,48 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
       return const SizedBox.shrink();
     }
 
+    final bool isValidating = _viewModel.isScoutsValidationPeriod;
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: isValidating ? Colors.amber.shade50 : Colors.orange.shade50,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.shade300),
+        border: Border.all(
+            color: isValidating
+                ? Colors.amber.shade400
+                : Colors.orange.shade300),
       ),
       child: Row(
         children: [
-          Icon(Icons.lock_clock, color: Colors.orange.shade800, size: 22),
+          Icon(
+            isValidating ? Icons.fact_check_rounded : Icons.lock_clock,
+            color: isValidating
+                ? Colors.amber.shade900
+                : Colors.orange.shade800,
+            size: 22,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Mercado Fechado",
+                  isValidating
+                      ? "Jogos Encerrados • Validando Scouts"
+                      : "Mercado Fechado",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
-                    color: Colors.orange.shade900,
+                    color: isValidating
+                        ? Colors.amber.shade900
+                        : Colors.orange.shade900,
                   ),
                 ),
                 Text(
-                  "Acompanhe as pontuações e scouts em tempo real.",
+                  isValidating
+                      ? "Todos os jogos da rodada foram encerrados. Os scouts estão sendo validados e em breve o mercado será reaberto."
+                      : "Acompanhe as pontuações e scouts em tempo real.",
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
                 ),
               ],
@@ -806,7 +824,9 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
             label: const Text("Ver Parciais",
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange.shade800,
+              backgroundColor: isValidating
+                  ? Colors.amber.shade900
+                  : Colors.orange.shade800,
               foregroundColor: Colors.white,
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -908,129 +928,20 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
           actionButton: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              backgroundColor: Colors.green,
+              backgroundColor: const Color(0xFF1B5E20),
               foregroundColor: Colors.white,
             ),
-            icon: const Icon(Icons.check_circle_outline),
-            label: const Text("Escalar no meu time",
+            icon: const Icon(Icons.sports_soccer),
+            label: const Text("Ir para Prancheta Escalar",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             onPressed: () {
               Navigator.pop(ctx);
-              _tryDirectHire(context, player);
+              Navigator.pushNamed(context, '/fantasy-lineup');
             },
           ),
         );
       },
     );
-  }
-
-  Future<void> _tryDirectHire(
-      BuildContext context, FantasyPlayer player) async {
-    final auth = Provider.of<FantasyAuthService>(context, listen: false);
-    final userId = auth.user?.uid;
-    if (userId == null) return;
-
-    showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()));
-
-    try {
-      final teamDoc = await FirebaseFirestore.instance
-          .collection('fantasy_teams')
-          .doc(userId)
-          .get();
-      if (!teamDoc.exists) {
-        if (context.mounted) Navigator.pop(context); // close dialog
-        if (context.mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Time não encontrado.")));
-        return;
-      }
-
-      final team = FantasyTeam.fromFirestore(teamDoc);
-
-      final statusDoc = await FirebaseFirestore.instance
-          .collection('fantasy_config')
-          .doc('status')
-          .get();
-      final bool isMarketOpen =
-          statusDoc.exists ? (statusDoc.data()?['is_open'] ?? true) : true;
-      final dynamic closingRaw = statusDoc.data()?['closing_time'];
-      final bool isExpired = closingRaw is Timestamp &&
-          DateTime.now().isAfter(closingRaw.toDate());
-
-      if (context.mounted) Navigator.pop(context); // close loading
-
-      if (!isMarketOpen || isExpired) {
-        if (context.mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("O mercado está fechado.")));
-        return;
-      }
-
-      if (team.currentBalance < player.currentPrice) {
-        if (context.mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Saldo insuficiente.")));
-        return;
-      }
-
-      if (team.lineupPlayerIds.contains(player.playerId) ||
-          team.benchPlayerIds.contains(player.playerId)) {
-        if (context.mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Jogador já está no seu time.")));
-        return;
-      }
-
-      // Check capacity for position
-      final fantasyService =
-          Provider.of<FantasyService>(context, listen: false);
-      final lineupPlayers =
-          await fantasyService.getPlayersByIds(team.lineupPlayerIds);
-
-      int countInLineup = lineupPlayers
-          .where(
-              (p) => p.position.toLowerCase() == player.position.toLowerCase())
-          .length;
-      int maxLimit = 1;
-      if (player.position.toLowerCase() == 'ala') maxLimit = 2;
-
-      if (countInLineup >= maxLimit) {
-        if (context.mounted)
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                "Posição preenchida. Remova um ${player.position} da sua escalação primeiro."),
-            backgroundColor: Colors.orange,
-          ));
-        return;
-      }
-
-      // Add player
-      team.lineupPlayerIds.add(player.playerId);
-
-      await FirebaseFirestore.instance
-          .collection('fantasy_teams')
-          .doc(team.userId)
-          .update({
-        'lineup_player_ids': team.lineupPlayerIds,
-        'current_balance': FieldValue.increment(-player.currentPrice),
-      });
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("${player.name} escalado com sucesso!"),
-            backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        // Just in case loading dialog is still up
-        Navigator.of(context).popUntil((route) =>
-            route.isFirst || route.settings.name == '/fantasy-market');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("Erro ao escalar: $e"), backgroundColor: Colors.red));
-      }
-    }
   }
 
   Widget _buildSkeletonPlayerCard() {

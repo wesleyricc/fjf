@@ -64,17 +64,27 @@ service cloud.firestore {
 
     match /fantasy_teams/{userId} {
       allow read: if request.auth != null; // Qualquer usuário logado vê os times (para o Ranking)
-      allow create: if isOwner(userId) && request.resource.data.get('total_points', 0) == 0; // Só o próprio usuário cria seu time
+      allow create: if isOwner(userId) &&
+        request.resource.data.get('total_points', 0) == 0 &&
+        request.resource.data.get('team_value', 0) == 50 &&
+        request.resource.data.get('current_balance', 0) == 50 &&
+        request.resource.data.get('lineup_player_ids', []).size() == 0;
       
       // 🚨 DEVSECOPS: Validação Estrita do Mercado (Blindagem Total e Whitelist)
       // 1. Patrimônio (team_value), pontuação e identificadores NUNCA podem ser alterados pelo cliente comum.
-      // 2. Quando o mercado está FECHADO, o usuário SÓ PODE alterar dados visuais/cadastrais (whitelist estrita).
-      // 3. Quando o mercado está ABERTO (e dentro do horário limite), pode escalar titulares, reservas, capitão e saldo.
+      // 2. Saldo (current_balance) deve ser >= 0 e nunca superior ao team_value cadastrado no servidor.
+      // 3. Limite estrito de no máximo 6 titulares e 5 reservas.
+      // 4. Quando o mercado está FECHADO, o usuário SÓ PODE alterar dados visuais/cadastrais (whitelist estrita).
+      // 5. Quando o mercado está ABERTO (e dentro do horário limite), pode escalar titulares, reservas, capitão e saldo.
       allow update: if isAdmin() || (
         isOwner(userId) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'team_value', 'total_points', 'last_score', 'owner_id', 'user_id', 'id'
-        ]) && (
+        ]) &&
+        request.resource.data.get('current_balance', 0) >= 0 &&
+        request.resource.data.get('current_balance', 0) <= resource.data.get('team_value', 50) &&
+        request.resource.data.get('lineup_player_ids', []).size() <= 6 &&
+        request.resource.data.get('bench_player_ids', []).size() <= 5 && (
           isFantasyMarketOpen() ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'team_name', 'shield_type', 'custom_logo_url', 'owner_name', 'owner_cpf', 'owner_phone', 'updated_at'
@@ -87,6 +97,12 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isAdmin();
       }
+    }
+
+    // 📊 Collection Group para histórico de rodadas de Fantasy (Permite consultas collectionGroup)
+    match /{path=**}/history/{historyDoc} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // 🔍 Auditoria Independente de Scouts do Fantasy (Apenas Administradores)
@@ -219,6 +235,11 @@ service cloud.firestore {
     match /championships/{seasonId}/fantasy_live/{document=**} {
       allow read: if request.auth != null; // Permite ler se o usuário estiver logado
       allow write: if false; // NINGUÉM pode escrever pelo app (Apenas a Cloud Function)
+    }
+
+    match /championships/{seasonId}/fantasy_live_leaderboard/{document=**} {
+      allow read: if request.auth != null; // Permite ler ranking ao vivo
+      allow write: if false; // Apenas a Cloud Function escreve
     }
 
     // =================================================================

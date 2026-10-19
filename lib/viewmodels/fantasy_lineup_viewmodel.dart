@@ -1,19 +1,21 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/fantasy_models.dart';
+import '../models/match_model.dart';
 import '../repositories/fantasy_repository.dart';
 import '../services/fantasy_scout_service.dart';
 import '../services/analytics_service.dart';
 import '../services/firestore_cache_service.dart';
-import 'package:flutter/widgets.dart';
+import '../services/match_service.dart';
 
 enum SyncStatus { idle, syncing, saved, error }
 
 class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver {
   final FantasyRepository _repository = FantasyRepository();
   final FantasyScoutService _scoutService = FantasyScoutService();
+  final MatchService _matchService = MatchService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   FantasyLineupViewModel() {
@@ -34,6 +36,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   String? _errorMessage;
   String? _successMessage;
   String? _userId;
+  String? _seasonId;
 
   bool _isDisposed = false; 
   bool _hasUnsavedChanges = false; 
@@ -60,6 +63,9 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   StreamSubscription? _marketSub;
   StreamSubscription? _teamSub; 
   StreamSubscription? _scoutSub;
+  StreamSubscription? _roundMatchesSub;
+  List<MatchModel> _roundMatches = [];
+  bool _areAllMatchesFinished = false;
 
   String? get userId => _userId;
   bool get isLoading => _isLoading;
@@ -78,6 +84,12 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   double get totalPatrimony => _totalPatrimony;
   Map<String, FantasyScoutDetail> get liveScores => _liveScores;
   FantasyGameConfig get gameConfig => _gameConfig;
+  List<MatchModel> get roundMatches => _roundMatches;
+  bool get areAllMatchesFinished => _areAllMatchesFinished;
+
+  /// Retorna verdadeiro quando a rodada está no período de validação de scouts:
+  /// o mercado está fechado e todos os jogos da rodada foram encerrados.
+  bool get isScoutsValidationPeriod => !_isMarketOpen && _areAllMatchesFinished;
 
   static String normalizePosition(String pos) {
     final lower = pos.trim().toLowerCase();
@@ -122,11 +134,29 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     _isMarketOpen = isOpenFlag && !isExpired;
     _currentRound = data['current_round'] ?? 1;
     _checkScoutSubscription(seasonId);
+
+    if (!_isMarketOpen) {
+      _roundMatchesSub?.cancel();
+      _roundMatchesSub = _matchService.streamRoundMatches(seasonId, _currentRound).listen((matches) {
+        if (_isDisposed) return;
+        _roundMatches = matches;
+        _areAllMatchesFinished = matches.isNotEmpty && matches.every((m) => m.isFinished);
+        notifyListeners();
+      }, onError: (e) {
+        debugPrint("Erro ao escutar partidas na escalação: $e");
+      });
+    } else {
+      _roundMatchesSub?.cancel();
+      _roundMatches = [];
+      _areAllMatchesFinished = false;
+    }
+
     if (!_isDisposed) notifyListeners();
   }
 
   void init(String userId, String seasonId) {
     _userId = userId;
+    _seasonId = seasonId;
     _isLoading = true;
     notifyListeners();
 
@@ -242,6 +272,15 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     
     if (_lineup.values.any((p) => p.playerId == player.playerId) || _bench.values.any((p) => p.playerId == player.playerId)) {
       _errorMessage = "${player.name} já está no seu time ou banco.";
+      if (!_isDisposed) notifyListeners();
+      return;
+    }
+
+    final double oldPrice = _lineup[slotIndex]?.currentPrice ?? 0.0;
+    final double netCost = player.currentPrice - oldPrice;
+    if (_currentBalance - netCost < -0.01) {
+      final double needed = double.parse((netCost - _currentBalance).toStringAsFixed(2));
+      _errorMessage = "Saldo insuficiente para contratar ${player.name} (Faltam C\$ ${needed.toStringAsFixed(2)}).";
       if (!_isDisposed) notifyListeners();
       return;
     }
@@ -419,6 +458,9 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
       } else {
         _errorMessage = result;
         _syncStatus = SyncStatus.error;
+        if (_team != null && _seasonId != null) {
+          await _syncLocalStateWithDatabase(_team!, _seasonId!);
+        }
         Future.delayed(const Duration(seconds: 4), () {
           if (_syncStatus == SyncStatus.error && !_hasUnsavedChanges) {
             _syncStatus = SyncStatus.idle;
@@ -429,7 +471,11 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
       
     } catch (e) {
       debugPrint("Erro no Auto-Save Debounce: $e");
+      _errorMessage = "Erro ao salvar escalação: $e";
       _syncStatus = SyncStatus.error;
+      if (_team != null && _seasonId != null) {
+        await _syncLocalStateWithDatabase(_team!, _seasonId!);
+      }
       Future.delayed(const Duration(seconds: 3), () {
         if (_syncStatus == SyncStatus.error && !_hasUnsavedChanges) {
           _syncStatus = SyncStatus.idle;
@@ -665,6 +711,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     _marketSub?.cancel(); 
     _teamSub?.cancel(); 
     _scoutSub?.cancel(); 
+    _roundMatchesSub?.cancel();
     _debounceTimer?.cancel();
     
     if (_hasUnsavedChanges) {

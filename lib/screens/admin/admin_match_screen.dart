@@ -101,7 +101,7 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
                       match: MatchModel.fromFirestore(vm.matchSnap)
                     ))
                   );
-                  vm.reloadMatchData();
+                  vm.reloadMatchData(preserveLineup: true);
                 }
               ),
               IconButton(
@@ -146,12 +146,12 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
                 const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))),
 
               if (!vm.isLoadingPlayers) ...[
-                _buildTeamHeaderSliver(context, matchData['team_home_name'] ?? 'Casa'),
+                _buildTeamHeaderSliver(context, matchData['team_home_name'] ?? 'Casa', vm.homePlayers, vm),
                 _buildPlayerListSliver(vm.homePlayers, vm),
 
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
-                _buildTeamHeaderSliver(context, matchData['team_away_name'] ?? 'Fora'),
+                _buildTeamHeaderSliver(context, matchData['team_away_name'] ?? 'Fora', vm.awayPlayers, vm),
                 _buildPlayerListSliver(vm.awayPlayers, vm),
               ],
 
@@ -219,18 +219,49 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
     );
   }
 
-  Widget _buildTeamHeaderSliver(BuildContext context, String teamName) {
+  Widget _buildTeamHeaderSliver(BuildContext context, String teamName, List<DocumentSnapshot> teamPlayers, AdminMatchViewModel vm) {
+    final int presentCount = teamPlayers.where((p) => vm.lineupPlayed.contains(p.id)).length;
+    final int totalCount = teamPlayers.length;
+    final bool allSelected = totalCount > 0 && presentCount == totalCount;
+
     return SliverToBoxAdapter(
       child: Container(
         color: Colors.grey[200],
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        child: Text(
-          teamName.toUpperCase(),
-          style: TextStyle(
-            color: Theme.of(context).primaryColor, 
-            fontWeight: FontWeight.bold, 
-            letterSpacing: 1.2
-          ),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "${teamName.toUpperCase()} ($presentCount/$totalCount)",
+              style: TextStyle(
+                color: Theme.of(context).primaryColor, 
+                fontWeight: FontWeight.bold, 
+                letterSpacing: 1.1,
+                fontSize: 13,
+              ),
+            ),
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              icon: Icon(
+                allSelected ? Icons.deselect : Icons.select_all,
+                size: 16,
+              ),
+              label: Text(
+                allSelected ? "Desmarcar Todos" : "Marcar Todos",
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () {
+                if (allSelected) {
+                  vm.clearTeamPlayers(teamPlayers);
+                } else {
+                  vm.selectTeamPlayers(teamPlayers);
+                }
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -314,7 +345,7 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
           await Navigator.of(context).push(
             MaterialPageRoute(builder: (ctx) => MatchLiveScoutScreen(match: vm.matchSnap))
           );
-          await vm.reloadMatchData();
+          await vm.reloadMatchData(preserveLineup: true);
           await vm.saveStats(); // Salva as presenças automaticamente (solicitação de melhoria)
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Partida e escalações sincronizadas!')));

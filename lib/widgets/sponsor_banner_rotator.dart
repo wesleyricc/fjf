@@ -211,6 +211,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
 
     // PADRÕES DE TAMANHO DE BANNERS PARA OS ANUNCIANTES:
     // location == 'app_open'        -> Proporção 9:16  (1080x1920 px) - Formato Vertical / Tela Cheia
+    // location == 'splash_loading'  -> Proporção 1:1   (100x100 px / Quadrado) - Parceiros da Tela de Splash
     // location == 'news_feed'       -> Proporção 1:1   (1080x1080 px) - Formato Quadrado
     // location == 'header_fixtures' -> Proporção 21:9  (1920x820 px)  - Formato Horizontal (Banner Largo, agora mais alto)
     // location == 'footer_home'     -> Proporção 21:9  (1920x820 px)  - Formato Horizontal (Rodapé, agora mais alto)
@@ -219,7 +220,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     double? aspect;
     if (widget.location == 'app_open') {
       aspect = 9 / 16;
-    } else if (widget.location == 'news_feed') {
+    } else if (widget.location == 'news_feed' || widget.location == 'splash_loading') {
       aspect = 1 / 1;
     } else if (widget.location.startsWith('header_') || widget.location == 'footer_home' || widget.location == 'home_mid') {
       aspect = 21 / 9;

@@ -3,11 +3,14 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart'; 
 import '../models/fantasy_models.dart';
+import '../models/match_model.dart';
 import 'firestore_cache_service.dart';
+import 'match_service.dart';
 
 class FantasyService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance; 
+  final MatchService _matchService = MatchService();
 
   CollectionReference get _fantasyTeamsRef => _firestore.collection('fantasy_teams');
   CollectionReference get _fantasyMarketRef => _firestore.collection('fantasy_market_players');
@@ -64,20 +67,102 @@ class FantasyService {
     }
   }
 
-  Future<List<FantasyTeam>> getRanking({bool isGlobal = true, int limit = 20, bool forceRefresh = false}) async {
-    String orderByField = isGlobal ? 'total_points' : 'last_score';
+  Future<List<FantasyTeam>> getRanking({
+    bool isGlobal = true,
+    RankingMetric metric = RankingMetric.points,
+    int limit = 20,
+    bool forceRefresh = false,
+  }) async {
+    String orderByField;
+    if (metric == RankingMetric.patrimony) {
+      orderByField = isGlobal ? 'team_value' : 'last_variation';
+    } else {
+      orderByField = isGlobal ? 'total_points' : 'last_score';
+    }
     final query = _fantasyTeamsRef.orderBy(orderByField, descending: true).limit(limit);
     try {
       final snap = await FirestoreCacheService.getWithCache(
         query: query,
-        cacheKey: 'fantasy_ranking_${isGlobal}_$limit',
+        cacheKey: 'fantasy_ranking_${metric.name}_${isGlobal}_$limit',
         ttl: const Duration(minutes: 5),
         forceRefresh: forceRefresh,
       );
       return snap.docs.map((doc) => FantasyTeam.fromFirestore(doc)).toList();
     } catch (e) {
-      debugPrint("Erro ao buscar ranking (isGlobal: $isGlobal): $e");
+      debugPrint("Erro ao buscar ranking ($metric, isGlobal: $isGlobal): $e");
       return [];
+    }
+  }
+
+  /// 🏆 FINOPS: Obtém o resumo consolidado da rodada (Média, Mito, Menor Pontuação, Maior/Menor Valorização)
+  /// em apenas 1 leitura no Firestore e com cache local para custo praticamente zero.
+  Future<FantasyRoundSummary?> getRoundSummary({int? round, bool forceRefresh = false}) async {
+    try {
+      final docRef = round != null
+          ? _firestore.collection('fantasy_stats').doc('round_${round}_summary')
+          : _firestore.collection('fantasy_stats').doc('last_round_summary');
+      final cacheKey = round != null ? 'round_${round}_summary' : 'last_round_summary';
+
+      final snap = await FirestoreCacheService.getDocumentWithCache(
+        docRef: docRef,
+        cacheKey: cacheKey,
+        ttl: const Duration(minutes: 30),
+        forceRefresh: forceRefresh,
+      );
+      if (!snap.exists || snap.data() == null) return null;
+      return FantasyRoundSummary.fromFirestore(snap);
+    } catch (e) {
+      debugPrint("Erro ao buscar resumo da rodada: $e");
+      return null;
+    }
+  }
+
+  /// Salva resumo consolidado da rodada (usado pelo painel admin como garantia de sincronização)
+  Future<void> saveRoundSummary(FantasyRoundSummary summary) async {
+    try {
+      final data = summary.toMap();
+      await _firestore.collection('fantasy_stats').doc('round_${summary.round}_summary').set(data, SetOptions(merge: true));
+      await _firestore.collection('fantasy_stats').doc('last_round_summary').set(data, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Erro ao salvar resumo da rodada: $e");
+    }
+  }
+
+  // 🏆 FINOPS: Stream do Leaderboard Consolidado ao Vivo (1 único documento para todos os usuários)
+  Stream<FantasyLiveLeaderboard?> streamLiveLeaderboard({
+    required String seasonId,
+    required int round,
+  }) {
+    if (seasonId.isEmpty || round <= 0) {
+      return Stream.value(null);
+    }
+    return _firestore
+        .collection('championships')
+        .doc(seasonId)
+        .collection('fantasy_live_leaderboard')
+        .doc('round_$round')
+        .snapshots()
+        .map((doc) => doc.exists ? FantasyLiveLeaderboard.fromFirestore(doc) : null);
+  }
+
+  // 🏆 FINOPS: Leitura pontual do Leaderboard Consolidado
+  Future<FantasyLiveLeaderboard?> getLiveLeaderboard({
+    required String seasonId,
+    required int round,
+  }) async {
+    if (seasonId.isEmpty || round <= 0) return null;
+    try {
+      final doc = await _firestore
+          .collection('championships')
+          .doc(seasonId)
+          .collection('fantasy_live_leaderboard')
+          .doc('round_$round')
+          .get();
+      if (!doc.exists) return null;
+      return FantasyLiveLeaderboard.fromFirestore(doc);
+    } catch (e) {
+      debugPrint("Erro ao buscar live leaderboard: $e");
+      return null;
     }
   }
 
@@ -118,7 +203,9 @@ class FantasyService {
         id: userId, ownerId: userId, userId: userId, shieldType: '1',
         ownerName: userName, teamName: teamName, totalPoints: 0,
         teamValue: 50, currentBalance: 50, lastScore: 0,
-        lineupPlayerIds: [], captainId: null, customLogoUrl: null,
+        lineupPlayerIds: [], benchPlayerIds: [],
+        lineupSlots: {}, benchSlots: {},
+        captainId: null, luxuryReserveId: null, customLogoUrl: null,
       );
       await _fantasyTeamsRef.doc(userId).set(newTeam.toMap());
     }
@@ -148,6 +235,13 @@ class FantasyService {
           }
         }
 
+        if (playerIds.length > 6) {
+          return "Erro: O time titular não pode ter mais de 6 atletas.";
+        }
+        if (benchIds.length > 5) {
+          return "Erro: O banco de reservas não pode ter mais de 5 atletas.";
+        }
+
         final teamRef = _fantasyTeamsRef.doc(userId);
         final teamSnap = await transaction.get(teamRef);
         
@@ -165,11 +259,12 @@ class FantasyService {
         transaction.update(teamRef, {
           'lineup_player_ids': playerIds, 
           'bench_player_ids': benchIds,
-          'lineup_slots': lineupSlots,
-          'bench_slots': benchSlots,
+          'lineup_slots': lineupSlots ?? {},
+          'bench_slots': benchSlots ?? {},
           'captain_id': captainId,
           'luxury_reserve_id': luxuryReserveId,
           'current_balance': safeBalance,
+          'balance': FieldValue.delete(),
           'lineup': FieldValue.delete(), 
         });
         
@@ -183,6 +278,18 @@ class FantasyService {
       if (!doc.exists) return {'is_open': true, 'current_round': 1};
       return doc.data() as Map<String, dynamic>;
     });
+  }
+
+  Stream<List<MatchModel>> streamRoundMatches(String seasonId, int round) {
+    return _matchService.streamRoundMatches(seasonId, round);
+  }
+
+  Stream<bool> streamAreAllMatchesFinished(String seasonId, int round) {
+    return _matchService.streamAreAllMatchesFinished(seasonId, round);
+  }
+
+  Future<bool> areAllMatchesFinished(String seasonId, int round) {
+    return _matchService.areAllMatchesFinished(seasonId, round);
   }
 
   Stream<QuerySnapshot> streamHistory(String userId) {

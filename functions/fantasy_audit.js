@@ -50,12 +50,16 @@ function calculateExpectedPrice(currentPrice, score, config) {
   if (rawVariation > limit) rawVariation = limit;
   if (rawVariation < -limit) rawVariation = -limit;
 
-  let newPrice = currentPrice + rawVariation;
-  if (newPrice < config.minPrice) newPrice = config.minPrice;
+  rawVariation = Number(rawVariation.toFixed(2));
+  let newPrice = Number((currentPrice + rawVariation).toFixed(2));
+  if (newPrice < config.minPrice) {
+    newPrice = config.minPrice;
+    rawVariation = Number((newPrice - currentPrice).toFixed(2));
+  }
 
   return {
-    variation: Number(rawVariation.toFixed(1)),
-    newPrice: Number(newPrice.toFixed(1)),
+    variation: rawVariation,
+    newPrice: newPrice,
     expectation: Number(expectation.toFixed(2)),
     limit: Number(limit.toFixed(2))
   };
@@ -64,25 +68,52 @@ function calculateExpectedPrice(currentPrice, score, config) {
 class AuditBatchWriter {
   constructor(db) {
     this.db = db;
-    this.batch = db.batch();
-    this.count = 0;
+    this.operations = [];
   }
 
   set(ref, data, options = {}) {
-    this.batch.set(ref, data, options);
-    this.count++;
-    if (this.count >= 400) {
-      return this.commit();
-    }
+    this.operations.push({ type: 'set', ref, data, options });
+    return Promise.resolve();
+  }
+
+  update(ref, data) {
+    this.operations.push({ type: 'update', ref, data });
     return Promise.resolve();
   }
 
   async commit() {
-    if (this.count > 0) {
-      await this.batch.commit();
-      this.batch = this.db.batch();
-      this.count = 0;
+    if (this.operations.length === 0) return;
+
+    const CHUNK_SIZE = 400;
+    let currentBatch = this.db.batch();
+    const currentPaths = new Set();
+    let currentCount = 0;
+
+    for (const op of this.operations) {
+      const docPath = op.ref ? op.ref.path : null;
+
+      if (currentCount >= CHUNK_SIZE || (docPath && currentPaths.has(docPath))) {
+        await currentBatch.commit();
+        currentBatch = this.db.batch();
+        currentPaths.clear();
+        currentCount = 0;
+      }
+
+      if (op.type === 'set') {
+        currentBatch.set(op.ref, op.data, op.options);
+      } else if (op.type === 'update') {
+        currentBatch.update(op.ref, op.data);
+      }
+
+      if (docPath) currentPaths.add(docPath);
+      currentCount++;
     }
+
+    if (currentCount > 0) {
+      await currentBatch.commit();
+    }
+
+    this.operations = [];
   }
 }
 
@@ -136,7 +167,14 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
     const configSnap = await db.collection('fantasy_config').doc('rules').get();
     const { config, warnings: configWarnings } = normalizeConfig(configSnap.exists ? configSnap.data() : null);
 
-    // 2. Partidas da Rodada
+    // 2. Buscar Atletas do Mercado do Fantasy primeiro (para validação cruzada)
+    const marketSnap = await db.collection('fantasy_market_players').get();
+    const allMarketPlayers = {};
+    marketSnap.docs.forEach(doc => {
+      allMarketPlayers[doc.id] = { id: doc.id, ...doc.data() };
+    });
+
+    // 3. Partidas da Rodada
     const matchesSnap = await db.collection('championships').doc(seasonId)
       .collection('matches').where('round', '==', roundNum).get();
 
@@ -177,9 +215,11 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         }
       }
 
-      // Buscar eventos da Timeline (Fonte da Verdade)
+      // Buscar eventos da Timeline com validação estrita de integridade
       const timelineSnap = await matchDoc.ref.collection('timeline').get();
       const matchEvents = [];
+      const validTeamIds = new Set([homeId, awayId].filter(Boolean));
+      const matchDiscrepancies = [];
       let timelineGoalsCount = 0;
       let timelineOwnGoalsCount = 0;
 
@@ -187,6 +227,20 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         const eData = eDoc.data();
         const pid = eData.playerId ? eData.playerId.toString() : '';
         const eventType = eData.type;
+        const eventTeam = eData.teamId ? eData.teamId.toString() : '';
+        const pMarket = pid ? allMarketPlayers[pid] : null;
+
+        // Validação 1: O evento pertence a um dos times da partida?
+        if (eventTeam && validTeamIds.size > 0 && !validTeamIds.has(eventTeam)) {
+          matchDiscrepancies.push(`Evento órfão ignorado (${eventType} do time '${eventTeam}'): time não pertence à partida ${matchLabel}.`);
+          return;
+        }
+
+        // Validação 2: O jogador pertence a um dos times da partida?
+        if (pMarket && pMarket.team_id && validTeamIds.size > 0 && !validTeamIds.has(pMarket.team_id)) {
+          matchDiscrepancies.push(`Evento inválido ignorado: atleta '${eData.playerName || pMarket.name}' pertence ao time '${pMarket.team_id}' e não a ${matchLabel}.`);
+          return;
+        }
 
         if (eventType === 'goal') timelineGoalsCount++;
         if (eventType === 'ownGoal') timelineOwnGoalsCount++;
@@ -197,8 +251,8 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
           matchLabel,
           type: eventType,
           playerId: pid,
-          playerName: eData.playerName || 'Desconhecido',
-          teamId: eData.teamId || '',
+          playerName: eData.playerName || pMarket?.name || 'Desconhecido',
+          teamId: eventTeam || pMarket?.team_id || '',
           minute: eData.minute ?? 0,
           period: eData.period || '1T',
           concededByPlayerId: eData.concededByPlayerId || null,
@@ -223,14 +277,38 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
       });
 
       // Validação de Integridade da Partida
-      const matchDiscrepancies = [];
       const totalPlacar = scoreHome + scoreAway;
       const totalGolsTimeline = timelineGoalsCount + timelineOwnGoalsCount;
       if (isMatchUnderwayOrDone && totalPlacar !== totalGolsTimeline) {
-        matchDiscrepancies.push(`Placar (${totalPlacar}) diverge do total de gols na timeline (${totalGolsTimeline}).`);
+        matchDiscrepancies.push(`Placar oficial (${scoreHome} x ${scoreAway} = ${totalPlacar}) diverge do total de gols válidos na timeline (${totalGolsTimeline}).`);
       }
       if (isMatchUnderwayOrDone && lineupPlayed.length === 0) {
         matchDiscrepancies.push("Súmula de presença (lineup_played) está vazia para jogo em andamento/finalizado.");
+      }
+
+      // Validação Cruzada: stats_applied.player_stats vs timeline
+      const pStatsApplied = mData.stats_applied?.player_stats;
+      if (pStatsApplied && typeof pStatsApplied === 'object') {
+        const checkCategory = (statCat, eventType, label) => {
+          const map = pStatsApplied[statCat];
+          if (map && typeof map === 'object') {
+            for (const [pId, val] of Object.entries(map)) {
+              const expectedVal = Number(val || 0);
+              const pEvents = matchEvents.filter(e => e.playerId === pId && e.type === eventType);
+              if (expectedVal !== pEvents.length) {
+                const pName = allMarketPlayers[pId]?.name || pId;
+                matchDiscrepancies.push(`Divergência em ${label} para ${pName}: súmula oficial (${expectedVal}) vs timeline (${pEvents.length}).`);
+              }
+            }
+          }
+        };
+
+        checkCategory('goals', 'goal', 'gols');
+        checkCategory('assists', 'assist', 'assistências');
+        checkCategory('yellows', 'yellowCard', 'cartões amarelos');
+        checkCategory('reds', 'redCard', 'cartões vermelhos');
+        checkCategory('difficult_saves', 'difficultSave', 'defesas difíceis');
+        checkCategory('shots_on_post', 'shotOnPost', 'chutes na trave');
       }
 
       const motmId = mData.stats_applied?.man_of_the_match || mData.man_of_the_match || null;
@@ -262,13 +340,6 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         motmId
       });
     }
-
-    // 3. Buscar Atletas do Mercado do Fantasy
-    const marketSnap = await db.collection('fantasy_market_players').get();
-    const allMarketPlayers = {};
-    marketSnap.docs.forEach(doc => {
-      allMarketPlayers[doc.id] = { id: doc.id, ...doc.data() };
-    });
 
     // 4. Buscar Pontuações Publicadas Ao Vivo
     const liveDocSnap = await db.collection('championships').doc(seasonId)
@@ -324,7 +395,7 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
 
       // Checagem de MOTM
       for (const m of matchesList) {
-        if (m.motmId === pid) {
+        if (m.motmId && String(m.motmId).trim() === String(pid).trim()) {
           counts.motm++;
         }
       }
@@ -384,9 +455,20 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         });
       }
 
-      // Variação de Preço Esperada (Regra 6 Decidida)
-      const currentPrice = Number(player.current_price || config.minPrice);
-      const priceValuation = calculateExpectedPrice(currentPrice, expectedScore, config);
+      // Pontuação Final de Fechamento (se houver histórico)
+      const historyEntry = Array.isArray(player.history) ? player.history.find(h => h.round === roundNum) : null;
+      const publishedFinalScore = historyEntry ? Number(Number(historyEntry.score || 0).toFixed(2)) : null;
+      const publishedPriceChange = historyEntry ? Number(Number(historyEntry.variation || 0).toFixed(2)) : null;
+
+      // Preço antes da rodada auditada (prioriza price_before gravado no fechamento para evitar divergência com o preço atual)
+      const priceBefore = (historyEntry && historyEntry.price_before !== undefined)
+        ? Number(historyEntry.price_before)
+        : Number(player.current_price || config.minPrice);
+
+      // Variação de Preço Esperada (Atletas sem atuação não sofrem variação)
+      const priceValuation = hasPlayed
+        ? calculateExpectedPrice(priceBefore, expectedScore, config)
+        : { variation: 0.0, newPrice: priceBefore, expectation: 0.0, limit: 0.0 };
 
       // Dados Publicados
       const liveData = liveScoresObj[pid] || {};
@@ -398,15 +480,10 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         flags.push("ERRO_AO_VIVO: Sistema concedeu SG ao jogador mesmo sem ele ter entrado em campo!");
       }
 
-      // Pontuação Final de Fechamento (se houver histórico)
-      const historyEntry = Array.isArray(player.history) ? player.history.find(h => h.round === roundNum) : null;
-      const publishedFinalScore = historyEntry ? Number(Number(historyEntry.score || 0).toFixed(2)) : null;
-      const publishedPriceChange = historyEntry ? Number(Number(historyEntry.variation || 0).toFixed(1)) : null;
-
       // Deltas
       const deltaLive = Number((publishedLiveScore - expectedScore).toFixed(2));
       const deltaFinal = publishedFinalScore !== null ? Number((publishedFinalScore - expectedScore).toFixed(2)) : null;
-      const deltaPrice = publishedPriceChange !== null ? Number((publishedPriceChange - priceValuation.variation).toFixed(1)) : null;
+      const deltaPrice = publishedPriceChange !== null ? Number((publishedPriceChange - priceValuation.variation).toFixed(2)) : null;
 
       if (Math.abs(deltaLive) >= 0.01) {
         flags.push(`DIVERGENCIA_AO_VIVO: Exibido (${publishedLiveScore}) vs Esperado (${expectedScore}) [Δ ${deltaLive}]`);
@@ -414,7 +491,7 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
       if (deltaFinal !== null && Math.abs(deltaFinal) >= 0.01) {
         flags.push(`DIVERGENCIA_FECHAMENTO: Gravado (${publishedFinalScore}) vs Esperado (${expectedScore}) [Δ ${deltaFinal}]`);
       }
-      if (deltaPrice !== null && Math.abs(deltaPrice) >= 0.1) {
+      if (deltaPrice !== null && Math.abs(deltaPrice) >= 0.05) {
         flags.push(`DIVERGENCIA_PRECO: Variação gravada (${publishedPriceChange}) vs Calculada (${priceValuation.variation})`);
       }
 
@@ -430,7 +507,7 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         expectedScore,
         breakdown,
         timelineEvidence: timelineEvidenceByPlayer[pid] || [],
-        priceBefore: currentPrice,
+        priceBefore,
         priceExpectedVariation: priceValuation.variation,
         priceExpectedNew: priceValuation.newPrice,
         publishedLiveScore,
@@ -470,18 +547,25 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         }
       ];
 
-      const currentPrice = Number(coach.current_price || config.minPrice);
-      const priceValuation = calculateExpectedPrice(currentPrice, expectedScore, config);
+      const coachPlayed = coachScores.length > 0;
+      const historyEntry = Array.isArray(coach.history) ? coach.history.find(h => h.round === roundNum) : null;
+      const publishedFinalScore = historyEntry ? Number(Number(historyEntry.score || 0).toFixed(2)) : null;
+      const publishedPriceChange = historyEntry ? Number(Number(historyEntry.variation || 0).toFixed(2)) : null;
+
+      const priceBefore = (historyEntry && historyEntry.price_before !== undefined)
+        ? Number(historyEntry.price_before)
+        : Number(coach.current_price || config.minPrice);
+
+      const priceValuation = coachPlayed
+        ? calculateExpectedPrice(priceBefore, expectedScore, config)
+        : { variation: 0.0, newPrice: priceBefore, expectation: 0.0, limit: 0.0 };
 
       const liveData = liveScoresObj[pid] || {};
       const publishedLiveScore = Number((liveData.totalScore !== undefined ? liveData.totalScore : 0).toFixed(2));
-      const historyEntry = Array.isArray(coach.history) ? coach.history.find(h => h.round === roundNum) : null;
-      const publishedFinalScore = historyEntry ? Number(Number(historyEntry.score || 0).toFixed(2)) : null;
-      const publishedPriceChange = historyEntry ? Number(Number(historyEntry.variation || 0).toFixed(1)) : null;
 
       const deltaLive = Number((publishedLiveScore - expectedScore).toFixed(2));
       const deltaFinal = publishedFinalScore !== null ? Number((publishedFinalScore - expectedScore).toFixed(2)) : null;
-      const deltaPrice = publishedPriceChange !== null ? Number((publishedPriceChange - priceValuation.variation).toFixed(1)) : null;
+      const deltaPrice = publishedPriceChange !== null ? Number((publishedPriceChange - priceValuation.variation).toFixed(2)) : null;
 
       const flags = [];
       if (Math.abs(deltaLive) >= 0.01) {
@@ -490,7 +574,7 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
       if (deltaFinal !== null && Math.abs(deltaFinal) >= 0.01) {
         flags.push(`DIVERGENCIA_FECHAMENTO: Técnico gravado (${publishedFinalScore}) vs Esperado (${expectedScore}) [Δ ${deltaFinal}]`);
       }
-      if (deltaPrice !== null && Math.abs(deltaPrice) >= 0.1) {
+      if (deltaPrice !== null && Math.abs(deltaPrice) >= 0.05) {
         flags.push(`DIVERGENCIA_PRECO: Variação gravada (${publishedPriceChange}) vs Calculada (${priceValuation.variation})`);
       }
 
@@ -506,7 +590,7 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         expectedScore,
         breakdown,
         timelineEvidence: [],
-        priceBefore: currentPrice,
+        priceBefore,
         priceExpectedVariation: priceValuation.variation,
         priceExpectedNew: priceValuation.newPrice,
         publishedLiveScore,
@@ -707,3 +791,6 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
     throw new HttpsError('internal', `Erro no processamento da auditoria: ${error.message}`);
   }
 }
+
+exports.executeAuditLogic = executeAuditLogic;
+

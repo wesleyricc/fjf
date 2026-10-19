@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../services/fantasy_service.dart';
 import '../../services/championship_service.dart';
@@ -8,6 +9,7 @@ import 'admin_sponsored_leagues_screen.dart';
 import 'admin_fantasy_scout_audit_screen.dart';
 import '../../services/fantasy_scout_appeal_service.dart';
 import 'admin_fantasy_scout_reviews_screen.dart';
+import 'admin_fantasy_teams_audit_screen.dart';
 
 class FantasyAdminControlScreen extends StatefulWidget {
   const FantasyAdminControlScreen({super.key});
@@ -24,8 +26,13 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
   @override
   void initState() {
     super.initState();
-    // Carrega a rodada atual do banco ao abrir a tela
+    // Carrega a rodada atual do banco ao abrir a tela e garante que a temporada esteja inicializada
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final champService =
+          Provider.of<ChampionshipService>(context, listen: false);
+      if (champService.currentSeasonId.isEmpty) {
+        champService.ensureInitialized();
+      }
       final stream = Provider.of<FantasyService>(context, listen: false)
           .streamMarketStatus();
       stream.first.then((data) {
@@ -46,6 +53,39 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
 
   // --- MÉTODOS DE AÇÃO ---
 
+  Future<String> _getSeasonId() async {
+    final champService =
+        Provider.of<ChampionshipService>(context, listen: false);
+    if (champService.currentSeasonId.isNotEmpty) {
+      return champService.currentSeasonId;
+    }
+    await champService.ensureInitialized();
+    if (champService.currentSeasonId.isNotEmpty) {
+      return champService.currentSeasonId;
+    }
+    // Fallback de consulta direta caso o ChampionshipService ainda não tenha carregado
+    try {
+      final activeSnap = await FirebaseFirestore.instance
+          .collection('championships')
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+      if (activeSnap.docs.isNotEmpty) {
+        return activeSnap.docs.first.id;
+      }
+      final anySnap = await FirebaseFirestore.instance
+          .collection('championships')
+          .limit(1)
+          .get();
+      if (anySnap.docs.isNotEmpty) {
+        return anySnap.docs.first.id;
+      }
+    } catch (e) {
+      debugPrint("Erro ao obter seasonId fallback: $e");
+    }
+    return '';
+  }
+
   Future<void> _syncMarket() async {
     final confirm = await _showConfirmDialog(
         "Sincronizar Mercado",
@@ -53,8 +93,7 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
             "Preços e pontos de jogadores já existentes NÃO serão alterados.");
     if (!confirm) return;
 
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false)
-        .currentSeasonId;
+    final seasonId = await _getSeasonId();
     final result = await _viewModel.syncMarket(seasonId);
     if (mounted) _showFeedback(result, isError: result.contains("Erro"));
   }
@@ -67,8 +106,7 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
             "O patrimônio livre dos usuários que já venderam jogadores na rodada atual não pode ser desfeito. Tem certeza absoluta?");
     if (!confirm) return;
 
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false)
-        .currentSeasonId;
+    final seasonId = await _getSeasonId();
     final result = await _viewModel.reprocessHistory(seasonId, maxRound);
     if (mounted) _showFeedback(result, isError: result.contains("Erro"));
   }
@@ -99,8 +137,7 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
             "Certifique-se de que TODOS os jogos da rodada foram finalizados e os scouts lançados.");
     if (!confirm) return;
 
-    final seasonId = Provider.of<ChampionshipService>(context, listen: false)
-        .currentSeasonId;
+    final seasonId = await _getSeasonId();
     final result = await _viewModel.processRound(seasonId, round);
     if (mounted) _showFeedback(result, isError: result.contains("Erro"));
   }
@@ -161,10 +198,12 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
       body: StreamBuilder<Map<String, dynamic>>(
         stream: Provider.of<FantasyService>(context).streamMarketStatus(),
         builder: (context, snapshot) {
-          if (snapshot.hasError)
+          if (snapshot.hasError) {
             return Center(child: Text("Erro: ${snapshot.error}"));
-          if (!snapshot.hasData)
+          }
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
+          }
 
           final data = snapshot.data!;
           final bool isOpen = data['is_open'] ?? true;
@@ -178,6 +217,10 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (_viewModel.isLoading) ...[
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 16),
+                    ],
                     // 1. STATUS ATUAL
                     _buildStatusCard(isOpen, dbRound),
 
@@ -322,6 +365,30 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                       ),
                     ),
 
+                    const SizedBox(height: 12),
+
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        final currentVal =
+                            int.tryParse(_roundController.text) ?? dbRound;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AdminFantasyTeamsAuditScreen(
+                              initialRound: currentVal,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.query_stats),
+                      label: const Text("Auditoria Geral das Equipes"),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                        backgroundColor: Colors.cyan.shade800,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+
                     const SizedBox(height: 32),
 
                     // 3. GAME LOOP (Ciclo do Jogo)
@@ -353,6 +420,29 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                           !_viewModel.isLoading, // Só processa se fechado
                       onTap: () => _processRound(
                           int.tryParse(_roundController.text) ?? dbRound),
+                    ),
+
+                    // PASSO 2.5: AUDITAR EQUIPES
+                    _buildStepCard(
+                      step: "2.5",
+                      title: "AUDITAR & VALIDAR EQUIPES",
+                      subtitle:
+                          "Avalie pontuações, valorizações e patrimônios antes de reabrir.",
+                      icon: Icons.fact_check_outlined,
+                      color: Colors.amber.shade800,
+                      isAvailable: !_viewModel.isLoading,
+                      onTap: () {
+                        final currentVal =
+                            int.tryParse(_roundController.text) ?? dbRound;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AdminFantasyTeamsAuditScreen(
+                              initialRound: currentVal,
+                            ),
+                          ),
+                        );
+                      },
                     ),
 
                     // PASSO 3: REABRIR
@@ -397,9 +487,12 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                       onPressed: _viewModel.isLoading
                           ? null
                           : () {
-                              final targetRound =
+                              final currentVal =
                                   int.tryParse(_roundController.text) ??
                                       dbRound;
+                              final targetRound = isOpen
+                                  ? (currentVal > 1 ? currentVal - 1 : 1)
+                                  : currentVal;
                               _reprocessHistory(targetRound);
                             },
                       icon: const Icon(Icons.warning_amber_rounded),

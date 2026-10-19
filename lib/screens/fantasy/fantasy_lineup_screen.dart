@@ -164,12 +164,16 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                 Text(
                   vm.isMarketOpen
                       ? "Escalando Rodada ${vm.currentRound}"
-                      : "Parciais da Rodada ${vm.currentRound}",
+                      : (vm.isScoutsValidationPeriod
+                          ? "Rodada ${vm.currentRound} • Validando Scouts"
+                          : "Parciais da Rodada ${vm.currentRound}"),
                   style: TextStyle(
                       fontSize: 12,
                       color: vm.isMarketOpen
                           ? Colors.greenAccent
-                          : Colors.orangeAccent,
+                          : (vm.isScoutsValidationPeriod
+                              ? Colors.amberAccent
+                              : Colors.orangeAccent),
                       fontWeight: FontWeight.bold),
                 ),
               ],
@@ -228,6 +232,40 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
               currentRoute: '/fantasy-lineup', showSponsor: false),
           body: Column(
             children: [
+              if (vm.isScoutsValidationPeriod)
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.amber.shade900, Colors.amber.shade800],
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: Offset(0, 2))
+                    ],
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.fact_check_rounded,
+                          color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Jogos encerrados! Os scouts estão sendo validados e em breve o mercado será reaberto.",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (vm.syncStatus != SyncStatus.idle)
                 Container(
                   width: double.infinity,
@@ -787,8 +825,11 @@ class PlayerCard extends StatelessWidget {
     final double priceChange = player.lastPriceChange;
     final double average = player.averageScore;
 
-    final Color apprecColor = priceChange >= 0 ? Colors.green : Colors.red;
-    final String apprecIcon = priceChange >= 0 ? "â–²" : "â–¼";
+    final Color apprecColor = priceChange > 0
+        ? Colors.green.shade700
+        : (priceChange < 0 ? Colors.red.shade700 : Colors.grey.shade600);
+    final String apprecIcon =
+        priceChange > 0 ? "▲" : (priceChange < 0 ? "▼" : "-");
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -865,9 +906,36 @@ class PlayerCard extends StatelessWidget {
                   ]))
           ]),
           subtitle: Row(children: [
-            if (isMarketOpen)
+            if (isMarketOpen) ...[
               Text("C\$ ${player.currentPrice.toStringAsFixed(2)}",
-                  style: const TextStyle(color: Colors.grey)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey.shade800)),
+              const SizedBox(width: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    priceChange > 0
+                        ? Icons.trending_up
+                        : (priceChange < 0
+                            ? Icons.trending_down
+                            : Icons.remove),
+                    size: 13,
+                    color: apprecColor,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    "${priceChange > 0 ? '+' : ''}${priceChange.toStringAsFixed(2)}",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: apprecColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (!isMarketOpen)
               Text("Parcial: ${score.toStringAsFixed(2)}",
                   style: const TextStyle(
@@ -922,7 +990,8 @@ class PlayerCard extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text("Valorização"),
-                          Text("$apprecIcon ${priceChange.toStringAsFixed(2)}",
+                          Text(
+                              "$apprecIcon ${priceChange.abs().toStringAsFixed(2)}",
                               style: TextStyle(
                                   color: apprecColor,
                                   fontWeight: FontWeight.bold)),
@@ -979,6 +1048,11 @@ class PlayerCard extends StatelessWidget {
         icon = Icons.local_hospital;
         label = 'Contundido';
         break;
+      case 'eternal':
+        color = Colors.yellow;
+        icon = Icons.star;
+        label = 'Eterno';
+        break;
       case 'suspended':
         color = Colors.red;
         icon = Icons.block;
@@ -988,13 +1062,13 @@ class PlayerCard extends StatelessWidget {
       case 'doubtful':
         color = Colors.orange;
         icon = Icons.help_outline;
-        label = 'DÃºvida';
+        label = 'Dúvida';
         break;
       case 'probable':
       default:
         color = Colors.green;
         icon = Icons.check_circle;
-        label = 'ProvÃ¡vel';
+        label = 'Provável';
         break;
     }
 

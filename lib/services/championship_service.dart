@@ -86,6 +86,11 @@ class ChampionshipService with ChangeNotifier {
   // 🚀 INICIALIZAÇÃO
   // ===========================================================================
 
+  Future<void> ensureInitialized() async {
+    if (_currentSeasonId.isNotEmpty && !_isLoading) return;
+    await init();
+  }
+
   Future<void> init() async {
     if (_isLoading) return; 
 

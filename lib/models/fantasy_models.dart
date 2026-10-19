@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+enum RankingMetric { points, patrimony }
+
 class FantasyPlayer {
   final String playerId;
   final String name;
@@ -37,6 +39,26 @@ class FantasyPlayer {
 
   factory FantasyPlayer.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    final historyList = List<Map<String, dynamic>>.from(data['history'] ?? []);
+
+    double lastScore = (data['last_score'] ?? 0).toDouble();
+    double lastPriceChange = (data['last_price_change'] ?? 0).toDouble();
+
+    // Se lastScore ou lastPriceChange estiverem zerados mas houver histórico de partidas jogadas,
+    // recupera a pontuação/variação da última partida que o atleta efetivamente disputou
+    if (historyList.isNotEmpty) {
+      final playedMatches =
+          historyList.where((h) => h['played'] == true).toList();
+      if (playedMatches.isNotEmpty) {
+        if (lastScore == 0) {
+          lastScore = (playedMatches.last['score'] ?? 0).toDouble();
+        }
+        if (lastPriceChange == 0 && playedMatches.last['variation'] != null) {
+          lastPriceChange = (playedMatches.last['variation'] ?? 0).toDouble();
+        }
+      }
+    }
+
     return FantasyPlayer(
       playerId: doc.id,
       name: data['name'] ?? '',
@@ -46,12 +68,12 @@ class FantasyPlayer {
       teamShieldUrl: data['team_shield_url'] ?? '',
       photoUrl: data['photo_url'] ?? '',
       currentPrice: (data['current_price'] ?? 0).toDouble(),
-      lastPriceChange: (data['last_price_change'] ?? 0).toDouble(),
-      lastScore: (data['last_score'] ?? 0).toDouble(),
+      lastPriceChange: lastPriceChange,
+      lastScore: lastScore,
       averageScore: (data['average_score'] ?? 0).toDouble(),
       matchesPlayed: (data['matches_played'] ?? 0).toInt(),
       status: data['status'] ?? 'probable',
-      history: List<Map<String, dynamic>>.from(data['history'] ?? []),
+      history: historyList,
     );
   }
 
@@ -83,6 +105,7 @@ class FantasyTeam {
   final double totalPoints;
   final double lastScore;
   final double teamValue;
+  final double lastVariation;
   final double currentBalance;
   final List<String> lineupPlayerIds;
   final List<String> benchPlayerIds;
@@ -104,6 +127,7 @@ class FantasyTeam {
     required this.totalPoints,
     required this.lastScore,
     required this.teamValue,
+    this.lastVariation = 0.0,
     required this.currentBalance,
     required this.lineupPlayerIds,
     this.benchPlayerIds = const [],
@@ -119,6 +143,11 @@ class FantasyTeam {
 
   factory FantasyTeam.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    final double totalPoints = (data['total_points'] ?? 0).toDouble();
+    double lastScore = (data['last_score'] ?? 0).toDouble();
+    if (lastScore == 0 && totalPoints > 0) {
+      lastScore = totalPoints;
+    }
 
     return FantasyTeam(
       id: doc.id,
@@ -126,9 +155,10 @@ class FantasyTeam {
       ownerId: data['owner_id'] ?? doc.id,
       ownerName: data['owner_name'] ?? 'Cartoleiro',
       teamName: data['team_name'] ?? 'Time sem nome',
-      totalPoints: (data['total_points'] ?? 0).toDouble(),
-      lastScore: (data['last_score'] ?? 0).toDouble(),
+      totalPoints: totalPoints,
+      lastScore: lastScore,
       teamValue: (data['team_value'] ?? 50).toDouble(),
+      lastVariation: (data['last_variation'] ?? 0).toDouble(),
       currentBalance: (data['current_balance'] ?? 50).toDouble(),
       lineupPlayerIds:
           List<String>.from(data['lineup_player_ids'] ?? data['lineup'] ?? []),
@@ -157,6 +187,7 @@ class FantasyTeam {
       'total_points': totalPoints,
       'last_score': lastScore,
       'team_value': teamValue,
+      'last_variation': lastVariation,
       'current_balance': currentBalance,
       'lineup_player_ids': lineupPlayerIds,
       'bench_player_ids': benchPlayerIds,
@@ -294,3 +325,285 @@ class FantasyGameConfig {
     };
   }
 }
+
+class FantasyLiveTeamScore {
+  final String teamId;
+  final String userId;
+  final String teamName;
+  final String ownerName;
+  final String shieldType;
+  final String? customLogoUrl;
+  final double roundScore;
+  final double totalPoints;
+  final double teamValue;
+  final double lastVariation;
+  final int playersPlayed;
+  final int playersTotal;
+  final String? captainId;
+
+  final List<FantasySubstitutionItem> substitutions;
+  final List<String>? finalLineup;
+
+  FantasyLiveTeamScore({
+    required this.teamId,
+    required this.userId,
+    required this.teamName,
+    required this.ownerName,
+    required this.shieldType,
+    this.customLogoUrl,
+    required this.roundScore,
+    required this.totalPoints,
+    this.teamValue = 50.0,
+    this.lastVariation = 0.0,
+    required this.playersPlayed,
+    required this.playersTotal,
+    this.captainId,
+    this.substitutions = const [],
+    this.finalLineup,
+  });
+
+  factory FantasyLiveTeamScore.fromMap(Map<String, dynamic> map) {
+    final rawSubs = (map['substitutions'] as List<dynamic>?) ?? [];
+    return FantasyLiveTeamScore(
+      teamId: map['team_id'] ?? '',
+      userId: map['user_id'] ?? map['team_id'] ?? '',
+      teamName: map['team_name'] ?? 'Time sem nome',
+      ownerName: map['owner_name'] ?? 'Cartoleiro',
+      shieldType: map['shield_type'] ?? 'shield_1',
+      customLogoUrl: map['custom_logo_url'],
+      roundScore: (map['round_score'] ?? 0).toDouble(),
+      totalPoints: (map['total_points'] ?? 0).toDouble(),
+      teamValue: (map['team_value'] ?? 50.0).toDouble(),
+      lastVariation: (map['last_variation'] ?? 0.0).toDouble(),
+      playersPlayed: (map['players_played'] ?? 0) is int
+          ? map['players_played']
+          : (map['players_played'] ?? 0).toInt(),
+      playersTotal: (map['players_total'] ?? 6) is int
+          ? map['players_total']
+          : (map['players_total'] ?? 6).toInt(),
+      captainId: map['captain_id'],
+      substitutions: rawSubs
+          .map((s) => FantasySubstitutionItem.fromMap(
+              Map<String, dynamic>.from(s as Map)))
+          .toList(),
+      finalLineup: (map['final_lineup'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'team_id': teamId,
+      'user_id': userId,
+      'team_name': teamName,
+      'owner_name': ownerName,
+      'shield_type': shieldType,
+      'custom_logo_url': customLogoUrl,
+      'round_score': roundScore,
+      'total_points': totalPoints,
+      'players_played': playersPlayed,
+      'players_total': playersTotal,
+      'captain_id': captainId,
+      'substitutions': substitutions.map((s) => s.toMap()).toList(),
+      'final_lineup': finalLineup,
+    };
+  }
+}
+
+class FantasySubstitutionItem {
+  final String outPlayerId;
+  final String inPlayerId;
+  final String type; // 'normal' | 'luxury'
+  final String slotPosition;
+
+  FantasySubstitutionItem({
+    required this.outPlayerId,
+    required this.inPlayerId,
+    required this.type,
+    required this.slotPosition,
+  });
+
+  factory FantasySubstitutionItem.fromMap(Map<String, dynamic> map) {
+    return FantasySubstitutionItem(
+      outPlayerId: (map['out'] ?? '').toString(),
+      inPlayerId: (map['in'] ?? '').toString(),
+      type: (map['type'] ?? 'normal').toString(),
+      slotPosition: (map['slot_position'] ?? '').toString(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'out': outPlayerId,
+      'in': inPlayerId,
+      'type': type,
+      'slot_position': slotPosition,
+    };
+  }
+}
+
+class FantasyLiveLeaderboard {
+  final int round;
+  final String seasonId;
+  final DateTime? updatedAt;
+  final bool isFinal;
+  final int teamsCount;
+  final List<FantasyLiveTeamScore> teams;
+
+  FantasyLiveLeaderboard({
+    required this.round,
+    required this.seasonId,
+    this.updatedAt,
+    this.isFinal = false,
+    required this.teamsCount,
+    required this.teams,
+  });
+
+  factory FantasyLiveLeaderboard.fromFirestore(DocumentSnapshot doc) {
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
+    final rawTeams = (data['teams'] as List<dynamic>?) ?? [];
+    final teamsList = rawTeams
+        .map((t) => FantasyLiveTeamScore.fromMap(
+            Map<String, dynamic>.from(t as Map)))
+        .toList();
+
+    DateTime? updated;
+    if (data['updated_at'] != null) {
+      if (data['updated_at'] is Timestamp) {
+        updated = (data['updated_at'] as Timestamp).toDate();
+      }
+    }
+
+    return FantasyLiveLeaderboard(
+      round: (data['round'] ?? 1) is int
+          ? data['round']
+          : int.tryParse(data['round'].toString()) ?? 1,
+      seasonId: data['season_id'] ?? '',
+      updatedAt: updated,
+      isFinal: data['is_final'] == true,
+      teamsCount: (data['teams_count'] ?? teamsList.length) is int
+          ? (data['teams_count'] ?? teamsList.length)
+          : teamsList.length,
+      teams: teamsList,
+    );
+  }
+}
+
+class FantasyRoundHighlightTeam {
+  final String teamId;
+  final String userId;
+  final String teamName;
+  final String ownerName;
+  final String? customLogoUrl;
+  final String shieldType;
+  final double score;
+  final double variation;
+  final double patrimony;
+
+  FantasyRoundHighlightTeam({
+    required this.teamId,
+    required this.userId,
+    required this.teamName,
+    required this.ownerName,
+    this.customLogoUrl,
+    required this.shieldType,
+    required this.score,
+    required this.variation,
+    required this.patrimony,
+  });
+
+  factory FantasyRoundHighlightTeam.fromMap(Map<String, dynamic> data) {
+    return FantasyRoundHighlightTeam(
+      teamId: data['team_id'] ?? '',
+      userId: data['user_id'] ?? data['team_id'] ?? '',
+      teamName: data['team_name'] ?? 'Time sem nome',
+      ownerName: data['owner_name'] ?? 'Cartoleiro',
+      customLogoUrl: data['custom_logo_url'],
+      shieldType: data['shield_type'] ?? '1',
+      score: (data['score'] ?? 0).toDouble(),
+      variation: (data['variation'] ?? 0).toDouble(),
+      patrimony: (data['patrimony'] ?? 50.0).toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'team_id': teamId,
+      'user_id': userId,
+      'team_name': teamName,
+      'owner_name': ownerName,
+      'custom_logo_url': customLogoUrl,
+      'shield_type': shieldType,
+      'score': score,
+      'variation': variation,
+      'patrimony': patrimony,
+    };
+  }
+}
+
+class FantasyRoundSummary {
+  final int round;
+  final int totalTeams;
+  final int activeTeams;
+  final double averageScore;
+  final FantasyRoundHighlightTeam? highestScoreTeam;      // Mito da Rodada
+  final FantasyRoundHighlightTeam? lowestScoreTeam;       // Menor Pontuação (escalados)
+  final FantasyRoundHighlightTeam? highestAppreciationTeam;// Maior Valorização
+  final FantasyRoundHighlightTeam? lowestAppreciationTeam; // Maior Desvalorização (escalados)
+  final DateTime? updatedAt;
+
+  FantasyRoundSummary({
+    required this.round,
+    required this.totalTeams,
+    required this.activeTeams,
+    required this.averageScore,
+    this.highestScoreTeam,
+    this.lowestScoreTeam,
+    this.highestAppreciationTeam,
+    this.lowestAppreciationTeam,
+    this.updatedAt,
+  });
+
+  factory FantasyRoundSummary.fromFirestore(DocumentSnapshot doc) {
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
+    return FantasyRoundSummary.fromMap(data);
+  }
+
+  factory FantasyRoundSummary.fromMap(Map<String, dynamic> data) {
+    return FantasyRoundSummary(
+      round: (data['round'] ?? 1) is int ? data['round'] : int.tryParse(data['round'].toString()) ?? 1,
+      totalTeams: (data['total_teams'] ?? 0) is int ? data['total_teams'] : int.tryParse(data['total_teams'].toString()) ?? 0,
+      activeTeams: (data['active_teams'] ?? 0) is int ? data['active_teams'] : int.tryParse(data['active_teams'].toString()) ?? 0,
+      averageScore: (data['average_score'] ?? 0).toDouble(),
+      highestScoreTeam: data['highest_score_team'] != null
+          ? FantasyRoundHighlightTeam.fromMap(Map<String, dynamic>.from(data['highest_score_team']))
+          : null,
+      lowestScoreTeam: data['lowest_score_team'] != null
+          ? FantasyRoundHighlightTeam.fromMap(Map<String, dynamic>.from(data['lowest_score_team']))
+          : null,
+      highestAppreciationTeam: data['highest_appreciation_team'] != null
+          ? FantasyRoundHighlightTeam.fromMap(Map<String, dynamic>.from(data['highest_appreciation_team']))
+          : null,
+      lowestAppreciationTeam: data['lowest_appreciation_team'] != null
+          ? FantasyRoundHighlightTeam.fromMap(Map<String, dynamic>.from(data['lowest_appreciation_team']))
+          : null,
+      updatedAt: data['updated_at'] is Timestamp ? (data['updated_at'] as Timestamp).toDate() : null,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'round': round,
+      'total_teams': totalTeams,
+      'active_teams': activeTeams,
+      'average_score': averageScore,
+      'highest_score_team': highestScoreTeam?.toMap(),
+      'lowest_score_team': lowestScoreTeam?.toMap(),
+      'highest_appreciation_team': highestAppreciationTeam?.toMap(),
+      'lowest_appreciation_team': lowestAppreciationTeam?.toMap(),
+      'updated_at': updatedAt != null ? Timestamp.fromDate(updatedAt!) : FieldValue.serverTimestamp(),
+    };
+  }
+}
+

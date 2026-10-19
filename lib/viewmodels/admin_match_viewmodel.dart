@@ -18,8 +18,10 @@ class AdminMatchViewModel extends ChangeNotifier {
   // --- CONTROLADORES DE TEXTO ---
   final TextEditingController homeScoreController = TextEditingController();
   final TextEditingController awayScoreController = TextEditingController();
-  final TextEditingController penaltyHomeScoreController = TextEditingController();
-  final TextEditingController penaltyAwayScoreController = TextEditingController();
+  final TextEditingController penaltyHomeScoreController =
+      TextEditingController();
+  final TextEditingController penaltyAwayScoreController =
+      TextEditingController();
 
   // --- ESTADO DO JOGO ---
   bool isSaving = false;
@@ -60,13 +62,23 @@ class AdminMatchViewModel extends ChangeNotifier {
     initData();
   }
 
+  bool _isDisposed = false;
+
   @override
   void dispose() {
+    _isDisposed = true;
     homeScoreController.dispose();
     awayScoreController.dispose();
     penaltyHomeScoreController.dispose();
     penaltyAwayScoreController.dispose();
     super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
   }
 
   void initData() {
@@ -76,8 +88,9 @@ class AdminMatchViewModel extends ChangeNotifier {
     checkShowTiebreakerSection();
   }
 
-  Future<void> reloadMatchData() async {
+  Future<void> reloadMatchData({bool preserveLineup = false}) async {
     try {
+      final oldLineup = List<String>.from(lineupPlayed);
       final newSnap = await FirebaseFirestore.instance
           .collection('championships')
           .doc(seasonId)
@@ -88,6 +101,11 @@ class AdminMatchViewModel extends ChangeNotifier {
       if (newSnap.exists) {
         matchSnap = newSnap;
         _loadFromMap(newSnap.data() as Map<String, dynamic>);
+        if (preserveLineup && oldLineup.isNotEmpty) {
+          lineupPlayed = oldLineup;
+        } else if (selectedStatus == 'pending' && allPlayers.isNotEmpty) {
+          lineupPlayed = allPlayers.map((p) => p.id).toList();
+        }
         notifyListeners();
       }
     } catch (e) {
@@ -96,8 +114,10 @@ class AdminMatchViewModel extends ChangeNotifier {
   }
 
   void _loadFromMap(Map<String, dynamic> data) {
-    penaltyHomeScoreController.text = data['penalty_score_home']?.toString() ?? '';
-    penaltyAwayScoreController.text = data['penalty_score_away']?.toString() ?? '';
+    penaltyHomeScoreController.text =
+        data['penalty_score_home']?.toString() ?? '';
+    penaltyAwayScoreController.text =
+        data['penalty_score_away']?.toString() ?? '';
     existingSumulaUrl = data['sumula_url'];
     homeScoreController.text = data['score_home']?.toString() ?? '0';
     awayScoreController.text = data['score_away']?.toString() ?? '0';
@@ -105,9 +125,12 @@ class AdminMatchViewModel extends ChangeNotifier {
     selectedWinnerId = data['winner_team_id'];
 
     final String phase = data['phase'] ?? '';
-    if (phase == 'quarter_final') tiebreakerRule = AdminService.playoffTiebreaker;
-    else if (phase == 'semifinal') tiebreakerRule = AdminService.semifinalTiebreaker;
-    else if (phase == 'third_place') tiebreakerRule = AdminService.thirdPlaceTiebreaker;
+    if (phase == 'quarter_final')
+      tiebreakerRule = AdminService.playoffTiebreaker;
+    else if (phase == 'semifinal')
+      tiebreakerRule = AdminService.semifinalTiebreaker;
+    else if (phase == 'third_place')
+      tiebreakerRule = AdminService.thirdPlaceTiebreaker;
     else if (phase == 'final') tiebreakerRule = AdminService.finalTiebreaker;
 
     goals.clear();
@@ -117,10 +140,16 @@ class AdminMatchViewModel extends ChangeNotifier {
     goalsConceded.clear();
     mediaLinks.clear();
     lineupPlayed.clear();
-    
+
     final lpDb = data['lineup_played'];
-    if (lpDb != null && lpDb is List) {
+    final bool isPending = (selectedStatus == 'pending');
+
+    if (isPending && allPlayers.isNotEmpty) {
+      lineupPlayed = allPlayers.map((p) => p.id).toList();
+    } else if (lpDb != null && lpDb is List && lpDb.isNotEmpty) {
       lineupPlayed = List<String>.from(lpDb);
+    } else if (allPlayers.isNotEmpty) {
+      lineupPlayed = allPlayers.map((p) => p.id).toList();
     }
 
     if (data.containsKey('stats_applied') && data['stats_applied'] != null) {
@@ -130,12 +159,14 @@ class AdminMatchViewModel extends ChangeNotifier {
       _safeFill(yellowCards, stats['yellows']);
       _safeFill(redCards, stats['reds']);
       _safeFill(goalsConceded, stats['goals_conceded']);
-      
+
       selectedManOfTheMatchId = data['stats_applied']['man_of_the_match'];
-      
+
       if (data['stats_applied']['media_links'] != null) {
-         final linksFromDb = data['stats_applied']['media_links'] as List<dynamic>;
-         mediaLinks = List<Map<String, dynamic>>.from(linksFromDb.map((item) => Map<String, dynamic>.from(item)));
+        final linksFromDb =
+            data['stats_applied']['media_links'] as List<dynamic>;
+        mediaLinks = List<Map<String, dynamic>>.from(
+            linksFromDb.map((item) => Map<String, dynamic>.from(item)));
       }
     }
   }
@@ -151,7 +182,7 @@ class AdminMatchViewModel extends ChangeNotifier {
   Future<void> loadPlayersFromCache() async {
     isLoadingPlayers = true;
     notifyListeners();
-    
+
     final data = matchSnap.data() as Map<String, dynamic>? ?? {};
     final homeId = data['team_home_id'];
     final awayId = data['team_away_id'];
@@ -173,32 +204,49 @@ class AdminMatchViewModel extends ChangeNotifier {
         return a.name.compareTo(b.name);
       }
 
-      final homeList = all.where((p) => p.teamId == homeId).toList()..sort(sortFunc);
-      final awayList = all.where((p) => p.teamId == awayId).toList()..sort(sortFunc);
+      final homeList = all.where((p) => p.teamId == homeId).toList()
+        ..sort(sortFunc);
+      final awayList = all.where((p) => p.teamId == awayId).toList()
+        ..sort(sortFunc);
 
-      homePlayers = homeList.map((p) => MockDocumentSnapshot(p.id, {
-        'name': p.name,
-        'jersey_number': p.jerseyNumber,
-        'is_staff': p.isStaff,
-        'is_goalkeeper': p.isGoalkeeper,
-        'team_id': p.teamId,
-      })).toList();
-      
-      awayPlayers = awayList.map((p) => MockDocumentSnapshot(p.id, {
-        'name': p.name,
-        'jersey_number': p.jerseyNumber,
-        'is_staff': p.isStaff,
-        'is_goalkeeper': p.isGoalkeeper,
-        'team_id': p.teamId,
-      })).toList();
+      homePlayers = homeList
+          .map((p) => MockDocumentSnapshot(p.id, {
+                'name': p.name,
+                'jersey_number': p.jerseyNumber,
+                'is_staff': p.isStaff,
+                'is_goalkeeper': p.isGoalkeeper,
+                'team_id': p.teamId,
+              }))
+          .toList();
 
-      if (data['lineup_played'] == null) {
-        lineupPlayed = [
-          ...homeList.map((p) => p.id),
-          ...awayList.map((p) => p.id)
-        ];
+      awayPlayers = awayList
+          .map((p) => MockDocumentSnapshot(p.id, {
+                'name': p.name,
+                'jersey_number': p.jerseyNumber,
+                'is_staff': p.isStaff,
+                'is_goalkeeper': p.isGoalkeeper,
+                'team_id': p.teamId,
+              }))
+          .toList();
+
+      final allPlayerIds = [
+        ...homeList.map((p) => p.id),
+        ...awayList.map((p) => p.id),
+      ];
+
+      final bool isPending =
+          (selectedStatus == 'pending') || (data['status'] == 'pending');
+      final lpDb = data['lineup_played'];
+
+      if (isPending) {
+        // Partidas pendentes (ainda não iniciadas) sempre vêm com presença 100% preenchida
+        lineupPlayed = allPlayerIds;
+      } else if (lpDb == null || (lpDb is List && lpDb.isEmpty)) {
+        // Se no banco estiver nulo ou vazio (devido ao bug anterior de salvar vazio), inicializa com todos presentes
+        lineupPlayed = allPlayerIds;
+      } else if (lpDb is List) {
+        lineupPlayed = List<String>.from(lpDb);
       }
-
     } catch (e) {
       debugPrint("Erro ao carregar jogadores no Admin: $e");
     } finally {
@@ -211,8 +259,9 @@ class AdminMatchViewModel extends ChangeNotifier {
     bool needsTiebreaker = false;
     final data = matchSnap.data() as Map<String, dynamic>? ?? {};
     final String phase = data['phase'] ?? '';
-    final isPlayoff = ['quarter_final', 'semifinal', 'third_place', 'final'].contains(phase);
-    
+    final isPlayoff =
+        ['quarter_final', 'semifinal', 'third_place', 'final'].contains(phase);
+
     if (isPlayoff && selectedStatus == 'finished') {
       final int scoreHome = int.tryParse(homeScoreController.text) ?? -1;
       final int scoreAway = int.tryParse(awayScoreController.text) ?? -1;
@@ -246,9 +295,35 @@ class AdminMatchViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void selectAllPlayers() {
+    lineupPlayed = allPlayers.map((p) => p.id).toList();
+    notifyListeners();
+  }
+
+  void clearAllLineup() {
+    lineupPlayed.clear();
+    notifyListeners();
+  }
+
+  void selectTeamPlayers(List<DocumentSnapshot> teamPlayers) {
+    for (var p in teamPlayers) {
+      if (!lineupPlayed.contains(p.id)) {
+        lineupPlayed.add(p.id);
+      }
+    }
+    notifyListeners();
+  }
+
+  void clearTeamPlayers(List<DocumentSnapshot> teamPlayers) {
+    final ids = teamPlayers.map((p) => p.id).toSet();
+    lineupPlayed.removeWhere((id) => ids.contains(id));
+    notifyListeners();
+  }
+
   Future<void> pickSumulaFile() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf'], withData: true);
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: FileType.custom, allowedExtensions: ['pdf'], withData: true);
       if (result != null && result.files.single.bytes != null) {
         pickedFileBytes = result.files.single.bytes;
         pickedFileName = result.files.single.name;
@@ -267,16 +342,20 @@ class AdminMatchViewModel extends ChangeNotifier {
 
     int? penaltyScoreHome;
     int? penaltyScoreAway;
-    String? winnerId = selectedWinnerId; 
+    String? winnerId = selectedWinnerId;
 
     final matchData = matchSnap.data() as Map<String, dynamic>;
 
     if (showTiebreakerSection && tiebreakerRule.contains('penalties')) {
       penaltyScoreHome = int.tryParse(penaltyHomeScoreController.text);
       penaltyScoreAway = int.tryParse(penaltyAwayScoreController.text);
-      
-      if (penaltyScoreHome != null && penaltyScoreAway != null && penaltyScoreHome != penaltyScoreAway) {
-         winnerId = (penaltyScoreHome > penaltyScoreAway) ? matchData['team_home_id'] : matchData['team_away_id'];
+
+      if (penaltyScoreHome != null &&
+          penaltyScoreAway != null &&
+          penaltyScoreHome != penaltyScoreAway) {
+        winnerId = (penaltyScoreHome > penaltyScoreAway)
+            ? matchData['team_home_id']
+            : matchData['team_away_id'];
       }
     }
 
@@ -284,7 +363,8 @@ class AdminMatchViewModel extends ChangeNotifier {
     if (pickedFileBytes != null) {
       try {
         final String matchId = matchSnap.id;
-        final String fileName = pickedFileName.isNotEmpty ? pickedFileName : '$matchId.pdf';
+        final String fileName =
+            pickedFileName.isNotEmpty ? pickedFileName : '$matchId.pdf';
         final ref = FirebaseStorage.instance.ref().child('sumulas/$fileName');
         final metadata = SettableMetadata(contentType: 'application/pdf');
         await ref.putData(pickedFileBytes!, metadata);
@@ -320,9 +400,9 @@ class AdminMatchViewModel extends ChangeNotifier {
   Future<String> deleteMatch() async {
     isSaving = true;
     notifyListeners();
-    
+
     final result = await matchService.deleteMatch(matchSnap, seasonId);
-    
+
     isSaving = false;
     notifyListeners();
     return result;
@@ -331,13 +411,20 @@ class AdminMatchViewModel extends ChangeNotifier {
 
 // Classe Mock de compatibilidade
 class MockDocumentSnapshot implements DocumentSnapshot {
-  @override final String id;
+  @override
+  final String id;
   final Map<String, dynamic> _data;
   MockDocumentSnapshot(this.id, this._data);
-  @override Map<String, dynamic> data() => _data;
-  @override dynamic get(Object field) => _data[field as String];
-  @override dynamic operator [](Object field) => _data[field as String];
-  @override bool get exists => true;
-  @override DocumentReference get reference => throw UnimplementedError();
-  @override SnapshotMetadata get metadata => throw UnimplementedError();
+  @override
+  Map<String, dynamic> data() => _data;
+  @override
+  dynamic get(Object field) => _data[field as String];
+  @override
+  dynamic operator [](Object field) => _data[field as String];
+  @override
+  bool get exists => true;
+  @override
+  DocumentReference get reference => throw UnimplementedError();
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
 }

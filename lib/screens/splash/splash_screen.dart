@@ -48,7 +48,7 @@ class _SplashScreenState extends State<SplashScreen>
       final allSponsors = context.read<SponsorViewModel>().sponsors;
       final sponsors = allSponsors.where((s) {
         final locs = s['locations'] as List<dynamic>? ?? [];
-        return locs.contains('app_open') || s['location'] == 'app_open';
+        return locs.contains('splash_loading') || s['location'] == 'splash_loading';
       }).toList();
       if (sponsors.isNotEmpty) {
         final int totalChunks = (sponsors.length / 6).ceil();
@@ -89,7 +89,7 @@ class _SplashScreenState extends State<SplashScreen>
     final allSponsors = context.watch<SponsorViewModel>().sponsors;
     final sponsors = allSponsors.where((s) {
       final locs = s['locations'] as List<dynamic>? ?? [];
-      return locs.contains('app_open') || s['location'] == 'app_open';
+      return locs.contains('splash_loading') || s['location'] == 'splash_loading';
     }).toList();
 
     return Scaffold(

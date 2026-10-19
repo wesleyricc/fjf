@@ -37,6 +37,52 @@ class MatchService {
             .toList());
   }
 
+  /// Transmite as partidas de uma rodada específica ordenadas em memória por horário,
+  /// sem exigir índice composto no Firestore.
+  Stream<List<MatchModel>> streamRoundMatches(String seasonId, int round) {
+    if (seasonId.isEmpty || round <= 0) return Stream.value([]);
+    return _getMatchesRef(seasonId)
+        .where('round', isEqualTo: round)
+        .snapshots()
+        .map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => MatchModel.fromFirestore(doc))
+          .toList();
+      list.sort((a, b) {
+        if (a.datetime == null) return 1;
+        if (b.datetime == null) return -1;
+        return a.datetime!.compareTo(b.datetime!);
+      });
+      return list;
+    });
+  }
+
+  /// Retorna um Stream booleano indicando se todos os jogos da rodada estão com status 'finished'.
+  Stream<bool> streamAreAllMatchesFinished(String seasonId, int round) {
+    return streamRoundMatches(seasonId, round).map((matches) {
+      if (matches.isEmpty) return false;
+      return matches.every((m) => m.isFinished);
+    });
+  }
+
+  /// Consulta pontual se todos os jogos de uma rodada estão finalizados.
+  Future<bool> areAllMatchesFinished(String seasonId, int round) async {
+    if (seasonId.isEmpty || round <= 0) return false;
+    try {
+      final snap = await _getMatchesRef(seasonId)
+          .where('round', isEqualTo: round)
+          .get();
+      if (snap.docs.isEmpty) return false;
+      return snap.docs.every((d) {
+        final data = d.data() as Map<String, dynamic>? ?? {};
+        return data['status'] == 'finished';
+      });
+    } catch (e) {
+      debugPrint("Erro ao verificar partidas finalizadas da rodada: $e");
+      return false;
+    }
+  }
+
   // ===========================================================================
   // ⚡ CORE: PROCESSAMENTO DE SÚMULA E ESTATÍSTICAS
   // ===========================================================================
@@ -96,6 +142,8 @@ class MatchService {
           if (event.id == excludeEventId) continue;
           final pid = event.playerId;
           if (pid.isEmpty) continue;
+          // Ignora eventos que não pertencem a nenhuma das equipes da partida
+          if (event.teamId != homeId && event.teamId != awayId) continue;
 
           if (event.type == MatchEventType.goal) {
             if (event.teamId == homeId) scoreHome++;

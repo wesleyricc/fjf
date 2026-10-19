@@ -426,6 +426,20 @@ exports.closeRound = onCall({
     const matchesSnap = await db.collection('championships').doc(seasonId)
       .collection('matches').where('round', '==', round).get();
 
+    if (matchesSnap.empty) {
+      throw new HttpsError('failed-precondition', `Nenhuma partida encontrada para a rodada ${round}.`);
+    }
+
+    const hasAnyScouts = matchesSnap.docs.some(doc => {
+      const d = doc.data();
+      return (d.lineup_played && Array.isArray(d.lineup_played) && d.lineup_played.length > 0) ||
+             (d.stats_applied && d.stats_applied.player_stats);
+    });
+
+    if (!hasAnyScouts) {
+      throw new HttpsError('failed-precondition', `A rodada ${round} não possui partidas com súmula ou atletas confirmados.`);
+    }
+
     const scoresMap = {};
     const teamCleanSheets = {};
     const playersPlayedSet = new Set();
@@ -528,6 +542,7 @@ exports.closeRound = onCall({
 
     const batchHandler = new BatchHandler(db);
     const newPricesMap = {};
+    const pricesBeforeMap = {};
 
     allPlayersSnap.forEach(doc => {
       const p = doc.data();
@@ -538,31 +553,43 @@ exports.closeRound = onCall({
       const existingHistory = Array.isArray(p.history) ? p.history.find(h => h.round === round) : null;
       // Se já existir, usamos o price_before original para não acumular variações de preço
       const currentPrice = existingHistory ? (existingHistory.price_before || config.minPrice) : (p.current_price || config.minPrice);
-
-      const expectation = currentPrice * config.factorExpectation;
-      const performance = score - expectation;
-      let variation = performance * config.factorVariation;
-      let limit = currentPrice * config.capLimitPercent;
-
-      // Clamp garante que o limite nunca seja menor que 2.0 nem maior que 5.0
-      if (limit < 2.0) limit = 2.0;
-      if (limit > 5.0) limit = 5.0;
-
-      if (variation > limit) variation = limit;
-      if (variation < -limit) variation = -limit;
-
-      let newPrice = currentPrice + variation;
-      if (newPrice < config.minPrice) newPrice = config.minPrice;
-
-      newPricesMap[pid] = Number(newPrice.toFixed(1));
-      variation = Number(variation.toFixed(1));
+      pricesBeforeMap[pid] = currentPrice;
 
       const hasPlayed = playersPlayedSet.has(pid.toString()) || (p.position === 'Técnico' && (teamScores[p.team_id] && teamScores[p.team_id].length > 0));
+
+      let variation = 0.0;
+      let newPrice = currentPrice;
+
+      if (hasPlayed) {
+        const expectation = currentPrice * config.factorExpectation;
+        const performance = score - expectation;
+        variation = performance * config.factorVariation;
+        let limit = currentPrice * config.capLimitPercent;
+
+        // Clamp garante que o limite nunca seja menor que 2.0 nem maior que 5.0
+        if (limit < 2.0) limit = 2.0;
+        if (limit > 5.0) limit = 5.0;
+
+        if (variation > limit) variation = limit;
+        if (variation < -limit) variation = -limit;
+
+        variation = Number(variation.toFixed(2));
+        newPrice = Number((currentPrice + variation).toFixed(2));
+        if (newPrice < config.minPrice) {
+          newPrice = config.minPrice;
+          variation = Number((newPrice - currentPrice).toFixed(2));
+        }
+
+        newPricesMap[pid] = newPrice;
+      } else {
+        newPricesMap[pid] = Number(currentPrice.toFixed(2));
+        variation = 0.0;
+      }
 
       const updatedHistory = Array.isArray(p.history) ? p.history.filter(h => h.round !== round) : [];
       updatedHistory.push({
         round: round,
-        score: score,
+        score: hasPlayed ? score : 0,
         price_before: currentPrice,
         price_after: newPricesMap[pid],
         variation: variation,
@@ -572,11 +599,12 @@ exports.closeRound = onCall({
 
       const playedMatches = updatedHistory.filter(h => h.played);
       const avgScore = playedMatches.length > 0 ? (playedMatches.reduce((acc, h) => acc + h.score, 0) / playedMatches.length) : 0;
+      const lastPlayedMatch = playedMatches.length > 0 ? playedMatches[playedMatches.length - 1] : null;
 
       batchHandler.update(doc.ref, {
         current_price: newPricesMap[pid],
-        last_price_change: variation,
-        last_score: score,
+        last_price_change: hasPlayed ? variation : (lastPlayedMatch ? (lastPlayedMatch.variation || 0) : 0),
+        last_score: hasPlayed ? score : (lastPlayedMatch ? (lastPlayedMatch.score || 0) : 0),
         average_score: Number(avgScore.toFixed(2)),
         matches_played: playedMatches.length,
         history: updatedHistory
@@ -591,11 +619,31 @@ exports.closeRound = onCall({
       oldTeamPointsMap[teamId] = doc.data().points || 0;
     });
 
+    // 🏆 FinOps: Busca o patrimônio da rodada anterior para cálculo exato da valorização da rodada
+    const prevRoundHistoriesMap = {};
+    if (round > 1) {
+      const prevRoundHistoriesSnap = await db.collectionGroup('history').where('round', '==', round - 1).get();
+      prevRoundHistoriesSnap.forEach(doc => {
+        const teamId = doc.ref.parent.parent.id;
+        prevRoundHistoriesMap[teamId] = doc.data().patrimony || 50.0;
+      });
+    }
+
     const userTeamsSnap = await db.collection('fantasy_teams').get();
 
     const playerPickedCount = {};
     const teamRoundScores = {};
     const teamPatrimony = {}; // NOVO
+    const teamVariations = {}; // NOVO: Variação de cartoletas da rodada
+
+    // 📊 FinOps: Métricas consolidadas da rodada para tela inicial (Média, Mito, Menor pontuação, Maior/Menor valorização)
+    let totalTeamsCount = 0;
+    let activeTeamsCount = 0;
+    let activeTeamsPointsSum = 0;
+    let highestScoreTeam = null;       // Mito da rodada (maior pontuação)
+    let lowestScoreTeam = null;        // Lanterna da rodada (apenas times que escalaram)
+    let highestAppreciationTeam = null;// Maior valorização da rodada (+C$)
+    let lowestAppreciationTeam = null; // Maior desvalorização da rodada (-C$, apenas times que escalaram)
 
     userTeamsSnap.forEach(doc => {
       const team = doc.data();
@@ -746,17 +794,31 @@ exports.closeRound = onCall({
         roundPoints += pScore;
       });
 
+      let playersInitialCost = 0;
       originalLineup.forEach(pid => {
         playersCurrentValue += (newPricesMap[pid] || config.minPrice);
+        playersInitialCost += (pricesBeforeMap[pid] || config.minPrice);
       });
 
       // Arredonda pra 2 casas decimais
       roundPoints = Number(roundPoints.toFixed(2));
       teamRoundScores[doc.id] = roundPoints; // Guarda pra usar no mata-mata
 
-      const currentBalance = team.current_balance || 0;
-      const totalPatrimony = Number((currentBalance + playersCurrentValue).toFixed(2));
-      teamPatrimony[doc.id] = totalPatrimony; // NOVO
+      const rawBalance = team.current_balance !== undefined ? team.current_balance : (team.balance || 0);
+      const teamValue = team.team_value || 50.0;
+      // O saldo em caixa nunca pode ser maior do que (team_value - custo inicial dos atletas escalados)
+      const maxPossibleBalance = Math.max(0, Number((teamValue - playersInitialCost).toFixed(2)));
+      const safeBalance = Math.min(rawBalance, maxPossibleBalance);
+
+      const totalPatrimony = Number((safeBalance + playersCurrentValue).toFixed(2));
+      teamPatrimony[doc.id] = totalPatrimony;
+
+      // 💰 Cálculo da variação de patrimônio da rodada (Cartoletas)
+      const prevPatrimony = round === 1
+        ? 50.0
+        : (prevRoundHistoriesMap[doc.id] !== undefined ? prevRoundHistoriesMap[doc.id] : (team.team_value || 50.0));
+      const roundVariation = Number((totalPatrimony - prevPatrimony).toFixed(2));
+      teamVariations[doc.id] = roundVariation;
 
       const teamHistoryRef = doc.ref.collection('history').doc(round.toString());
 
@@ -764,6 +826,8 @@ exports.closeRound = onCall({
         round: round,
         points: roundPoints,
         patrimony: totalPatrimony,
+        variation: roundVariation,
+        balance: safeBalance,
         processed_at: admin.firestore.Timestamp.now(),
         captain_id: activeCaptainId,
         original_captain_id: captainId,
@@ -782,8 +846,55 @@ exports.closeRound = onCall({
         total_points: newTotalPoints,
         last_score: roundPoints,
         team_value: totalPatrimony,
+        last_variation: roundVariation,
+        current_balance: safeBalance,
+        balance: admin.firestore.FieldValue.delete(), // Limpa campo legado
         updated_at: admin.firestore.Timestamp.now()
       });
+
+      // 📊 Agrupamento de métricas para resumo consolidado (FinOps)
+      totalTeamsCount++;
+      const hasPlayersFielded = originalLineup && originalLineup.length > 0;
+      if (hasPlayersFielded) {
+        activeTeamsCount++;
+        activeTeamsPointsSum += roundPoints;
+      }
+
+      const teamSummaryItem = {
+        team_id: doc.id,
+        user_id: team.user_id || doc.id,
+        team_name: team.team_name || 'Time sem nome',
+        owner_name: team.owner_name || 'Cartoleiro',
+        shield_type: team.shield_type || '1',
+        custom_logo_url: team.custom_logo_url || null,
+        score: roundPoints,
+        variation: roundVariation,
+        patrimony: totalPatrimony
+      };
+
+      // 1. Mito da Rodada (Maior pontuação geral)
+      if (!highestScoreTeam || roundPoints > highestScoreTeam.score) {
+        highestScoreTeam = teamSummaryItem;
+      }
+
+      // 2. Menor pontuação da rodada (APENAS times com jogadores escalados)
+      if (hasPlayersFielded) {
+        if (!lowestScoreTeam || roundPoints < lowestScoreTeam.score) {
+          lowestScoreTeam = teamSummaryItem;
+        }
+      }
+
+      // 3. Maior valorização (+C$)
+      if (!highestAppreciationTeam || roundVariation > highestAppreciationTeam.variation) {
+        highestAppreciationTeam = teamSummaryItem;
+      }
+
+      // 4. Maior desvalorização (-C$, APENAS times com jogadores escalados)
+      if (hasPlayersFielded) {
+        if (!lowestAppreciationTeam || roundVariation < lowestAppreciationTeam.variation) {
+          lowestAppreciationTeam = teamSummaryItem;
+        }
+      }
     });
 
     // ==========================================
@@ -851,6 +962,26 @@ exports.closeRound = onCall({
 
     const globalStatsRef = db.collection('fantasy_stats').doc('global_round_stats');
     batchHandler.set(globalStatsRef, roundStatsPayload, { merge: true });
+
+    // 🏆 FinOps: Grava documento consolidado do resumo da rodada para acesso em 1 leitura
+    const avgScoreRound = activeTeamsCount > 0 ? Number((activeTeamsPointsSum / activeTeamsCount).toFixed(2)) : 0.0;
+    const roundSummaryPayload = {
+      round: round,
+      total_teams: totalTeamsCount,
+      active_teams: activeTeamsCount,
+      average_score: avgScoreRound,
+      highest_score_team: highestScoreTeam,
+      lowest_score_team: lowestScoreTeam,
+      highest_appreciation_team: highestAppreciationTeam,
+      lowest_appreciation_team: lowestAppreciationTeam,
+      updated_at: admin.firestore.Timestamp.now()
+    };
+
+    const roundSummaryRef = db.collection('fantasy_stats').doc(`round_${round}_summary`);
+    batchHandler.set(roundSummaryRef, roundSummaryPayload, { merge: true });
+
+    const lastRoundSummaryRef = db.collection('fantasy_stats').doc('last_round_summary');
+    batchHandler.set(lastRoundSummaryRef, roundSummaryPayload, { merge: true });
 
 
     // ==========================================
@@ -953,6 +1084,13 @@ exports.closeRound = onCall({
 
     await batchHandler.commit();
 
+    // 🏆 FinOps: Atualiza o Leaderboard Consolidado com status finalizado
+    try {
+      await updateLiveLeaderboard(seasonId, round, liveScoresObj, playersPlayedSet, playersInfo, true);
+    } catch (e) {
+      console.error("Aviso ao atualizar Leaderboard final:", e);
+    }
+
     return {
       success: true,
       message: `Rodada ${round} finalizada com sucesso.`
@@ -993,11 +1131,11 @@ exports.updateLiveScouts = onDocumentWritten({
     const newLineup = JSON.stringify(matchData.lineup_played || []);
 
     if (oldStats === newStats &&
-        oldHome === newHome &&
-        oldAway === newAway &&
-        oldMotm === newMotm &&
-        oldStatus === newStatus &&
-        oldLineup === newLineup) {
+      oldHome === newHome &&
+      oldAway === newAway &&
+      oldMotm === newMotm &&
+      oldStatus === newStatus &&
+      oldLineup === newLineup) {
       return;
     }
   }
@@ -1044,11 +1182,16 @@ exports.updateLiveScouts = onDocumentWritten({
     matchesSnap.forEach(doc => {
       const data = doc.data();
 
-      if (data.status === 'in_progress' || data.status === 'finished') {
-        const scoreHome = data.score_home || 0;
-        const scoreAway = data.score_away || 0;
-        if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
-        if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+      const isMatchStarted = data.status === 'in_progress' || data.status === 'finished';
+      const hasLineup = Array.isArray(data.lineup_played) && data.lineup_played.length > 0;
+
+      if (isMatchStarted || hasLineup) {
+        if (isMatchStarted) {
+          const scoreHome = data.score_home || 0;
+          const scoreAway = data.score_away || 0;
+          if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
+          if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+        }
 
         const lineups = data.lineup_played || [];
         lineups.forEach(pid => {
@@ -1067,6 +1210,7 @@ exports.updateLiveScouts = onDocumentWritten({
           scoresMap[strMotm] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
         }
         scoresMap[strMotm].motm += 1;
+        playersPlayedSet.add(strMotm);
       }
 
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
@@ -1094,6 +1238,9 @@ exports.updateLiveScouts = onDocumentWritten({
 
             const count = Number(val) || 0;
             scoresMap[pid][cat] += count;
+            if (count > 0 || cat === 'goals_conceded') {
+              playersPlayedSet.add(pid.toString());
+            }
           });
         }
       });
@@ -1152,12 +1299,276 @@ exports.updateLiveScouts = onDocumentWritten({
 
     await liveDocRef.set({
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
-      scores: scoresMap
+      scores: scoresMap,
+      players_played: Array.from(playersPlayedSet)
     }, { merge: true });
+
+    // 🏆 FinOps: Atualiza o Leaderboard Consolidado em tempo real
+    await updateLiveLeaderboard(seasonId, round, scoresMap, playersPlayedSet, playersInfo, false);
 
   } catch (error) {
     console.error("🔥 Erro ao atualizar Live Scouts:", error);
   }
+});
+
+// ==================================================================
+// 🏆 FINOPS: AGREGADOR DE RANKINGS AO VIVO (LEADERBOARD CONSOLIDADO)
+// ==================================================================
+
+function getScoreFromMap(scoresMap, pid) {
+  if (!scoresMap || !pid) return 0;
+  const val = scoresMap[pid];
+  if (val === undefined || val === null) return 0;
+  if (typeof val === 'object') {
+    return Number(val.totalScore) || 0;
+  }
+  return Number(val) || 0;
+}
+
+async function updateLiveLeaderboard(seasonId, round, scoresMap, playersPlayedSet, playersInfo, isFinal = false) {
+  try {
+    const userTeamsSnap = await db.collection('fantasy_teams').get();
+    if (userTeamsSnap.empty) return;
+
+    const leaderboard = [];
+
+    userTeamsSnap.forEach(doc => {
+      const team = doc.data();
+      const originalLineup = team.lineup_player_ids || [];
+      const benchIds = team.bench_player_ids || [];
+      const captainId = team.captain_id || null;
+      const luxuryReserveId = team.luxury_reserve_id || null;
+      const lineupSlots = team.lineup_slots || {};
+      const benchSlots = team.bench_slots || {};
+
+      let finalLineup = [...originalLineup];
+      let activeCaptainId = captainId;
+      const substitutedList = [];
+
+      // Agrupa titulares por posição baseando-se no slot escalado
+      const startersByPos = {
+        'Goleiro': [],
+        'Fixo': [],
+        'Ala': [],
+        'Pivô': [],
+        'Técnico': []
+      };
+
+      const slottedStarters = new Set();
+      Object.entries(lineupSlots).forEach(([slot, pid]) => {
+        const pos = SLOT_POSITIONS[slot];
+        if (pos && pid && originalLineup.includes(pid)) {
+          startersByPos[pos].push(pid);
+          slottedStarters.add(pid);
+        }
+      });
+
+      // Fallback para times legados
+      originalLineup.forEach(pid => {
+        if (!slottedStarters.has(pid) && playersInfo[pid]) {
+          const pos = playersInfo[pid].position;
+          if (startersByPos[pos]) {
+            startersByPos[pos].push(pid);
+          }
+        }
+      });
+
+      // Agrupa reservas por posição baseando-se no slot do banco
+      const benchByPos = {};
+      const slottedBench = new Set();
+      Object.entries(benchSlots).forEach(([slot, bId]) => {
+        const pos = BENCH_POSITIONS[slot];
+        if (pos && bId && benchIds.includes(bId)) {
+          benchByPos[pos] = bId;
+          slottedBench.add(bId);
+        }
+      });
+
+      benchIds.forEach(bId => {
+        if (!slottedBench.has(bId) && playersInfo[bId]) {
+          const pos = playersInfo[bId].position;
+          if (!benchByPos[pos]) {
+            benchByPos[pos] = bId;
+          }
+        }
+      });
+
+      const positions = ['Goleiro', 'Fixo', 'Ala', 'Pivô', 'Técnico'];
+      positions.forEach(pos => {
+        const startersOfPos = startersByPos[pos] || [];
+        const benchId = benchByPos[pos];
+
+        if (startersOfPos.length && benchId && playersPlayedSet && playersPlayedSet.has(benchId)) {
+          const allPlayed = startersOfPos.every(pid => playersPlayedSet.has(pid));
+          if (!allPlayed) {
+            const missedStarters = startersOfPos.filter(pid => !playersPlayedSet.has(pid));
+            missedStarters.sort((a, b) => {
+              if (a === activeCaptainId) return -1;
+              if (b === activeCaptainId) return 1;
+              const priceA = playersInfo[a]?.current_price || 0;
+              const priceB = playersInfo[b]?.current_price || 0;
+              return priceB - priceA;
+            });
+
+            const missedStarter = missedStarters[0];
+            if (missedStarter) {
+              finalLineup = finalLineup.filter(p => p !== missedStarter);
+              finalLineup.push(benchId);
+              substitutedList.push({
+                out: missedStarter,
+                in: benchId,
+                type: 'normal',
+                slot_position: pos
+              });
+              if (missedStarter === activeCaptainId) {
+                activeCaptainId = benchId;
+              }
+            }
+          } else {
+            if (luxuryReserveId === benchId) {
+              const benchScore = getScoreFromMap(scoresMap, benchId);
+              let worstStarter = startersOfPos[0];
+              let worstScore = getScoreFromMap(scoresMap, worstStarter);
+
+              startersOfPos.forEach(pid => {
+                const s = getScoreFromMap(scoresMap, pid);
+                if (s < worstScore) {
+                  worstScore = s;
+                  worstStarter = pid;
+                } else if (s === worstScore) {
+                  if (worstStarter === activeCaptainId && pid !== activeCaptainId) {
+                    worstStarter = pid;
+                  }
+                }
+              });
+
+              if (benchScore > worstScore) {
+                finalLineup = finalLineup.filter(p => p !== worstStarter);
+                finalLineup.push(benchId);
+                substitutedList.push({
+                  out: worstStarter,
+                  in: benchId,
+                  type: 'luxury',
+                  slot_position: pos
+                });
+                if (worstStarter === activeCaptainId) {
+                  activeCaptainId = benchId;
+                }
+              }
+            }
+          }
+        }
+      });
+
+      let roundPoints = 0;
+      let playersPlayed = 0;
+
+      finalLineup.forEach(pid => {
+        let pScore = getScoreFromMap(scoresMap, pid);
+        if (pid === activeCaptainId) pScore *= 2;
+        roundPoints += pScore;
+        if (playersPlayedSet && playersPlayedSet.has(pid.toString())) {
+          playersPlayed++;
+        }
+      });
+
+      roundPoints = Number(roundPoints.toFixed(2));
+
+      const baseTotalPoints = isFinal
+        ? ((team.total_points || 0) - (team.last_score || roundPoints))
+        : (team.total_points || 0);
+      const liveTotalPoints = Number((baseTotalPoints + roundPoints).toFixed(2));
+
+      leaderboard.push({
+        team_id: doc.id,
+        user_id: team.user_id || doc.id,
+        team_name: team.team_name || 'Time sem nome',
+        owner_name: team.owner_name || 'Cartoleiro',
+        shield_type: team.shield_type || 'shield_1',
+        custom_logo_url: team.custom_logo_url || null,
+        round_score: roundPoints,
+        total_points: liveTotalPoints,
+        team_value: (team.team_value !== undefined ? team.team_value : 50.0),
+        last_variation: (team.last_variation !== undefined ? team.last_variation : 0.0),
+        players_played: playersPlayed,
+        players_total: finalLineup.length,
+        captain_id: activeCaptainId,
+        substitutions: substitutedList,
+        final_lineup: finalLineup,
+      });
+    });
+
+    // Ordena primariamente por pontuação da rodada desc
+    leaderboard.sort((a, b) => b.round_score - a.round_score);
+
+    const leaderboardRef = db.collection('championships').doc(seasonId)
+      .collection('fantasy_live_leaderboard').doc(`round_${round}`);
+
+    await leaderboardRef.set({
+      round: Number(round),
+      season_id: seasonId,
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      is_final: isFinal,
+      teams_count: leaderboard.length,
+      teams: leaderboard
+    }, { merge: true });
+
+    console.log(`🏆 Live Leaderboard atualizado para a rodada ${round}: ${leaderboard.length} times consolidados.`);
+  } catch (error) {
+    console.error("🔥 Erro ao atualizar Live Leaderboard:", error);
+  }
+}
+
+// Cloud Function onCall para recalcular o Leaderboard ao vivo sob demanda por Admin
+exports.recalculateLiveLeaderboard = onCall({
+  cors: true,
+  timeoutSeconds: 300,
+  memory: '512MB'
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Acesso negado. Usuário não autenticado.');
+  }
+  const adminDoc = await db.collection('admin_users').doc(request.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new HttpsError('permission-denied', 'Apenas administradores podem recalcular o leaderboard ao vivo.');
+  }
+
+  const { seasonId, round } = request.data;
+  if (!seasonId || !round) {
+    throw new HttpsError('invalid-argument', 'seasonId e round são obrigatórios.');
+  }
+
+  const liveDocSnap = await db.collection('championships').doc(seasonId)
+    .collection('fantasy_live').doc(`round_${round}`).get();
+
+  if (!liveDocSnap.exists) {
+    throw new HttpsError('not-found', `Documento fantasy_live para a rodada ${round} não encontrado.`);
+  }
+
+  const liveData = liveDocSnap.data();
+  const liveScores = liveData.scores || {};
+  const isFinal = liveData.is_final || false;
+
+  const matchesSnap = await db.collection('championships').doc(seasonId)
+    .collection('matches').where('round', '==', Number(round)).get();
+
+  const playersPlayedSet = new Set();
+  matchesSnap.forEach(doc => {
+    const data = doc.data();
+    if (data.lineup_played && Array.isArray(data.lineup_played)) {
+      data.lineup_played.forEach(pid => playersPlayedSet.add(pid.toString()));
+    }
+  });
+
+  const allPlayersSnap = await db.collection('fantasy_market_players').get();
+  const playersInfo = {};
+  allPlayersSnap.forEach(doc => {
+    playersInfo[doc.id] = doc.data();
+  });
+
+  await updateLiveLeaderboard(seasonId, round, liveScores, playersPlayedSet, playersInfo, isFinal);
+
+  return { success: true, message: `Leaderboard da rodada ${round} recalculado com sucesso.` };
 });
 
 // ==================================================================
@@ -1986,39 +2397,68 @@ exports.calculateMiniBolaoPoints = onCall({ cors: true, timeoutSeconds: 540 }, a
 });
 
 // ==================================================================
-// UTILS: Batch Handler
+// UTILS: Batch Handler (Auto-chunking seguro para Firestore WriteBatch)
 // ==================================================================
 class BatchHandler {
   constructor(dbInstance) {
     this.db = dbInstance;
-    this.batch = dbInstance.batch();
-    this.count = 0;
+    this.operations = [];
   }
 
   update(ref, data) {
-    this.batch.update(ref, data);
-    this.checkCommit();
+    this.operations.push({ type: 'update', ref, data });
   }
 
-  set(ref, data) {
-    this.batch.set(ref, data);
-    this.checkCommit();
+  set(ref, data, options = null) {
+    this.operations.push({ type: 'set', ref, data, options });
   }
 
-  async checkCommit() {
-    this.count++;
-    if (this.count >= 490) {
-      await this.batch.commit();
-      this.batch = this.db.batch();
-      this.count = 0;
-    }
+  delete(ref) {
+    this.operations.push({ type: 'delete', ref });
   }
 
   async commit() {
-    if (this.count > 0) {
-      await this.batch.commit();
-      this.count = 0;
+    if (this.operations.length === 0) return;
+
+    const CHUNK_SIZE = 450;
+    let currentBatch = this.db.batch();
+    const currentPaths = new Set();
+    let currentCount = 0;
+
+    for (const op of this.operations) {
+      const docPath = op.ref ? op.ref.path : null;
+
+      // Se atingir o limite de 450 operações ou se o mesmo documento já foi
+      // referenciado no batch atual (Firestore proíbe múltiplos writes no mesmo doc num único batch),
+      // commita o batch corrente e abre um novo de forma estritamente sequencial.
+      if (currentCount >= CHUNK_SIZE || (docPath && currentPaths.has(docPath))) {
+        await currentBatch.commit();
+        currentBatch = this.db.batch();
+        currentPaths.clear();
+        currentCount = 0;
+      }
+
+      if (op.type === 'update') {
+        currentBatch.update(op.ref, op.data);
+      } else if (op.type === 'set') {
+        if (op.options) {
+          currentBatch.set(op.ref, op.data, op.options);
+        } else {
+          currentBatch.set(op.ref, op.data);
+        }
+      } else if (op.type === 'delete') {
+        currentBatch.delete(op.ref);
+      }
+
+      if (docPath) currentPaths.add(docPath);
+      currentCount++;
     }
+
+    if (currentCount > 0) {
+      await currentBatch.commit();
+    }
+
+    this.operations = [];
   }
 }
 

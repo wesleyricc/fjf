@@ -31,11 +31,15 @@ class FantasyMarketViewModel extends ChangeNotifier {
   FantasyTeam? _myTeam;
   StreamSubscription? _teamSub;
   StreamSubscription? _marketSub;
+  StreamSubscription? _roundMatchesSub;
   bool _isMarketOpen = true;
+  bool _areAllMatchesFinished = false;
   bool _isDisposed = false;
 
   bool get isLoading => _isLoading;
   bool get isMarketOpen => _isMarketOpen;
+  bool get areAllMatchesFinished => _areAllMatchesFinished;
+  bool get isScoutsValidationPeriod => !_isMarketOpen && _areAllMatchesFinished;
   List<Map<String, String>> get teamOptions => _teamOptions;
   Set<String> get favoriteIds => _favoriteIds;
 
@@ -59,13 +63,30 @@ class FantasyMarketViewModel extends ChangeNotifier {
   int get lineupCount => _myTeam?.lineupPlayerIds.length ?? 0;
 
   Future<void> init(List<Team> teams,
-      {String? requiredPosition, String? userId}) async {
+      {String? requiredPosition, String? userId, String? seasonId}) async {
     if (requiredPosition != null) {
       _selectedPosition = requiredPosition;
     }
     _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
       _isMarketOpen = status['is_open'] ?? true;
+      final int currentRound = status['current_round'] ?? 1;
+
+      if (!_isMarketOpen && seasonId != null && seasonId.isNotEmpty) {
+        _roundMatchesSub?.cancel();
+        _roundMatchesSub = _repository
+            .streamRoundMatches(seasonId, currentRound)
+            .listen((matches) {
+          if (_isDisposed) return;
+          _areAllMatchesFinished =
+              matches.isNotEmpty && matches.every((m) => m.isFinished);
+          notifyListeners();
+        });
+      } else {
+        _roundMatchesSub?.cancel();
+        _areAllMatchesFinished = false;
+      }
+
       if (!_isDisposed) notifyListeners();
     });
     if (userId != null) _listenToTeam(userId);
@@ -88,6 +109,7 @@ class FantasyMarketViewModel extends ChangeNotifier {
     _isDisposed = true;
     _teamSub?.cancel();
     _marketSub?.cancel();
+    _roundMatchesSub?.cancel();
     super.dispose();
   }
 

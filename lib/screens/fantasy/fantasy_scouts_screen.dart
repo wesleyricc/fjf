@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/fantasy_service.dart';
+import '../../services/championship_service.dart';
 import '../../utils/app_feedback.dart';
 import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
 import '../../widgets/fantasy/fantasy_live_athletes_view.dart';
@@ -134,57 +136,86 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
                 final marketStatus = statusSnap.data ?? {'is_open': true, 'current_round': 1};
                 final bool isMarketOpen = marketStatus['is_open'] == true;
                 final int currentRound = marketStatus['current_round'] ?? 1;
+                final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
-                return StreamBuilder<DocumentSnapshot>(
-                  stream: _fantasyService.streamGlobalScouts(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                return StreamBuilder<bool>(
+                  stream: isMarketOpen
+                      ? Stream.value(false)
+                      : _fantasyService.streamAreAllMatchesFinished(seasonId, currentRound),
+                  builder: (context, matchSnap) {
+                    final bool isScoutsValidating = !isMarketOpen && (matchSnap.data == true);
 
-                    final bool docExists = snapshot.hasData && snapshot.data!.exists;
-                    final data = docExists ? (snapshot.data!.data() as Map<String, dynamic>) : <String, dynamic>{};
-                    final mostSelected = List<Map<String, dynamic>>.from(data['most_selected'] ?? data['most_picked'] ?? []);
-                    final effectiveList = mostSelected.isNotEmpty ? mostSelected : (_localMostSelected ?? []);
+                    return StreamBuilder<DocumentSnapshot>(
+                      stream: _fantasyService.streamGlobalScouts(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
 
-                    if (effectiveList.isEmpty) {
-                      // Se o mercado estiver fechado e ainda não existirem estatísticas, tenta gerar automaticamente
-                      if (!isMarketOpen && !_hasAutoTriggered) {
-                        _checkAndAutoGenerateIfMarketClosed(isMarketOpen);
-                      }
+                        final bool docExists = snapshot.hasData && snapshot.data!.exists;
+                        final data = docExists ? (snapshot.data!.data() as Map<String, dynamic>) : <String, dynamic>{};
+                        final mostSelected = List<Map<String, dynamic>>.from(data['most_selected'] ?? data['most_picked'] ?? []);
+                        final effectiveList = mostSelected.isNotEmpty ? mostSelected : (_localMostSelected ?? []);
 
-                      return _buildEmptyMostSelected(isMarketOpen, currentRound);
-                    }
+                        if (effectiveList.isEmpty) {
+                          // Se o mercado estiver fechado e ainda não existirem estatísticas, tenta gerar automaticamente
+                          if (!isMarketOpen && !_hasAutoTriggered) {
+                            _checkAndAutoGenerateIfMarketClosed(isMarketOpen);
+                          }
 
-                    final int totalTeams = (data['total_teams'] as int?) ?? _localTotalTeams;
-                    final int round = (data['round'] as int?) ?? currentRound;
+                          return _buildEmptyMostSelected(isMarketOpen, currentRound, isScoutsValidating: isScoutsValidating);
+                        }
 
-                    return _buildMostSelectedList(effectiveList, totalTeams, round, isMarketOpen);
+                        final int totalTeams = (data['total_teams'] as int?) ?? _localTotalTeams;
+                        final int round = (data['round'] as int?) ?? currentRound;
+
+                        return _buildMostSelectedList(effectiveList, totalTeams, round, isMarketOpen, isScoutsValidating: isScoutsValidating);
+                      },
+                    );
                   },
                 );
               },
             ),
 
             // Aba 3: Seleção da Rodada (Dream Team)
-            StreamBuilder<DocumentSnapshot>(
-              stream: _fantasyService.streamGlobalScouts(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            StreamBuilder<Map<String, dynamic>>(
+              stream: _fantasyService.streamMarketStatus(),
+              builder: (context, statusSnap) {
+                final marketStatus = statusSnap.data ?? {'is_open': true, 'current_round': 1};
+                final bool isMarketOpen = marketStatus['is_open'] == true;
+                final int currentRound = marketStatus['current_round'] ?? 1;
+                final seasonId = Provider.of<ChampionshipService>(context, listen: false).currentSeasonId;
 
-                if (!snapshot.hasData || !snapshot.data!.exists) {
-                  return _buildEmptyDreamTeam();
-                }
+                return StreamBuilder<bool>(
+                  stream: isMarketOpen
+                      ? Stream.value(false)
+                      : _fantasyService.streamAreAllMatchesFinished(seasonId, currentRound),
+                  builder: (context, matchSnap) {
+                    final bool isScoutsValidating = !isMarketOpen && (matchSnap.data == true);
 
-                final data = snapshot.data!.data() as Map<String, dynamic>;
-                final dreamTeam = List<Map<String, dynamic>>.from(data['dream_team'] ?? []);
+                    return StreamBuilder<DocumentSnapshot>(
+                      stream: _fantasyService.streamGlobalScouts(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
 
-                if (dreamTeam.isEmpty) {
-                  return _buildEmptyDreamTeam();
-                }
+                        if (!snapshot.hasData || !snapshot.data!.exists) {
+                          return _buildEmptyDreamTeam(isScoutsValidating: isScoutsValidating);
+                        }
 
-                return _buildDreamTeamList(dreamTeam);
+                        final data = snapshot.data!.data() as Map<String, dynamic>;
+                        final dreamTeam = List<Map<String, dynamic>>.from(data['dream_team'] ?? []);
+
+                        if (dreamTeam.isEmpty) {
+                          return _buildEmptyDreamTeam(isScoutsValidating: isScoutsValidating);
+                        }
+
+                        return _buildDreamTeamList(dreamTeam);
+                      },
+                    );
+                  },
+                );
               },
             ),
           ],
@@ -193,7 +224,7 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
     );
   }
 
-  Widget _buildEmptyMostSelected(bool isMarketOpen, int round) {
+  Widget _buildEmptyMostSelected(bool isMarketOpen, int round, {bool isScoutsValidating = false}) {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32.0),
@@ -203,24 +234,32 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: isScoutsValidating ? Colors.amber.shade50 : Colors.blue.shade50,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.groups_outlined, size: 64, color: Colors.blue.shade600),
+              child: Icon(
+                isScoutsValidating ? Icons.fact_check_rounded : Icons.groups_outlined,
+                size: 64,
+                color: isScoutsValidating ? Colors.amber.shade700 : Colors.blue.shade600,
+              ),
             ),
             const SizedBox(height: 20),
             Text(
-              isMarketOpen
-                  ? "Mercado Aberto (Rodada $round)"
-                  : "Estatísticas da Rodada $round",
+              isScoutsValidating
+                  ? "Scouts em Validação (Rodada $round)"
+                  : (isMarketOpen
+                      ? "Mercado Aberto (Rodada $round)"
+                      : "Estatísticas da Rodada $round"),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             Text(
-              isMarketOpen
-                  ? "As estatísticas consolidadas dos mais escalados são geradas assim que o mercado fecha para preservar o sigilo das estratégias.\n\nVocê também pode gerá-las agora para pré-visualização."
-                  : "As estatísticas dos mais escalados ainda não foram geradas para esta rodada.",
+              isScoutsValidating
+                  ? "Todos os jogos da rodada estão encerrados. Os scouts estão sendo auditados e validados pela coordenação e em breve o mercado será reaberto."
+                  : (isMarketOpen
+                      ? "As estatísticas consolidadas dos mais escalados são geradas assim que o mercado fecha para preservar o sigilo das estratégias.\n\nVocê também pode gerá-las agora para pré-visualização."
+                      : "As estatísticas dos mais escalados ainda não foram geradas para esta rodada."),
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade700, fontSize: 14, height: 1.4),
             ),
@@ -248,7 +287,7 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
     );
   }
 
-  Widget _buildEmptyDreamTeam() {
+  Widget _buildEmptyDreamTeam({bool isScoutsValidating = false}) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -261,16 +300,22 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
                 color: Colors.amber.shade50,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.military_tech_outlined, size: 64, color: Colors.amber.shade700),
+              child: Icon(
+                isScoutsValidating ? Icons.fact_check_rounded : Icons.military_tech_outlined,
+                size: 64,
+                color: Colors.amber.shade700,
+              ),
             ),
             const SizedBox(height: 20),
-            const Text(
-              "Seleção da Rodada",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              isScoutsValidating ? "Scouts em Validação" : "Seleção da Rodada",
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             Text(
-              "A Seleção da Rodada será gerada ao final da rodada pelo sistema de fechamento oficial, selecionando os maiores pontuadores de cada posição.",
+              isScoutsValidating
+                  ? "Todos os jogos da rodada foram encerrados! Os scouts estão sendo validados e a Seleção da Rodada será oficializada assim que o fechamento for homologado."
+                  : "A Seleção da Rodada será gerada ao final da rodada pelo sistema de fechamento oficial, selecionando os maiores pontuadores de cada posição.",
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.4),
             ),
@@ -281,7 +326,8 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
   }
 
   Widget _buildMostSelectedList(
-      List<Map<String, dynamic>> players, int totalTeams, int round, bool isMarketOpen) {
+      List<Map<String, dynamic>> players, int totalTeams, int round, bool isMarketOpen,
+      {bool isScoutsValidating = false}) {
     return ListView.builder(
       padding: const EdgeInsets.all(12),
       itemCount: players.length + 1,
@@ -317,16 +363,31 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: isMarketOpen ? Colors.amber : Colors.greenAccent,
+                              color: isScoutsValidating
+                                  ? Colors.amber.shade400
+                                  : (isMarketOpen ? Colors.amber : Colors.greenAccent),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Text(
-                              isMarketOpen ? "MERCADO ABERTO" : "MERCADO FECHADO",
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: isMarketOpen ? Colors.black87 : Colors.green.shade900,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isScoutsValidating) ...[
+                                  Icon(Icons.fact_check_rounded, size: 12, color: Colors.amber.shade900),
+                                  const SizedBox(width: 4),
+                                ],
+                                Text(
+                                  isScoutsValidating
+                                      ? "SCOUTS EM VALIDAÇÃO"
+                                      : (isMarketOpen ? "MERCADO ABERTO" : "MERCADO FECHADO"),
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: isScoutsValidating
+                                        ? Colors.amber.shade900
+                                        : (isMarketOpen ? Colors.black87 : Colors.green.shade900),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -340,6 +401,28 @@ class _FantasyScoutsScreenState extends State<FantasyScoutsScreen> {
                           ),
                         ],
                       ),
+                      if (isScoutsValidating) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline, size: 13, color: Colors.white),
+                              SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  "Jogos encerrados. Validando scouts antes de reabrir o mercado.",
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 6),
                       Text(
                         "${players.length} Atletas em Destaque",

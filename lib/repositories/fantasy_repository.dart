@@ -1,6 +1,8 @@
 import 'dart:async';
 import '../models/fantasy_models.dart';
+import '../models/match_model.dart';
 import '../services/fantasy_service.dart';
+import '../services/match_service.dart';
 
 class FantasyRepository {
   static final FantasyRepository _instance = FantasyRepository._internal();
@@ -8,6 +10,7 @@ class FantasyRepository {
   FantasyRepository._internal();
 
   final FantasyService _api = FantasyService();
+  final MatchService _matchService = MatchService();
 
   // --- CACHE EM MEMÓRIA ---
   List<FantasyPlayer>? _cachedPlayers;
@@ -64,6 +67,18 @@ class FantasyRepository {
   Stream<Map<String, dynamic>> streamMarketStatus() {
     _marketStatusStream ??= _api.streamMarketStatus().asBroadcastStream();
     return _marketStatusStream!;
+  }
+
+  Stream<List<MatchModel>> streamRoundMatches(String seasonId, int round) {
+    return _matchService.streamRoundMatches(seasonId, round);
+  }
+
+  Stream<bool> streamAreAllMatchesFinished(String seasonId, int round) {
+    return _matchService.streamAreAllMatchesFinished(seasonId, round);
+  }
+
+  Future<bool> areAllMatchesFinished(String seasonId, int round) {
+    return _matchService.areAllMatchesFinished(seasonId, round);
   }
 
   Future<List<FantasyPlayer>> getPlayersByIds(List<String> ids, {bool forceRefresh = false}) async {

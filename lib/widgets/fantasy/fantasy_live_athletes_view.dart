@@ -60,6 +60,29 @@ class _FantasyLiveAthletesViewState extends State<FantasyLiveAthletesView> {
           child: Column(
             children: [
               _buildTopSummaryBar(),
+              if (_viewModel.isScoutsValidationPeriod)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade800,
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.fact_check_rounded, color: Colors.white, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Jogos encerrados! Os scouts estão sendo validados e em breve o mercado será reaberto.",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               _buildSearchBar(),
               _buildPositionsBar(),
               _buildFiltersAndSortRow(),
@@ -113,7 +136,11 @@ class _FantasyLiveAthletesViewState extends State<FantasyLiveAthletesView> {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: _viewModel.isMarketOpen ? Colors.amber : Colors.green,
+                  color: _viewModel.isMarketOpen
+                      ? Colors.amber
+                      : (_viewModel.isScoutsValidationPeriod
+                          ? Colors.orangeAccent
+                          : Colors.green),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -123,17 +150,33 @@ class _FantasyLiveAthletesViewState extends State<FantasyLiveAthletesView> {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
               const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+              if (_viewModel.isScoutsValidationPeriod)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    "Validando Scouts",
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.orange),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    "${_viewModel.totalPlayedCount} jogando",
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue),
+                  ),
                 ),
-                child: Text(
-                  "${_viewModel.totalPlayedCount} jogando",
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue),
-                ),
-              ),
             ],
           ),
           if (_viewModel.topScorer != null)

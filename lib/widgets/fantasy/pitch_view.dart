@@ -263,7 +263,7 @@ class PitchView extends StatelessWidget {
             ),
             child: Text(
               isMarketOpen
-                  ? "C\$ ${player.currentPrice.toStringAsFixed(1)}"
+                  ? "C\$ ${player.currentPrice.toStringAsFixed(2)}"
                   : displayScore.toStringAsFixed(2),
               style: TextStyle(
                 color: isMarketOpen

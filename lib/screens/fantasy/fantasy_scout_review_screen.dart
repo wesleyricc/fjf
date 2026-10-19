@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -31,12 +32,26 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
   final FantasyScoutAppealService _appealService = FantasyScoutAppealService();
   final MatchService _matchService = MatchService();
 
-  // Estado do formulário
+  // Estado do formulário e mercado
   int _selectedRound = 1;
-  int _maxRound = 10;
+  int _dbCurrentRound = 1;
+  int _maxRound = 1;
+  bool _isMarketOpen = false;
+  DateTime? _closingTime;
+  StreamSubscription<Map<String, dynamic>>? _marketSub;
   bool _isLoadingInitialData = true;
   bool _isSubmitting = false;
   String _userTeamName = 'Meu Time';
+
+  /// ⚠️ REGRA CONTÁBIL DE REVISÃO (NÃO-RETROATIVA):
+  /// Apenas a rodada atual do sistema com o mercado FECHADO (jogos em andamento ou em auditoria)
+  /// pode receber contestações de scouts. Rodadas passadas já foram consolidadas e não podem
+  /// sofrer alterações devido às regras contábeis de patrimônio (cartoletas) e valorização.
+  bool get _isCurrentRoundEligibleForReview {
+    if (_selectedRound < _dbCurrentRound) return false;
+    if (_selectedRound > _dbCurrentRound) return false;
+    return !_isMarketOpen;
+  }
 
   List<MatchModel> _roundMatches = [];
   MatchModel? _selectedMatch;
@@ -93,6 +108,7 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
 
   @override
   void dispose() {
+    _marketSub?.cancel();
     _tabController.dispose();
     _minuteController.dispose();
     _descriptionController.dispose();
@@ -108,8 +124,42 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
 
     try {
       final status = await fantasyService.streamMarketStatus().first;
-      _selectedRound = (status['current_round'] as num?)?.toInt() ?? 1;
-      _maxRound = _selectedRound > 1 ? _selectedRound : 10;
+      _dbCurrentRound = (status['current_round'] as num?)?.toInt() ?? 1;
+      final bool isOpenRaw = status['is_open'] == true;
+      final dynamic closingRaw = status['closing_time'];
+      _closingTime = closingRaw is Timestamp ? closingRaw.toDate() : null;
+      final bool isExpired =
+          _closingTime != null && DateTime.now().isAfter(_closingTime!);
+      _isMarketOpen = isOpenRaw && !isExpired;
+
+      // Inicializa na rodada atual do sistema
+      _selectedRound = _dbCurrentRound;
+      _maxRound = _dbCurrentRound > 0 ? _dbCurrentRound : 1;
+
+      // Escuta mudanças de status do mercado em tempo real
+      _marketSub?.cancel();
+      _marketSub = fantasyService.streamMarketStatus().listen((statusData) {
+        if (!mounted) return;
+        final int updatedRound =
+            (statusData['current_round'] as num?)?.toInt() ?? 1;
+        final bool updatedOpenRaw = statusData['is_open'] == true;
+        final dynamic upClosingRaw = statusData['closing_time'];
+        final upClosingTime =
+            upClosingRaw is Timestamp ? upClosingRaw.toDate() : null;
+        final bool upExpired =
+            upClosingTime != null && DateTime.now().isAfter(upClosingTime);
+        final bool updatedIsOpen = updatedOpenRaw && !upExpired;
+
+        setState(() {
+          _dbCurrentRound = updatedRound;
+          _isMarketOpen = updatedIsOpen;
+          _closingTime = upClosingTime;
+          _maxRound = _dbCurrentRound > 0 ? _dbCurrentRound : 1;
+          if (_selectedRound > _dbCurrentRound) {
+            _selectedRound = _dbCurrentRound;
+          }
+        });
+      });
 
       // Carrega o time do usuário logado
       final user = authService.user;
@@ -197,6 +247,22 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
 
   Future<void> _submitAppeal() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // ⛔ Bloqueio estrito de contestações fora da janela ou retroativas
+    if (!_isCurrentRoundEligibleForReview) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _selectedRound < _dbCurrentRound
+                ? "Não é permitido contestar lances de rodadas retroativas. A Rodada $_selectedRound já teve suas pontuações e valorizações consolidadas e o mercado da Rodada $_dbCurrentRound está em andamento."
+                : "A revisão de scouts só pode ser solicitada quando o mercado estiver fechado para a Rodada $_selectedRound.",
+          ),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
 
     if (_selectedPlayer == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -332,6 +398,288 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
   }
 
   // ---------------------------------------------------------------------------
+  // WIDGETS INFORMATIVOS DE REGRAS E JANELA DE REVISÃO
+  // ---------------------------------------------------------------------------
+  Widget _buildRulesExplanationCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB), // Âmbar claro
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFDE68A), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFF59E0B)),
+                ),
+                child: const Icon(
+                  Icons.shield_outlined,
+                  color: Color(0xFFD97706),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "POLÍTICA DE REVISÃO DE SCOUTS",
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                    Text(
+                      "Regra de Não-Retroatividade & FinOps do Fantasy",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFFB45309),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFFDE68A)),
+          const SizedBox(height: 10),
+
+          // Regra Principal
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.check_circle, size: 16, color: Color(0xFFD97706)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: RichText(
+                  text: const TextSpan(
+                    style: TextStyle(
+                        fontSize: 12, color: Color(0xFF78350F), height: 1.35),
+                    children: [
+                      TextSpan(
+                        text: "Janela Oficial de Revisão: ",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      TextSpan(
+                        text:
+                            "A contestação de scouts só pode ser solicitada durante a respectiva rodada ",
+                      ),
+                      TextSpan(
+                        text:
+                            "quando o mercado estiver FECHADO ou em revisão de súmula",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      TextSpan(text: " pela comissão técnica."),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Exemplo Destacado
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFFCD34D)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline, size: 18, color: Color(0xFFB45309)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: RichText(
+                    text: const TextSpan(
+                      style: TextStyle(
+                          fontSize: 12, color: Color(0xFF92400E), height: 1.35),
+                      children: [
+                        TextSpan(
+                          text: "Exemplo Prático: ",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        TextSpan(
+                          text: "Não se pode pedir revisão de lance da ",
+                        ),
+                        TextSpan(
+                          text: "Rodada 1",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        TextSpan(
+                          text: " quando o mercado para a ",
+                        ),
+                        TextSpan(
+                          text: "Rodada 2",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        TextSpan(
+                          text:
+                              " já estiver em andamento. A contestação deve ser realizada impreterivelmente na mesma rodada da partida.",
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Justificativa Contábil
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.monetization_on_outlined,
+                  size: 16, color: Color(0xFFD97706)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: RichText(
+                  text: const TextSpan(
+                    style: TextStyle(
+                        fontSize: 11.5, color: Color(0xFF78350F), height: 1.35),
+                    children: [
+                      TextSpan(
+                        text: "Por que não é permitida revisão retroativa? ",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      TextSpan(
+                        text:
+                            "Ao reabrir o mercado, as pontuações e as fórmulas de valorização de patrimônio (C\$ cartoletas) são consolidadas em definitivo. Alterações retroativas invalidariam o saldo e as negociações já concluídas pelos times.",
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoundStatusBanner() {
+    final bool isPastRound = _selectedRound < _dbCurrentRound;
+    final bool isCurrentRound = _selectedRound == _dbCurrentRound;
+    final bool isEligible = _isCurrentRoundEligibleForReview;
+
+    Color bgColor;
+    Color borderColor;
+    Color iconColor;
+    Color titleColor;
+    Color textColor;
+    IconData iconData;
+    String title;
+    String message;
+
+    if (isPastRound) {
+      bgColor = const Color(0xFFFEF2F2);
+      borderColor = const Color(0xFFFECACA);
+      iconColor = const Color(0xFFDC2626);
+      titleColor = const Color(0xFF991B1B);
+      textColor = const Color(0xFFB91C1C);
+      iconData = Icons.lock_clock_outlined;
+      title = "Janela de Revisão Encerrada (Rodada $_selectedRound)";
+      message =
+          "O mercado para a Rodada $_dbCurrentRound já está em andamento. As pontuações e valorizações da Rodada $_selectedRound foram consolidadas definitivamente. Conforme o regulamento, não são aceitas contestações retroativas.";
+    } else if (isCurrentRound && _isMarketOpen) {
+      bgColor = const Color(0xFFEFF6FF);
+      borderColor = const Color(0xFFBFDBFE);
+      iconColor = const Color(0xFF2563EB);
+      titleColor = const Color(0xFF1E40AF);
+      textColor = const Color(0xFF1D4ED8);
+      iconData = Icons.schedule;
+      title = "Mercado Aberto para a Rodada $_selectedRound (Escalação em Andamento)";
+      message =
+          "O mercado ainda está aberto para montagem de equipes. A janela de solicitação de revisão de scouts abre assim que o mercado fechar e as partidas estiverem em disputa.";
+    } else if (isEligible) {
+      bgColor = const Color(0xFFECFDF5);
+      borderColor = const Color(0xFFA7F3D0);
+      iconColor = const Color(0xFF059669);
+      titleColor = const Color(0xFF065F46);
+      textColor = const Color(0xFF047857);
+      iconData = Icons.check_circle_outline;
+      title = "Janela de Revisão Aberta (Rodada $_selectedRound)";
+      message =
+          "O mercado está fechado e as súmulas desta rodada estão sob auditoria. Você pode preencher o formulário abaixo para contestar um lance não computado ou incorreto.";
+    } else {
+      bgColor = Colors.grey.shade100;
+      borderColor = Colors.grey.shade300;
+      iconColor = Colors.grey.shade700;
+      titleColor = Colors.grey.shade900;
+      textColor = Colors.grey.shade800;
+      iconData = Icons.block;
+      title = "Revisão Indisponível para a Rodada $_selectedRound";
+      message =
+          "Esta rodada não se encontra no período permitido para contestações de scout.";
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(iconData, color: iconColor, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: titleColor,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: textColor,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // ABA 1: FORMULÁRIO DE NOVA SOLICITAÇÃO
   // ---------------------------------------------------------------------------
   Widget _buildFormTab() {
@@ -344,54 +692,33 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Card Informativo
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue.shade800, size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Transparência & Fair Play",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: Colors.blue.shade900,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Notou algum lance (ex: finalização na trave, defesa difícil, assistência) que não foi marcado ou computado errado? "
-                          "Informe o tempo do jogo e o lance abaixo. Nossa equipe analisará a súmula e gravação!",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue.shade900,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            // Card de Regras e Transparência
+            _buildRulesExplanationCard(),
 
-            const SizedBox(height: 20),
+            // Banner Dinâmico da Rodada Selecionada
+            _buildRoundStatusBanner(),
 
             // Rodada
-            const Text(
-              "1. Rodada",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "1. Rodada do Lance",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                Text(
+                  _selectedRound < _dbCurrentRound
+                      ? "Prazo Expirado"
+                      : (_isMarketOpen ? "Mercado Aberto" : "Janela Aberta"),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: _selectedRound < _dbCurrentRound
+                        ? Colors.red
+                        : (_isMarketOpen ? Colors.blue.shade700 : Colors.green),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             DropdownButtonFormField<int>(
@@ -403,10 +730,34 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               ),
               items: List.generate(_maxRound, (index) => index + 1)
-                  .map((r) => DropdownMenuItem(
-                        value: r,
-                        child: Text("Rodada $r"),
-                      ))
+                  .map((r) {
+                    final bool isPast = r < _dbCurrentRound;
+                    final bool isCurrent = r == _dbCurrentRound;
+                    String statusBadge = "";
+                    if (isPast) {
+                      statusBadge = " • Encerrada (Sem revisão)";
+                    } else if (isCurrent) {
+                      statusBadge = _isMarketOpen
+                          ? " • Mercado Aberto"
+                          : " • Em Revisão (Aberta)";
+                    }
+                    return DropdownMenuItem(
+                      value: r,
+                      child: Text(
+                        "Rodada $r$statusBadge",
+                        style: TextStyle(
+                          color: isPast
+                              ? Colors.grey.shade600
+                              : (isCurrent && !_isMarketOpen
+                                  ? Colors.green.shade800
+                                  : const Color(0xFF0F172A)),
+                          fontWeight:
+                              isCurrent ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    );
+                  })
                   .toList(),
               onChanged: (val) {
                 if (val != null) {
@@ -717,30 +1068,66 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
 
             const SizedBox(height: 24),
 
-            // Botão Enviar
+            // Botão Enviar com Proteção de Elegibilidade
             SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton.icon(
-                onPressed: _isSubmitting ? null : _submitAppeal,
+                onPressed: (_isSubmitting || !_isCurrentRoundEligibleForReview)
+                    ? null
+                    : _submitAppeal,
                 icon: _isSubmitting
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
                       )
-                    : const Icon(Icons.send_rounded),
+                    : Icon(
+                        _isCurrentRoundEligibleForReview
+                            ? Icons.send_rounded
+                            : Icons.lock_outline,
+                      ),
                 label: Text(
-                  _isSubmitting ? "Enviando..." : "Enviar Contestação para Análise",
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  _isSubmitting
+                      ? "Enviando..."
+                      : (_selectedRound < _dbCurrentRound
+                          ? "Revisão Encerrada para a Rodada $_selectedRound"
+                          : (_isMarketOpen
+                              ? "Aguardando Fechamento do Mercado"
+                              : "Enviar Contestação para Análise")),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: _isCurrentRoundEligibleForReview
+                      ? Colors.deepPurple
+                      : Colors.grey.shade400,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  disabledForegroundColor: Colors.grey.shade600,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ),
+            if (!_isCurrentRoundEligibleForReview) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  _selectedRound < _dbCurrentRound
+                      ? "⛔ Contestações bloqueadas para a Rodada $_selectedRound (revisão retroativa não permitida pelas regras de valorização)."
+                      : "⏰ O envio de contestações será liberado assim que o mercado da Rodada $_selectedRound fechar.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: _selectedRound < _dbCurrentRound
+                        ? Colors.red.shade700
+                        : Colors.blue.shade800,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 30),
           ],
         ),
@@ -803,13 +1190,44 @@ class _FantasyScoutReviewScreenState extends State<FantasyScoutReviewScreen>
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: appeals.length,
-          itemBuilder: (context, index) {
-            final item = appeals[index];
-            return _buildAppealCard(item);
-          },
+        return Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 20, color: Colors.blue.shade800),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "As contestações são avaliadas pela auditoria durante a apuração da rodada, antes da reabertura do mercado.",
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.blue.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: appeals.length,
+                itemBuilder: (context, index) {
+                  final item = appeals[index];
+                  return _buildAppealCard(item);
+                },
+              ),
+            ),
+          ],
         );
       },
     );
