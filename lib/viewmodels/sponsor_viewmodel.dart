@@ -69,14 +69,23 @@ class SponsorViewModel extends ChangeNotifier {
     if (_sponsors.isEmpty) return;
 
     for (final sponsor in _sponsors.take(8)) {
-      final url = (sponsor['imageUrl']?.toString() ?? '').trim();
+      final url = ((sponsor['imageUrl'] ??
+              sponsor['image_url'] ??
+              sponsor['bannerUrl'] ??
+              '')
+          .toString())
+          .trim();
       if (url.isNotEmpty && !_precachedMemoryUrls.contains(url)) {
         _precachedMemoryUrls.add(url);
         try {
-          precacheImage(
-            CachedNetworkImageProvider(url, maxWidth: 800),
-            context,
-          );
+          if (kIsWeb) {
+            precacheImage(NetworkImage(url), context).catchError((_) {});
+          } else {
+            precacheImage(
+              CachedNetworkImageProvider(url, maxWidth: 800),
+              context,
+            ).catchError((_) {});
+          }
         } catch (_) {}
       }
     }

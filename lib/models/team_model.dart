@@ -85,7 +85,15 @@ class Team {
       id: doc.id,
       name: data['name'] ?? 'Time Desconhecido',
       shortName: data['short_name'] ?? '',
-      shieldUrl: data['shield_url'] ?? '',
+      shieldUrl: (data['shield_url'] ??
+              data['shieldUrl'] ??
+              data['team_shield_url'] ??
+              data['teamShieldUrl'] ??
+              data['logo_url'] ??
+              data['logoUrl'] ??
+              data['shield'] ??
+              '')
+          .toString(),
       championshipHistory: List<Map<String, dynamic>>.from(data['championship_history'] ?? []),
       
       // 1ª Fase
@@ -157,5 +165,69 @@ class Team {
       'default_starters': defaultStarters,
       if (primaryColor != null) 'primary_color': primaryColor,
     };
+  }
+
+  Team copyWith({
+    String? id,
+    String? name,
+    String? shortName,
+    String? shieldUrl,
+    List<Map<String, dynamic>>? championshipHistory,
+    int? points,
+    int? matchPoints,
+    int? gamesPlayed,
+    int? wins,
+    int? draws,
+    int? losses,
+    int? goalsFor,
+    int? goalsAgainst,
+    int? goalDifference,
+    int? overallPoints,
+    int? overallMatchPoints,
+    int? overallGamesPlayed,
+    int? overallWins,
+    int? overallDraws,
+    int? overallLosses,
+    int? overallGoalsFor,
+    int? overallGoalsAgainst,
+    int? overallGoalDifference,
+    int? extraPoints,
+    int? disciplinaryPoints,
+    int? totalYellowCards,
+    int? totalRedCards,
+    List<String>? defaultStarters,
+    String? primaryColor,
+  }) {
+    return Team(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      shortName: shortName ?? this.shortName,
+      shieldUrl: shieldUrl ?? this.shieldUrl,
+      championshipHistory: championshipHistory ?? this.championshipHistory,
+      points: points ?? this.points,
+      matchPoints: matchPoints ?? this.matchPoints,
+      gamesPlayed: gamesPlayed ?? this.gamesPlayed,
+      wins: wins ?? this.wins,
+      draws: draws ?? this.draws,
+      losses: losses ?? this.losses,
+      goalsFor: goalsFor ?? this.goalsFor,
+      goalsAgainst: goalsAgainst ?? this.goalsAgainst,
+      goalDifference: goalDifference ?? this.goalDifference,
+      overallPoints: overallPoints ?? this.overallPoints,
+      overallMatchPoints: overallMatchPoints ?? this.overallMatchPoints,
+      overallGamesPlayed: overallGamesPlayed ?? this.overallGamesPlayed,
+      overallWins: overallWins ?? this.overallWins,
+      overallDraws: overallDraws ?? this.overallDraws,
+      overallLosses: overallLosses ?? this.overallLosses,
+      overallGoalsFor: overallGoalsFor ?? this.overallGoalsFor,
+      overallGoalsAgainst: overallGoalsAgainst ?? this.overallGoalsAgainst,
+      overallGoalDifference: overallGoalDifference ?? this.overallGoalDifference,
+      extraPoints: extraPoints ?? this.extraPoints,
+      disciplinaryPoints: disciplinaryPoints ?? this.disciplinaryPoints,
+      totalYellowCards: totalYellowCards ?? this.totalYellowCards,
+      totalRedCards: totalRedCards ?? this.totalRedCards,
+      defaultStarters: defaultStarters ?? this.defaultStarters,
+      primaryColor: primaryColor ?? this.primaryColor,
+    );
   }
 }

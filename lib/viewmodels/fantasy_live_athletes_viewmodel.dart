@@ -141,10 +141,20 @@ class FantasyLiveAthletesViewModel extends ChangeNotifier {
     return top;
   }
 
-  Future<void> init(String seasonId, {List<Team>? teams}) async {
+  Future<void> init(String seasonId, {List<Team>? teams, int? targetRound}) async {
     _seasonId = seasonId;
     if (teams != null) {
       _teamsMap = {for (var t in teams) t.id: t};
+    }
+
+    // ⚡ Sincroniza imediatamente com o status em cache se disponível
+    final cachedStatus = _repository.cachedMarketStatus;
+    if (cachedStatus != null) {
+      _isMarketOpen = cachedStatus['is_open'] ?? false;
+      _currentRound = cachedStatus['current_round'] ?? 1;
+      _selectedRound = targetRound ?? _currentRound;
+    } else if (targetRound != null) {
+      _selectedRound = targetRound;
     }
 
     _marketSub?.cancel();
@@ -154,7 +164,7 @@ class FantasyLiveAthletesViewModel extends ChangeNotifier {
       final roundChanged = newRound != _currentRound;
       _currentRound = newRound;
 
-      if (roundChanged || _selectedRound == 1) {
+      if (targetRound == null && (roundChanged || _selectedRound != _currentRound)) {
         _selectedRound = _currentRound;
         _subscribeToScouts();
       }
@@ -179,7 +189,8 @@ class FantasyLiveAthletesViewModel extends ChangeNotifier {
   void _subscribeToScouts() {
     _scoutSub?.cancel();
     _roundMatchesSub?.cancel();
-    if (_seasonId.isEmpty) return;
+    _liveScores = {};
+    if (_seasonId.isEmpty || _selectedRound <= 0) return;
 
     if (!_isMarketOpen && _selectedRound > 0) {
       _roundMatchesSub = _repository.streamRoundMatches(_seasonId, _selectedRound).listen((matches) {

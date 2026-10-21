@@ -6,6 +6,7 @@ import '../../models/fantasy_models.dart';
 import '../../services/fantasy_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_cache_service.dart';
+import '../../services/championship_service.dart';
 import '../../widgets/team_logo_widget.dart';
 
 class FantasyTeamAuditData {
@@ -94,6 +95,7 @@ class _AdminFantasyTeamsAuditScreenState
 
   List<FantasyTeamAuditData> _allTeamsAudit = [];
   Map<String, FantasyPlayer> _playersMap = {};
+  Map<String, dynamic> _liveScoresMap = {};
 
   AuditFilterOption _currentFilter = AuditFilterOption.all;
   String _searchQuery = '';
@@ -124,12 +126,84 @@ class _AdminFantasyTeamsAuditScreenState
 
     try {
       // 1. Carrega status do mercado
+      String seasonId = '';
+      try {
+        final champService =
+            Provider.of<ChampionshipService>(context, listen: false);
+        seasonId = champService.currentSeasonId;
+      } catch (_) {}
+
       final statusDoc =
           await _firestore.collection('fantasy_config').doc('status').get();
       if (statusDoc.exists) {
         final data = statusDoc.data()!;
         _isMarketOpen = data['is_open'] ?? false;
         _dbRound = data['current_round'] ?? 1;
+        if (seasonId.isEmpty) {
+          seasonId = data['season_id']?.toString() ?? '';
+        }
+      }
+
+      if (seasonId.isEmpty) {
+        try {
+          var activeChamp = await _firestore
+              .collection('championships')
+              .where('isActive', isEqualTo: true)
+              .limit(1)
+              .get();
+          if (activeChamp.docs.isEmpty) {
+            activeChamp = await _firestore
+                .collection('championships')
+                .where('is_active', isEqualTo: true)
+                .limit(1)
+                .get();
+          }
+          if (activeChamp.docs.isNotEmpty) {
+            seasonId = activeChamp.docs.first.id;
+          }
+        } catch (_) {}
+      }
+
+      // 1b. Carrega dados ao vivo da rodada auditada (leaderboard consolidado e parciais)
+      final Map<String, FantasyLiveTeamScore> liveTeamsMap = {};
+      Map<String, dynamic> liveScoresMap = {};
+
+      if (seasonId.isNotEmpty && _selectedRound > 0) {
+        try {
+          final liveLeaderDoc = await _firestore
+              .collection('championships')
+              .doc(seasonId)
+              .collection('fantasy_live_leaderboard')
+              .doc('round_$_selectedRound')
+              .get();
+          if (liveLeaderDoc.exists) {
+            final lb = FantasyLiveLeaderboard.fromFirestore(liveLeaderDoc);
+            for (var t in lb.teams) {
+              liveTeamsMap[t.teamId] = t;
+              liveTeamsMap[t.userId] = t;
+            }
+          }
+        } catch (e) {
+          debugPrint("Erro ao buscar live leaderboard para auditoria: $e");
+        }
+
+        try {
+          final liveDoc = await _firestore
+              .collection('championships')
+              .doc(seasonId)
+              .collection('fantasy_live')
+              .doc('round_$_selectedRound')
+              .get();
+          if (liveDoc.exists) {
+            final liveData = liveDoc.data();
+            if (liveData != null && liveData['scores'] != null) {
+              liveScoresMap =
+                  Map<String, dynamic>.from(liveData['scores'] as Map);
+            }
+          }
+        } catch (e) {
+          debugPrint("Erro ao buscar live scores para auditoria: $e");
+        }
       }
 
       // 2. Carrega todos os jogadores do mercado para lookup de nome, preço e notas
@@ -202,6 +276,8 @@ class _AdminFantasyTeamsAuditScreenState
         final bool isPastConcludedRound = _selectedRound < _dbRound ||
             (hasHistory && _selectedRound != _dbRound);
 
+        final liveTeam = liveTeamsMap[doc.id] ?? liveTeamsMap[team.userId];
+
         // Patrimônio atual pós-rodada
         final double currentPatrimony = currentHistData != null && currentHistData['patrimony'] != null
             ? (currentHistData['patrimony'] as num).toDouble()
@@ -213,11 +289,6 @@ class _AdminFantasyTeamsAuditScreenState
             : (prevHistData != null && prevHistData['patrimony'] != null
                 ? (prevHistData['patrimony'] as num).toDouble()
                 : 50.00);
-
-        // Pontuação da rodada
-        final double roundScore = currentHistData != null && currentHistData['points'] != null
-            ? (currentHistData['points'] as num).toDouble()
-            : (isPastConcludedRound ? 0.0 : team.lastScore);
 
         // Titulares originais da escalação (base contábil do patrimônio)
         final List<String> originalStarters;
@@ -243,11 +314,16 @@ class _AdminFantasyTeamsAuditScreenState
           }
         } else {
           // Rodada atual em andamento / mercado aberto
+          if (liveTeam != null && liveTeam.finalLineup != null && liveTeam.finalLineup!.isNotEmpty) {
+            scoringStarters = liveTeam.finalLineup!;
+          } else if (currentHistData != null && currentHistData['final_lineup'] != null) {
+            scoringStarters = List<String>.from(currentHistData['final_lineup']);
+          } else {
+            scoringStarters = team.lineupPlayerIds;
+          }
+
           originalStarters = currentHistData != null && currentHistData['lineup_snapshot'] != null
               ? List<String>.from(currentHistData['lineup_snapshot'])
-              : team.lineupPlayerIds;
-          scoringStarters = currentHistData != null && currentHistData['final_lineup'] != null
-              ? List<String>.from(currentHistData['final_lineup'])
               : team.lineupPlayerIds;
         }
 
@@ -255,12 +331,39 @@ class _AdminFantasyTeamsAuditScreenState
             ? const []
             : team.benchPlayerIds;
 
-        final String? captainId = currentHistData != null
-            ? currentHistData['captain_id'] as String? ?? (isPastConcludedRound ? null : team.captainId)
-            : (isPastConcludedRound ? null : team.captainId);
+        final String? captainId = currentHistData != null && currentHistData['captain_id'] != null
+            ? currentHistData['captain_id'] as String?
+            : (liveTeam?.captainId ?? (isPastConcludedRound ? null : team.captainId));
 
-        final List<dynamic> substitutions =
-            currentHistData?['substitutions'] as List<dynamic>? ?? [];
+        final List<dynamic> substitutions = currentHistData?['substitutions'] != null
+            ? (currentHistData!['substitutions'] as List<dynamic>)
+            : (liveTeam != null ? liveTeam.substitutions.map((s) => s.toMap()).toList() : []);
+
+        // Pontuação da rodada auditada
+        final double roundScore;
+        if (currentHistData != null && currentHistData['points'] != null) {
+          // Histórico oficial da rodada concluída
+          roundScore = (currentHistData['points'] as num).toDouble();
+        } else if (liveTeam != null) {
+          // Parcial ao vivo consolidada no Leaderboard da rodada
+          roundScore = liveTeam.roundScore;
+        } else if (liveScoresMap.isNotEmpty && scoringStarters.isNotEmpty) {
+          // Se não há leaderboard consolidado mas temos scouts ao vivo da rodada:
+          double sum = 0.0;
+          for (var pid in scoringStarters) {
+            double pScore = (liveScoresMap[pid]?['totalScore'] as num?)?.toDouble() ?? 0.0;
+            if (pid == captainId) pScore *= 2;
+            sum += pScore;
+          }
+          roundScore = double.parse(sum.toStringAsFixed(2));
+        } else {
+          // Sem partidas iniciadas ou sem pontuação na rodada
+          roundScore = 0.0;
+        }
+
+        final double totalScore = liveTeam != null
+            ? liveTeam.totalPoints
+            : team.totalPoints;
 
         // Valor de mercado dos titulares escalados (base contábil do patrimônio)
         double startersValue = 0.0;
@@ -331,7 +434,7 @@ class _AdminFantasyTeamsAuditScreenState
           currentPatrimony: currentPatrimony,
           previousPatrimony: previousPatrimony,
           roundScore: roundScore,
-          totalScore: team.totalPoints,
+          totalScore: totalScore,
           currentBalance: roundBalance,
           originalStarters: originalStarters,
           scoringStarters: scoringStarters,
@@ -347,6 +450,7 @@ class _AdminFantasyTeamsAuditScreenState
       }
 
       setState(() {
+        _liveScoresMap = liveScoresMap;
         _allTeamsAudit = list;
         _isLoading = false;
       });
@@ -2203,12 +2307,26 @@ class _AdminFantasyTeamsAuditScreenState
         }
       } catch (_) {}
     }
+    final double rawScore;
+    final double variation;
+    if (roundHistory != null) {
+      rawScore = (roundHistory['score'] as num?)?.toDouble() ?? 0.0;
+      variation = (roundHistory['variation'] as num?)?.toDouble() ?? 0.0;
+    } else {
+      // Rodada em andamento (ou sem histórico consolidado)
+      final liveStats =
+          _liveScoresMap[player.playerId] ?? _liveScoresMap[fallbackId];
+      if (liveStats != null && liveStats is Map) {
+        rawScore = ((liveStats['totalScore'] ?? liveStats['score']) as num?)
+                ?.toDouble() ??
+            0.0;
+      } else {
+        rawScore = 0.0;
+      }
+      variation = 0.0;
+    }
 
-    final double score = (roundHistory?['score'] as num?)?.toDouble() ??
-        player.lastScore;
-    final double variation =
-        (roundHistory?['variation'] as num?)?.toDouble() ??
-            player.lastPriceChange;
+    final double score = isCaptain ? (rawScore * 2) : rawScore;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -2336,24 +2454,43 @@ class _AdminFantasyTeamsAuditScreenState
                       : const Color(0xFF0F172A),
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    variation >= 0 ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                    size: 14,
-                    color: variation >= 0 ? Colors.green : Colors.red,
+              if (isCaptain && rawScore != 0)
+                Text(
+                  "(${rawScore.toStringAsFixed(1)} x 2)",
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.amber.shade800,
                   ),
-                  Text(
-                    "${variation >= 0 ? '+' : ''}${variation.toStringAsFixed(2)}",
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                ),
+              if (roundHistory != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      variation >= 0 ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                      size: 14,
                       color: variation >= 0 ? Colors.green : Colors.red,
                     ),
+                    Text(
+                      "${variation >= 0 ? '+' : ''}${variation.toStringAsFixed(2)}",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: variation >= 0 ? Colors.green : Colors.red,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Text(
+                  "Parcial ao vivo",
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.grey.shade500,
+                    fontStyle: FontStyle.italic,
                   ),
-                ],
-              ),
+                ),
             ],
           ),
         ],

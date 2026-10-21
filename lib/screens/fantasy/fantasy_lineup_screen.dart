@@ -15,6 +15,8 @@ import '../../widgets/fantasy/pitch_view.dart';
 import '../../widgets/fantasy/fantasy_player_details_modal.dart';
 import '../../widgets/fantasy/fantasy_landing_page.dart';
 import '../../widgets/ui/optimized_network_image.dart';
+import 'package:flutter/services.dart';
+import '../../widgets/fantasy/fantasy_share_lineup_dialog.dart';
 
 class FantasyLineupScreen extends StatefulWidget {
   const FantasyLineupScreen({super.key});
@@ -96,6 +98,19 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
     } catch (e) {
       debugPrint("Erro ao abrir mercado para vaga: $e");
     }
+  }
+
+  void _openShareDialog(
+      FantasyAuthService authService, FantasyLineupViewModel vm) {
+    HapticFeedback.lightImpact();
+    final teamName = vm.team?.teamName ?? "Meu Time";
+    final ownerName = authService.user?.displayName ?? "Treinador";
+    FantasyShareLineupDialog.show(
+      context,
+      vm: vm,
+      teamName: teamName,
+      ownerName: ownerName,
+    );
   }
 
   @override
@@ -219,6 +234,13 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     icon: const Icon(Icons.delete_outline),
                     tooltip: "Limpar Time",
                     onPressed: vm.lineup.isNotEmpty ? vm.sellAll : null),
+              IconButton(
+                icon: const Icon(Icons.share_outlined),
+                tooltip: "Compartilhar Escalação",
+                onPressed: vm.lineup.isNotEmpty
+                    ? () => _openShareDialog(authService, vm)
+                    : null,
+              ),
               if (!vm.isMarketOpen)
                 IconButton(
                     icon: const Icon(Icons.bolt, color: Colors.orangeAccent),
@@ -294,6 +316,9 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                 liveScore: totalLiveScore,
                 lineupCount: vm.lineup.length,
                 isMarketOpen: vm.isMarketOpen,
+                isReady: vm.lineup.length == 6 &&
+                    vm.captainId != null &&
+                    (vm.bench.isEmpty || vm.luxuryReserveId != null),
               ),
               if (vm.isMarketOpen && vm.lineup.length < 6)
                 const WarningBanner(
@@ -305,24 +330,44 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                 const WarningBanner(
                     text:
                         "Você não definiu um Capitão! Clique na estrela do jogador para dobrar os pontos.",
-                    icon: Icons.star_border,
-                    color: Colors.blue),
+                    icon: Icons.star,
+                    color: Colors.red),
               if (vm.isMarketOpen &&
-                  vm.lineup.length == 6 &&
-                  vm.bench.length < vm.benchSlotsConfig.length)
-                const WarningBanner(
-                    text:
-                        "Seu banco de reservas está incompleto! Escale suplentes para eventuais desfalques.",
-                    icon: Icons.event_seat,
-                    color: Colors.purple)
-              else if (vm.isMarketOpen &&
                   vm.bench.isNotEmpty &&
                   vm.luxuryReserveId == null)
                 const WarningBanner(
                     text:
                         "Você não definiu o Reserva de Luxo! Escolha o diamante no seu melhor reserva.",
                     icon: Icons.diamond,
-                    color: Colors.amber),
+                    color: Colors.red)
+              else if (vm.isMarketOpen &&
+                  vm.lineup.length == 6 &&
+                  vm.bench.length < vm.benchSlotsConfig.length)
+                const WarningBanner(
+                    text:
+                        "Seu banco de reservas está incompleto! Escale suplentes para eventuais desfalques.",
+                    icon: Icons.event_seat,
+                    color: Colors.purple),
+              if (vm.isMarketOpen &&
+                  vm.lineup.length == 6 &&
+                  vm.captainId != null &&
+                  (vm.bench.isEmpty || vm.luxuryReserveId != null) &&
+                  vm.bench.length == vm.benchSlotsConfig.length)
+                ReadyBanner(
+                  title: "TIME 100% PRONTO!",
+                  subtitle:
+                      "Titulares, Capitão e Banco completos para a rodada.",
+                  onShare: () => _openShareDialog(authService, vm),
+                )
+              else if (vm.isMarketOpen &&
+                  vm.lineup.length == 6 &&
+                  vm.captainId != null &&
+                  (vm.bench.isEmpty || vm.luxuryReserveId != null))
+                ReadyBanner(
+                  title: "TIME ESCALADO COM SUCESSO!",
+                  subtitle: "Titulares e Capitão definidos para pontuar.",
+                  onShare: () => _openShareDialog(authService, vm),
+                ),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () => vm.refreshPlayers(),
@@ -637,20 +682,121 @@ class WarningBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isRed = color == Colors.red;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: color.shade50,
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: isRed ? 10 : 8),
+      decoration: BoxDecoration(
+        color: color.shade50,
+        border: Border(
+          left: BorderSide(
+            color: color.shade700,
+            width: isRed ? 5 : 4,
+          ),
+          bottom: BorderSide(
+            color: isRed ? Colors.red.shade200 : color.shade100,
+            width: 1,
+          ),
+        ),
+      ),
       child: Row(
         children: [
-          Icon(icon, color: color.shade700, size: 20),
-          const SizedBox(width: 8),
+          Icon(icon, color: color.shade700, size: isRed ? 22 : 20),
+          const SizedBox(width: 10),
           Expanded(
-              child: Text(text,
+            child: Text(
+              text,
+              style: TextStyle(
+                color: isRed ? Colors.red.shade900 : color.shade800,
+                fontSize: isRed ? 12.5 : 12,
+                fontWeight: isRed ? FontWeight.bold : FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ReadyBanner extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback onShare;
+
+  const ReadyBanner({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.onShare,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5E9), // Green 50
+        border: Border(
+          left: BorderSide(color: Colors.green.shade700, width: 5),
+          bottom: BorderSide(color: Colors.green.shade200, width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_rounded,
+              color: Colors.green.shade700, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
                   style: TextStyle(
-                      color: color.shade800,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500))),
+                    color: Colors.green.shade900,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.green.shade800,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: onShare,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.green.shade700,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.share, size: 14, color: Colors.white),
+                  SizedBox(width: 4),
+                  Text(
+                    "Compartilhar",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -663,6 +809,7 @@ class FinancialHeader extends StatelessWidget {
   final double liveScore;
   final int lineupCount;
   final bool isMarketOpen;
+  final bool isReady;
 
   const FinancialHeader({
     super.key,
@@ -671,6 +818,7 @@ class FinancialHeader extends StatelessWidget {
     required this.liveScore,
     required this.lineupCount,
     required this.isMarketOpen,
+    this.isReady = false,
   });
 
   @override
@@ -692,13 +840,27 @@ class FinancialHeader extends StatelessWidget {
                   isLive: true),
           Column(
             children: [
-              Text("$lineupCount/6",
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isReady) ...[
+                    const Icon(Icons.check_circle, size: 16, color: Colors.green),
+                    const SizedBox(width: 4),
+                  ],
+                  Text("$lineupCount/6",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: isReady
+                              ? Colors.green
+                              : (lineupCount == 6 ? Colors.green : Colors.orange))),
+                ],
+              ),
+              Text(isReady ? "Pronto ✓" : "Escalados",
                   style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: lineupCount == 6 ? Colors.green : Colors.orange)),
-              const Text("Escalados",
-                  style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      fontSize: 10,
+                      fontWeight: isReady ? FontWeight.bold : FontWeight.normal,
+                      color: isReady ? Colors.green.shade700 : Colors.grey)),
             ],
           )
         ],

@@ -63,10 +63,63 @@ class LuxuryReserveInfo {
   });
 }
 
-class FantasyLineupPreviewWidget extends StatelessWidget {
+class FantasyLineupPreviewWidget extends StatefulWidget {
   final FantasyHomeViewModel vm;
 
   const FantasyLineupPreviewWidget({super.key, required this.vm});
+
+  @override
+  State<FantasyLineupPreviewWidget> createState() =>
+      _FantasyLineupPreviewWidgetState();
+}
+
+class _FantasyLineupPreviewWidgetState
+    extends State<FantasyLineupPreviewWidget> {
+  FantasyHomeViewModel get vm => widget.vm;
+
+  Future<List<FantasyPlayer>>? _playersFuture;
+  List<String> _cachedIds = [];
+
+  void _ensureFuture(List<String> allIds) {
+    bool hasChanged = _cachedIds.length != allIds.length;
+    if (!hasChanged) {
+      for (int i = 0; i < allIds.length; i++) {
+        if (_cachedIds[i] != allIds[i]) {
+          hasChanged = true;
+          break;
+        }
+      }
+    }
+    if (hasChanged || _playersFuture == null) {
+      _cachedIds = List.from(allIds);
+      _playersFuture = Provider.of<FantasyService>(context, listen: false)
+          .getPlayersByIds(allIds);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (vm.team != null) {
+      final allIds = <String>{
+        ...vm.team!.lineupPlayerIds,
+        ...vm.team!.benchPlayerIds,
+      }.toList();
+      _ensureFuture(allIds);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant FantasyLineupPreviewWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (vm.team != null) {
+      final allIds = <String>{
+        ...vm.team!.lineupPlayerIds,
+        ...vm.team!.benchPlayerIds,
+      }.toList();
+      _ensureFuture(allIds);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,14 +128,20 @@ class FantasyLineupPreviewWidget extends StatelessWidget {
       return const Center(child: Text("Time incompleto"));
     }
 
+    // ⚡ PERFORMANCE: Renderiza instantaneamente se o ViewModel já possui os atletas resolvidos
+    if (vm.teamPlayers.isNotEmpty) {
+      return _buildContent(context, vm.teamPlayers);
+    }
+
     final allIds = <String>{
       ...vm.team!.lineupPlayerIds,
       ...vm.team!.benchPlayerIds,
     }.toList();
 
+    _ensureFuture(allIds);
+
     return FutureBuilder<List<FantasyPlayer>>(
-      future: Provider.of<FantasyService>(context, listen: false)
-          .getPlayersByIds(allIds),
+      future: _playersFuture,
       builder: (context, playerSnapshot) {
         if (!playerSnapshot.hasData) {
           return const Center(
@@ -92,8 +151,12 @@ class FantasyLineupPreviewWidget extends StatelessWidget {
             ),
           );
         }
+        return _buildContent(context, playerSnapshot.data!);
+      },
+    );
+  }
 
-        final allPlayers = playerSnapshot.data!;
+  Widget _buildContent(BuildContext context, List<FantasyPlayer> allPlayers) {
         final starterIds = vm.team!.lineupPlayerIds.toSet();
         final benchIds = vm.team!.benchPlayerIds.toSet();
 
@@ -468,8 +531,6 @@ class FantasyLineupPreviewWidget extends StatelessWidget {
             ],
           ],
         );
-      },
-    );
   }
 
   List<SubstitutionDisplayInfo> _computeAllSubstitutions(

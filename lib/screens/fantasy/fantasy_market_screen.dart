@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/fantasy_service.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/championship_service.dart';
@@ -142,8 +141,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
             icon: _activeFilterCount > 0
                 ? Badge(
                     label: Text('$_activeFilterCount'),
-                    child: Icon(
-                        _showFilters ? Icons.tune : Icons.filter_list),
+                    child: Icon(_showFilters ? Icons.tune : Icons.filter_list),
                   )
                 : Icon(_showFilters ? Icons.tune : Icons.filter_list),
             onPressed: () {
@@ -273,8 +271,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                                 child: FantasyPlayerCard(
                                   player: player,
                                   nextOpponentName: nextOpponentName,
-                                  nextOpponentShieldUrl:
-                                      nextOpponentShieldUrl,
+                                  nextOpponentShieldUrl: nextOpponentShieldUrl,
                                   isFavorite: _viewModel.favoriteIds
                                       .contains(player.playerId),
                                   onFavorite: () => _viewModel
@@ -286,14 +283,12 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                                       } else {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(const SnackBar(
-                                                content: Text(
-                                                    "Saldo insuficiente."),
-                                                backgroundColor:
-                                                    Colors.red));
+                                                content:
+                                                    Text("Saldo insuficiente."),
+                                                backgroundColor: Colors.red));
                                       }
                                     } else {
-                                      _showPlayerActionModal(
-                                          context, player,
+                                      _showPlayerActionModal(context, player,
                                           nextOpponentShieldUrl:
                                               nextOpponentShieldUrl);
                                     }
@@ -319,8 +314,8 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         children: _positions.map((pos) {
           final isSelected = _viewModel.selectedPosition == pos;
-          final isDisabled = widget.requiredPosition != null &&
-              widget.requiredPosition != pos;
+          final isDisabled =
+              widget.requiredPosition != null && widget.requiredPosition != pos;
 
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -336,8 +331,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                           parameters: {'position': pos});
                     },
               backgroundColor: Colors.white,
-              selectedColor:
-                  Theme.of(context).primaryColor.withOpacity(0.2),
+              selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
               labelStyle: TextStyle(
                 color: isSelected
                     ? Theme.of(context).primaryColor
@@ -479,62 +473,117 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
           ),
         ),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Campo de busca com botão de limpar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: "Buscar atleta por nome...",
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          _viewModel.setSearchTerm('');
-                          setState(() {});
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10)),
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Campo de busca com botão de limpar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: "Buscar atleta por nome...",
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            _viewModel.setSearchTerm('');
+                            setState(() {});
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                ),
+                onChanged: (val) {
+                  setState(() {}); // atualiza o sufixIcon
+                  if (_debounce?.isActive ?? false) _debounce!.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 500), () {
+                    _viewModel.setSearchTerm(val);
+                    if (val.length >= 3) {
+                      AnalyticsService.logCustomScreenView(
+                          'Fantasy_Market_Search',
+                          parameters: {'term': val.toLowerCase()});
+                    }
+                  });
+                },
               ),
-              onChanged: (val) {
-                setState(() {}); // atualiza o sufixIcon
-                if (_debounce?.isActive ?? false) _debounce!.cancel();
-                _debounce = Timer(const Duration(milliseconds: 500), () {
-                  _viewModel.setSearchTerm(val);
-                  if (val.length >= 3) {
-                    AnalyticsService.logCustomScreenView(
-                        'Fantasy_Market_Search',
-                        parameters: {'term': val.toLowerCase()});
-                  }
-                });
-              },
             ),
-          ),
 
-          // Faixa de valor (Price Range Slider)
-          _buildPriceRangeFilter(),
+            // Faixa de valor (Price Range Slider)
+            _buildPriceRangeFilter(),
 
-          // Dropdowns de Equipe e Ordenação
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: Row(
-              children: [
-                if (_viewModel.teamOptions.length > 1) ...[
+            // Dropdowns de Equipe e Ordenação
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              child: Row(
+                children: [
+                  if (_viewModel.teamOptions.length > 1) ...[
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Equipe",
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                isExpanded: true,
+                                isDense: true,
+                                value: _viewModel.teamOptions.any((t) =>
+                                        t['id'] == _viewModel.selectedTeamId)
+                                    ? _viewModel.selectedTeamId
+                                    : 'Todos',
+                                style: const TextStyle(
+                                    color: Colors.black87,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13),
+                                icon: const Icon(Icons.keyboard_arrow_down,
+                                    color: Colors.grey, size: 18),
+                                items: _viewModel.teamOptions.map((teamData) {
+                                  return DropdownMenuItem<String>(
+                                    value: teamData['id'],
+                                    child: Text(teamData['name']!,
+                                        overflow: TextOverflow.ellipsis),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    _viewModel.setTeamId(val);
+                                    AnalyticsService.logCustomScreenView(
+                                        'Fantasy_Market_Filter_Team',
+                                        parameters: {'team_id': val});
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(
-                    flex: 3,
+                    flex: 2,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text("Equipe",
+                        const Text("Ordenar por",
                             style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.grey,
@@ -550,29 +599,26 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                             child: DropdownButton<String>(
                               isExpanded: true,
                               isDense: true,
-                              value: _viewModel.teamOptions.any(
-                                      (t) => t['id'] == _viewModel.selectedTeamId)
-                                  ? _viewModel.selectedTeamId
-                                  : 'Todos',
+                              value: _viewModel.selectedSort,
                               style: const TextStyle(
                                   color: Colors.black87,
                                   fontWeight: FontWeight.w500,
                                   fontSize: 13),
-                              icon: const Icon(Icons.keyboard_arrow_down,
+                              icon: const Icon(Icons.sort,
                                   color: Colors.grey, size: 18),
-                              items: _viewModel.teamOptions.map((teamData) {
+                              items: _sortOptions.map((sortOption) {
                                 return DropdownMenuItem<String>(
-                                  value: teamData['id'],
-                                  child: Text(teamData['name']!,
+                                  value: sortOption,
+                                  child: Text(sortOption,
                                       overflow: TextOverflow.ellipsis),
                                 );
                               }).toList(),
                               onChanged: (val) {
                                 if (val != null) {
-                                  _viewModel.setTeamId(val);
+                                  _viewModel.setSort(val);
                                   AnalyticsService.logCustomScreenView(
-                                      'Fantasy_Market_Filter_Team',
-                                      parameters: {'team_id': val});
+                                      'Fantasy_Market_Sort',
+                                      parameters: {'sort_by': val});
                                 }
                               },
                             ),
@@ -581,137 +627,87 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
                 ],
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("Ordenar por",
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 2),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            isDense: true,
-                            value: _viewModel.selectedSort,
-                            style: const TextStyle(
-                                color: Colors.black87,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 13),
-                            icon: const Icon(Icons.sort,
-                                color: Colors.grey, size: 18),
-                            items: _sortOptions.map((sortOption) {
-                              return DropdownMenuItem<String>(
-                                value: sortOption,
-                                child: Text(sortOption,
-                                    overflow: TextOverflow.ellipsis),
-                              );
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) {
-                                _viewModel.setSort(val);
-                                AnalyticsService.logCustomScreenView(
-                                    'Fantasy_Market_Sort',
-                                    parameters: {'sort_by': val});
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
 
-          // Checkboxes (Prováveis / Favoritos) + Limpar Tudo se houver filtros ativos
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
-            child: Row(
-              children: [
-                InkWell(
-                  onTap: () =>
-                      _viewModel.setOnlyProbable(!_viewModel.onlyProbable),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 4, horizontal: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: _viewModel.onlyProbable,
-                          onChanged: (val) =>
-                              _viewModel.setOnlyProbable(val ?? false),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        const SizedBox(width: 4),
-                        const Text("Apenas Prováveis",
-                            style: TextStyle(fontSize: 12)),
-                      ],
+            // Checkboxes (Prováveis / Favoritos) + Limpar Tudo se houver filtros ativos
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () =>
+                        _viewModel.setOnlyProbable(!_viewModel.onlyProbable),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: _viewModel.onlyProbable,
+                            onChanged: (val) =>
+                                _viewModel.setOnlyProbable(val ?? false),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text("Apenas Prováveis",
+                              style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                InkWell(
-                  onTap: () =>
-                      _viewModel.setOnlyFavorites(!_viewModel.onlyFavorites),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 4, horizontal: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: _viewModel.onlyFavorites,
-                          onChanged: (val) =>
-                              _viewModel.setOnlyFavorites(val ?? false),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        const SizedBox(width: 4),
-                        const Text("Apenas Favoritos",
-                            style: TextStyle(fontSize: 12)),
-                      ],
+                  const SizedBox(width: 12),
+                  InkWell(
+                    onTap: () =>
+                        _viewModel.setOnlyFavorites(!_viewModel.onlyFavorites),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: _viewModel.onlyFavorites,
+                            onChanged: (val) =>
+                                _viewModel.setOnlyFavorites(val ?? false),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text("Apenas Favoritos",
+                              style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const Spacer(),
-                if (activeCount > 0)
-                  TextButton(
-                    onPressed: _clearAllFilters,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      visualDensity: VisualDensity.compact,
+                  const Spacer(),
+                  if (activeCount > 0)
+                    TextButton(
+                      onPressed: _clearAllFilters,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: const Text("Limpar",
+                          style: TextStyle(fontSize: 12, color: Colors.red)),
                     ),
-                    child: const Text("Limpar",
-                        style: TextStyle(fontSize: 12, color: Colors.red)),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-        ],
+            const SizedBox(height: 6),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   String _money(double v) => "C\$ ${v.toStringAsFixed(2)}";
 
@@ -722,9 +718,10 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     if (team == null) return const SizedBox.shrink();
 
     // Em modo de seleção, o limite real é o orçamento da vaga em questão.
-    final double available = (widget.isSelectionMode && widget.maxBudget != null)
-        ? widget.maxBudget!
-        : team.currentBalance;
+    final double available =
+        (widget.isSelectionMode && widget.maxBudget != null)
+            ? widget.maxBudget!
+            : team.currentBalance;
     final int count = _viewModel.lineupCount;
 
     return Container(
@@ -776,17 +773,15 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
         color: isValidating ? Colors.amber.shade50 : Colors.orange.shade50,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: isValidating
-                ? Colors.amber.shade400
-                : Colors.orange.shade300),
+            color:
+                isValidating ? Colors.amber.shade400 : Colors.orange.shade300),
       ),
       child: Row(
         children: [
           Icon(
             isValidating ? Icons.fact_check_rounded : Icons.lock_clock,
-            color: isValidating
-                ? Colors.amber.shade900
-                : Colors.orange.shade800,
+            color:
+                isValidating ? Colors.amber.shade900 : Colors.orange.shade800,
             size: 22,
           ),
           const SizedBox(width: 10),
@@ -824,9 +819,8 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
             label: const Text("Ver Parciais",
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: isValidating
-                  ? Colors.amber.shade900
-                  : Colors.orange.shade800,
+              backgroundColor:
+                  isValidating ? Colors.amber.shade900 : Colors.orange.shade800,
               foregroundColor: Colors.white,
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -869,7 +863,9 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: _viewModel.hasPriceFilter ? primary : Colors.black87)),
+                      color: _viewModel.hasPriceFilter
+                          ? primary
+                          : Colors.black87)),
               const Spacer(),
               if (_viewModel.hasPriceFilter)
                 InkWell(
@@ -900,7 +896,8 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               onChangeEnd: (v) {
                 _viewModel.setPriceRange(v);
                 setState(() => _draftPriceRange = null);
-                AnalyticsService.logCustomScreenView('Fantasy_Market_Filter_Price',
+                AnalyticsService.logCustomScreenView(
+                    'Fantasy_Market_Filter_Price',
                     parameters: {
                       'min': v.start.toStringAsFixed(0),
                       'max': v.end.toStringAsFixed(0)

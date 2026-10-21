@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/fantasy_models.dart';
 import '../models/match_model.dart';
@@ -82,10 +83,18 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   String? get luxuryReserveId => _luxuryReserveId;
   double get currentBalance => _currentBalance;
   double get totalPatrimony => _totalPatrimony;
+  double get teamPrice => _teamPrice;
+
+  /// Valor total da escalação de titulares atual
+  double get lineupPrice {
+    if (_teamPrice > 0) return _teamPrice;
+    return _lineup.values.fold(0.0, (total, p) => total + p.currentPrice);
+  }
   Map<String, FantasyScoutDetail> get liveScores => _liveScores;
   FantasyGameConfig get gameConfig => _gameConfig;
   List<MatchModel> get roundMatches => _roundMatches;
   bool get areAllMatchesFinished => _areAllMatchesFinished;
+  FantasyTeam? get team => _team;
 
   /// Retorna verdadeiro quando a rodada está no período de validação de scouts:
   /// o mercado está fechado e todos os jogos da rodada foram encerrados.
@@ -125,7 +134,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     {'index': 16, 'pos': 'Técnico'},
   ];
 
-  void _updateMarketStatus(Map<String, dynamic> data, String seasonId) {
+  void _updateMarketStatus(Map<String, dynamic> data, String seasonId, {bool notify = true}) {
     final bool isOpenFlag = data['is_open'] ?? true;
     final dynamic closingRaw = data['closing_time'];
     _closingTime = closingRaw is Timestamp ? closingRaw.toDate() : null;
@@ -151,14 +160,26 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
       _areAllMatchesFinished = false;
     }
 
-    if (!_isDisposed) notifyListeners();
+    if (notify && !_isDisposed) notifyListeners();
   }
 
   void init(String userId, String seasonId) {
     _userId = userId;
     _seasonId = seasonId;
-    _isLoading = true;
-    notifyListeners();
+
+    // ⚡ INSTANT LOAD: Sincroniza imediatamente com o time e status em cache se disponíveis
+    final cachedMarket = _repository.cachedMarketStatus;
+    if (cachedMarket != null) {
+      _updateMarketStatus(cachedMarket, seasonId, notify: false);
+    }
+
+    final cachedTeam = _repository.getCachedUserTeam(userId);
+    if (cachedTeam != null) {
+      _syncLocalStateWithDatabase(cachedTeam, seasonId);
+    } else {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     // 🚨 CORREÇÃO DO BUG & FINOPS: Busca o status inicial do cache local para não pagar leitura dupla 
     // (a leitura real do servidor já será cobrada ao se conectar no .snapshots() logo abaixo).
@@ -286,6 +307,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     }
 
     _lineup[slotIndex] = player;
+    HapticFeedback.lightImpact();
     
     // Validar banco existente (se um titular foi adicionado e o banco dessa posição ficou mais caro)
     _validateBenchAfterLineupChange(player.position);
@@ -325,6 +347,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     if (!canAddBenchPlayer(player)) return;
 
     _bench[slotIndex] = player;
+    HapticFeedback.lightImpact();
     _calculateFinancials();
     _autoSave();
   }
@@ -355,6 +378,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
     if (!_isMarketOpen) return;
     final p = _lineup.remove(slotIndex);
     if (p != null) {
+      HapticFeedback.lightImpact();
       if (_captainId == p.playerId) _captainId = null;
       _validateBenchAfterLineupChange(p.position);
     }
@@ -365,7 +389,10 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   void removeBenchPlayer(int slotIndex) {
     if (!_isMarketOpen) return;
     final p = _bench.remove(slotIndex);
-    if (p != null && _luxuryReserveId == p.playerId) _luxuryReserveId = null;
+    if (p != null) {
+      HapticFeedback.lightImpact();
+      if (_luxuryReserveId == p.playerId) _luxuryReserveId = null;
+    }
     _calculateFinancials();
     _autoSave();
   }
@@ -384,12 +411,14 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
   void setCaptain(String playerId) {
     if (!_isMarketOpen) return;
     _captainId = (_captainId == playerId) ? null : playerId;
+    HapticFeedback.mediumImpact();
     _autoSave();
   }
 
   void setLuxuryReserve(String playerId) {
     if (!_isMarketOpen) return;
     _luxuryReserveId = (_luxuryReserveId == playerId) ? null : playerId;
+    HapticFeedback.mediumImpact();
     _autoSave();
   }
 
@@ -637,6 +666,7 @@ class FantasyLineupViewModel extends ChangeNotifier with WidgetsBindingObserver 
       pickBench(16, tecnicos, 'téc');
 
       _successMessage = "Escalação mágica gerada com sucesso!";
+      HapticFeedback.heavyImpact();
       _calculateFinancials();
       _autoSave();
 

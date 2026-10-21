@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class TeamLogoWidget extends StatelessWidget {
@@ -35,26 +36,64 @@ class TeamLogoWidget extends StatelessWidget {
       return _buildPresetShield(key, radius);
     }
 
-    // 4. Logo personalizada via rede (Web-safe com ClipOval)
-    return ClipOval(
-      child: CachedNetworkImage(
-        imageUrl: key,
+    // 4. Logo personalizada via rede (Web-safe)
+    if (kIsWeb) {
+      return Container(
         width: radius * 2,
         height: radius * 2,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => Container(
-          width: radius * 2,
-          height: radius * 2,
-          color: Colors.grey.shade200,
-          child: const Center(
-            child: SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: EdgeInsets.all(radius * 0.12),
+          child: Image.network(
+            key,
+            width: radius * 2,
+            height: radius * 2,
+            fit: BoxFit.contain,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Center(
+                child: SizedBox(
+                  width: (radius < 20) ? 10 : 16,
+                  height: (radius < 20) ? 10 : 16,
+                  child: const CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) =>
+                _buildDefaultShield(radius),
           ),
         ),
-        errorWidget: (context, url, error) => _buildDefaultShield(radius),
+      );
+    }
+
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.all(radius * 0.12),
+        child: CachedNetworkImage(
+          imageUrl: key,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.contain,
+          placeholder: (context, url) => Center(
+            child: SizedBox(
+              width: (radius < 20) ? 10 : 16,
+              height: (radius < 20) ? 10 : 16,
+              child: const CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+          errorWidget: (context, url, error) => _buildDefaultShield(radius),
+        ),
       ),
     );
   }

@@ -37,6 +37,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
   FantasyGameConfig _gameConfig = FantasyGameConfig.defaults();
 
   FantasyTeam? _team;
+  List<FantasyPlayer> _teamPlayers = [];
   Map<String, LiveScoreData> _liveScores = {}; 
 
   StreamSubscription? _marketSub;
@@ -69,12 +70,14 @@ class FantasyHomeViewModel extends ChangeNotifier {
   FantasyRoundSummary? _roundSummary;
 
   bool get isOffline => _isOffline; 
+  bool get isDisposed => _isDisposed;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isMarketOpen => _isMarketOpen;
   DateTime? get closingTime => _closingTime;
   int get currentRound => _currentRound;
   FantasyTeam? get team => _team;
+  List<FantasyPlayer> get teamPlayers => _teamPlayers;
   Map<String, LiveScoreData> get liveScores => _liveScores;
   FantasyGameConfig get config => _gameConfig;
   FantasyLiveTeamScore? get liveTeamScore => _liveTeamScore;
@@ -248,7 +251,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
     return !_isOffline;
   }
 
-  void _updateMarketStatus(Map<String, dynamic> data, String seasonId) {
+  void _updateMarketStatus(Map<String, dynamic> data, String seasonId, {bool notify = true}) {
     final bool isOpenFlag = data['is_open'] ?? true;
     final dynamic closingRaw = data['closing_time'];
     _closingTime = closingRaw is Timestamp ? closingRaw.toDate() : null;
@@ -275,7 +278,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
         _roundSummary = null;
       }
     }
-    if (!_isDisposed) notifyListeners();
+    if (notify && !_isDisposed) notifyListeners();
   }
 
   Future<void> init(String userId, String seasonId, {bool force = false}) async {
@@ -284,7 +287,30 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
     _loadedUserId = userId;
     _loadedSeasonId = seasonId;
-    _isLoading = true;
+
+    // ⚡ INSTANT LOAD: Se já houver dados no cache RAM, inicia imediatamente sem skeleton
+    final cachedTeam = _repository.getCachedUserTeam(userId);
+    final cachedMarket = _repository.cachedMarketStatus;
+
+    if (cachedMarket != null) {
+      _updateMarketStatus(cachedMarket, seasonId, notify: false);
+    }
+
+    if (cachedTeam != null) {
+      _team = cachedTeam;
+      final allIds = <String>{
+        ...cachedTeam.lineupPlayerIds,
+        ...cachedTeam.benchPlayerIds,
+      }.toList();
+      if (_repository.hasCachedPlayers && allIds.isNotEmpty) {
+        _teamPlayers = _repository.cachedPlayers!
+            .where((p) => allIds.contains(p.playerId))
+            .toList();
+      }
+      _isLoading = false;
+    } else {
+      _isLoading = true;
+    }
     if (!_isDisposed) notifyListeners();
 
     if (!await _checkConnectivity()) {
@@ -319,8 +345,23 @@ class FantasyHomeViewModel extends ChangeNotifier {
     });
 
     _teamSub?.cancel();
-    _teamSub = _repository.streamUserTeam(userId).listen((team) {
+    _teamSub = _repository.streamUserTeam(userId).listen((team) async {
       _team = team;
+      if (team != null) {
+        final allIds = <String>{
+          ...team.lineupPlayerIds,
+          ...team.benchPlayerIds,
+        }.toList();
+        if (allIds.isNotEmpty) {
+          try {
+            _teamPlayers = await _repository.getPlayersByIds(allIds);
+          } catch (_) {}
+        } else {
+          _teamPlayers = [];
+        }
+      } else {
+        _teamPlayers = [];
+      }
       if (!_isMarketOpen) {
         _subscribeToLiveMatches(seasonId, _currentRound);
       }

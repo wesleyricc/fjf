@@ -27,7 +27,26 @@ class FantasyRepository {
   // ---> OTIMIZAÇÃO: BROADCAST STREAM <---
   // Impede que cada tela crie uma nova ligação ao Firestore em simultâneo
   Stream<Map<String, dynamic>>? _marketStatusStream;
-  
+  // --- GETTERS DE CACHE ---
+  bool get hasCachedPlayers => _cachedPlayers != null && _cachedPlayers!.isNotEmpty;
+  List<FantasyPlayer>? get cachedPlayers => _cachedPlayers;
+  FantasyTeam? getCachedUserTeam(String userId) => _cachedTeams[userId];
+  Map<String, dynamic>? get cachedMarketStatus => _cachedMarketStatus;
+
+  void cacheUserTeam(String userId, FantasyTeam team) {
+    _cachedTeams[userId] = team;
+  }
+
+  void cacheMarketStatus(Map<String, dynamic> status) {
+    _cachedMarketStatus = status;
+    _lastMarketFetch = DateTime.now();
+  }
+
+  bool get isMarketStatusFresh =>
+      _cachedMarketStatus != null &&
+      _lastMarketFetch != null &&
+      DateTime.now().difference(_lastMarketFetch!) < MARKET_CACHE_VALIDITY;
+
   // --- MÉTODOS ---
 
   Future<List<FantasyPlayer>> getAllPlayers({bool forceRefresh = false}) async {
@@ -48,7 +67,12 @@ class FantasyRepository {
   }
 
   Stream<FantasyTeam?> streamUserTeam(String userId) {
-    return _api.streamMyTeam(userId);
+    return _api.streamMyTeam(userId).map((team) {
+      if (team != null) {
+        _cachedTeams[userId] = team;
+      }
+      return team;
+    });
   }
 
   Future<FantasyTeam?> getUserTeam(String userId, {bool forceRefresh = false}) async {
@@ -63,10 +87,17 @@ class FantasyRepository {
     return team;
   }
 
-  // ---> OTIMIZAÇÃO: BROADCAST <---
-  Stream<Map<String, dynamic>> streamMarketStatus() {
-    _marketStatusStream ??= _api.streamMarketStatus().asBroadcastStream();
-    return _marketStatusStream!;
+  // ---> OTIMIZAÇÃO: BROADCAST COM REPLAY DO ÚLTIMO STATUS <---
+  Stream<Map<String, dynamic>> streamMarketStatus() async* {
+    if (_cachedMarketStatus != null) {
+      yield _cachedMarketStatus!;
+    }
+    _marketStatusStream ??= _api.streamMarketStatus().map((status) {
+      _cachedMarketStatus = status;
+      _lastMarketFetch = DateTime.now();
+      return status;
+    }).asBroadcastStream();
+    yield* _marketStatusStream!;
   }
 
   Stream<List<MatchModel>> streamRoundMatches(String seasonId, int round) {

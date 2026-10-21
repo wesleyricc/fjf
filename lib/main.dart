@@ -65,6 +65,7 @@ import 'screens/player/suspension_history_screen.dart';
 import 'screens/player/player_comparison_screen.dart';
 import 'screens/institutional/report_bug_screen.dart';
 import 'screens/admin/admin_menu_screen.dart';
+import 'screens/admin/admin_raffles_screen.dart';
 import 'screens/institutional/photo_sales_screen.dart';
 import 'screens/fantasy/fantasy_home_screen.dart';
 import 'screens/fantasy/fantasy_market_screen.dart';
@@ -205,6 +206,7 @@ class FjfApp extends StatelessWidget {
             context.read<FantasyService>(),
           ),
         ),
+        ChangeNotifierProvider(create: (_) => FantasyHomeViewModel()),
       ],
       child: MaterialApp(
         title: 'FJF App - Força Jovem Fumacense',
@@ -251,14 +253,12 @@ class FjfApp extends StatelessWidget {
           '/player-comparison': (ctx) => const PlayerComparisonScreen(),
           '/report-bug': (ctx) => const ReportBugScreen(),
           '/admin-menu': (ctx) => const AdminMenuScreen(),
+          '/admin-raffles': (ctx) => const AdminRafflesScreen(),
           '/photo-sales': (ctx) => ChangeNotifierProvider(
             create: (_) => PhotoSalesViewModel(),
             child: const PhotoSalesScreen(),
           ),
-          '/fantasy-home': (ctx) => ChangeNotifierProvider(
-            create: (_) => FantasyHomeViewModel(),
-            child: const FantasyHomeScreen(),
-          ),
+          '/fantasy-home': (ctx) => const FantasyHomeScreen(),
           '/fantasy-market': (ctx) => const FantasyMarketScreen(),
           '/fantasy-lineup': (ctx) => ChangeNotifierProvider(
             create: (_) => FantasyLineupViewModel(),

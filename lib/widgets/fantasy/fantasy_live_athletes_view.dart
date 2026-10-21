@@ -30,10 +30,8 @@ class _FantasyLiveAthletesViewState extends State<FantasyLiveAthletesView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final champ = Provider.of<ChampionshipService>(context, listen: false);
-      _viewModel.init(champ.currentSeasonId, teams: champ.teams);
-      if (widget.initialRound != null) {
-        _viewModel.setRound(widget.initialRound!);
-      }
+      _viewModel.init(champ.currentSeasonId,
+          teams: champ.teams, targetRound: widget.initialRound);
     });
   }
 
@@ -136,21 +134,107 @@ class _FantasyLiveAthletesViewState extends State<FantasyLiveAthletesView> {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: _viewModel.isMarketOpen
-                      ? Colors.amber
-                      : (_viewModel.isScoutsValidationPeriod
-                          ? Colors.orangeAccent
-                          : Colors.green),
+                  color: _viewModel.selectedRound < _viewModel.currentRound
+                      ? Colors.grey
+                      : (_viewModel.isMarketOpen
+                          ? Colors.amber
+                          : (_viewModel.isScoutsValidationPeriod
+                              ? Colors.orangeAccent
+                              : Colors.green)),
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                "Rodada ${_viewModel.selectedRound}",
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              PopupMenuButton<int>(
+                initialValue: _viewModel.selectedRound,
+                tooltip: "Selecionar Rodada",
+                onSelected: (r) => _viewModel.setRound(r),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "Rodada ${_viewModel.selectedRound}",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.arrow_drop_down, size: 20, color: Colors.black87),
+                  ],
+                ),
+                itemBuilder: (ctx) {
+                  final maxRound = _viewModel.currentRound > 0 ? _viewModel.currentRound : 1;
+                  return List.generate(maxRound, (index) {
+                    final r = index + 1;
+                    final isCurrent = (r == _viewModel.currentRound);
+                    final isSelected = (r == _viewModel.selectedRound);
+                    return PopupMenuItem<int>(
+                      value: r,
+                      child: Row(
+                        children: [
+                          Text(
+                            "Rodada $r",
+                            style: TextStyle(
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              color: isSelected ? Theme.of(context).primaryColor : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (isCurrent)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _viewModel.isMarketOpen ? "Aberta" : "Ao Vivo",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.green.shade800,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                "Finalizada",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  });
+                },
               ),
               const SizedBox(width: 6),
-              if (_viewModel.isScoutsValidationPeriod)
+              if (_viewModel.selectedRound < _viewModel.currentRound)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    "Rodada Encerrada",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black54,
+                    ),
+                  ),
+                )
+              else if (_viewModel.isScoutsValidationPeriod)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(

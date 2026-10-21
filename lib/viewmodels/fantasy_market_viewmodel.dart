@@ -61,9 +61,13 @@ class FantasyMarketViewModel extends ChangeNotifier {
   FantasyTeam? get myTeam => _myTeam;
   double? get availableBalance => _myTeam?.currentBalance;
   int get lineupCount => _myTeam?.lineupPlayerIds.length ?? 0;
+  bool _isInitialized = false;
 
   Future<void> init(List<Team> teams,
       {String? requiredPosition, String? userId, String? seasonId}) async {
+    if (_isInitialized) return;
+    _isInitialized = true;
+
     if (requiredPosition != null) {
       _selectedPosition = requiredPosition;
     }
@@ -89,7 +93,13 @@ class FantasyMarketViewModel extends ChangeNotifier {
 
       if (!_isDisposed) notifyListeners();
     });
-    if (userId != null) _listenToTeam(userId);
+    if (userId != null) {
+      final cachedTeam = _repository.getCachedUserTeam(userId);
+      if (cachedTeam != null) {
+        _myTeam = cachedTeam;
+      }
+      _listenToTeam(userId);
+    }
     await _loadFavorites();
     await loadMarketData(teams);
   }
@@ -115,8 +125,10 @@ class FantasyMarketViewModel extends ChangeNotifier {
 
   Future<void> loadMarketData(List<Team> teams,
       {bool forceRefresh = false}) async {
-    _isLoading = true;
-    notifyListeners();
+    if (!_repository.hasCachedPlayers || forceRefresh) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     try {
       final players =

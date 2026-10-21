@@ -9,6 +9,7 @@ import 'fantasy_lineup_preview.dart';
 import '../../screens/fantasy/fantasy_edit_team_screen.dart';
 import 'fantasy_bottom_nav_bar.dart';
 import 'round_summary_dialog.dart';
+import 'fantasy_achievements_widget.dart';
 
 class FantasyDashboard extends StatelessWidget {
   final FantasyAuthService authService;
@@ -84,8 +85,15 @@ class FantasyDashboard extends StatelessWidget {
                               Icons.emoji_events,
                               Colors.amber[800]!)),
                     ]),
+                    const SizedBox(height: 20),
+                    FantasyAchievementsSection(
+                      team: team,
+                      roundSummary: vm.roundSummary,
+                    ),
                     const SizedBox(height: 24),
-                    if (vm.lastRoundNumber != null || vm.roundSummary != null) ...[
+                    if (vm.isMarketOpen &&
+                        (vm.lastRoundNumber != null ||
+                            vm.roundSummary != null)) ...[
                       const Text("Desempenho da Rodada Anterior",
                           style: TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold)),

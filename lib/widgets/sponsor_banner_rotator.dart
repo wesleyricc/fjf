@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -114,15 +115,35 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   void _precacheCurrentAndNext() {
     if (!mounted || _filteredSponsors.isEmpty) return;
     try {
-      final currentUrl = (_filteredSponsors[_currentIndex]['imageUrl']?.toString() ?? '').trim();
+      final currentUrl = ((_filteredSponsors[_currentIndex]['imageUrl'] ??
+              _filteredSponsors[_currentIndex]['image_url'] ??
+              _filteredSponsors[_currentIndex]['bannerUrl'] ??
+              '')
+          .toString())
+          .trim();
       if (currentUrl.isNotEmpty) {
-        precacheImage(CachedNetworkImageProvider(currentUrl, maxWidth: 800), context);
+        if (kIsWeb) {
+          precacheImage(NetworkImage(currentUrl), context).catchError((_) {});
+        } else {
+          precacheImage(CachedNetworkImageProvider(currentUrl, maxWidth: 800), context)
+              .catchError((_) {});
+        }
       }
       if (_filteredSponsors.length > 1) {
         final nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
-        final nextUrl = (_filteredSponsors[nextIndex]['imageUrl']?.toString() ?? '').trim();
+        final nextUrl = ((_filteredSponsors[nextIndex]['imageUrl'] ??
+                _filteredSponsors[nextIndex]['image_url'] ??
+                _filteredSponsors[nextIndex]['bannerUrl'] ??
+                '')
+            .toString())
+            .trim();
         if (nextUrl.isNotEmpty) {
-          precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context);
+          if (kIsWeb) {
+            precacheImage(NetworkImage(nextUrl), context).catchError((_) {});
+          } else {
+            precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context)
+                .catchError((_) {});
+          }
         }
       }
     } catch (_) {}
@@ -132,9 +153,19 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     if (!mounted || _filteredSponsors.isEmpty) return;
     try {
       final int nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
-      final String? nextUrl = _filteredSponsors[nextIndex]['imageUrl']?.toString().trim();
-      if (nextUrl != null && nextUrl.isNotEmpty) {
-        precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context);
+      final String nextUrl = ((_filteredSponsors[nextIndex]['imageUrl'] ??
+              _filteredSponsors[nextIndex]['image_url'] ??
+              _filteredSponsors[nextIndex]['bannerUrl'] ??
+              '')
+          .toString())
+          .trim();
+      if (nextUrl.isNotEmpty) {
+        if (kIsWeb) {
+          precacheImage(NetworkImage(nextUrl), context).catchError((_) {});
+        } else {
+          precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context)
+              .catchError((_) {});
+        }
       }
     } catch (_) {}
   }
@@ -197,7 +228,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
           child: CircularProgressIndicator(
             strokeWidth: 2,
             valueColor: AlwaysStoppedAnimation<Color>(
-              const Color(0xFFC25F22).withOpacity(0.5),
+              const Color(0xFFC25F22).withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -236,7 +267,13 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       }
     } else {
       final data = _filteredSponsors[_currentIndex];
-      final imageUrl = (data['imageUrl']?.toString() ?? '').trim();
+      final imageUrl = ((data['imageUrl'] ??
+              data['image_url'] ??
+              data['bannerUrl'] ??
+              data['url'] ??
+              '')
+          .toString())
+          .trim();
       final targetUrl = data['targetUrl'] ?? '';
       final sponsorName = data['name'] ?? 'sponsor_$_currentIndex';
       final String uniqueKey = "${_currentIndex}_${imageUrl.isNotEmpty ? imageUrl : sponsorName}";
@@ -254,22 +291,20 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                       height: double.infinity,
                       color: Colors.white,
                       alignment: Alignment.center,
-                      child: CachedNetworkImage(
+                      child: _ResilientBannerImage(
                         imageUrl: imageUrl,
+                        sponsorName: sponsorName,
                         fit: BoxFit.contain,
-                        memCacheWidth: 800,
-                        placeholder: (c, u) => _buildPlaceholder(),
-                        errorWidget: (c, u, e) => _buildHouseAd(title: "$sponsorName (Sem Imagem)"),
+                        placeholderBuilder: _buildPlaceholder,
+                        errorAdBuilder: (title) => _buildHouseAd(title: title),
                       ),
                     )
-                  : CachedNetworkImage(
+                  : _ResilientBannerImage(
                       imageUrl: imageUrl,
+                      sponsorName: sponsorName,
                       fit: widget.fit,
-                      width: double.infinity,
-                      height: double.infinity,
-                      memCacheWidth: 800,
-                      placeholder: (c, u) => _buildPlaceholder(),
-                      errorWidget: (c, u, e) => _buildHouseAd(title: "$sponsorName (Sem Imagem)"),
+                      placeholderBuilder: _buildPlaceholder,
+                      errorAdBuilder: (title) => _buildHouseAd(title: title),
                     )),
         ),
       );
@@ -316,7 +351,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: const Color(0xFFC25F22).withOpacity(0.5), width: 1.5),
+          border: Border.all(color: const Color(0xFFC25F22).withValues(alpha: 0.5), width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -331,7 +366,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                 ),
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: const Color(0xFFC25F22).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(color: const Color(0xFFC25F22).withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4)),
                 ],
               ),
               child: const FaIcon(FontAwesomeIcons.bullhorn, color: Colors.white, size: 24),
@@ -386,7 +421,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
             Positioned(
               right: -20,
               bottom: -20,
-              child: Icon(Icons.all_inclusive, size: 100, color: Colors.white.withOpacity(0.05)),
+              child: Icon(Icons.all_inclusive, size: 100, color: Colors.white.withValues(alpha: 0.05)),
             ),
             Center(
               child: Column(
@@ -395,7 +430,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                        color: const Color(0xFFFFCC00).withOpacity(0.2), // AppTheme.yellowColor
+                        color: const Color(0xFFFFCC00).withValues(alpha: 0.2), // AppTheme.yellowColor
                         shape: BoxShape.circle),
                     child: const FaIcon(FontAwesomeIcons.handshake, color: Color(0xFFFFCC00), size: 24),
                   ),
@@ -417,3 +452,85 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     );
   }
 }
+
+/// Widget resiliente para exibição do banner de publicidade.
+/// No Web (ou caso o cache em disco falhe no Mobile), utiliza a stack de rede nativa do Image.network,
+/// garantindo que a imagem seja baixada e renderizada sem ser bloqueada por problemas de CORS ou falhas de SQLite do cache.
+class _ResilientBannerImage extends StatefulWidget {
+  final String imageUrl;
+  final String sponsorName;
+  final BoxFit fit;
+  final Widget Function() placeholderBuilder;
+  final Widget Function(String? title) errorAdBuilder;
+
+  const _ResilientBannerImage({
+    required this.imageUrl,
+    required this.sponsorName,
+    required this.fit,
+    required this.placeholderBuilder,
+    required this.errorAdBuilder,
+  });
+
+  @override
+  State<_ResilientBannerImage> createState() => _ResilientBannerImageState();
+}
+
+class _ResilientBannerImageState extends State<_ResilientBannerImage> {
+  bool _useFallback = false;
+
+  @override
+  void didUpdateWidget(covariant _ResilientBannerImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.imageUrl != oldWidget.imageUrl) {
+      _useFallback = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.imageUrl.isEmpty) {
+      return widget.errorAdBuilder(widget.sponsorName);
+    }
+
+    // 1. No Web ou se o cache nativo tiver falhado no mobile:
+    // Image.network nativo usa o elemento <img> do browser (livre de bloqueios CORS)
+    // e no mobile usa a stack de rede nativa sem depender do SQLite/disco do cache manager.
+    if (kIsWeb || _useFallback) {
+      return Image.network(
+        widget.imageUrl,
+        fit: widget.fit,
+        width: double.infinity,
+        height: double.infinity,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return widget.placeholderBuilder();
+        },
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint("Falha ao carregar banner via Image.network (${widget.sponsorName}): $error");
+          return widget.errorAdBuilder(widget.sponsorName);
+        },
+      );
+    }
+
+    // 2. No Mobile (Android / iOS): tenta carregar via CachedNetworkImage com cache disk e memória
+    return CachedNetworkImage(
+      imageUrl: widget.imageUrl,
+      fit: widget.fit,
+      width: double.infinity,
+      height: double.infinity,
+      memCacheWidth: 800,
+      placeholder: (c, u) => widget.placeholderBuilder(),
+      errorWidget: (c, u, error) {
+        debugPrint("Falha no CachedNetworkImage do patrocinador ${widget.sponsorName}, acionando fallback nativo: $error");
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_useFallback) {
+            setState(() {
+              _useFallback = true;
+            });
+          }
+        });
+        return widget.placeholderBuilder();
+      },
+    );
+  }
+}

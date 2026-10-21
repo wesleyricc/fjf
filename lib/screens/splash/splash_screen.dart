@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../viewmodels/sponsor_viewmodel.dart';
 import '../../theme/app_theme.dart';
+import '../../services/fantasy_preload_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -72,6 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<SponsorViewModel>().precachePriorityBanners(context);
+        FantasyPreloadService().warmUp(context);
       }
     });
   }

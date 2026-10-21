@@ -18,6 +18,7 @@ import 'admin_upload_photo_screen.dart';
 import '../championship/tournament_format_screen.dart';
 import 'admin_polls_screen.dart';
 import 'admin_sponsors_screen.dart';
+import 'admin_raffles_screen.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -491,6 +492,16 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
                         borderRadius: BorderRadius.circular(12)),
                     child: Column(
                       children: [
+                        _buildActionTile(
+                          icon: Icons.casino,
+                          color: Colors.deepOrange,
+                          title: "Sorteios da Temporada",
+                          subtitle: "Sortear times e atletas",
+                          onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (ctx) => const AdminRafflesScreen())),
+                        ),
+                        const Divider(height: 1, indent: 56),
                         _buildActionTile(
                           icon: Icons.how_to_vote,
                           color: Colors.amber[700]!,

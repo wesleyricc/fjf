@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/championship_service.dart';
 import '../../services/fantasy_auth_service.dart';
+import '../../services/fantasy_preload_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../services/voting_service.dart';
 
@@ -105,6 +106,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           _checkAndShowStartupAds();
         }
       });
+      FantasyPreloadService().warmUp(context);
     });
 
     Future.delayed(const Duration(milliseconds: 2500), () {

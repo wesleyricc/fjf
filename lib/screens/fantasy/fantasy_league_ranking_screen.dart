@@ -9,6 +9,7 @@ import '../../services/fantasy_auth_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../widgets/team_logo_widget.dart';
 import '../../widgets/fantasy/league_invite_modal.dart';
+import '../../widgets/fantasy/fantasy_team_lineup_modal.dart';
 
 class FantasyLeagueRankingScreen extends StatefulWidget {
   final FantasyLeague league;
@@ -263,6 +264,9 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
                             isGlobal: isGlobal,
                             primaryColor: primaryColor,
                             hasMatchesStarted: hasMatchesStarted,
+                            seasonId: seasonId,
+                            currentRound: currentRound,
+                            isOpen: isOpen,
                           );
                         },
                       ),
@@ -374,6 +378,9 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
     required bool isGlobal,
     required Color primaryColor,
     required bool hasMatchesStarted,
+    required String seasonId,
+    required int currentRound,
+    required bool isOpen,
   }) {
     Color rankColor = Colors.grey.shade300;
     if (rank == 1) {
@@ -403,6 +410,29 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        onTap: () {
+          FantasyTeamLineupModal.show(
+            context,
+            seasonId: seasonId,
+            round: currentRound,
+            teamId: team.teamId,
+            userId: team.userId,
+            teamName: team.teamName,
+            ownerName: team.ownerName,
+            shieldType: team.shieldType,
+            customLogoUrl: team.customLogoUrl,
+            roundScore: team.roundScore,
+            totalPoints: team.totalPoints,
+            teamValue: team.teamValue,
+            captainId: team.captainId,
+            substitutions: team.substitutions,
+            finalLineup: team.finalLineup,
+            playersPlayed: team.playersPlayed,
+            playersTotal: team.playersTotal,
+            isMe: isMe,
+            isMarketOpen: isOpen,
+          );
+        },
         leading: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

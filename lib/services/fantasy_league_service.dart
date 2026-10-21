@@ -159,17 +159,23 @@ class FantasyLeagueService {
     final List<Map<String, dynamic>> teamsData = [];
     final members = league.members;
     
-    // OTIMIZAÇÃO: O Firestore aceita no máximo 10 itens no 'whereIn'. 
-    // Vamos fatiar a lista de membros em pedaços de 10 e buscar.
-    for (var i = 0; i < members.length; i += 10) {
-      final chunk = members.sublist(i, i + 10 > members.length ? members.length : i + 10);
-      
-      final query = await _firestore
-          .collection('fantasy_teams')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      
-      for (var doc in query.docs) {
+    // ⚡ OTIMIZAÇÃO DE VELOCIDADE & LATÊNCIA:
+    // O Firestore aceita até 30 itens no operador 'whereIn'. 
+    // Fatiamos em blocos de até 30 e executamos as buscas em PARALELO via Future.wait.
+    final List<List<dynamic>> chunks = [];
+    for (var i = 0; i < members.length; i += 30) {
+      chunks.add(members.sublist(i, i + 30 > members.length ? members.length : i + 30));
+    }
+
+    final queryFutures = chunks.map((chunk) => _firestore
+        .collection('fantasy_teams')
+        .where(FieldPath.documentId, whereIn: chunk)
+        .get());
+
+    final snapshots = await Future.wait(queryFutures);
+
+    for (var snap in snapshots) {
+      for (var doc in snap.docs) {
         final data = doc.data();
         data['uid'] = doc.id;
         teamsData.add(data);

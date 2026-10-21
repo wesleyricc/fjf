@@ -1,21 +1,49 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class _MemoryQueryCacheEntry {
+  final QuerySnapshot snapshot;
+  final DateTime expiresAt;
+
+  _MemoryQueryCacheEntry(this.snapshot, this.expiresAt);
+}
+
+class _MemoryDocCacheEntry {
+  final DocumentSnapshot snapshot;
+  final DateTime expiresAt;
+
+  _MemoryDocCacheEntry(this.snapshot, this.expiresAt);
+}
+
 class FirestoreCacheService {
+  // ⚡ FinOps & Performance: Camada de cache em memória RAM (acesso imediato de 0ms, imune a limitações de disco do WebKit/iOS)
+  static final Map<String, _MemoryQueryCacheEntry> _queryMemoryCache = {};
+  static final Map<String, _MemoryDocCacheEntry> _docMemoryCache = {};
+
   /// Obtém dados do Firestore usando uma estratégia híbrida baseada em TTL (Time to Live).
-  /// Se [forceRefresh] for verdadeiro ou o TTL expirar, faz um fetch no servidor e renova o timestamp.
-  /// Caso contrário, tenta recuperar exclusivamente do cache em disco/memória para economizar leituras (FinOps).
+  /// 1. Consulta RAM primeiro (0 ms).
+  /// 2. Se expirado ou forceRefresh, busca do servidor/cache e renova RAM + SharedPreferences.
   static Future<QuerySnapshot> getWithCache({
     required Query query,
     required String cacheKey,
     required Duration ttl,
     bool forceRefresh = false,
   }) async {
+    final now = DateTime.now();
+
+    // ⚡ 1. Consulta em memória RAM
+    if (!forceRefresh) {
+      final mem = _queryMemoryCache[cacheKey];
+      if (mem != null && now.isBefore(mem.expiresAt)) {
+        return mem.snapshot;
+      }
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final prefsKey = 'firestore_cache_timestamp_$cacheKey';
     final lastFetchMs = prefs.getInt(prefsKey);
 
-    final now = DateTime.now();
     bool shouldFetchFromServer = forceRefresh;
 
     if (!shouldFetchFromServer) {
@@ -30,30 +58,29 @@ class FirestoreCacheService {
     }
 
     try {
+      final QuerySnapshot snapshot;
       if (shouldFetchFromServer) {
-        // Busca do servidor e do cache (padrão Firebase que salva no disco local)
-        final snapshot = await query.get(const GetOptions(source: Source.serverAndCache));
-        // Renova o timestamp após sucesso
+        snapshot = await query.get(const GetOptions(source: Source.serverAndCache));
         await prefs.setInt(prefsKey, now.millisecondsSinceEpoch);
-        return snapshot;
       } else {
-        // Tenta buscar ESTRITAMENTE do cache local para custo zero
-        final snapshot = await query.get(const GetOptions(source: Source.cache));
-        
-        // Se o cache estiver completamente vazio (ex: app recém instalado), contorna buscando no servidor.
-        if (snapshot.docs.isEmpty) {
-          final fallbackSnap = await query.get(const GetOptions(source: Source.serverAndCache));
+        // Tenta buscar do cache local (se persistência estiver ativa)
+        final localSnap = await query.get(const GetOptions(source: Source.cache));
+        if (localSnap.docs.isEmpty) {
+          snapshot = await query.get(const GetOptions(source: Source.serverAndCache));
           await prefs.setInt(prefsKey, now.millisecondsSinceEpoch);
-          return fallbackSnap;
+        } else {
+          snapshot = localSnap;
         }
-        
-        return snapshot;
       }
+
+      // Salva em memória RAM para os próximos acessos
+      _queryMemoryCache[cacheKey] = _MemoryQueryCacheEntry(snapshot, now.add(ttl));
+      return snapshot;
     } catch (e) {
-      // Se a chamada do servidor falhar por estar offline ou falha no cache
-      // faz um fallback seguro buscando do cache, caso haja.
-      print('FirestoreCacheService: Fallback para Cache após erro: $e');
-      return await query.get(const GetOptions(source: Source.cache));
+      debugPrint('FirestoreCacheService: Fallback para Cache após erro: $e');
+      final fallback = await query.get(const GetOptions(source: Source.cache));
+      _queryMemoryCache[cacheKey] = _MemoryQueryCacheEntry(fallback, now.add(ttl));
+      return fallback;
     }
   }
 
@@ -64,11 +91,20 @@ class FirestoreCacheService {
     required Duration ttl,
     bool forceRefresh = false,
   }) async {
+    final now = DateTime.now();
+
+    // ⚡ 1. Consulta em memória RAM
+    if (!forceRefresh) {
+      final mem = _docMemoryCache[cacheKey];
+      if (mem != null && now.isBefore(mem.expiresAt)) {
+        return mem.snapshot;
+      }
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final prefsKey = 'firestore_cache_timestamp_$cacheKey';
     final lastFetchMs = prefs.getInt(prefsKey);
 
-    final now = DateTime.now();
     bool shouldFetchFromServer = forceRefresh;
 
     if (!shouldFetchFromServer) {
@@ -83,29 +119,43 @@ class FirestoreCacheService {
     }
 
     try {
+      final DocumentSnapshot snapshot;
       if (shouldFetchFromServer) {
-        final snapshot = await docRef.get(const GetOptions(source: Source.serverAndCache));
+        snapshot = await docRef.get(const GetOptions(source: Source.serverAndCache));
         await prefs.setInt(prefsKey, now.millisecondsSinceEpoch);
-        return snapshot;
       } else {
-        final snapshot = await docRef.get(const GetOptions(source: Source.cache));
-        if (!snapshot.exists) {
-          final fallbackSnap = await docRef.get(const GetOptions(source: Source.serverAndCache));
+        final localSnap = await docRef.get(const GetOptions(source: Source.cache));
+        if (!localSnap.exists) {
+          snapshot = await docRef.get(const GetOptions(source: Source.serverAndCache));
           await prefs.setInt(prefsKey, now.millisecondsSinceEpoch);
-          return fallbackSnap;
+        } else {
+          snapshot = localSnap;
         }
-        return snapshot;
       }
+
+      // Salva em memória RAM para os próximos acessos
+      _docMemoryCache[cacheKey] = _MemoryDocCacheEntry(snapshot, now.add(ttl));
+      return snapshot;
     } catch (e) {
-      print('FirestoreCacheService (Doc): Fallback para Cache após erro: $e');
-      return await docRef.get(const GetOptions(source: Source.cache));
+      debugPrint('FirestoreCacheService (Doc): Fallback para Cache após erro: $e');
+      final fallback = await docRef.get(const GetOptions(source: Source.cache));
+      _docMemoryCache[cacheKey] = _MemoryDocCacheEntry(fallback, now.add(ttl));
+      return fallback;
     }
   }
 
-  /// Limpa o Timestamp de um cache específico, forçando a atualização na próxima leitura.
+  /// Limpa o Timestamp e a memória de um cache específico.
   static Future<void> invalidateCache(String cacheKey) async {
+    _queryMemoryCache.remove(cacheKey);
+    _docMemoryCache.remove(cacheKey);
     final prefs = await SharedPreferences.getInstance();
     final prefsKey = 'firestore_cache_timestamp_$cacheKey';
     await prefs.remove(prefsKey);
+  }
+
+  /// Limpa todo o cache em memória RAM da sessão.
+  static void clearMemoryCache() {
+    _queryMemoryCache.clear();
+    _docMemoryCache.clear();
   }
 }

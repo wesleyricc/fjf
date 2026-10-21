@@ -9,6 +9,7 @@ import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/ui/custom_empty_state.dart';
 import '../../widgets/team_logo_widget.dart';
 import '../../widgets/fantasy/fantasy_bottom_nav_bar.dart';
+import '../../widgets/fantasy/fantasy_team_lineup_modal.dart';
 
 class FantasyRankingScreen extends StatefulWidget {
   const FantasyRankingScreen({super.key});
@@ -214,7 +215,7 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (!isOpen) ...[
+                      if (!isOpen && _currentMetric == RankingMetric.points) ...[
                         Container(
                           width: 8,
                           height: 8,
@@ -225,7 +226,11 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen>
                           ),
                         ),
                       ],
-                      Text(!isOpen ? "DA RODADA (AO VIVO)" : "DA RODADA"),
+                      Text(!isOpen
+                          ? (_currentMetric == RankingMetric.points
+                              ? "DA RODADA (AO VIVO)"
+                              : "DA RODADA")
+                          : "DA RODADA"),
                     ],
                   ),
                 ),
@@ -233,7 +238,7 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen>
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (!isOpen) ...[
+                      if (!isOpen && _currentMetric == RankingMetric.points) ...[
                         Container(
                           width: 8,
                           height: 8,
@@ -244,7 +249,11 @@ class _FantasyRankingScreenState extends State<FantasyRankingScreen>
                           ),
                         ),
                       ],
-                      Text(!isOpen ? "GERAL (AO VIVO)" : "GERAL"),
+                      Text(!isOpen
+                          ? (_currentMetric == RankingMetric.points
+                              ? "GERAL (AO VIVO)"
+                              : "GERAL")
+                          : "GERAL"),
                     ],
                   ),
                 ),
@@ -318,6 +327,31 @@ class _RankingListState extends State<_RankingList>
   bool _isLoadingMore = false;
   bool _hasError = false;
   bool _hasMore = true;
+  FantasyTeam? _myTeam;
+
+  Future<FantasyTeam?> _getMyTeam(String? currentUserId) async {
+    if (currentUserId == null || currentUserId.isEmpty) return null;
+    if (_myTeam != null) return _myTeam;
+
+    if (_teams != null) {
+      final found = _teams!.where((t) => t.userId == currentUserId).firstOrNull;
+      if (found != null) {
+        _myTeam = found;
+        return _myTeam;
+      }
+    }
+
+    try {
+      final fantasyService = Provider.of<FantasyService>(context, listen: false);
+      final team = await fantasyService.streamMyTeam(currentUserId).first;
+      if (mounted) {
+        _myTeam = team;
+      }
+      return team;
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   void initState() {
@@ -502,7 +536,7 @@ class _RankingListState extends State<_RankingList>
                   final bool isMe = team.userId == currentUserId || team.teamId == currentUserId;
 
                   return _buildLiveRankingCard(
-                      context, rank, team, isMe, widget.isGlobal, hasMatchesStarted, widget.metric);
+                      context, rank, team, isMe, widget.isGlobal, hasMatchesStarted, widget.metric, currentUserId);
                 },
               ),
             );
@@ -667,6 +701,94 @@ class _RankingListState extends State<_RankingList>
       FantasyLiveLeaderboard leaderboard, bool hasMatchesStarted) {
     final bool isFinal = leaderboard.isFinal;
 
+    // Alerta específico para Cartoletas durante a rodada em andamento
+    if (widget.metric == RankingMetric.patrimony) {
+      final String patrimonyTitle = widget.isGlobal
+          ? "Patrimônio Geral (Consolidado)"
+          : "Valorização da Rodada ${leaderboard.round} (Após Apuração)";
+      final String patrimonyMessage = widget.isGlobal
+          ? "O patrimônio exibido reflete os valores acumulados até a rodada anterior. As cartoletas serão atualizadas após o encerramento dos jogos e processamento oficial da Rodada ${leaderboard.round}."
+          : "As cartoletas e a valorização dos atletas não são calculadas em tempo real durante as partidas. A variação oficial da Rodada ${leaderboard.round} será calculada e computada no fechamento da rodada.";
+
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFECFDF5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFA7F3D0), width: 1.2),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD1FAE5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.monetization_on_outlined,
+                color: Color(0xFF047857),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          patrimonyTitle,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF065F46),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade100,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: Colors.amber.shade400, width: 0.8),
+                        ),
+                        child: Text(
+                          isFinal ? "CONCLUÍDO" : "APÓS FECHAMENTO",
+                          style: TextStyle(
+                            color: Colors.amber.shade900,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    patrimonyMessage,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade700,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final Color bgColor = isFinal
         ? Colors.grey.shade100
         : (hasMatchesStarted ? Colors.green.shade50 : Colors.blue.shade50);
@@ -742,7 +864,8 @@ class _RankingListState extends State<_RankingList>
       bool isMe,
       bool isGlobal,
       bool hasMatchesStarted,
-      RankingMetric metric) {
+      RankingMetric metric,
+      String? currentUserId) {
     Color? rankColor;
     IconData? rankIcon;
     double elevation = 1;
@@ -797,6 +920,32 @@ class _RankingListState extends State<_RankingList>
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        onTap: () async {
+          final myTeam = await _getMyTeam(currentUserId);
+          if (!context.mounted) return;
+          FantasyTeamLineupModal.show(
+            context,
+            seasonId: widget.seasonId,
+            round: widget.currentRound,
+            teamId: team.teamId,
+            userId: team.userId,
+            teamName: team.teamName,
+            ownerName: team.ownerName,
+            shieldType: team.shieldType,
+            customLogoUrl: team.customLogoUrl,
+            roundScore: team.roundScore,
+            totalPoints: team.totalPoints,
+            teamValue: team.teamValue,
+            captainId: team.captainId,
+            substitutions: team.substitutions,
+            finalLineup: team.finalLineup,
+            playersPlayed: team.playersPlayed,
+            playersTotal: team.playersTotal,
+            isMe: isMe,
+            myTeam: myTeam,
+            isMarketOpen: widget.isMarketOpen,
+          );
+        },
         leading: SizedBox(
           width: 75,
           child: Row(
@@ -843,6 +992,59 @@ class _RankingListState extends State<_RankingList>
                 style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
             ),
+            if (!isMe) ...[
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.blue.shade200, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.visibility_outlined,
+                        size: 11, color: Colors.blue.shade800),
+                    const SizedBox(width: 3),
+                    Text(
+                      "Ver Time / 1x1",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              Container(
+                margin: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.green.shade300, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.shield_outlined,
+                        size: 11, color: Colors.green.shade800),
+                    const SizedBox(width: 3),
+                    Text(
+                      "Meu Time",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
@@ -980,7 +1182,7 @@ class _RankingListState extends State<_RankingList>
           final int rank = itemIndex + 1;
           final bool isMe = team.userId == currentUserId;
 
-          return _buildRankingCard(context, rank, team, isMe, widget.isGlobal, widget.metric);
+          return _buildRankingCard(context, rank, team, isMe, widget.isGlobal, widget.metric, currentUserId);
         },
       ),
     );
@@ -1063,7 +1265,7 @@ class _RankingListState extends State<_RankingList>
   }
 
   Widget _buildRankingCard(BuildContext context, int rank, FantasyTeam team,
-      bool isMe, bool isGlobal, RankingMetric metric) {
+      bool isMe, bool isGlobal, RankingMetric metric, String? currentUserId) {
     Color? rankColor;
     IconData? rankIcon;
     double elevation = 1;
@@ -1114,6 +1316,33 @@ class _RankingListState extends State<_RankingList>
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        onTap: () async {
+          final myTeam = await _getMyTeam(currentUserId);
+          if (!context.mounted) return;
+          FantasyTeamLineupModal.show(
+            context,
+            seasonId: widget.seasonId,
+            round: widget.currentRound,
+            teamId: team.id,
+            userId: team.userId,
+            teamName: team.teamName,
+            ownerName: team.ownerName,
+            shieldType: team.shieldType,
+            customLogoUrl: team.customLogoUrl,
+            roundScore: team.lastScore,
+            totalPoints: team.totalPoints,
+            teamValue: team.teamValue,
+            captainId: team.captainId,
+            substitutions: const [],
+            finalLineup: team.lineupPlayerIds,
+            playersPlayed: 0,
+            playersTotal: team.lineupPlayerIds.length,
+            isMe: isMe,
+            myTeam: myTeam,
+            isMarketOpen: widget.isMarketOpen,
+            detailedTeam: team,
+          );
+        },
         leading: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1140,8 +1369,67 @@ class _RankingListState extends State<_RankingList>
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             maxLines: 1,
             overflow: TextOverflow.ellipsis),
-        subtitle: Text(team.ownerName,
-            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        subtitle: Row(
+          children: [
+            Expanded(
+              child: Text(team.ownerName,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ),
+            if (!isMe) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.blue.shade200, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.visibility_outlined,
+                        size: 11, color: Colors.blue.shade800),
+                    const SizedBox(width: 3),
+                    Text(
+                      "Ver Time / 1x1",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.green.shade300, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.shield_outlined,
+                        size: 11, color: Colors.green.shade800),
+                    const SizedBox(width: 3),
+                    Text(
+                      "Meu Time",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
