@@ -8,6 +8,7 @@ import '../../models/portal_models.dart';
 import '../../models/player_model.dart';
 import '../../theme/app_theme.dart';
 import '../../services/championship_service.dart';
+import 'portal_substitution_tab.dart';
 
 class PortalHomeTab extends StatelessWidget {
   final Function(int index) onNavigate;
@@ -43,7 +44,7 @@ class PortalHomeTab extends StatelessWidget {
           if (isAdmin) ...[
             const SizedBox(height: 24),
             const Text(
-              'Acesso Rápido (Diretoria)',
+              'Acesso Rápido (Comissão Técnica / Diretoria)',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.secondaryColor),
             ),
             const SizedBox(height: 12),
@@ -51,7 +52,50 @@ class PortalHomeTab extends StatelessWidget {
               elevation: 0,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: Colors.blue.withOpacity(0.2)),
+                side: BorderSide(color: Colors.green.withValues(alpha: 0.3)),
+              ),
+              child: ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.green.shade100, shape: BoxShape.circle),
+                  child: const Icon(Icons.timer, color: Colors.green),
+                ),
+                title: const Text('Controle de Substituições', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Regra dos 5 minutos contínuos obrigatórios.'),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                        appBar: AppBar(
+                          flexibleSpace: Container(
+                            decoration: const BoxDecoration(
+                              image: AppTheme.headerImage,
+                            ),
+                          ),
+                          title: const Text(
+                            'Controle de Substituições (5 Min)',
+                            style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                          ),
+                          iconTheme: const IconThemeData(color: Colors.white),
+                        ),
+                        body: PortalSubstitutionTab(
+                          teamId: user.teamId,
+                          isPresident: user.role == 'president' || user.role == 'staff',
+                          isAdmin: user.role == 'admin',
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.blue.withValues(alpha: 0.2)),
               ),
               child: ListTile(
                 leading: Container(

@@ -35,15 +35,21 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final isGlobalAdmin = user.role == 'admin' || user.role == 'staff';
+    final isGlobalAdmin = user.role == 'admin';
+    final isStaff = user.role == 'staff';
     final isPresident = user.role == 'president';
-    final hasAdminAccess = isGlobalAdmin || isPresident;
+    final isTeamScoped = isPresident || isStaff;
+    final hasAdminAccess = isGlobalAdmin || isTeamScoped;
 
     final List<Widget> tabs = [
       PortalHomeTab(onNavigate: (index) => setState(() => _currentIndex = index)),
       const PortalAgendaTab(),
       const PortalFinancialTab(),
-      if (hasAdminAccess) PortalAdminTab(isPresident: isPresident, teamId: user.teamId),
+      if (hasAdminAccess)
+        PortalAdminTab(
+          isPresident: isTeamScoped,
+          teamId: user.teamId,
+        ),
     ];
 
     return Scaffold(
@@ -86,11 +92,11 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
         duration: const Duration(milliseconds: 300),
         child: tabs[_currentIndex],
       ),
-      bottomNavigationBar: _buildBottomNavBar(context, hasAdminAccess, isPresident),
+      bottomNavigationBar: _buildBottomNavBar(context, hasAdminAccess, isTeamScoped),
     );
   }
 
-  Widget _buildBottomNavBar(BuildContext context, bool hasAdminAccess, bool isPresident) {
+  Widget _buildBottomNavBar(BuildContext context, bool hasAdminAccess, bool isTeamScoped) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -111,7 +117,7 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
               _buildBottomNavItem(context, Icons.home, "Início", index: 0),
               _buildBottomNavItem(context, Icons.calendar_month, "Agenda", index: 1),
               _buildBottomNavItem(context, Icons.account_balance_wallet, "Financeiro", index: 2),
-              if (hasAdminAccess) _buildBottomNavItem(context, isPresident ? Icons.shield : Icons.admin_panel_settings, isPresident ? "Meu Time" : "Admin", index: 3),
+              if (hasAdminAccess) _buildBottomNavItem(context, isTeamScoped ? Icons.shield : Icons.admin_panel_settings, isTeamScoped ? "Meu Time" : "Admin", index: 3),
             ],
           ),
         ),

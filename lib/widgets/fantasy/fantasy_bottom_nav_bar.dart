@@ -25,7 +25,8 @@ class FantasyBottomNavBar extends StatelessWidget {
     final isMainTab = [
       '/fantasy-lineup',
       '/fantasy-market',
-      '/fantasy-rankings'
+      '/fantasy-rankings',
+      '/fantasy-leagues',
     ].contains(routeName);
 
     if (currentRoute == '/fantasy-home') {
@@ -67,7 +68,7 @@ class FantasyBottomNavBar extends StatelessWidget {
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -83,6 +84,9 @@ class FantasyBottomNavBar extends StatelessWidget {
                       _buildBottomNavItem(context, Icons.groups, "Ranking",
                           isActive: currentRoute == '/fantasy-rankings',
                           onTap: () => _navigate(context, '/fantasy-rankings')),
+                      _buildBottomNavItem(context, Icons.emoji_events, "Ligas",
+                          isActive: currentRoute == '/fantasy-leagues',
+                          onTap: () => _navigate(context, '/fantasy-leagues')),
                       _buildBottomNavItem(context, Icons.menu, "Menu",
                           onTap: () => _showMenuBottomSheet(context)),
                     ],
@@ -104,11 +108,11 @@ class FantasyBottomNavBar extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 24),
+            Icon(icon, color: color, size: 22),
             const SizedBox(height: 4),
             Text(label,
                 style: TextStyle(
@@ -186,7 +190,7 @@ class FantasyBottomNavBar extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, -2))
         ],
@@ -224,21 +228,21 @@ class FantasyBottomNavBar extends StatelessWidget {
             border: Border.all(color: Colors.grey.shade200),
           ),
           child: GridView.count(
-            crossAxisCount: 4,
+            crossAxisCount: 3,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 16,
             crossAxisSpacing: 10,
-            childAspectRatio: 0.8,
+            childAspectRatio: 0.85,
             children: [
-              _buildGridItem(context, Icons.diversity_3, "Ligas",
-                  '/fantasy-leagues', Colors.lightGreen),
+              _buildGridItem(context, Icons.military_tech, "Top 5",
+                  '/fantasy-top-players', Colors.amber.shade800),
               _buildGridItem(context, Icons.analytics, "Scouts",
                   '/fantasy-scouts', Colors.indigoAccent),
-              _buildGridItem(context, Icons.fact_check_outlined, "Revisão",
-                  '/fantasy-scout-review', Colors.deepPurpleAccent),
               _buildGridItem(context, Icons.history, "Histórico",
                   '/fantasy-history', Colors.teal),
+              _buildGridItem(context, Icons.fact_check_outlined, "Revisão",
+                  '/fantasy-scout-review', Colors.deepPurpleAccent),
               _buildGridItem(context, Icons.menu_book, "Regras",
                   '/fantasy-rules', Colors.blueGrey),
             ],
@@ -262,9 +266,9 @@ class FantasyBottomNavBar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: color.withOpacity(0.3)),
+              border: Border.all(color: color.withValues(alpha: 0.3)),
             ),
             child: Icon(icon, color: color, size: 28),
           ),

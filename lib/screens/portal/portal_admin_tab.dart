@@ -9,22 +9,25 @@ import 'portal_admin_teams_tab.dart';
 import '../../services/championship_service.dart';
 import '../../models/team_model.dart';
 import 'portal_tactical_tab.dart';
-import '../../models/team_model.dart';
+import 'portal_substitution_tab.dart';
 
 class PortalAdminTab extends StatelessWidget {
   final bool isPresident;
   final String? teamId;
+  final int initialTabIndex;
 
   const PortalAdminTab({
     super.key,
     this.isPresident = false,
     this.teamId,
+    this.initialTabIndex = 0,
   });
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: isPresident ? 4 : 5,
+      initialIndex: initialTabIndex,
+      length: isPresident ? 5 : 6,
       child: Column(
         children: [
           TabBar(
@@ -39,6 +42,7 @@ class PortalAdminTab extends StatelessWidget {
               const Tab(text: 'Membros'),
               Tab(text: isPresident ? 'Financeiro' : 'Financeiro (Geral)'),
               const Tab(text: 'Tática'),
+              const Tab(text: 'Substituições'),
             ],
           ),
           Expanded(
@@ -56,6 +60,10 @@ class PortalAdminTab extends StatelessWidget {
                 PortalTacticalTab(
                     teamId: isPresident ? teamId : null,
                     isPresident: isPresident),
+                PortalSubstitutionTab(
+                    teamId: teamId,
+                    isPresident: isPresident,
+                    isAdmin: !isPresident),
               ],
             ),
           )

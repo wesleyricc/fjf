@@ -11,7 +11,7 @@ import 'fantasy_bottom_nav_bar.dart';
 import 'round_summary_dialog.dart';
 import 'fantasy_achievements_widget.dart';
 
-class FantasyDashboard extends StatelessWidget {
+class FantasyDashboard extends StatefulWidget {
   final FantasyAuthService authService;
   final FantasyHomeViewModel vm;
 
@@ -22,8 +22,18 @@ class FantasyDashboard extends StatelessWidget {
   });
 
   @override
+  State<FantasyDashboard> createState() => _FantasyDashboardState();
+}
+
+class _FantasyDashboardState extends State<FantasyDashboard> {
+  int _selectedTabIndex = 0; // 0 = Meu Time, 1 = Central da Rodada
+
+  @override
   Widget build(BuildContext context) {
+    final vm = widget.vm;
+    final authService = widget.authService;
     final team = vm.team!;
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -85,206 +95,518 @@ class FantasyDashboard extends StatelessWidget {
                               Icons.emoji_events,
                               Colors.amber[800]!)),
                     ]),
-                    const SizedBox(height: 20),
-                    FantasyAchievementsSection(
-                      team: team,
-                      roundSummary: vm.roundSummary,
-                    ),
-                    const SizedBox(height: 24),
-                    if (vm.isMarketOpen &&
-                        (vm.lastRoundNumber != null ||
-                            vm.roundSummary != null)) ...[
-                      const Text("Desempenho da Rodada Anterior",
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      if (vm.lastRoundNumber != null) _buildPerformanceCard(context, vm),
-                      if (vm.roundSummary != null) ...[
-                        const SizedBox(height: 16),
-                        _buildRoundHighlightsSection(context, vm.roundSummary!),
-                      ],
-                      const SizedBox(height: 24),
-                    ],
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              vm.isMarketOpen
-                                  ? "Escalação Atual"
-                                  : (vm.isScoutsValidationPeriod
-                                      ? "Parciais da Rodada (Validação)"
-                                      : "Parciais AO VIVO"),
-                              style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                            if (vm.isMarketOpen)
-                              Text(
-                                "Atletas escalados para a Rodada ${vm.currentRound}",
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.grey.shade600),
-                              ),
-                          ],
-                        ),
-                        if (vm.isMarketOpen)
-                          TextButton.icon(
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/fantasy-lineup'),
-                            icon: const Icon(Icons.shield_outlined, size: 16),
-                            label: const Text("Ver no Campo",
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 12)),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.blue.shade800,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    FantasyLineupPreviewWidget(vm: vm),
-                    if (!vm.isMarketOpen) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/fantasy-scouts',
-                                arguments: 0);
-                          },
-                          icon: const Icon(Icons.bolt, color: Colors.orange),
-                          label: const Text(
-                            "Consultar Parciais de Todos os Atletas",
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.orange.shade800,
-                            side: BorderSide(color: Colors.orange.shade300),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 14),
 
-                    // Card de Solicitação de Revisão de Scouts (Acesso Direto)
-                    Card(
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(
-                            color: Colors.deepPurple.shade200, width: 1.2),
+                    // 🏆 Switcher de Abas Moderno
+                    _buildTabsSwitcher(context, vm),
+
+                    if (_selectedTabIndex == 0) ...[
+                      // ABA 1: MEU TIME
+                      FantasyAchievementsSection(
+                        team: team,
+                        roundSummary: vm.roundSummary,
+                        bestRoundScore: vm.bestRoundScore,
+                        isCompact: true,
                       ),
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.pushNamed(context, '/fantasy-scout-review');
-                        },
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.deepPurple.shade50,
-                                Colors.white,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          child: Row(
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Colors.deepPurple.shade100,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  Icons.fact_check_outlined,
-                                  color: Colors.deepPurple.shade800,
-                                  size: 24,
-                                ),
+                              Text(
+                                vm.isMarketOpen
+                                    ? "Escalação Atual"
+                                    : (vm.isScoutsValidationPeriod
+                                        ? "Parciais da Rodada (Validação)"
+                                        : "Parciais AO VIVO"),
+                                style: const TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold),
                               ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          "Revisão de Scouts",
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.deepPurple.shade900,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 1),
-                                          decoration: BoxDecoration(
-                                            color: Colors.deepPurple.shade700,
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                          ),
-                                          child: const Text(
-                                            "NOVO",
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      "Viu algum lance não computado? Solicite a análise da nossa equipe de scouts.",
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade700,
-                                        height: 1.2,
-                                      ),
-                                    ),
-                                  ],
+                              if (vm.isMarketOpen)
+                                Text(
+                                  "Atletas escalados para a Rodada ${vm.currentRound}",
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey.shade600),
                                 ),
-                              ),
-                              Icon(
-                                Icons.arrow_forward_ios_rounded,
-                                size: 16,
-                                color: Colors.deepPurple.shade700,
-                              ),
                             ],
                           ),
-                        ),
+                          if (vm.isMarketOpen)
+                            TextButton.icon(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/fantasy-lineup'),
+                              icon: const Icon(Icons.shield_outlined, size: 16),
+                              label: const Text("Ver no Campo",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold, fontSize: 12)),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.blue.shade800,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                              ),
+                            ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    if (!vm.isMarketOpen &&
-                        (vm.topScorer != null ||
-                            vm.worstScorer != null ||
-                            vm.mostSelectedPlayer != null)) ...[
-                      const Text("Destaques da Rodada",
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      _buildRoundStatsCarousel(context, vm),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 8),
+                      FantasyLineupPreviewWidget(vm: vm),
+                      if (!vm.isMarketOpen) ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/fantasy-scouts',
+                                  arguments: 0);
+                            },
+                            icon: const Icon(Icons.bolt, color: Colors.orange),
+                            label: const Text(
+                              "Consultar Parciais de Todos os Atletas",
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange.shade800,
+                              side: BorderSide(color: Colors.orange.shade300),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+
+                      // Card de Solicitação de Revisão de Scouts (Acesso Direto)
+                      _buildScoutReviewCard(context),
+                      const SizedBox(height: 20),
+
+                      if (!vm.isMarketOpen &&
+                          (vm.topScorer != null ||
+                              vm.worstScorer != null ||
+                              vm.mostSelectedPlayer != null)) ...[
+                        const Text("Destaques ao Vivo da Rodada",
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 12),
+                        _buildRoundStatsCarousel(context, vm),
+                        const SizedBox(height: 24),
+                      ],
+                    ] else ...[
+                      // ABA 2: CENTRAL DA RODADA
+                      _buildRoundCenterTab(context, vm),
                     ],
                   ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabsSwitcher(BuildContext context, FantasyHomeViewModel vm) {
+    return Container(
+      margin: const EdgeInsets.only(top: 16, bottom: 16),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9), // Slate 100
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                if (_selectedTabIndex != 0) {
+                  setState(() => _selectedTabIndex = 0);
+                }
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _selectedTabIndex == 0 ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: _selectedTabIndex == 0
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          )
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.shield_outlined,
+                      size: 16,
+                      color: _selectedTabIndex == 0
+                          ? const Color(0xFF1E3A8A) // Blue 900
+                          : const Color(0xFF64748B), // Slate 500
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      "Meu Time",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: _selectedTabIndex == 0
+                            ? const Color(0xFF1E3A8A)
+                            : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                if (_selectedTabIndex != 1) {
+                  setState(() => _selectedTabIndex = 1);
+                }
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _selectedTabIndex == 1 ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: _selectedTabIndex == 1
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          )
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.emoji_events_outlined,
+                      size: 16,
+                      color: _selectedTabIndex == 1
+                          ? const Color(0xFFB45309) // Amber 700
+                          : const Color(0xFF64748B),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      "Central da Rodada",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: _selectedTabIndex == 1
+                            ? const Color(0xFFB45309)
+                            : const Color(0xFF64748B),
+                      ),
+                    ),
+                    if (vm.roundSummary != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF59E0B),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoundCenterTab(BuildContext context, FantasyHomeViewModel vm) {
+    final bool hasRoundData = vm.lastRoundNumber != null || vm.roundSummary != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Banner de Top 5 do Cartola FJF
+        _buildTopPlayersBanner(context),
+        const SizedBox(height: 16),
+
+        // 2. Ligas do Cartola
+        _buildLeaguesCard(context),
+        const SizedBox(height: 20),
+
+        // 2. Desempenho da Rodada Anterior
+        if (vm.lastRoundNumber != null) ...[
+          const Text(
+            "Desempenho da Rodada Anterior",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          _buildPerformanceCard(context, vm),
+          const SizedBox(height: 20),
+        ],
+
+        // 3. Destaques da Rodada
+        if (vm.roundSummary != null) ...[
+          _buildRoundHighlightsSection(context, vm.roundSummary!),
+          const SizedBox(height: 20),
+        ],
+
+        // 4. Caso ainda não haja dados da rodada anterior
+        if (!hasRoundData) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.history_toggle_off_rounded,
+                    size: 48, color: Colors.amber.shade700),
+                const SizedBox(height: 12),
+                const Text(
+                  "Nenhuma rodada encerrada ainda",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  "Assim que as partidas forem concluídas e os scouts validados, você verá aqui o desempenho completo do seu time e os mitos da rodada!",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTopPlayersBanner(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.amber.shade200, width: 1.2),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(context, '/fantasy-top-players');
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [
+                Colors.amber.shade50,
+                Colors.white,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.amber.shade700,
+                      Colors.amber.shade500,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.amber.withValues(alpha: 0.3),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.military_tech_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          "Top 5 do Cartola FJF",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            "NOVO",
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      "Mais caros, maiores valorizações, mitos e médias",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: Colors.amber.shade800,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScoutReviewCard(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+            color: Colors.deepPurple.shade200, width: 1.2),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(context, '/fantasy-scout-review');
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              colors: [
+                Colors.deepPurple.shade50,
+                Colors.white,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.fact_check_outlined,
+                  color: Colors.deepPurple.shade800,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          "Revisão de Scouts",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepPurple.shade900,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.deepPurple.shade700,
+                            borderRadius:
+                                BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            "NOVO",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      "Viu algum lance não computado? Solicite a análise da nossa equipe de scouts.",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: Colors.deepPurple.shade700,
               ),
             ],
           ),
@@ -544,7 +866,7 @@ class FantasyDashboard extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => ChangeNotifierProvider.value(
-                      value: vm,
+                      value: widget.vm,
                       child: const FantasyEditTeamScreen(),
                     ),
                   ),
@@ -1254,6 +1576,104 @@ class FantasyDashboard extends StatelessWidget {
             child: const Text("Fechar"),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLeaguesCard(BuildContext context) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.amber.shade300, width: 1.2),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(context, '/fantasy-leagues');
+        },
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              colors: [
+                Colors.amber.shade50.withValues(alpha: 0.6),
+                Colors.white,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.emoji_events_rounded,
+                  color: Colors.amber.shade900,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          "Ligas do Cartola",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade800,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            "DISPUTE",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      "Crie e dispute ligas privadas com amigos ou participe das ligas patrocinadas!",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: Colors.amber.shade900,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

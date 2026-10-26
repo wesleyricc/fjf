@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 import '../../models/fantasy_league_model.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../viewmodels/fantasy_league_viewmodel.dart';
-
 import '../../widgets/fantasy/league_invite_modal.dart';
+import 'fantasy_manage_league_screen.dart';
 
 class FantasyKnockoutBracketScreen extends StatefulWidget {
   final FantasyLeague league;
@@ -24,15 +24,40 @@ class _FantasyKnockoutBracketScreenState extends State<FantasyKnockoutBracketScr
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text(widget.league.name),
-            Text("Código: ${widget.league.inviteCode}",
-                style: const TextStyle(fontSize: 12, color: Colors.white70)),
+            if (widget.league.imageUrl != null && widget.league.imageUrl!.isNotEmpty) ...[
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.white24,
+                backgroundImage: NetworkImage(widget.league.imageUrl!),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.league.name, overflow: TextOverflow.ellipsis),
+                  Text("Código: ${widget.league.inviteCode}",
+                      style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                ],
+              ),
+            ),
           ],
         ),
         actions: [
+          if (isOwner)
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: "Gerenciar Liga",
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FantasyManageLeagueScreen(league: widget.league),
+                ),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.share),
             tooltip: "Convidar Amigos",

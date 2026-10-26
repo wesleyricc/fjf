@@ -333,6 +333,31 @@ class AdminMatchViewModel extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void addMediaLink(String title, String videoUrl) {
+    mediaLinks.add({
+      'title': title.trim(),
+      'videoUrl': videoUrl.trim(),
+    });
+    notifyListeners();
+  }
+
+  void updateMediaLink(int index, String title, String videoUrl) {
+    if (index >= 0 && index < mediaLinks.length) {
+      mediaLinks[index] = {
+        'title': title.trim(),
+        'videoUrl': videoUrl.trim(),
+      };
+      notifyListeners();
+    }
+  }
+
+  void removeMediaLink(int index) {
+    if (index >= 0 && index < mediaLinks.length) {
+      mediaLinks.removeAt(index);
+      notifyListeners();
+    }
+  }
+
   Future<String> saveStats() async {
     isSaving = true;
     notifyListeners();

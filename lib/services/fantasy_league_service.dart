@@ -1,6 +1,11 @@
+import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/fantasy_league_model.dart';
+import '../models/fantasy_models.dart';
 
 class FantasyLeagueService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -17,7 +22,7 @@ class FantasyLeagueService {
   }
 
   // 1. Criar Liga
-  Future<String> createLeague(String name, String userId, {String type = 'classic', int? maxTeams}) async {
+  Future<String> createLeague(String name, String userId, {String type = 'classic', int? maxTeams, String? imageUrl}) async {
     final String inviteCode = _generateInviteCode();
     
     final newLeague = FantasyLeague(
@@ -29,6 +34,7 @@ class FantasyLeagueService {
       type: type,
       maxTeams: maxTeams,
       status: type == 'knockout' ? 'waiting' : 'active',
+      imageUrl: imageUrl,
     );
 
     await _firestore.collection('fantasy_leagues').add(newLeague.toMap());
@@ -270,5 +276,212 @@ class FantasyLeagueService {
         .orderBy('match_index')
         .snapshots()
         .map((snap) => snap.docs.map((doc) => KnockoutMatch.fromFirestore(doc)).toList());
+  }
+
+  // =================================================================
+  // 6. GERENCIAMENTO DE LIGAS (DONO DA LIGA)
+  // =================================================================
+
+  // Escutar uma liga específica em tempo real
+  Stream<FantasyLeague> streamLeague(String leagueId) {
+    return _firestore
+        .collection('fantasy_leagues')
+        .doc(leagueId)
+        .snapshots()
+        .map((snap) => FantasyLeague.fromFirestore(snap));
+  }
+
+  // Upload da imagem/escudo da liga para o Firebase Storage
+  Future<String?> uploadLeagueImage(String leagueId, XFile imageFile) async {
+    try {
+      final fileName = 'league_${leagueId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('fantasy_leagues_images')
+          .child(fileName);
+
+      if (kIsWeb) {
+        final bytes = await imageFile.readAsBytes();
+        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      } else {
+        await ref.putFile(File(imageFile.path), SettableMetadata(contentType: 'image/jpeg'));
+      }
+
+      return await ref.getDownloadURL();
+    } catch (e) {
+      debugPrint("Erro ao fazer upload da imagem da liga: $e");
+      return null;
+    }
+  }
+
+  // Atualizar dados cadastrais da liga (Nome e Imagem)
+  Future<String?> updateLeagueInfo(
+    String leagueId,
+    String ownerId, {
+    required String newName,
+    String? newImageUrl,
+    bool removeImage = false,
+  }) async {
+    try {
+      final doc = await _firestore.collection('fantasy_leagues').doc(leagueId).get();
+      if (!doc.exists) return "Liga não encontrada.";
+
+      final data = doc.data()!;
+      if (data['owner_id'] != ownerId) {
+        return "Apenas o dono pode alterar as informações desta liga.";
+      }
+
+      final Map<String, dynamic> updates = {
+        'name': newName.trim(),
+        'updated_at': FieldValue.serverTimestamp(),
+      };
+
+      if (removeImage) {
+        updates['image_url'] = FieldValue.delete();
+        updates['logo_url'] = FieldValue.delete();
+      } else if (newImageUrl != null && newImageUrl.isNotEmpty) {
+        updates['image_url'] = newImageUrl;
+        updates['logo_url'] = newImageUrl;
+      }
+
+      await doc.reference.update(updates);
+      _rankingCache.remove(leagueId);
+      return null;
+    } catch (e) {
+      return "Erro ao atualizar informações da liga: $e";
+    }
+  }
+
+  // Buscar detalhes dos times dos participantes da liga
+  Future<List<FantasyTeam>> getLeagueMembersTeams(List<String> memberIds) async {
+    if (memberIds.isEmpty) return [];
+
+    final List<FantasyTeam> teams = [];
+    final List<List<String>> chunks = [];
+    for (var i = 0; i < memberIds.length; i += 30) {
+      chunks.add(memberIds.sublist(
+          i, i + 30 > memberIds.length ? memberIds.length : i + 30));
+    }
+
+    final queryFutures = chunks.map((chunk) => _firestore
+        .collection('fantasy_teams')
+        .where(FieldPath.documentId, whereIn: chunk)
+        .get());
+
+    final snapshots = await Future.wait(queryFutures);
+    final Set<String> foundIds = {};
+
+    for (var snap in snapshots) {
+      for (var doc in snap.docs) {
+        teams.add(FantasyTeam.fromFirestore(doc));
+        foundIds.add(doc.id);
+      }
+    }
+
+    // Fallback para participantes que ainda não definiram nome do time
+    for (var id in memberIds) {
+      if (!foundIds.contains(id)) {
+        teams.add(FantasyTeam(
+          id: id,
+          userId: id,
+          ownerId: id,
+          ownerName: 'Participante',
+          teamName: 'Time Pendente',
+          totalPoints: 0.0,
+          lastScore: 0.0,
+          teamValue: 50.0,
+          currentBalance: 50.0,
+          lineupPlayerIds: const [],
+          shieldType: '1',
+        ));
+      }
+    }
+
+    return teams;
+  }
+
+  // Remover participante da liga (ação de moderação do dono)
+  Future<String?> removeMemberFromLeague(String leagueId, String memberId) async {
+    try {
+      final doc = await _firestore.collection('fantasy_leagues').doc(leagueId).get();
+      if (!doc.exists) return "Liga não encontrada.";
+
+      final data = doc.data()!;
+      final String ownerId = data['owner_id'] ?? '';
+      if (memberId == ownerId) {
+        return "Não é possível remover o próprio dono da liga.";
+      }
+
+      final String type = data['type'] ?? 'classic';
+      final String status = data['status'] ?? 'active';
+      if (type == 'knockout' && status == 'active') {
+        return "Não é possível remover participantes de um mata-mata já iniciado.";
+      }
+
+      await doc.reference.update({
+        'members': FieldValue.arrayRemove([memberId]),
+      });
+
+      _rankingCache.remove(leagueId);
+      return null;
+    } catch (e) {
+      return "Erro ao remover participante: $e";
+    }
+  }
+
+  // Transferir administração/liderança da liga para outro participante
+  Future<String?> transferLeagueOwnership(
+      String leagueId, String currentOwnerId, String newOwnerId) async {
+    try {
+      final doc = await _firestore.collection('fantasy_leagues').doc(leagueId).get();
+      if (!doc.exists) return "Liga não encontrada.";
+
+      final data = doc.data()!;
+      if (data['owner_id'] != currentOwnerId) {
+        return "Apenas o dono atual pode transferir a administração.";
+      }
+
+      final List<dynamic> members = data['members'] ?? [];
+      if (!members.contains(newOwnerId)) {
+        return "O novo dono precisa ser participante da liga.";
+      }
+
+      await doc.reference.update({
+        'owner_id': newOwnerId,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      _rankingCache.remove(leagueId);
+      return null;
+    } catch (e) {
+      return "Erro ao transferir posse da liga: $e";
+    }
+  }
+
+  // Excluir permanentemente a liga
+  Future<String?> deleteLeague(String leagueId, String ownerId) async {
+    try {
+      final doc = await _firestore.collection('fantasy_leagues').doc(leagueId).get();
+      if (!doc.exists) return "Liga não encontrada.";
+
+      final data = doc.data()!;
+      if (data['owner_id'] != ownerId) {
+        return "Apenas o dono pode excluir esta liga.";
+      }
+
+      // Exclui confrontos vinculados se for mata-mata
+      final matchesSnap = await doc.reference.collection('matches').get();
+      final batch = _firestore.batch();
+      for (var mDoc in matchesSnap.docs) {
+        batch.delete(mDoc.reference);
+      }
+      batch.delete(doc.reference);
+      await batch.commit();
+
+      _rankingCache.remove(leagueId);
+      return null;
+    } catch (e) {
+      return "Erro ao excluir a liga: $e";
+    }
   }
 }

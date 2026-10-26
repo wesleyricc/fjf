@@ -40,6 +40,7 @@ import 'services/match_service.dart';
 import 'services/media_service.dart';
 import 'services/disciplinary_service.dart';
 import 'services/award_service.dart';
+import 'services/pwa_install_service.dart';
 
 // Viewmodels
 import 'viewmodels/photo_sales_viewmodel.dart';
@@ -77,10 +78,12 @@ import 'screens/fantasy/fantasy_scout_review_screen.dart';
 import 'screens/fantasy/admin_fantasy_scout_reviews_screen.dart';
 import 'screens/fantasy/fantasy_rules_screen.dart';
 import 'screens/fantasy/fantasy_history_screen.dart';
+import 'screens/fantasy/fantasy_top_players_screen.dart';
 import 'screens/institutional/about_history_screen.dart';
 import 'screens/institutional/about_board_screen.dart';
 import 'screens/championship/season_summary_screen.dart';
 import 'screens/fantasy/fantasy_leagues_screen.dart';
+import 'screens/fantasy/fantasy_manage_league_screen.dart';
 import 'screens/splash/splash_screen.dart';
 
 // ---> IMPORTS DO SISTEMA DE VOTAÇÃO <---
@@ -186,6 +189,7 @@ class FjfApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SponsorViewModel()),
         ChangeNotifierProvider(create: (_) => NewsViewModel()), 
         ChangeNotifierProvider(create: (_) => PhotoBannerViewModel()),
+        ChangeNotifierProvider(create: (_) => PwaInstallService()),
 
         Provider<FantasyRepository>(create: (_) => FantasyRepository()),
 
@@ -207,6 +211,7 @@ class FjfApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider(create: (_) => FantasyHomeViewModel()),
+        ChangeNotifierProvider(create: (_) => FantasyLeagueViewModel()),
       ],
       child: MaterialApp(
         title: 'FJF App - Força Jovem Fumacense',
@@ -272,16 +277,18 @@ class FjfApp extends StatelessWidget {
           '/fantasy-rules': (ctx) => const FantasyRulesScreen(),
           '/fantasy-history': (ctx) => const FantasyHistoryScreen(),
           '/fantasy-scouts': (ctx) => const FantasyScoutsScreen(),
+          '/fantasy-top-players': (ctx) => const FantasyTopPlayersScreen(),
           '/fantasy-knockout': (ctx) {
             final args = ModalRoute.of(ctx)!.settings.arguments as FantasyLeague;
             return FantasyKnockoutBracketScreen(league: args);
           },
+          '/fantasy-manage-league': (ctx) {
+            final args = ModalRoute.of(ctx)!.settings.arguments as FantasyLeague;
+            return FantasyManageLeagueScreen(league: args);
+          },
           '/about-history': (ctx) => const AboutHistoryScreen(),
           '/about-board': (ctx) => const AboutBoardScreen(),
-          '/fantasy-leagues': (ctx) => ChangeNotifierProvider(
-            create: (_) => FantasyLeagueViewModel(),
-            child: const FantasyLeaguesScreen(),
-          ),
+          '/fantasy-leagues': (ctx) => const FantasyLeaguesScreen(),
           '/free-agents-registration': (ctx) => const FreeAgentRegistrationScreen(),
           '/free-agents-market': (ctx) => const FreeAgentsMarketScreen(),
           '/wordcup-pool': (ctx) => const BolaoPaywallScreen(),

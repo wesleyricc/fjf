@@ -1,27 +1,16 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 import 'dart:js_interop';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/championship_service.dart';
-import '../../services/fantasy_auth_service.dart';
 import '../../services/fantasy_preload_service.dart';
-import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
-import '../../services/voting_service.dart';
-
-import '../../models/bolao_models.dart';
+import '../../services/analytics_service.dart';
 
 import '../../theme/app_theme.dart';
-import '../../services/bolao_service.dart';
-import '../../models/poll_model.dart';
 
-// removed app_drawer.dart
 import '../../widgets/main_bottom_nav_bar.dart';
 import '../../widgets/sponsor_banner_rotator.dart';
 import '../../widgets/ui/shimmer_effect.dart';
@@ -31,10 +20,7 @@ import '../../widgets/home/home_sponsors_grid.dart';
 import '../../widgets/home_footer.dart';
 import '../../widgets/home/home_super_app_grid.dart';
 import '../../widgets/home/home_section_header.dart';
-
-extension type BeforeInstallPromptEvent._(JSObject _) implements web.Event {
-  external void prompt();
-}
+import '../../widgets/pwa_install_banner.dart';
 
 extension type WindowPwaExt(web.Window _) implements web.Window {
   external bool? get pwaUpdateAvailable;
@@ -52,9 +38,6 @@ class HomeDashboardScreen extends StatefulWidget {
 }
 
 class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
-  bool _isDrawerOpen = false;
-  BeforeInstallPromptEvent? _installPromptEvent;
-  bool _showInstallButton = false;
   bool _showUpdateBanner = false;
   bool _hasError = false;
   String _debugStatus = "Iniciando...";
@@ -82,19 +65,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             if (mounted) {
               setState(() {
                 _showUpdateBanner = true;
-              });
-            }
-          }).toJS);
-
-      web.window.addEventListener(
-          'beforeinstallprompt',
-          ((web.Event e) {
-            final event = e as BeforeInstallPromptEvent;
-            event.preventDefault();
-            if (mounted) {
-              setState(() {
-                _installPromptEvent = event;
-                _showInstallButton = true;
               });
             }
           }).toJS);
@@ -225,18 +195,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     }
   }
 
-  void _triggerInstallPrompt() {
-    if (_installPromptEvent == null) return;
 
-    // 🚨 Analytics: Rastreia a intenção de instalação do App (PWA)
-    AnalyticsService.logCustomScreenView('Home_PWA_Install_Clicked');
-
-    _installPromptEvent!.prompt();
-    setState(() {
-      _installPromptEvent = null;
-      _showInstallButton = false;
-    });
-  }
 
   Future<void> _showSeasonSelectionDialog(BuildContext context) async {
     final championshipService =
@@ -526,49 +485,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                             ],
                           ),
                         ),
-                      if (_showInstallButton)
-                        Container(
-                          margin: const EdgeInsets.all(16),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                  colors: [Colors.green.shade50, Colors.white]),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: Colors.green.withOpacity(0.3)),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: Colors.green.withOpacity(0.05),
-                                    blurRadius: 5,
-                                    offset: const Offset(0, 2))
-                              ]),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.download_rounded,
-                                  color: Colors.green),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                  child: Text(
-                                      "Instale o app para melhor experiência.",
-                                      style: TextStyle(
-                                          color: Colors.green,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13))),
-                              TextButton(
-                                  onPressed: _triggerInstallPrompt,
-                                  style: TextButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16),
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8))),
-                                  child: const Text("Instalar")),
-                            ],
-                          ),
-                        ),
+                      const PwaInstallBanner(),
                       const SizedBox(height: 10),
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 10),

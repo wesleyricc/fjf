@@ -10,6 +10,7 @@ import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../widgets/team_logo_widget.dart';
 import '../../widgets/fantasy/league_invite_modal.dart';
 import '../../widgets/fantasy/fantasy_team_lineup_modal.dart';
+import 'fantasy_manage_league_screen.dart';
 
 class FantasyLeagueRankingScreen extends StatefulWidget {
   final FantasyLeague league;
@@ -98,13 +99,28 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
 
         return Scaffold(
           appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            title: Row(
               children: [
-                Text(widget.league.name),
-                Text(
-                  "Código: ${widget.league.inviteCode}",
-                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                if (widget.league.imageUrl != null &&
+                    widget.league.imageUrl!.isNotEmpty) ...[
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.white24,
+                    backgroundImage: NetworkImage(widget.league.imageUrl!),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.league.name, overflow: TextOverflow.ellipsis),
+                      Text(
+                        "Código: ${widget.league.inviteCode}",
+                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -155,6 +171,21 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
               ],
             ),
             actions: [
+              if (isOwner)
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: "Gerenciar Liga",
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            FantasyManageLeagueScreen(league: widget.league),
+                      ),
+                    );
+                    _loadLeagueRanking(forceRefresh: true);
+                  },
+                ),
               IconButton(
                 icon: const Icon(Icons.share),
                 tooltip: "Convidar Amigos",
@@ -754,6 +785,30 @@ class _FantasyLeagueRankingScreenState extends State<FantasyLeagueRankingScreen>
             ),
           ),
           const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      FantasyManageLeagueScreen(league: widget.league),
+                ),
+              );
+              _loadLeagueRanking(forceRefresh: true);
+            },
+            icon: const Icon(Icons.settings, size: 14),
+            label: const Text("Gerenciar"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: primaryColor,
+              side: BorderSide(color: primaryColor),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(width: 6),
           ElevatedButton.icon(
             onPressed: () =>
                 LeagueInviteModal.show(context, widget.league, isOwner: true),

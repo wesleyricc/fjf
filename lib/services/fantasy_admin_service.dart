@@ -425,8 +425,9 @@ class FantasyAdminService {
 
       await _calculateCoachesAverages(scores, scoutData.playersPlayedSet);
 
-      if (scores.isEmpty)
+      if (scores.isEmpty) {
         return "AVISO: Nenhum scout encontrado na Rodada $round.";
+      }
 
       final newPrices = await processMarketValuation(seasonId, scores, config,
           roundForHistory: round,
@@ -486,8 +487,9 @@ class FantasyAdminService {
 
         if (p.history.isNotEmpty) {
           var r1 = p.history.where((h) => h['round'] == 1);
-          if (r1.isNotEmpty)
+          if (r1.isNotEmpty) {
             startPrice = (r1.first['price_before'] as num).toDouble();
+          }
         }
 
         playerSimulationState[p.playerId] = {
@@ -581,7 +583,7 @@ class FantasyAdminService {
           teamLastScoreMap[teamDoc.id] = roundPoints;
 
           final team = FantasyTeam.fromFirestore(teamDoc);
-          final startersPids = team.lineupPlayerIds;
+          final startersPids = lineup.isNotEmpty ? lineup : team.lineupPlayerIds;
           double roundPlayersValue = 0.0;
           double startersInitialCost = 0.0;
           for (var pid in startersPids) {
@@ -605,11 +607,14 @@ class FantasyAdminService {
             }
           }
 
-          final double maxPossibleBalance = (team.teamValue - startersInitialCost) > 0 ? (team.teamValue - startersInitialCost) : 0.0;
-          final double safeBalance = team.currentBalance > maxPossibleBalance ? maxPossibleBalance : team.currentBalance;
+          final double? existingPatrimony = (historyData['patrimony'] as num?)?.toDouble();
+          final double histBalance = (historyData['balance'] as num?)?.toDouble() ?? team.currentBalance;
+          final double maxPossibleBalance = ((existingPatrimony ?? team.teamValue) - startersInitialCost) > 0
+              ? ((existingPatrimony ?? team.teamValue) - startersInitialCost) : 0.0;
+          final double safeBalance = histBalance > maxPossibleBalance ? maxPossibleBalance : histBalance;
 
-          final roundPatrimony = double.parse(
-              (safeBalance + roundPlayersValue).toStringAsFixed(2));
+          final roundPatrimony = existingPatrimony ??
+              double.parse((safeBalance + roundPlayersValue).toStringAsFixed(2));
 
           roundBatch.update(historyDocRef, {
             'points': roundPoints,

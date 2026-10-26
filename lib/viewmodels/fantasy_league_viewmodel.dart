@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/fantasy_league_model.dart';
+import '../models/fantasy_models.dart';
 import '../services/fantasy_league_service.dart';
 
 class FantasyLeagueViewModel extends ChangeNotifier {
@@ -133,6 +135,117 @@ class FantasyLeagueViewModel extends ChangeNotifier {
       return true;
     } catch (e) {
       _errorMessage = "Erro ao sair da liga: $e";
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  // =================================================================
+  // GERENCIAMENTO DA LIGA (DONO)
+  // =================================================================
+
+  Stream<FantasyLeague> streamLeague(String leagueId) {
+    return _leagueService.streamLeague(leagueId);
+  }
+
+  Future<List<FantasyTeam>> getMembersTeams(List<String> memberIds) {
+    return _leagueService.getLeagueMembersTeams(memberIds);
+  }
+
+  Future<bool> updateLeagueInfo(
+    String leagueId, {
+    required String newName,
+    XFile? newImageFile,
+    bool removeImage = false,
+  }) async {
+    if (_userId == null) return false;
+    _setLoading(true);
+
+    try {
+      String? uploadedImageUrl;
+      if (newImageFile != null) {
+        uploadedImageUrl = await _leagueService.uploadLeagueImage(leagueId, newImageFile);
+        if (uploadedImageUrl == null) {
+          _errorMessage = "Falha ao enviar imagem da liga.";
+          _setLoading(false);
+          return false;
+        }
+      }
+
+      final error = await _leagueService.updateLeagueInfo(
+        leagueId,
+        _userId!,
+        newName: newName,
+        newImageUrl: uploadedImageUrl,
+        removeImage: removeImage,
+      );
+
+      if (error != null) {
+        _errorMessage = error;
+        _setLoading(false);
+        return false;
+      }
+
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _errorMessage = "Erro ao salvar liga: $e";
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> removeMember(String leagueId, String memberId) async {
+    _setLoading(true);
+    try {
+      final error = await _leagueService.removeMemberFromLeague(leagueId, memberId);
+      if (error != null) {
+        _errorMessage = error;
+        _setLoading(false);
+        return false;
+      }
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _errorMessage = "Erro ao remover participante: $e";
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> transferOwnership(String leagueId, String newOwnerId) async {
+    if (_userId == null) return false;
+    _setLoading(true);
+    try {
+      final error = await _leagueService.transferLeagueOwnership(leagueId, _userId!, newOwnerId);
+      if (error != null) {
+        _errorMessage = error;
+        _setLoading(false);
+        return false;
+      }
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _errorMessage = "Erro ao transferir administração: $e";
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  Future<bool> deleteLeague(String leagueId) async {
+    if (_userId == null) return false;
+    _setLoading(true);
+    try {
+      final error = await _leagueService.deleteLeague(leagueId, _userId!);
+      if (error != null) {
+        _errorMessage = error;
+        _setLoading(false);
+        return false;
+      }
+      _setLoading(false);
+      return true;
+    } catch (e) {
+      _errorMessage = "Erro ao excluir liga: $e";
       _setLoading(false);
       return false;
     }

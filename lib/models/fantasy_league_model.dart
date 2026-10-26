@@ -14,6 +14,8 @@ class FantasyLeague {
   final String? sponsorImageUrl;
   final String? prizeDescription;
 
+  final String? imageUrl;
+
   FantasyLeague({
     required this.id,
     required this.name,
@@ -27,10 +29,13 @@ class FantasyLeague {
     this.isSponsored = false,
     this.sponsorImageUrl,
     this.prizeDescription,
+    this.imageUrl,
   });
 
   factory FantasyLeague.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    final sponsorImg = data['sponsor_image_url'] as String?;
+    final img = (data['image_url'] ?? data['logo_url'] ?? sponsorImg) as String?;
     return FantasyLeague(
       id: doc.id,
       name: data['name'] ?? 'Liga Sem Nome',
@@ -42,8 +47,9 @@ class FantasyLeague {
       status: data['status'] ?? 'active',
       startRound: data['start_round'],
       isSponsored: data['is_sponsored'] ?? false,
-      sponsorImageUrl: data['sponsor_image_url'],
+      sponsorImageUrl: sponsorImg,
       prizeDescription: data['prize_description'],
+      imageUrl: img,
     );
   }
 
@@ -60,8 +66,41 @@ class FantasyLeague {
       'is_sponsored': isSponsored,
       'sponsor_image_url': sponsorImageUrl,
       'prize_description': prizeDescription,
+      'image_url': imageUrl,
       'created_at': FieldValue.serverTimestamp(),
     };
+  }
+
+  FantasyLeague copyWith({
+    String? id,
+    String? name,
+    String? inviteCode,
+    String? ownerId,
+    List<String>? members,
+    String? type,
+    int? maxTeams,
+    String? status,
+    int? startRound,
+    bool? isSponsored,
+    String? sponsorImageUrl,
+    String? prizeDescription,
+    String? imageUrl,
+  }) {
+    return FantasyLeague(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      inviteCode: inviteCode ?? this.inviteCode,
+      ownerId: ownerId ?? this.ownerId,
+      members: members ?? this.members,
+      type: type ?? this.type,
+      maxTeams: maxTeams ?? this.maxTeams,
+      status: status ?? this.status,
+      startRound: startRound ?? this.startRound,
+      isSponsored: isSponsored ?? this.isSponsored,
+      sponsorImageUrl: sponsorImageUrl ?? this.sponsorImageUrl,
+      prizeDescription: prizeDescription ?? this.prizeDescription,
+      imageUrl: imageUrl ?? this.imageUrl,
+    );
   }
 }
 

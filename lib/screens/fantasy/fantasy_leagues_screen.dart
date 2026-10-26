@@ -6,6 +6,7 @@ import '../../services/fantasy_auth_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../models/fantasy_league_model.dart';
 import 'fantasy_league_ranking_screen.dart';
+import 'fantasy_manage_league_screen.dart';
 import '../../widgets/fantasy/league_invite_modal.dart';
 
 class FantasyLeaguesScreen extends StatefulWidget {
@@ -446,14 +447,19 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-            backgroundColor:
-                league.type == 'knockout' ? Colors.red : primaryColor,
-            child: Icon(
-                league.type == 'knockout'
-                    ? Icons.sports_kabaddi
-                    : Icons.emoji_events,
-                color: Colors.white)),
+        leading: (league.imageUrl != null && league.imageUrl!.isNotEmpty)
+            ? CircleAvatar(
+                backgroundColor: Colors.grey.shade200,
+                backgroundImage: NetworkImage(league.imageUrl!),
+              )
+            : CircleAvatar(
+                backgroundColor:
+                    league.type == 'knockout' ? Colors.red : primaryColor,
+                child: Icon(
+                    league.type == 'knockout'
+                        ? Icons.sports_kabaddi
+                        : Icons.emoji_events,
+                    color: Colors.white)),
         title: Row(
           children: [
             Expanded(
@@ -538,6 +544,18 @@ class _FantasyLeaguesScreenState extends State<FantasyLeaguesScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (isOwner)
+              IconButton(
+                icon: const Icon(Icons.settings_outlined, size: 20),
+                tooltip: "Gerenciar Liga",
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        FantasyManageLeagueScreen(league: league),
+                  ),
+                ),
+              ),
             IconButton(
               icon: Icon(Icons.share, size: 20, color: primaryColor),
               tooltip: "Convidar Amigos",

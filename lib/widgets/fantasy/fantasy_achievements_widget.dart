@@ -29,18 +29,21 @@ class FantasyAchievementsService {
   static List<FantasyAchievement> evaluateAchievements({
     required FantasyTeam team,
     FantasyRoundSummary? roundSummary,
+    double? bestRoundScore,
   }) {
     final double patrimony = team.teamValue;
     final double totalPoints = team.totalPoints;
-    final double lastScore = team.lastScore;
+    final double highestScore = (bestRoundScore != null && bestRoundScore > team.lastScore)
+        ? bestRoundScore
+        : team.lastScore;
 
     // 1. Magnata da FJF (Patrimônio >= 75)
     final bool isMagnata = patrimony >= 75.0;
     final double magnataProg = (patrimony / 75.0).clamp(0.0, 1.0);
 
-    // 2. Pontuador de Elite (Total Points >= 700)
-    final bool isPontuador = totalPoints >= 700.0;
-    final double pontuadorProg = (totalPoints / 700.0).clamp(0.0, 1.0);
+    // 2. Pontuador de Elite (Total Points >= 500)
+    final bool isPontuador = totalPoints >= 500.0;
+    final double pontuadorProg = (totalPoints / 500.0).clamp(0.0, 1.0);
 
     // 3. Capitão de Ouro (Capitão definido)
     final bool isCapitao = team.captainId != null && team.captainId!.isNotEmpty;
@@ -56,9 +59,9 @@ class FantasyAchievementsService {
         team.lineupPlayerIds.length == 6 && team.benchPlayerIds.length == 5;
     final double completoProg = (totalEscalados / 11.0).clamp(0.0, 1.0);
 
-    // 6. Rodada Monstruosa (Última pontuação >= 100 pontos)
-    final bool isMito = lastScore >= 100.0;
-    final double mitoProg = (lastScore / 100.0).clamp(0.0, 1.0);
+    // 6. Rodada Monstruosa / Mito da Rodada (Qualquer rodada com >= 100 pontos)
+    final bool isMito = highestScore >= 100.0;
+    final double mitoProg = (highestScore / 100.0).clamp(0.0, 1.0);
 
     return [
       FantasyAchievement(
@@ -74,12 +77,12 @@ class FantasyAchievementsService {
       FantasyAchievement(
         id: 'pontuador',
         title: 'Pontuador de Elite',
-        description: 'Atinja 700 pontos acumulados no campeonato.',
+        description: 'Atinja 500 pontos acumulados no campeonato.',
         icon: Icons.emoji_events,
         color: const Color(0xFFF59E0B), // Amber
         isUnlocked: isPontuador,
         progress: pontuadorProg,
-        progressLabel: '${totalPoints.toStringAsFixed(1)} / 700 pts',
+        progressLabel: '${totalPoints.toStringAsFixed(1)} / 500 pts',
       ),
       FantasyAchievement(
         id: 'capitao',
@@ -121,7 +124,9 @@ class FantasyAchievementsService {
         color: const Color(0xFFEF4444), // Red
         isUnlocked: isMito,
         progress: mitoProg,
-        progressLabel: '${lastScore.toStringAsFixed(1)} / 100 pts',
+        progressLabel: isMito
+            ? '${highestScore.toStringAsFixed(1)} pts (Mito!)'
+            : '${highestScore.toStringAsFixed(1)} / 100 pts',
       ),
     ];
   }
@@ -130,11 +135,15 @@ class FantasyAchievementsService {
 class FantasyAchievementsSection extends StatelessWidget {
   final FantasyTeam team;
   final FantasyRoundSummary? roundSummary;
+  final double? bestRoundScore;
+  final bool isCompact;
 
   const FantasyAchievementsSection({
     super.key,
     required this.team,
     this.roundSummary,
+    this.bestRoundScore,
+    this.isCompact = false,
   });
 
   @override
@@ -142,8 +151,13 @@ class FantasyAchievementsSection extends StatelessWidget {
     final achievements = FantasyAchievementsService.evaluateAchievements(
       team: team,
       roundSummary: roundSummary,
+      bestRoundScore: bestRoundScore,
     );
     final unlockedCount = achievements.where((a) => a.isUnlocked).length;
+
+    if (isCompact) {
+      return _buildCompact(context, achievements, unlockedCount);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,6 +207,117 @@ class FantasyAchievementsSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCompact(
+      BuildContext context, List<FantasyAchievement> achievements, int unlockedCount) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.amber.shade300, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            _showAchievementsModal(context, achievements);
+          },
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.military_tech_rounded,
+                      color: Colors.amber.shade900, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            "Conquistas & Medalhas",
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: unlockedCount > 0
+                                  ? const Color(0xFFD1FAE5)
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              "$unlockedCount/${achievements.length}",
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: unlockedCount > 0
+                                    ? const Color(0xFF065F46)
+                                    : Colors.grey.shade600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        unlockedCount == achievements.length
+                            ? "Todas as medalhas desbloqueadas! 🏆"
+                            : "Toque para ver seus objetivos e progresso",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: achievements.map((a) {
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 3),
+                      child: Icon(
+                        a.isUnlocked ? a.icon : Icons.lock_outline,
+                        size: 15,
+                        color: a.isUnlocked ? a.color : Colors.grey.shade300,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(width: 6),
+                Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

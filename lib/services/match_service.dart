@@ -318,9 +318,29 @@ class MatchService {
       }
     }
 
-    final activeSuspensionsSnap = await _firestore.collection('championships').doc(seasonId).collection('disciplinary_log').where('return_date', isNull: true).get();
+    final activeSuspensionsSnap = await _firestore.collection('championships').doc(seasonId).collection('disciplinary_log').get();
         
-    Set<String> suspendedPlayerIds = activeSuspensionsSnap.docs.map((d) => d['playerId'] as String).toSet();
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final Set<String> suspendedPlayerIds = {};
+
+    for (var doc in activeSuspensionsSnap.docs) {
+      final data = doc.data();
+      final String? pid = data['playerId'] as String?;
+      if (pid == null || pid.isEmpty) continue;
+
+      final Timestamp? returnDateTs = data['return_date'] as Timestamp?;
+      if (returnDateTs == null) {
+        suspendedPlayerIds.add(pid);
+      } else {
+        final DateTime returnDate = returnDateTs.toDate();
+        final DateTime normalizedReturnDate = DateTime(returnDate.year, returnDate.month, returnDate.day);
+        // Só deixa de ser suspenso quando a data atual atingir ou passar a data de retorno
+        if (today.isBefore(normalizedReturnDate)) {
+          suspendedPlayerIds.add(pid);
+        }
+      }
+    }
 
     // 🚨 SELF-HEAL: Atualiza dados enriquecidos (foto e escudo) no disciplinary_log se faltantes
     final Map<String, Map<String, dynamic>> playerStatsMap = {

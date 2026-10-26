@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 
 import '../services/auth_service.dart';
 import '../services/championship_service.dart';
+import '../services/pwa_install_service.dart';
 
 class MainBottomNavBar extends StatelessWidget {
   final String currentRoute;
@@ -322,6 +323,37 @@ class MainBottomNavBar extends StatelessWidget {
                     _buildListTile(context, Icons.groups_2, "Diretoria", '/about-board'),
                     const Divider(height: 1),
                     _buildListTile(context, Icons.bug_report_outlined, "Reportar Erro", '/report-bug'),
+                    Consumer<PwaInstallService>(
+                      builder: (context, pwaService, _) {
+                        if (!pwaService.canShowMenuItem) return const SizedBox.shrink();
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Divider(height: 1),
+                            ListTile(
+                              leading: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.install_mobile, color: Colors.green, size: 20),
+                              ),
+                              title: const Text('Instalar Aplicativo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.green)),
+                              subtitle: Text(
+                                pwaService.isIOS ? 'Adicionar à tela de início do iPhone' : 'Instalar no seu celular',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                              ),
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.green),
+                              onTap: () {
+                                Navigator.pop(context);
+                                pwaService.promptInstallOrShowGuide(context);
+                              },
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                     const Divider(height: 1),
                     ListTile(
                       leading: Icon(authService.isAdmin ? Icons.admin_panel_settings : Icons.settings_outlined, color: authService.isAdmin ? Colors.green : Colors.grey),

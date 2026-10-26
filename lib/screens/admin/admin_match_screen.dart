@@ -6,6 +6,8 @@ import '../../services/match_service.dart';
 import '../../services/championship_service.dart';
 import '../../models/match_model.dart';
 import '../../viewmodels/admin_match_viewmodel.dart';
+import '../../utils/youtube_utils.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'edit_match_screen.dart';
 import '../championship/match_live_scout_screen.dart';
 
@@ -177,6 +179,8 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
                       onTap: vm.pickSumulaFile, 
                       shape: RoundedRectangleBorder(side: const BorderSide(color: Colors.grey), borderRadius: BorderRadius.circular(4))
                     ),
+                    const SizedBox(height: 16),
+                    _buildMediaSection(context, vm),
                     const SizedBox(height: 30),
                     SizedBox(
                       height: 50,
@@ -415,4 +419,286 @@ class _AdminMatchScreenContentState extends State<_AdminMatchScreenContent> {
       ),
     );
   }
-}
+
+  Widget _buildMediaSection(BuildContext context, AdminMatchViewModel vm) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.smart_display, color: Colors.red, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  "VÍDEOS DA PARTIDA (YOUTUBE)",
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.red,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ],
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text("Adicionar Vídeo"),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () => _showAddEditMediaDialog(context, vm),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          "Insira links do YouTube (gols, melhores momentos, jogos completos) para reprodução na guia de Mídias.",
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 8),
+        if (vm.mediaLinks.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.withOpacity(0.2)),
+            ),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.video_library_outlined, color: Colors.grey[400], size: 36),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Nenhum vídeo do YouTube vinculado a esta partida.",
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: vm.mediaLinks.length,
+            itemBuilder: (ctx, idx) {
+              final media = vm.mediaLinks[idx];
+              final String title = media['title'] ?? 'Vídeo ${idx + 1}';
+              final String videoUrl = media['videoUrl'] ?? '';
+              final String? ytThumb = YoutubeUtils.getThumbnailUrl(videoUrl);
+
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+                ),
+                child: ListTile(
+                  dense: true,
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: SizedBox(
+                      width: 56,
+                      height: 36,
+                      child: ytThumb != null
+                          ? CachedNetworkImage(
+                              imageUrl: ytThumb,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => Container(
+                                color: Colors.grey[800],
+                                child: const Icon(Icons.broken_image, size: 16, color: Colors.white),
+                              ),
+                            )
+                          : Container(
+                              color: Colors.grey[800],
+                              child: const Icon(Icons.video_file, size: 20, color: Colors.white),
+                            ),
+                    ),
+                  ),
+                  title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  subtitle: Text(
+                    videoUrl,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 18),
+                        tooltip: 'Editar',
+                        onPressed: () => _showAddEditMediaDialog(context, vm, editIndex: idx),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                        tooltip: 'Remover',
+                        onPressed: () => _confirmRemoveMedia(context, vm, idx),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showAddEditMediaDialog(
+    BuildContext context,
+    AdminMatchViewModel vm, {
+    int? editIndex,
+  }) async {
+    final isEditing = editIndex != null;
+    final initialTitle = isEditing ? (vm.mediaLinks[editIndex]['title'] ?? '') : '';
+    final initialUrl = isEditing ? (vm.mediaLinks[editIndex]['videoUrl'] ?? '') : '';
+
+    final titleCtrl = TextEditingController(text: initialTitle);
+    final urlCtrl = TextEditingController(text: initialUrl);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final currentUrl = urlCtrl.text.trim();
+            final videoId = YoutubeUtils.extractVideoId(currentUrl);
+            final isValid = videoId != null;
+            final thumbUrl = isValid ? YoutubeUtils.getThumbnailUrl(videoId) : null;
+
+            return AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(Icons.smart_display, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Text(isEditing ? 'Editar Vídeo' : 'Adicionar Vídeo (YouTube)'),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Título do Vídeo *',
+                        hintText: 'Ex: Melhores Momentos, Gols do Jogo...',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: urlCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Link do YouTube *',
+                        hintText: 'https://youtu.be/... ou youtube.com/watch?v=...',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: isValid
+                            ? const Icon(Icons.check_circle, color: Colors.green)
+                            : (currentUrl.isNotEmpty
+                                ? const Icon(Icons.error_outline, color: Colors.amber)
+                                : null),
+                      ),
+                      keyboardType: TextInputType.url,
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    if (isValid && thumbUrl != null) ...[
+                      const Text(
+                        "Pré-visualização do YouTube:",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: CachedNetworkImage(
+                            imageUrl: thumbUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(
+                              color: Colors.black12,
+                              child: const Center(child: CircularProgressIndicator()),
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              color: Colors.grey[300],
+                              child: const Center(child: Icon(Icons.broken_image)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ] else if (currentUrl.isNotEmpty) ...[
+                      const Text(
+                        "⚠️ Link do YouTube inválido ou formato não reconhecido.",
+                        style: TextStyle(fontSize: 12, color: Colors.red),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: (titleCtrl.text.trim().isNotEmpty && isValid)
+                      ? () {
+                          if (isEditing) {
+                            vm.updateMediaLink(editIndex, titleCtrl.text, urlCtrl.text);
+                          } else {
+                            vm.addMediaLink(titleCtrl.text, urlCtrl.text);
+                          }
+                          Navigator.of(ctx).pop();
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(isEditing ? 'Atualizar' : 'Adicionar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    titleCtrl.dispose();
+    urlCtrl.dispose();
+  }
+
+  void _confirmRemoveMedia(BuildContext context, AdminMatchViewModel vm, int index) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remover Vídeo?'),
+        content: Text('Deseja remover "${vm.mediaLinks[index]['title']}" da lista de mídias desta partida?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              vm.removeMediaLink(index);
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Remover', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+}

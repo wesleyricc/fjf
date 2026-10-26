@@ -137,6 +137,13 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: "Top 5 do Cartola",
+            icon: const Icon(Icons.military_tech_outlined, color: Colors.amber),
+            onPressed: () {
+              Navigator.pushNamed(context, '/fantasy-top-players');
+            },
+          ),
+          IconButton(
             tooltip: _showFilters ? "Ocultar filtros" : "Mostrar filtros",
             icon: _activeFilterCount > 0
                 ? Badge(

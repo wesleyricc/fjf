@@ -65,6 +65,8 @@ class FantasyHomeViewModel extends ChangeNotifier {
   int? lastRoundNumber;
   double? lastRoundPoints;
   double? lastRoundAppreciation;
+  double _bestRoundScore = 0.0;
+  double get bestRoundScore => _bestRoundScore;
 
   // 🏆 FinOps: Resumo oficial da rodada anterior (Média, Mito, Maior/Menor Valorização, Menor Pontuação)
   FantasyRoundSummary? _roundSummary;
@@ -348,6 +350,9 @@ class FantasyHomeViewModel extends ChangeNotifier {
     _teamSub = _repository.streamUserTeam(userId).listen((team) async {
       _team = team;
       if (team != null) {
+        if (team.lastScore > _bestRoundScore) {
+          _bestRoundScore = team.lastScore;
+        }
         final allIds = <String>{
           ...team.lineupPlayerIds,
           ...team.benchPlayerIds,
@@ -368,17 +373,8 @@ class FantasyHomeViewModel extends ChangeNotifier {
       _isLoading = false;
 
       // 🚨 Sincroniza a valorização da rodada caso o histórico tenha ficado defasado
-      if (team != null && lastRoundNumber == 1) {
+      if (team != null && lastRoundNumber == 1 && lastRoundAppreciation == null) {
         lastRoundAppreciation = double.parse((team.teamValue - 50.0).toStringAsFixed(2));
-        _firestore
-            .collection('fantasy_teams')
-            .doc(userId)
-            .collection('history')
-            .doc('1')
-            .update({'patrimony': team.teamValue})
-            .catchError((e) {
-          debugPrint("Aviso ao sincronizar patrimônio R1 no Firestore: $e");
-        });
       }
 
       // 🚨 EVENTO DE NEGÓCIO: O usuário carregou o painel do time
@@ -533,7 +529,6 @@ class FantasyHomeViewModel extends ChangeNotifier {
             .doc(userId)
             .collection('history')
             .orderBy('round', descending: true)
-            .limit(2)
             .get();
       } catch (e) {
         debugPrint("Aviso: fallback em memória para histórico da última rodada ($e)");
@@ -549,26 +544,28 @@ class FantasyHomeViewModel extends ChangeNotifier {
           ..sort((a, b) => ((b.data()['round'] ?? 0) as num)
               .compareTo((a.data()['round'] ?? 0) as num));
 
+        // 🌟 Identifica a maior pontuação de rodada obtida pelo usuário em todo o histórico
+        double maxScore = _team?.lastScore ?? 0.0;
+        for (final d in docs) {
+          final pts = (d.data()['points'] ?? 0).toDouble();
+          if (pts > maxScore) {
+            maxScore = pts;
+          }
+        }
+        _bestRoundScore = maxScore;
+
         final lastDoc = docs.first.data();
         lastRoundNumber = lastDoc['round'];
         lastRoundPoints = (lastDoc['points'] ?? 0).toDouble();
         
         double lastPatrimony = (lastDoc['patrimony'] ?? 50.0).toDouble();
-        if (lastRoundNumber == 1 && _team != null) {
-          lastPatrimony = _team!.teamValue;
-          if ((lastDoc['patrimony'] as num?)?.toDouble() != _team!.teamValue) {
-            docs.first.reference.update({'patrimony': _team!.teamValue}).catchError((e) {
-              debugPrint("Aviso ao sincronizar patrimônio no histórico: $e");
-            });
-          }
-        }
-        
         double prevPatrimony = 50.0;
         if (docs.length > 1) {
           prevPatrimony = (docs[1].data()['patrimony'] ?? 50.0).toDouble();
         }
         
-        lastRoundAppreciation = double.parse((lastPatrimony - prevPatrimony).toStringAsFixed(2));
+        lastRoundAppreciation = (lastDoc['variation'] as num?)?.toDouble() ??
+            double.parse((lastPatrimony - prevPatrimony).toStringAsFixed(2));
         if (!_isDisposed) notifyListeners();
       }
     } catch (e) {
