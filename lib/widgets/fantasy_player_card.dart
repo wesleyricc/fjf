@@ -11,6 +11,9 @@ class FantasyPlayerCard extends StatelessWidget {
   final VoidCallback? onFavorite;
   final String? nextOpponentName;
   final String? nextOpponentShieldUrl;
+  final bool isStarter;
+  final bool isBench;
+  final bool isCurrentSlot;
 
   const FantasyPlayerCard({
     super.key,
@@ -21,6 +24,9 @@ class FantasyPlayerCard extends StatelessWidget {
     this.onFavorite,
     this.nextOpponentName,
     this.nextOpponentShieldUrl,
+    this.isStarter = false,
+    this.isBench = false,
+    this.isCurrentSlot = false,
   });
 
   @override
@@ -33,16 +39,35 @@ class FantasyPlayerCard extends StatelessWidget {
         ? "▲"
         : (player.lastPriceChange < 0 ? "▼" : "-");
 
+    final bool isFielded = isCurrentSlot || isStarter || isBench;
+
+    final Color? cardColor = isCurrentSlot
+        ? Colors.blue.shade50.withValues(alpha: 0.4)
+        : (isStarter
+            ? Colors.green.shade50.withValues(alpha: 0.35)
+            : (isBench
+                ? Colors.amber.shade50.withValues(alpha: 0.35)
+                : null));
+
+    final BorderSide cardSide = isSelected
+        ? BorderSide(color: Theme.of(context).primaryColor, width: 2)
+        : (isCurrentSlot
+            ? BorderSide(color: Colors.blue.shade400, width: 1.5)
+            : (isStarter
+                ? BorderSide(color: Colors.green.shade600, width: 1.5)
+                : (isBench
+                    ? BorderSide(color: Colors.amber.shade700, width: 1.5)
+                    : BorderSide.none)));
+
     // Layout compacto: uma única linha com foto, nome/detalhes, forma e preço.
     return RepaintBoundary(
       child: Card(
-        elevation: 1,
+        elevation: isFielded ? 2 : 1,
+        color: cardColor,
         margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
-          side: isSelected
-              ? BorderSide(color: Theme.of(context).primaryColor, width: 2)
-              : BorderSide.none,
+          side: cardSide,
         ),
         child: InkWell(
           onTap: onTap,
@@ -117,16 +142,39 @@ class FantasyPlayerCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 3),
-                          Row(
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 2,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               _buildPositionChip(player.position),
                               if (player.secondaryPosition != null &&
-                                  player.secondaryPosition!.isNotEmpty) ...[
-                                const SizedBox(width: 4),
+                                  player.secondaryPosition!.isNotEmpty)
                                 _buildPositionChip(player.secondaryPosition!),
-                              ],
-                              const SizedBox(width: 6),
                               _buildStatusBadge(player.status),
+                              if (isCurrentSlot)
+                                _buildFieldedBadge(
+                                  label: "NESTA VAGA",
+                                  color: Colors.blue.shade800,
+                                  bgColor: Colors.blue.shade100,
+                                  icon: Icons.check_circle_outline,
+                                )
+                              else if (isStarter)
+                                _buildFieldedBadge(
+                                  label: "ESCALADO",
+                                  subLabel: "TITULAR",
+                                  color: Colors.green.shade800,
+                                  bgColor: Colors.green.shade100,
+                                  icon: Icons.shield,
+                                )
+                              else if (isBench)
+                                _buildFieldedBadge(
+                                  label: "ESCALADO",
+                                  subLabel: "RESERVA",
+                                  color: Colors.amber.shade900,
+                                  bgColor: Colors.amber.shade100,
+                                  icon: Icons.event_seat,
+                                ),
                             ],
                           ),
                         ],
@@ -336,5 +384,38 @@ Widget _buildStatusBadge(String status) {
   return Tooltip(
     message: label,
     child: Icon(icon, size: 14, color: color),
+  );
+}
+
+Widget _buildFieldedBadge({
+  required String label,
+  String? subLabel,
+  required Color color,
+  required Color bgColor,
+  required IconData icon,
+}) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+    decoration: BoxDecoration(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: color.withValues(alpha: 0.4), width: 0.8),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 10, color: color),
+        const SizedBox(width: 3),
+        Text(
+          subLabel != null ? "$label ($subLabel)" : label,
+          style: TextStyle(
+            fontSize: 9,
+            color: color,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.1,
+          ),
+        ),
+      ],
+    ),
   );
 }

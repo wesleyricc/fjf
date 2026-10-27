@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
-import '../../services/fantasy_service.dart';
 import '../../services/fantasy_auth_service.dart';
 import '../../services/championship_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
@@ -18,12 +17,18 @@ class FantasyMarketScreen extends StatefulWidget {
   final bool isSelectionMode;
   final String? requiredPosition;
   final double? maxBudget;
+  final Set<String>? starterPlayerIds;
+  final Set<String>? benchPlayerIds;
+  final String? currentSlotPlayerId;
 
   const FantasyMarketScreen({
     super.key,
     this.isSelectionMode = false,
     this.requiredPosition,
     this.maxBudget,
+    this.starterPlayerIds,
+    this.benchPlayerIds,
+    this.currentSlotPlayerId,
   });
 
   @override
@@ -44,6 +49,14 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
   // Controle de visibilidade dos filtros detalhados
   bool _showFilters = false;
 
+  Set<String> get _starters =>
+      widget.starterPlayerIds ??
+      (_viewModel.myTeam?.lineupPlayerIds.toSet() ?? const {});
+
+  Set<String> get _bench =>
+      widget.benchPlayerIds ??
+      (_viewModel.myTeam?.benchPlayerIds.toSet() ?? const {});
+
   int get _activeFilterCount {
     int count = 0;
     if (_searchController.text.trim().isNotEmpty) count++;
@@ -51,6 +64,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     if (_viewModel.selectedTeamId != 'Todos') count++;
     if (_viewModel.onlyProbable) count++;
     if (_viewModel.onlyFavorites) count++;
+    if (_viewModel.hideFielded) count++;
     return count;
   }
 
@@ -61,6 +75,7 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     _viewModel.clearPriceRange();
     _viewModel.setOnlyProbable(false);
     _viewModel.setOnlyFavorites(false);
+    _viewModel.setHideFielded(false);
     setState(() {
       _draftPriceRange = null;
     });
@@ -76,6 +91,18 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
           Provider.of<ChampionshipService>(context, listen: false);
       final userId =
           Provider.of<FantasyAuthService>(context, listen: false).user?.uid;
+
+      if (widget.starterPlayerIds != null || widget.benchPlayerIds != null) {
+        final fielded = <String>{
+          ...?widget.starterPlayerIds,
+          ...?widget.benchPlayerIds,
+        };
+        if (widget.currentSlotPlayerId != null) {
+          fielded.remove(widget.currentSlotPlayerId);
+        }
+        _viewModel.setFieldedPlayerIds(fielded);
+      }
+
       _viewModel.init(championshipService.teams,
           requiredPosition: widget.requiredPosition,
           userId: userId,
@@ -89,28 +116,6 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
     _debounce?.cancel();
     _viewModel.dispose();
     super.dispose();
-  }
-
-  void _populateMarket(BuildContext context) async {
-    final fantasyService = context.read<FantasyService>();
-    final championshipService = context.read<ChampionshipService>();
-    final seasonId = championshipService.currentSeasonId;
-
-    if (seasonId.isEmpty) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Erro: Nenhuma temporada ativa."),
-            backgroundColor: Colors.red));
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Sincronizando mercado...")));
-    final result = await fantasyService.populateMarketFromSeason(seasonId);
-    if (mounted)
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(result)));
-
-    _viewModel.loadMarketData(championshipService.teams, forceRefresh: true);
   }
 
   @override
@@ -244,6 +249,17 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                               final bool canAfford = widget.maxBudget == null ||
                                   player.currentPrice <= widget.maxBudget!;
 
+                              final bool isCurrentSlot =
+                                  widget.currentSlotPlayerId != null &&
+                                      widget.currentSlotPlayerId ==
+                                          player.playerId;
+                              final bool isStarter =
+                                  _starters.contains(player.playerId);
+                              final bool isBench =
+                                  _bench.contains(player.playerId);
+                              final bool isAlreadyInOtherSlot =
+                                  (isStarter || isBench) && !isCurrentSlot;
+
                               final championshipService =
                                   Provider.of<ChampionshipService>(context,
                                       listen: false);
@@ -283,16 +299,57 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
                                       .contains(player.playerId),
                                   onFavorite: () => _viewModel
                                       .toggleFavorite(player.playerId),
+                                  isStarter: isStarter && !isCurrentSlot,
+                                  isBench: isBench && !isCurrentSlot,
+                                  isCurrentSlot: isCurrentSlot,
                                   onTap: () {
                                     if (widget.isSelectionMode) {
+                                      if (isAlreadyInOtherSlot) {
+                                        ScaffoldMessenger.of(context)
+                                            .hideCurrentSnackBar();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Row(
+                                              children: [
+                                                const Icon(Icons.info_outline,
+                                                    color: Colors.white,
+                                                    size: 20),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    "${player.name} já está escalado no seu time (${isStarter ? 'Titular' : 'Reserva'})!",
+                                                    style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w600),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            backgroundColor:
+                                                Colors.orange.shade800,
+                                            behavior: SnackBarBehavior.floating,
+                                            duration:
+                                                const Duration(seconds: 3),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
                                       if (canAfford) {
                                         Navigator.pop(context, player);
                                       } else {
                                         ScaffoldMessenger.of(context)
-                                            .showSnackBar(const SnackBar(
-                                                content:
-                                                    Text("Saldo insuficiente."),
-                                                backgroundColor: Colors.red));
+                                            .hideCurrentSnackBar();
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content:
+                                                Text("Saldo insuficiente."),
+                                            backgroundColor: Colors.red,
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
                                       }
                                     } else {
                                       _showPlayerActionModal(context, player,
@@ -638,64 +695,96 @@ class _FantasyMarketScreenState extends State<FantasyMarketScreen> {
               ),
             ),
 
-            // Checkboxes (Prováveis / Favoritos) + Limpar Tudo se houver filtros ativos
+            // Checkboxes (Prováveis / Favoritos / Ocultar já escalados) + Limpar Tudo se houver filtros ativos
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
               child: Row(
                 children: [
-                  InkWell(
-                    onTap: () =>
-                        _viewModel.setOnlyProbable(!_viewModel.onlyProbable),
-                    borderRadius: BorderRadius.circular(6),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 4, horizontal: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Checkbox(
-                            value: _viewModel.onlyProbable,
-                            onChanged: (val) =>
-                                _viewModel.setOnlyProbable(val ?? false),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
+                  Expanded(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        InkWell(
+                          onTap: () =>
+                              _viewModel.setOnlyProbable(!_viewModel.onlyProbable),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 4, horizontal: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Checkbox(
+                                  value: _viewModel.onlyProbable,
+                                  onChanged: (val) =>
+                                      _viewModel.setOnlyProbable(val ?? false),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                const SizedBox(width: 4),
+                                const Text("Apenas Prováveis",
+                                    style: TextStyle(fontSize: 12)),
+                              ],
+                            ),
                           ),
-                          const SizedBox(width: 4),
-                          const Text("Apenas Prováveis",
-                              style: TextStyle(fontSize: 12)),
-                        ],
-                      ),
+                        ),
+                        InkWell(
+                          onTap: () => _viewModel
+                              .setOnlyFavorites(!_viewModel.onlyFavorites),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 4, horizontal: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Checkbox(
+                                  value: _viewModel.onlyFavorites,
+                                  onChanged: (val) =>
+                                      _viewModel.setOnlyFavorites(val ?? false),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                const SizedBox(width: 4),
+                                const Text("Apenas Favoritos",
+                                    style: TextStyle(fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => _viewModel
+                              .setHideFielded(!_viewModel.hideFielded),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 4, horizontal: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Checkbox(
+                                  value: _viewModel.hideFielded,
+                                  onChanged: (val) =>
+                                      _viewModel.setHideFielded(val ?? false),
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                const SizedBox(width: 4),
+                                const Text("Ocultar escalados",
+                                    style: TextStyle(fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  InkWell(
-                    onTap: () =>
-                        _viewModel.setOnlyFavorites(!_viewModel.onlyFavorites),
-                    borderRadius: BorderRadius.circular(6),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 4, horizontal: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Checkbox(
-                            value: _viewModel.onlyFavorites,
-                            onChanged: (val) =>
-                                _viewModel.setOnlyFavorites(val ?? false),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          const SizedBox(width: 4),
-                          const Text("Apenas Favoritos",
-                              style: TextStyle(fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
                   if (activeCount > 0)
                     TextButton(
                       onPressed: _clearAllFilters,

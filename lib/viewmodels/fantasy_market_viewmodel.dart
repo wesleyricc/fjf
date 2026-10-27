@@ -19,6 +19,8 @@ class FantasyMarketViewModel extends ChangeNotifier {
   String _searchTerm = '';
   bool _onlyProbable = false;
   bool _onlyFavorites = false;
+  bool _hideFielded = false;
+  Set<String> _fieldedPlayerIds = {};
   int _displayLimit = 20;
   int _totalMatchingCount = 0;
 
@@ -49,6 +51,8 @@ class FantasyMarketViewModel extends ChangeNotifier {
   String get searchTerm => _searchTerm;
   bool get onlyProbable => _onlyProbable;
   bool get onlyFavorites => _onlyFavorites;
+  bool get hideFielded => _hideFielded;
+  Set<String> get fieldedPlayerIds => _fieldedPlayerIds;
   int get displayLimit => _displayLimit;
   int get totalMatchingCount => _totalMatchingCount;
 
@@ -108,6 +112,12 @@ class FantasyMarketViewModel extends ChangeNotifier {
     _teamSub?.cancel();
     _teamSub = _repository.streamUserTeam(userId).listen((team) {
       _myTeam = team;
+      if (_fieldedPlayerIds.isEmpty && team != null) {
+        _fieldedPlayerIds = {
+          ...team.lineupPlayerIds,
+          ...team.benchPlayerIds,
+        };
+      }
       if (!_isDisposed) notifyListeners();
     }, onError: (e) {
       print("Error streaming user team: $e");
@@ -267,6 +277,17 @@ class FantasyMarketViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setHideFielded(bool value) {
+    _displayLimit = 20;
+    _hideFielded = value;
+    notifyListeners();
+  }
+
+  void setFieldedPlayerIds(Set<String> ids) {
+    _fieldedPlayerIds = ids;
+    notifyListeners();
+  }
+
   static String normalizePosition(String pos) {
     final lower = pos.trim().toLowerCase();
     if (lower.contains('gol')) return 'goleiro';
@@ -327,6 +348,13 @@ class FantasyMarketViewModel extends ChangeNotifier {
     if (_onlyFavorites) {
       players =
           players.where((p) => _favoriteIds.contains(p.playerId)).toList();
+    }
+
+    // Filter by already fielded
+    if (_hideFielded && _fieldedPlayerIds.isNotEmpty) {
+      players = players
+          .where((p) => !_fieldedPlayerIds.contains(p.playerId))
+          .toList();
     }
 
     // Sort

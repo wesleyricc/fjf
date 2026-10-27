@@ -705,4 +705,128 @@ class FantasyAdminService {
       return "Erro fatal no reprocessamento: $e";
     }
   }
+
+  // ===========================================================================
+  // 💰 COMPENSAÇÃO DE MOEDAS / AJUSTE DE PATRIMÔNIO (FANTASY)
+  // ===========================================================================
+
+  /// Adiciona (ou deduz) moedas no patrimônio e saldo de uma equipe específica.
+  /// Ideal para correções de scouts que causaram prejuízo na valorização do atleta.
+  Future<void> adjustTeamCoins({
+    required String teamId,
+    required double coinsAmount,
+    required String reason,
+    String? playerId,
+    String? playerName,
+    int? round,
+    bool updateHistory = false,
+    String? adminEmail,
+  }) async {
+    final teamRef = _firestore.collection('fantasy_teams').doc(teamId);
+
+    await _firestore.runTransaction((transaction) async {
+      final teamDoc = await transaction.get(teamRef);
+      if (!teamDoc.exists) throw Exception("Time não encontrado: $teamId");
+
+      final data = teamDoc.data() as Map<String, dynamic>;
+      final double currentTeamValue = (data['team_value'] ?? 50.0).toDouble();
+      final double currentBalance = (data['current_balance'] ?? 50.0).toDouble();
+
+      final double newTeamValue = double.parse((currentTeamValue + coinsAmount).toStringAsFixed(2));
+      final double newBalance = double.parse((currentBalance + coinsAmount).toStringAsFixed(2));
+
+      transaction.update(teamRef, {
+        'team_value': newTeamValue,
+        'current_balance': newBalance,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      if (updateHistory && round != null && round > 0) {
+        final histRef = teamRef.collection('history').doc(round.toString());
+        final histDoc = await transaction.get(histRef);
+        if (histDoc.exists) {
+          final hData = histDoc.data() as Map<String, dynamic>;
+          final double hPatrimony = (hData['patrimony'] ?? currentTeamValue).toDouble();
+          final double hVariation = (hData['variation'] ?? 0.0).toDouble();
+          final double hBalance = (hData['balance'] ?? currentBalance).toDouble();
+          transaction.update(histRef, {
+            'patrimony': double.parse((hPatrimony + coinsAmount).toStringAsFixed(2)),
+            'variation': double.parse((hVariation + coinsAmount).toStringAsFixed(2)),
+            'balance': double.parse((hBalance + coinsAmount).toStringAsFixed(2)),
+          });
+        }
+      }
+
+      // Log detalhado no histórico da própria equipe
+      final logRef = teamRef.collection('compensation_logs').doc();
+      transaction.set(logRef, {
+        'team_id': teamId,
+        'team_name': data['team_name'] ?? '',
+        'owner_name': data['owner_name'] ?? '',
+        'coins_added': coinsAmount,
+        'previous_team_value': currentTeamValue,
+        'new_team_value': newTeamValue,
+        'previous_balance': currentBalance,
+        'new_balance': newBalance,
+        'reason': reason,
+        'player_id': playerId,
+        'player_name': playerName,
+        'round': round,
+        'created_at': FieldValue.serverTimestamp(),
+        'admin_email': adminEmail,
+      });
+
+      // Log global para auditoria centralizada da administração
+      final globalLogRef = _firestore.collection('fantasy_compensation_logs').doc();
+      transaction.set(globalLogRef, {
+        'team_id': teamId,
+        'team_name': data['team_name'] ?? '',
+        'owner_name': data['owner_name'] ?? '',
+        'coins_added': coinsAmount,
+        'previous_team_value': currentTeamValue,
+        'new_team_value': newTeamValue,
+        'previous_balance': currentBalance,
+        'new_balance': newBalance,
+        'reason': reason,
+        'player_id': playerId,
+        'player_name': playerName,
+        'round': round,
+        'created_at': FieldValue.serverTimestamp(),
+        'admin_email': adminEmail,
+      });
+    });
+  }
+
+  /// Adiciona moedas em lote para uma lista de equipes (ex: todos os times que escalaram o atleta).
+  Future<int> batchAdjustTeamsCoins({
+    required List<String> teamIds,
+    required double coinsAmount,
+    required String reason,
+    String? playerId,
+    String? playerName,
+    int? round,
+    bool updateHistory = false,
+    String? adminEmail,
+  }) async {
+    int updatedCount = 0;
+    for (var tid in teamIds) {
+      try {
+        await adjustTeamCoins(
+          teamId: tid,
+          coinsAmount: coinsAmount,
+          reason: reason,
+          playerId: playerId,
+          playerName: playerName,
+          round: round,
+          updateHistory: updateHistory,
+          adminEmail: adminEmail,
+        );
+        updatedCount++;
+      } catch (e) {
+        debugPrint("Erro ao ajustar moedas para o time $tid: $e");
+      }
+    }
+    return updatedCount;
+  }
 }
+

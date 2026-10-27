@@ -10,6 +10,7 @@ import 'admin_fantasy_scout_audit_screen.dart';
 import '../../services/fantasy_scout_appeal_service.dart';
 import 'admin_fantasy_scout_reviews_screen.dart';
 import 'admin_fantasy_teams_audit_screen.dart';
+import 'admin_fantasy_player_lineups_screen.dart';
 
 class FantasyAdminControlScreen extends StatefulWidget {
   const FantasyAdminControlScreen({super.key});
@@ -388,6 +389,31 @@ class _FantasyAdminControlScreenState extends State<FantasyAdminControlScreen> {
                         foregroundColor: Colors.white,
                       ),
                     ),
+
+                    const SizedBox(height: 12),
+
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        final currentVal =
+                            int.tryParse(_roundController.text) ?? dbRound;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AdminFantasyPlayerLineupsScreen(
+                              initialRound: currentVal,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.monetization_on_outlined),
+                      label: const Text("Consultar Atleta & Compensar Moedas"),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                        backgroundColor: Colors.amber.shade900,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+
 
                     const SizedBox(height: 32),
 

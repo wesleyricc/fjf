@@ -72,6 +72,10 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
       }
     }
 
+    final currentSlotPlayerId = isBench
+        ? vm.bench[slotIndex]?.playerId
+        : vm.lineup[slotIndex]?.playerId;
+
     try {
       final selectedPlayer = await Navigator.push<FantasyPlayer>(
         context,
@@ -80,6 +84,9 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
             isSelectionMode: true,
             requiredPosition: position,
             maxBudget: budget,
+            starterPlayerIds: vm.lineup.values.map((p) => p.playerId).toSet(),
+            benchPlayerIds: vm.bench.values.map((p) => p.playerId).toSet(),
+            currentSlotPlayerId: currentSlotPlayerId,
           ),
         ),
       );
