@@ -62,7 +62,9 @@ class ChampionshipService with ChangeNotifier {
   bool get isLiveActive {
     if (_cachedAppSettings == null) return false;
     final String? remoteId = _cachedAppSettings!['live_video_id'];
-    final Timestamp? timestamp = _cachedAppSettings!['live_video_timestamp'];
+    final Timestamp? timestamp = _cachedAppSettings!['live_video_timestamp'] is Timestamp
+        ? _cachedAppSettings!['live_video_timestamp'] as Timestamp
+        : null;
     if (remoteId != null && remoteId.isNotEmpty && timestamp != null && remoteId != 'ByBvdFS1jko') {
       final diff = DateTime.now().difference(timestamp.toDate());
       return diff.inHours < 24;
@@ -77,7 +79,7 @@ class ChampionshipService with ChangeNotifier {
 
   Future<bool> checkConnectivity() async {
     final result = await Connectivity().checkConnectivity();
-    _isOffline = (result == ConnectivityResult.none);
+    _isOffline = result.contains(ConnectivityResult.none);
     notifyListeners();
     return !_isOffline;
   }
@@ -91,7 +93,7 @@ class ChampionshipService with ChangeNotifier {
     await init();
   }
 
-  Future<void> init() async {
+  Future<void> init({bool forceRefresh = false}) async {
     if (_isLoading) return; 
 
     _isLoading = true;
@@ -105,19 +107,24 @@ class ChampionshipService with ChangeNotifier {
     }
 
     try {
-      final snapshot = await _firestore.collection('championships').get();
+      // ⚡ FinOps PWA: Cacheia a lista de temporadas por 30 minutos no localStorage
+      final seasonDocs = await FirestoreCacheService.getDocsDataWithCache(
+        query: _firestore.collection('championships'),
+        cacheKey: 'championships_seasons_list',
+        ttl: const Duration(minutes: 30),
+        forceRefresh: forceRefresh,
+      );
 
-      _availableSeasons = snapshot.docs.map((doc) {
-        final data = doc.data();
-        
+      _availableSeasons = seasonDocs.map((data) {
+        final docId = data['_docId']?.toString() ?? '';
         int parsedYear = DateTime.now().year;
         if (data['year'] != null) {
           parsedYear = int.tryParse(data['year'].toString()) ?? parsedYear;
         }
         
         return {
-          'id': doc.id,
-          'name': data['name'] ?? doc.id,
+          'id': docId,
+          'name': data['name'] ?? docId,
           'year': parsedYear,
           'honoree': data['honoree'] ?? '',
           'isActive': data['is_active'] ?? false,
@@ -142,7 +149,7 @@ class ChampionshipService with ChangeNotifier {
            targetId = activeSeason['id'];
         }
         
-        await _setSeasonInternal(targetId);
+        await _setSeasonInternal(targetId, forceRefresh: forceRefresh);
       } else {
         _handleNoSeason();
       }
@@ -177,16 +184,23 @@ class ChampionshipService with ChangeNotifier {
     notifyListeners();
 
     try {
+      final List<Future<void>> tasks = [];
+
       if (forceRefresh || refreshMatchesOnly || _isExpired(_lastMatchesFetch, MATCHES_CACHE_TTL)) {
-        await _fetchMatches(forceRefresh: forceRefresh);
+        tasks.add(_fetchMatches(forceRefresh: forceRefresh));
       }
 
       if (!refreshMatchesOnly) {
         if (forceRefresh || _isExpired(_lastTeamsFetch, TEAMS_CACHE_TTL)) {
-          await _fetchTeams(forceRefresh: forceRefresh);
+          tasks.add(_fetchTeams(forceRefresh: forceRefresh));
         }
-        await _fetchConfig();
+        tasks.add(_fetchConfig(forceRefresh: forceRefresh));
       }
+
+      if (tasks.isNotEmpty) {
+        await Future.wait(tasks);
+      }
+
       if (forceRefresh) {
         invalidatePlayerCache();
       }
@@ -208,37 +222,38 @@ class ChampionshipService with ChangeNotifier {
 
   Future<void> _fetchMatches({bool forceRefresh = false}) async {
     final query = _firestore.collection('championships').doc(_currentSeasonId).collection('matches').orderBy('datetime');
-    final snapshot = await FirestoreCacheService.getWithCache(
+    final docs = await FirestoreCacheService.getDocsDataWithCache(
       query: query,
       cacheKey: 'matches_$_currentSeasonId',
       ttl: const Duration(minutes: MATCHES_CACHE_TTL),
       forceRefresh: forceRefresh,
     );
-    _cachedMatches = snapshot.docs.map((doc) => MatchModel.fromFirestore(doc)).toList();
+    _cachedMatches = docs.map((d) => MatchModel.fromMap(d['_docId']?.toString() ?? '', d)).toList();
     _lastMatchesFetch = DateTime.now();
   }
 
   Future<void> _fetchTeams({bool forceRefresh = false}) async {
     final query = _firestore.collection('championships').doc(_currentSeasonId).collection('teams_participation');
-    final snapshot = await FirestoreCacheService.getWithCache(
+    final docs = await FirestoreCacheService.getDocsDataWithCache(
       query: query,
       cacheKey: 'teams_$_currentSeasonId',
       ttl: const Duration(minutes: TEAMS_CACHE_TTL),
       forceRefresh: forceRefresh,
     );
-    _cachedTeams = snapshot.docs.map((doc) => Team.fromFirestore(doc)).toList();
+    _cachedTeams = docs.map((d) => Team.fromMap(d['_docId']?.toString() ?? '', d)).toList();
     _cachedTeams.sort((a, b) => a.name.compareTo(b.name));
     _lastTeamsFetch = DateTime.now();
   }
 
-  Future<void> _fetchConfig() async {
+  Future<void> _fetchConfig({bool forceRefresh = false}) async {
     final docRef = _firestore.collection('championships').doc(_currentSeasonId).collection('settings').doc('app_settings');
-    final doc = await FirestoreCacheService.getDocumentWithCache(
+    final data = await FirestoreCacheService.getDocDataWithCache(
       docRef: docRef,
       cacheKey: 'app_settings_$_currentSeasonId',
       ttl: const Duration(hours: 12), // Configurações mudam raramente
+      forceRefresh: forceRefresh,
     );
-    if (doc.exists) _cachedAppSettings = doc.data() as Map<String, dynamic>?;
+    if (data != null) _cachedAppSettings = data;
   }
 
   // ===========================================================================
@@ -272,8 +287,14 @@ class ChampionshipService with ChangeNotifier {
     _fetchingRosters.add(teamId);
 
     try {
-      final snapshot = await _firestore.collection('championships').doc(_currentSeasonId)
-          .collection('player_stats').where('team_id', isEqualTo: teamId).where('isActive', isEqualTo: true).get();
+      final query = _firestore.collection('championships').doc(_currentSeasonId)
+          .collection('player_stats').where('team_id', isEqualTo: teamId).where('isActive', isEqualTo: true);
+      final snapshot = await FirestoreCacheService.getWithCache(
+        query: query,
+        cacheKey: 'roster_${_currentSeasonId}_$teamId',
+        ttl: const Duration(minutes: ROSTER_CACHE_TTL),
+        forceRefresh: force,
+      );
 
       final roster = snapshot.docs.map((d) => Player.fromFirestore(d)).toList();
       _sortRoster(roster);
@@ -301,8 +322,14 @@ class ChampionshipService with ChangeNotifier {
 
     _isFetchingPlayers = true;
     try {
-      final snapshot = await _firestore.collection('championships').doc(_currentSeasonId)
-          .collection('player_stats').where('isActive', isEqualTo: true).get();
+      final query = _firestore.collection('championships').doc(_currentSeasonId)
+          .collection('player_stats').where('isActive', isEqualTo: true);
+      final snapshot = await FirestoreCacheService.getWithCache(
+        query: query,
+        cacheKey: 'all_players_$_currentSeasonId',
+        ttl: const Duration(minutes: ALL_PLAYERS_CACHE_TTL),
+        forceRefresh: force,
+      );
       
       _allPlayersCache = snapshot.docs.map((d) => Player.fromFirestore(d)).toList();
       _lastAllPlayersFetch = DateTime.now(); 
@@ -335,36 +362,40 @@ class ChampionshipService with ChangeNotifier {
   // ===========================================================================
 
   Future<void> setSeason(String seasonId) async {
-    await _setSeasonInternal(seasonId);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('selected_season_id', seasonId);
+    await _setSeasonInternal(seasonId, forceRefresh: true);
   }
 
-  Future<void> _setSeasonInternal(String seasonId) async {
+  Future<void> _setSeasonInternal(String seasonId, {bool forceRefresh = false}) async {
     final season = _availableSeasons.firstWhere(
       (s) => s['id'] == seasonId,
       orElse: () => {'id': '', 'name': 'Desconhecido', 'year': DateTime.now().year, 'honoree': ''},
     );
     
     if (season['id'] != '') {
+      final bool seasonChanged = _currentSeasonId != seasonId;
       _currentSeasonId = seasonId;
       _currentSeasonName = season['name'];
       _currentSeasonYear = season['year'] as int;
       _currentSeasonHonoree = season['honoree'] ?? '';
       
-      await AdminService.loadAllRules(seasonId);
-
-      _cachedTeams = []; 
-      _cachedPlayersByTeam.clear(); 
-      _allPlayersCache = []; 
-      _cachedMatches = [];
+      if (seasonChanged || forceRefresh) {
+        _cachedTeams = []; 
+        _cachedPlayersByTeam.clear(); 
+        _allPlayersCache = []; 
+        _cachedMatches = [];
+        _lastTeamsFetch = null; 
+        _lastMatchesFetch = null; 
+        _lastTeamRosterFetch.clear();
+        _lastAllPlayersFetch = null;
+      }
       
-      _lastTeamsFetch = null; 
-      _lastMatchesFetch = null; 
-      _lastTeamRosterFetch.clear();
-      _lastAllPlayersFetch = null;
-      
-      await fetchStaticData(forceRefresh: true);
+      // Executa regras e dados estáticos em paralelo para acelerar o boot no PWA
+      await Future.wait([
+        AdminService.loadAllRules(seasonId),
+        fetchStaticData(forceRefresh: forceRefresh),
+      ]);
     }
     notifyListeners(); 
   }
@@ -379,7 +410,8 @@ class ChampionshipService with ChangeNotifier {
       final targetRef = _firestore.collection('championships').doc(seasonId);
       batch.update(targetRef, {'is_active': true});
       await batch.commit();
-      await init(); 
+      await FirestoreCacheService.invalidateCache('championships_seasons_list');
+      await init(forceRefresh: true); 
       await setSeason(seasonId); 
       return "Sucesso";
     } catch (e) { return "Erro: $e"; }
@@ -401,15 +433,17 @@ class ChampionshipService with ChangeNotifier {
           sourceSeasonId: _currentSeasonId, targetSeasonId: docId, includeRoster: copyPlayers,
         );
       }
-      await init();
+      await FirestoreCacheService.invalidateCache('championships_seasons_list');
+      await init(forceRefresh: true);
       return "Sucesso";
     } catch (e) { return "Erro: $e"; }
   }
   
-   Future<String> updateSeason(String seasonId, String name, String honoree) async {
+  Future<String> updateSeason(String seasonId, String name, String honoree) async {
     try {
       await _firestore.collection('championships').doc(seasonId).update({'name': name, 'honoree': honoree});
-      await init(); 
+      await FirestoreCacheService.invalidateCache('championships_seasons_list');
+      await init(forceRefresh: true); 
       if (_currentSeasonId == seasonId) _setSeasonInternal(seasonId);
       return "Sucesso";
     } catch (e) { return "Erro: $e"; }

@@ -119,70 +119,202 @@ class FantasyHomeViewModel extends ChangeNotifier {
   double get teamPartialScore {
     if (_leaderboardScore != null) return _leaderboardScore!;
     if (_team == null || _liveScores.isEmpty) return 0.0;
-    double total = 0.0;
-    for (String pid in _team!.lineupPlayerIds) {
-      final scoreData = _liveScores[pid];
-      if (scoreData != null) {
-        double pScore = scoreData.totalScore;
-        if (_team!.captainId == pid) pScore *= 2; 
-        total += pScore;
+
+    final Map<int, String> starterSlotMap = {};
+    if (_team!.lineupSlots != null && _team!.lineupSlots!.isNotEmpty) {
+      _team!.lineupSlots!.forEach((k, v) {
+        final slot = int.tryParse(k);
+        if (slot != null &&
+            v.isNotEmpty &&
+            _team!.lineupPlayerIds.contains(v)) {
+          starterSlotMap[slot] = v;
+        }
+      });
+    }
+    if (starterSlotMap.isEmpty && _teamPlayers.isNotEmpty) {
+      final playersById = {for (var p in _teamPlayers) p.playerId: p};
+      for (final pid in _team!.lineupPlayerIds) {
+        final p = playersById[pid];
+        if (p == null) continue;
+        if (p.position == 'Goleiro' && !starterSlotMap.containsKey(1)) {
+          starterSlotMap[1] = pid;
+        } else if (p.position == 'Fixo' && !starterSlotMap.containsKey(2)) {
+          starterSlotMap[2] = pid;
+        } else if (p.position == 'Ala') {
+          if (!starterSlotMap.containsKey(3)) {
+            starterSlotMap[3] = pid;
+          } else if (!starterSlotMap.containsKey(4)) {
+            starterSlotMap[4] = pid;
+          }
+        } else if (p.position == 'Pivô' && !starterSlotMap.containsKey(5)) {
+          starterSlotMap[5] = pid;
+        } else if (p.position == 'Técnico' && !starterSlotMap.containsKey(6)) {
+          starterSlotMap[6] = pid;
+        }
       }
     }
 
-    // Fallback: Adiciona ganho do reserva de luxo caso ativado
-    if (_team!.luxuryReserveId != null &&
-        _team!.benchPlayerIds.contains(_team!.luxuryReserveId)) {
-      final luxuryPid = _team!.luxuryReserveId!;
-      final luxuryScoreData = _liveScores[luxuryPid];
-      if (luxuryScoreData != null && _team!.benchSlots != null && _team!.lineupSlots != null) {
-        String? luxuryPos;
-        for (final entry in _team!.benchSlots!.entries) {
-          if (entry.value == luxuryPid) {
-            final slot = int.tryParse(entry.key);
-            if (slot != null) luxuryPos = _positionForSlot(slot);
+    final Map<int, String> benchSlotMap = {};
+    if (_team!.benchSlots != null && _team!.benchSlots!.isNotEmpty) {
+      _team!.benchSlots!.forEach((k, v) {
+        final slot = int.tryParse(k);
+        if (slot != null &&
+            v.isNotEmpty &&
+            _team!.benchPlayerIds.contains(v)) {
+          benchSlotMap[slot] = v;
+        }
+      });
+    }
+    if (benchSlotMap.isEmpty && _teamPlayers.isNotEmpty) {
+      final playersById = {for (var p in _teamPlayers) p.playerId: p};
+      for (final pid in _team!.benchPlayerIds) {
+        final p = playersById[pid];
+        if (p == null) continue;
+        if (p.position == 'Goleiro' && !benchSlotMap.containsKey(11)) {
+          benchSlotMap[11] = pid;
+        } else if (p.position == 'Fixo' && !benchSlotMap.containsKey(12)) {
+          benchSlotMap[12] = pid;
+        } else if (p.position == 'Ala' && !benchSlotMap.containsKey(13)) {
+          benchSlotMap[13] = pid;
+        } else if (p.position == 'Pivô' && !benchSlotMap.containsKey(15)) {
+          benchSlotMap[15] = pid;
+        } else if (p.position == 'Técnico' && !benchSlotMap.containsKey(16)) {
+          benchSlotMap[16] = pid;
+        }
+      }
+    }
+
+    if (starterSlotMap.isEmpty) {
+      double total = 0.0;
+      for (String pid in _team!.lineupPlayerIds) {
+        final scoreData = _liveScores[pid];
+        if (scoreData != null && scoreData.played) {
+          double pScore = scoreData.totalScore;
+          if (_team!.captainId == pid) pScore *= 2;
+          total += pScore;
+        }
+      }
+      return double.parse(total.toStringAsFixed(2));
+    }
+
+    bool didPlay(String pid) {
+      final s = _liveScores[pid];
+      return s != null && s.played;
+    }
+
+    double rawScoreOf(String pid) => _liveScores[pid]?.totalScore ?? 0.0;
+
+    final Map<int, String> effectiveStarters = Map<int, String>.from(starterSlotMap);
+    String? effectiveCaptainId = _team!.captainId;
+    final Set<String> usedBenchIds = {};
+    final Map<String, bool> positionHadAbsence = {};
+
+    const posConfig = <String, Map<String, dynamic>>{
+      'Goleiro': {'starters': [1], 'bench': 11},
+      'Fixo': {'starters': [2], 'bench': 12},
+      'Ala': {'starters': [3, 4], 'bench': 13},
+      'Pivô': {'starters': [5], 'bench': 15},
+      'Técnico': {'starters': [6], 'bench': 16},
+    };
+
+    // 1. Substituições normais por ausência
+    posConfig.forEach((pos, cfg) {
+      final starterSlots = cfg['starters'] as List<int>;
+      final benchSlot = cfg['bench'] as int;
+      final benchPid = benchSlotMap[benchSlot];
+      final benchAvailable =
+          benchPid != null && benchPid.isNotEmpty && didPlay(benchPid);
+      bool benchUsedForPos = false;
+
+      for (final slot in starterSlots) {
+        final sPid = starterSlotMap[slot];
+        if (sPid == null || sPid.isEmpty) continue;
+        if (!didPlay(sPid)) {
+          positionHadAbsence[pos] = true;
+          if (benchAvailable && !benchUsedForPos && !usedBenchIds.contains(benchPid)) {
+            effectiveStarters[slot] = benchPid;
+            usedBenchIds.add(benchPid);
+            benchUsedForPos = true;
+            if (_team!.captainId == sPid) {
+              effectiveCaptainId = benchPid;
+            }
+          }
+        }
+      }
+    });
+
+    // 2. Reserva de Luxo (apenas quando todos os titulares da posição jogaram)
+    final luxuryPid = _team!.luxuryReserveId;
+    if (luxuryPid != null &&
+        luxuryPid.isNotEmpty &&
+        _team!.benchPlayerIds.contains(luxuryPid) &&
+        !usedBenchIds.contains(luxuryPid) &&
+        didPlay(luxuryPid)) {
+      String? luxuryPos;
+      for (final entry in benchSlotMap.entries) {
+        if (entry.value == luxuryPid && entry.key != 16) {
+          luxuryPos = _positionForSlot(entry.key);
+          break;
+        }
+      }
+      if (luxuryPos != null &&
+          luxuryPos.isNotEmpty &&
+          luxuryPos != 'Técnico' &&
+          positionHadAbsence[luxuryPos] != true) {
+        final starterSlots = posConfig[luxuryPos]!['starters'] as List<int>;
+        final activeStarterSlots = <int>[];
+        bool allPlayed = true;
+        for (final slot in starterSlots) {
+          final sPid = starterSlotMap[slot];
+          if (sPid == null || sPid.isEmpty || !didPlay(sPid)) {
+            allPlayed = false;
             break;
           }
+          activeStarterSlots.add(slot);
         }
 
-        if (luxuryPos != null && luxuryPos.isNotEmpty) {
-          final startersSamePos = <String>[];
-          for (final entry in _team!.lineupSlots!.entries) {
-            final slot = int.tryParse(entry.key);
-            if (slot != null && _positionForSlot(slot) == luxuryPos) {
-              if (entry.value.isNotEmpty && _team!.lineupPlayerIds.contains(entry.value)) {
-                startersSamePos.add(entry.value);
-              }
+        if (allPlayed && activeStarterSlots.isNotEmpty) {
+          int worstSlot = activeStarterSlots.first;
+          String worstPid = starterSlotMap[worstSlot]!;
+          double worstScore = rawScoreOf(worstPid);
+
+          for (final slot in activeStarterSlots.skip(1)) {
+            final pid = starterSlotMap[slot]!;
+            final sScore = rawScoreOf(pid);
+            if (sScore < worstScore) {
+              worstScore = sScore;
+              worstPid = pid;
+              worstSlot = slot;
+            } else if (sScore == worstScore &&
+                worstPid == _team!.captainId &&
+                pid != _team!.captainId) {
+              worstPid = pid;
+              worstSlot = slot;
             }
           }
 
-          if (startersSamePos.isNotEmpty) {
-            String worstStarterId = startersSamePos.first;
-            double worstScore = _liveScores[worstStarterId]?.totalScore ?? 0.0;
-
-            for (final pid in startersSamePos.skip(1)) {
-              final sScore = _liveScores[pid]?.totalScore ?? 0.0;
-              if (sScore < worstScore) {
-                worstScore = sScore;
-                worstStarterId = pid;
-              } else if (sScore == worstScore &&
-                  worstStarterId == _team!.captainId &&
-                  pid != _team!.captainId) {
-                worstStarterId = pid;
-              }
-            }
-
-            final benchScore = luxuryScoreData.totalScore;
-            if (benchScore > worstScore) {
-              final isWorstCaptain = (_team!.captainId == worstStarterId);
-              final starterEffective = isWorstCaptain ? (worstScore * 2) : worstScore;
-              final benchEffective = isWorstCaptain ? (benchScore * 2) : benchScore;
-              final netGain = benchEffective - starterEffective;
-              total += netGain;
+          final luxuryScore = rawScoreOf(luxuryPid);
+          if (luxuryScore > worstScore) {
+            effectiveStarters[worstSlot] = luxuryPid;
+            usedBenchIds.add(luxuryPid);
+            if (_team!.captainId == worstPid) {
+              effectiveCaptainId = luxuryPid;
             }
           }
         }
       }
     }
+
+    double total = 0.0;
+    effectiveStarters.forEach((slot, pid) {
+      if (didPlay(pid)) {
+        double pScore = rawScoreOf(pid);
+        if (effectiveCaptainId == pid && slot != 6) {
+          pScore *= 2;
+        }
+        total += pScore;
+      }
+    });
 
     return double.parse(total.toStringAsFixed(2));
   }
@@ -209,7 +341,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
         
         if (kIsWeb) {
           final bytes = await imageFile.readAsBytes();
-          await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+          await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg', cacheControl: 'public, max-age=31536000'));
         } else {
           await ref.putFile(File(imageFile.path));
         }
@@ -468,6 +600,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
          calculatedScores[pid] = LiveScoreData(
            totalScore: s.totalScore,
            isCaptain: (_team!.captainId == pid),
+           played: scores.containsKey(pid),
            goals: s.goals,
            assists: s.assists,
            yellows: s.yellows,
@@ -522,46 +655,52 @@ class FantasyHomeViewModel extends ChangeNotifier {
 
   Future<void> _fetchLastRoundPerformance(String userId) async {
     try {
-      QuerySnapshot<Map<String, dynamic>> snap;
+      List<Map<String, dynamic>> docs;
       try {
-        snap = await _firestore
-            .collection('fantasy_teams')
-            .doc(userId)
-            .collection('history')
-            .orderBy('round', descending: true)
-            .get();
+        docs = await FirestoreCacheService.getDocsDataWithCache(
+          query: _firestore
+              .collection('fantasy_teams')
+              .doc(userId)
+              .collection('history')
+              .orderBy('round', descending: true),
+          cacheKey: 'fantasy_history_$userId',
+          ttl: const Duration(minutes: 15),
+        );
       } catch (e) {
         debugPrint("Aviso: fallback em memória para histórico da última rodada ($e)");
-        snap = await _firestore
-            .collection('fantasy_teams')
-            .doc(userId)
-            .collection('history')
-            .get();
+        docs = await FirestoreCacheService.getDocsDataWithCache(
+          query: _firestore
+              .collection('fantasy_teams')
+              .doc(userId)
+              .collection('history'),
+          cacheKey: 'fantasy_history_$userId',
+          ttl: const Duration(minutes: 15),
+        );
       }
 
-      if (snap.docs.isNotEmpty) {
-        final docs = snap.docs.toList()
-          ..sort((a, b) => ((b.data()['round'] ?? 0) as num)
-              .compareTo((a.data()['round'] ?? 0) as num));
+      if (docs.isNotEmpty) {
+        docs = List<Map<String, dynamic>>.from(docs)
+          ..sort((a, b) => ((b['round'] ?? 0) as num)
+              .compareTo((a['round'] ?? 0) as num));
 
         // 🌟 Identifica a maior pontuação de rodada obtida pelo usuário em todo o histórico
         double maxScore = _team?.lastScore ?? 0.0;
         for (final d in docs) {
-          final pts = (d.data()['points'] ?? 0).toDouble();
+          final pts = (d['points'] ?? 0).toDouble();
           if (pts > maxScore) {
             maxScore = pts;
           }
         }
         _bestRoundScore = maxScore;
 
-        final lastDoc = docs.first.data();
+        final lastDoc = docs.first;
         lastRoundNumber = lastDoc['round'];
         lastRoundPoints = (lastDoc['points'] ?? 0).toDouble();
         
         double lastPatrimony = (lastDoc['patrimony'] ?? 50.0).toDouble();
         double prevPatrimony = 50.0;
         if (docs.length > 1) {
-          prevPatrimony = (docs[1].data()['patrimony'] ?? 50.0).toDouble();
+          prevPatrimony = (docs[1]['patrimony'] ?? 50.0).toDouble();
         }
         
         lastRoundAppreciation = (lastDoc['variation'] as num?)?.toDouble() ??
@@ -582,6 +721,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
          calculatedScores[pid] = LiveScoreData(
            totalScore: s.totalScore,
            isCaptain: (_team?.captainId == pid),
+           played: true,
            goals: s.goals,
            assists: s.assists,
            yellows: s.yellows,
@@ -594,6 +734,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
            ownGoals: s.ownGoals,
            missedFreeKicks: s.missedFreeKicks,
            motm: s.motm,
+           difficultSaves: s.difficultSaves,
          );
       });
       _liveScores = calculatedScores;
@@ -621,6 +762,7 @@ class FantasyHomeViewModel extends ChangeNotifier {
 class LiveScoreData {
   final double totalScore;
   final bool isCaptain;
+  final bool played;
   final int goals;
   final int assists;
   final int yellows;
@@ -642,6 +784,7 @@ class LiveScoreData {
   LiveScoreData({
     required this.totalScore,
     required this.isCaptain,
+    this.played = true,
     this.goals = 0,
     this.assists = 0,
     this.yellows = 0,

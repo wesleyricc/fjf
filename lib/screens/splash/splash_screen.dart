@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../viewmodels/sponsor_viewmodel.dart';
 import '../../theme/app_theme.dart';
-import '../../services/fantasy_preload_service.dart';
+import '../../services/championship_service.dart';
+import '../../widgets/ui/optimized_network_image.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -22,6 +22,7 @@ class _SplashScreenState extends State<SplashScreen>
   Timer? _bannerTimer;
   Timer? _navigationTimer;
   int _currentBannerIndex = 0;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
@@ -30,10 +31,10 @@ class _SplashScreenState extends State<SplashScreen>
     // Configuração das animações da Logo
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 900),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOutBack),
     );
 
@@ -43,8 +44,8 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animationController.forward();
 
-    // Configura o timer para trocar os banners a cada 3 segundos
-    _bannerTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    // Configura o timer para trocar os banners caso a conexão esteja lenta
+    _bannerTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!mounted) return;
       final allSponsors = context.read<SponsorViewModel>().sponsors;
       final sponsors = allSponsors.where((s) {
@@ -59,22 +60,37 @@ class _SplashScreenState extends State<SplashScreen>
       }
     });
 
-    // Configura a navegação para a home após 5 segundos
-    _navigationTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
-      }
-    });
+    // Timeout máximo de segurança (3s) caso a rede demore
+    _navigationTimer = Timer(const Duration(milliseconds: 3000), _goToHome);
+  }
+
+  void _goToHome() {
+    if (_hasNavigated || !mounted) return;
+    _hasNavigated = true;
+    _navigationTimer?.cancel();
+    Navigator.of(context).pushReplacementNamed('/home');
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        context.read<SponsorViewModel>().precachePriorityBanners(context);
-        FantasyPreloadService().warmUp(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _hasNavigated) return;
+      context.read<SponsorViewModel>().precachePriorityBanners(context);
+
+      // ⚡ FinOps & Performance PWA: Aguarda em paralelo o carregamento inicial (ou cache local)
+      // e um tempo mínimo visual curto (1.5s) para exibir os patrocinadores sem travar o usuário por 5s fixos.
+      // Removido FantasyPreloadService.warmUp do boot global para evitar dezenas de leituras e streams ociosas.
+      try {
+        final champService = context.read<ChampionshipService>();
+        await Future.wait([
+          champService.ensureInitialized(),
+          Future.delayed(const Duration(milliseconds: 1500)),
+        ]);
+      } catch (e) {
+        debugPrint("Aviso: Pré-carregamento em background na Splash: $e");
       }
+      _goToHome();
     });
   }
 
@@ -114,56 +130,56 @@ class _SplashScreenState extends State<SplashScreen>
                   physics: const NeverScrollableScrollPhysics(),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Hero(
-                      tag: 'app_logo',
-                      child: Image.asset(
-                        'assets/logo3_fjf.png',
-                        width: 220,
-                        height: 220,
-                        fit: BoxFit.contain,
+                    children: [
+                      Hero(
+                        tag: 'app_logo',
+                        child: Image.asset(
+                          'assets/logo3_fjf.png',
+                          width: 220,
+                          height: 220,
+                          fit: BoxFit.contain,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 30),
-                    // Barra de Carregamento Animada 0 a 100%
-                    TweenAnimationBuilder<double>(
-                      tween: Tween<double>(begin: 0.0, end: 1.0),
-                      duration: const Duration(seconds: 5),
-                      builder: (context, value, child) {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 150,
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: LinearProgressIndicator(
-                                  value: value,
-                                  color: AppTheme.yellowColor,
-                                  backgroundColor: Colors.black26,
-                                  minHeight: 6,
+                      const SizedBox(height: 30),
+                      // Barra de Carregamento Animada 0 a 100%
+                      TweenAnimationBuilder<double>(
+                        tween: Tween<double>(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 1500),
+                        builder: (context, value, child) {
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 150,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: LinearProgressIndicator(
+                                    value: value,
+                                    color: AppTheme.yellowColor,
+                                    backgroundColor: Colors.black26,
+                                    minHeight: 6,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              "Carregando dados... ${(value * 100).toInt()}%",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                shadows: [
-                                  Shadow(
-                                      color: Colors.black45,
-                                      blurRadius: 2,
-                                      offset: Offset(1, 1))
-                                ],
+                              const SizedBox(height: 12),
+                              Text(
+                                "Carregando dados... ${(value * 100).toInt()}%",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  shadows: [
+                                    Shadow(
+                                        color: Colors.black45,
+                                        blurRadius: 2,
+                                        offset: Offset(1, 1))
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                            ],
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -202,7 +218,7 @@ class _SplashScreenState extends State<SplashScreen>
                           child: CircularProgressIndicator(color: Colors.white),
                         )
                       : AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 800),
+                          duration: const Duration(milliseconds: 600),
                           transitionBuilder:
                               (Widget child, Animation<double> animation) {
                             return FadeTransition(
@@ -225,12 +241,10 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _buildSponsorGrid(
       List<Map<String, dynamic>> sponsors, int chunkIndex, Key key) {
-    // Calculando a parte do array que corresponde a esse chunk (exibe até 6 por vez)
     final int startIndex = chunkIndex * 6;
     final int endIndex =
         (startIndex + 6 > sponsors.length) ? sponsors.length : startIndex + 6;
 
-    // Se o startIndex for maior que o tamanho, provavelmente houve uma mudança nos dados. Redefine pra zero.
     if (startIndex >= sponsors.length) {
       return Container(key: key);
     }
@@ -276,32 +290,28 @@ class _SplashScreenState extends State<SplashScreen>
         child: (imageUrl != null && imageUrl.isNotEmpty)
             ? Padding(
                 padding: const EdgeInsets.all(6.0),
-                child: CachedNetworkImage(
+                child: OptimizedNetworkImage(
                   imageUrl: imageUrl,
+                  width: 88,
+                  height: 88,
                   fit: BoxFit.contain,
-                  memCacheWidth: 200,
-                  placeholder: (context, url) => const Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        color: Colors.grey, strokeWidth: 2),
-                  ),
-                ),
-                errorWidget: (context, url, error) => Center(
-                  child: Text(
-                    name,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey.shade800,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                  alignment: Alignment.center,
+                  memCacheWidth: 180,
+                  memCacheHeight: 180,
+                  errorWidget: Center(
+                    child: Text(
+                      name,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            )
-          : Center(
+              )
+            : Center(
                 child: Text(
                   name,
                   textAlign: TextAlign.center,

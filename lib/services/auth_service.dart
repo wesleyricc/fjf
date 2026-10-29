@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'analytics_service.dart';
 
 const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
@@ -10,6 +12,7 @@ const String environment = String.fromEnvironment('ENV', defaultValue: 'prod');
 class AuthService with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  StreamSubscription<User?>? _authSub;
   
   // Chaves mantidas e seguras
   final String _prodWebClientId = '893803829585-jp8uuugt42m2qknabm4lene03mimllai.apps.googleusercontent.com';
@@ -40,9 +43,9 @@ class AuthService with ChangeNotifier {
   }
 
   void _initAuthListener() {
-    _auth.authStateChanges().listen((User? user) async {
+    _authSub = _auth.authStateChanges().listen((User? user) async {
       if (user != null) {
-        await _validateUserRoles(user);
+        await _validateUserRoles(user, forceRefresh: false);
       } else {
         _clearAuthData();
       }
@@ -51,9 +54,34 @@ class AuthService with ChangeNotifier {
     });
   }
 
-  Future<void> _validateUserRoles(User user) async {
+  /// ⚡ FinOps PWA: Cacheia o resultado de cargo por 2 horas no localStorage para evitar
+  /// 2 leituras no Firestore (admin_users + president_users) a cada F5/reabertura do PWA por torcedores comuns.
+  Future<void> _validateUserRoles(User user, {bool forceRefresh = false}) async {
     try {
       final uid = user.uid;
+      final prefs = await SharedPreferences.getInstance();
+      final roleKey = 'auth_role_val_$uid';
+      final tsKey = 'auth_role_ts_$uid';
+
+      if (!forceRefresh) {
+        final lastTs = prefs.getInt(tsKey);
+        final cachedRole = prefs.getString(roleKey);
+        if (lastTs != null &&
+            cachedRole != null &&
+            DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastTs)).inMinutes < 120) {
+          _isAdmin = cachedRole == 'admin';
+          _isPresident = cachedRole == 'president';
+          if (_isAdmin || _isPresident) {
+            _isAuthenticated = true;
+            _adminEmail = user.email;
+          } else {
+            _isAuthenticated = false;
+          }
+          AnalyticsService.setUserProperties(userId: uid, role: cachedRole);
+          return;
+        }
+      }
+
       final results = await Future.wait([
         _firestore.collection('admin_users').doc(uid).get(),
         _firestore.collection('president_users').doc(uid).get(),
@@ -67,11 +95,17 @@ class AuthService with ChangeNotifier {
       if (_isAdmin || _isPresident) {
         _isAuthenticated = true;
         _adminEmail = user.email;
-        if (_isAdmin) userRole = 'admin';
-        else if (_isPresident) userRole = 'president';
+        if (_isAdmin) {
+          userRole = 'admin';
+        } else if (_isPresident) {
+          userRole = 'president';
+        }
       } else {
         _isAuthenticated = false;
       }
+
+      await prefs.setString(roleKey, userRole);
+      await prefs.setInt(tsKey, DateTime.now().millisecondsSinceEpoch);
 
       // 🚨 MANDA A TAG PARA O GOOGLE ANALYTICS
       AnalyticsService.setUserProperties(userId: uid, role: userRole);
@@ -113,7 +147,7 @@ class AuthService with ChangeNotifier {
       final User? user = userCredential.user;
 
       if (user != null) {
-        await _validateUserRoles(user);
+        await _validateUserRoles(user, forceRefresh: true);
         
         if (!_isAdmin && !_isPresident) {
           _isLoading = false;
@@ -133,11 +167,23 @@ class AuthService with ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('auth_role_val_$uid');
+      await prefs.remove('auth_role_ts_$uid');
+    }
     if (!kIsWeb) {
       await _googleSignIn.signOut();
     }
     await _auth.signOut();
     _clearAuthData();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 }

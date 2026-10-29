@@ -149,7 +149,9 @@ class MatchService {
             if (event.teamId == homeId) scoreHome++;
             else if (event.teamId == awayId) scoreAway++;
             goals[pid] = (goals[pid] ?? 0) + 1;
-            if (event.concededByPlayerId != null) conceded[event.concededByPlayerId!] = (conceded[event.concededByPlayerId!] ?? 0) + 1;
+            if (event.concededByPlayerId != null && event.concededByPlayerId!.isNotEmpty) {
+              conceded[event.concededByPlayerId!] = (conceded[event.concededByPlayerId!] ?? 0) + 1;
+            }
           }
           else if (event.type == MatchEventType.assist) {
             assists[pid] = (assists[pid] ?? 0) + 1;
@@ -202,9 +204,12 @@ class MatchService {
           }
           else if (event.type == MatchEventType.ownGoal) {
             ownGoals[pid] = (ownGoals[pid] ?? 0) + 1;
-            // Gol contra também incrementa o placar do time adversário
+            // Gol contra também incrementa o placar do time adversário e o gol sofrido pelo goleiro
             if (event.teamId == homeId) scoreAway++;
             else if (event.teamId == awayId) scoreHome++;
+            if (event.concededByPlayerId != null && event.concededByPlayerId!.isNotEmpty) {
+              conceded[event.concededByPlayerId!] = (conceded[event.concededByPlayerId!] ?? 0) + 1;
+            }
           }
           else if (event.type == MatchEventType.directFreeKickMissed) {
             directFreeKicksMissed[pid] = (directFreeKicksMissed[pid] ?? 0) + 1;

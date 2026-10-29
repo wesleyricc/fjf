@@ -36,7 +36,9 @@ class TeamLogoWidget extends StatelessWidget {
       return _buildPresetShield(key, radius);
     }
 
-    // 4. Logo personalizada via rede (Web-safe)
+    final int targetCacheSize = (radius * 4).clamp(64, 240).toInt();
+
+    // 4. Logo personalizada via rede (Web-safe com cacheWidth para evitar OOM no iOS Safari)
     if (kIsWeb) {
       return Container(
         width: radius * 2,
@@ -52,7 +54,10 @@ class TeamLogoWidget extends StatelessWidget {
             key,
             width: radius * 2,
             height: radius * 2,
+            cacheHeight: targetCacheSize,
+            filterQuality: FilterQuality.medium,
             fit: BoxFit.contain,
+            alignment: Alignment.center,
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
               return Center(
@@ -84,7 +89,9 @@ class TeamLogoWidget extends StatelessWidget {
           imageUrl: key,
           width: radius * 2,
           height: radius * 2,
+          memCacheHeight: targetCacheSize,
           fit: BoxFit.contain,
+          alignment: Alignment.center,
           placeholder: (context, url) => Center(
             child: SizedBox(
               width: (radius < 20) ? 10 : 16,

@@ -34,8 +34,9 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   List<Map<String, dynamic>> _filteredSponsors = [];
   int _currentIndex = 0;
   Timer? _timer;
-  static const String _partnerContactUrl = "https://wa.me/5548996381626?text=Quero%20anunciar%20no%20App%20FJF";
-  
+  static const String _partnerContactUrl =
+      "https://wa.me/5548996381626?text=Quero%20anunciar%20no%20App%20FJF";
+
   bool _firstImpressionLogged = false;
 
   @override
@@ -53,7 +54,8 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   @override
   void didUpdateWidget(covariant SponsorBannerRotator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.location != oldWidget.location || widget.filterTag != oldWidget.filterTag) {
+    if (widget.location != oldWidget.location ||
+        widget.filterTag != oldWidget.filterTag) {
       _filterSponsorsFromCache();
     }
   }
@@ -65,10 +67,11 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     final filtered = allSponsors.where((data) {
       final List<dynamic> locations = data['locations'] ?? [];
       final String? oldLocation = data['location'];
-      
-      final matchesLocation = locations.contains(widget.location) || oldLocation == widget.location;
+
+      final matchesLocation =
+          locations.contains(widget.location) || oldLocation == widget.location;
       if (!matchesLocation) return false;
-      
+
       if (widget.filterTag != null) {
         final docRound = data['round'];
         if (docRound != null && docRound.toString().isNotEmpty) {
@@ -116,32 +119,38 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     if (!mounted || _filteredSponsors.isEmpty) return;
     try {
       final currentUrl = ((_filteredSponsors[_currentIndex]['imageUrl'] ??
-              _filteredSponsors[_currentIndex]['image_url'] ??
-              _filteredSponsors[_currentIndex]['bannerUrl'] ??
-              '')
-          .toString())
+                  _filteredSponsors[_currentIndex]['image_url'] ??
+                  _filteredSponsors[_currentIndex]['bannerUrl'] ??
+                  '')
+              .toString())
           .trim();
       if (currentUrl.isNotEmpty) {
         if (kIsWeb) {
-          precacheImage(NetworkImage(currentUrl), context).catchError((_) {});
+          precacheImage(
+                  ResizeImage(NetworkImage(currentUrl), width: 640), context)
+              .catchError((_) {});
         } else {
-          precacheImage(CachedNetworkImageProvider(currentUrl, maxWidth: 800), context)
+          precacheImage(CachedNetworkImageProvider(currentUrl, maxWidth: 800),
+                  context)
               .catchError((_) {});
         }
       }
       if (_filteredSponsors.length > 1) {
         final nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
         final nextUrl = ((_filteredSponsors[nextIndex]['imageUrl'] ??
-                _filteredSponsors[nextIndex]['image_url'] ??
-                _filteredSponsors[nextIndex]['bannerUrl'] ??
-                '')
-            .toString())
+                    _filteredSponsors[nextIndex]['image_url'] ??
+                    _filteredSponsors[nextIndex]['bannerUrl'] ??
+                    '')
+                .toString())
             .trim();
         if (nextUrl.isNotEmpty) {
           if (kIsWeb) {
-            precacheImage(NetworkImage(nextUrl), context).catchError((_) {});
+            precacheImage(
+                    ResizeImage(NetworkImage(nextUrl), width: 640), context)
+                .catchError((_) {});
           } else {
-            precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context)
+            precacheImage(
+                    CachedNetworkImageProvider(nextUrl, maxWidth: 800), context)
                 .catchError((_) {});
           }
         }
@@ -154,16 +163,18 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     try {
       final int nextIndex = (_currentIndex + 1) % _filteredSponsors.length;
       final String nextUrl = ((_filteredSponsors[nextIndex]['imageUrl'] ??
-              _filteredSponsors[nextIndex]['image_url'] ??
-              _filteredSponsors[nextIndex]['bannerUrl'] ??
-              '')
-          .toString())
+                  _filteredSponsors[nextIndex]['image_url'] ??
+                  _filteredSponsors[nextIndex]['bannerUrl'] ??
+                  '')
+              .toString())
           .trim();
       if (nextUrl.isNotEmpty) {
         if (kIsWeb) {
-          precacheImage(NetworkImage(nextUrl), context).catchError((_) {});
+          precacheImage(ResizeImage(NetworkImage(nextUrl), width: 640), context)
+              .catchError((_) {});
         } else {
-          precacheImage(CachedNetworkImageProvider(nextUrl, maxWidth: 800), context)
+          precacheImage(
+                  CachedNetworkImageProvider(nextUrl, maxWidth: 800), context)
               .catchError((_) {});
         }
       }
@@ -178,7 +189,7 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
         setState(() {
           _currentIndex = (_currentIndex + 1) % _filteredSponsors.length;
         });
-        
+
         // 🚨 RASTREIA A IMPRESSÃO A CADA GIRO DO BANNER
         _logImpression(_filteredSponsors[_currentIndex]);
         _precacheNextImage();
@@ -197,7 +208,6 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     AnalyticsService.logAdImpression(name, widget.location);
   }
 
-
   @override
   void dispose() {
     _timer?.cancel();
@@ -205,8 +215,10 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
   }
 
   Future<void> _launchURL(String? urlString, String sponsorName) async {
-    final target = (urlString == null || urlString.isEmpty) ? _partnerContactUrl : urlString;
-    
+    final target = (urlString == null || urlString.isEmpty)
+        ? _partnerContactUrl
+        : urlString;
+
     // 🚨 RASTREIA O CLIQUE NO ANÚNCIO!
     AnalyticsService.logAdClick(sponsorName, widget.location, target);
 
@@ -251,9 +263,12 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     double? aspect;
     if (widget.location == 'app_open') {
       aspect = 9 / 16;
-    } else if (widget.location == 'news_feed' || widget.location == 'splash_loading') {
+    } else if (widget.location == 'news_feed' ||
+        widget.location == 'splash_loading') {
       aspect = 1 / 1;
-    } else if (widget.location.startsWith('header_') || widget.location == 'footer_home' || widget.location == 'home_mid') {
+    } else if (widget.location.startsWith('header_') ||
+        widget.location == 'footer_home' ||
+        widget.location == 'home_mid') {
       aspect = 21 / 9;
     }
 
@@ -268,21 +283,23 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
     } else {
       final data = _filteredSponsors[_currentIndex];
       final imageUrl = ((data['imageUrl'] ??
-              data['image_url'] ??
-              data['bannerUrl'] ??
-              data['url'] ??
-              '')
-          .toString())
+                  data['image_url'] ??
+                  data['bannerUrl'] ??
+                  data['url'] ??
+                  '')
+              .toString())
           .trim();
       final targetUrl = data['targetUrl'] ?? '';
       final sponsorName = data['name'] ?? 'sponsor_$_currentIndex';
-      final String uniqueKey = "${_currentIndex}_${imageUrl.isNotEmpty ? imageUrl : sponsorName}";
+      final String uniqueKey =
+          "${_currentIndex}_${imageUrl.isNotEmpty ? imageUrl : sponsorName}";
 
       content = AnimatedSwitcher(
         duration: const Duration(milliseconds: 600),
         child: InkWell(
           key: ValueKey<String>(uniqueKey),
-          onTap: () => _launchURL(targetUrl, sponsorName), // 🚨 Repassa o nome do patrocinador
+          onTap: () => _launchURL(
+              targetUrl, sponsorName), // 🚨 Repassa o nome do patrocinador
           child: imageUrl.isEmpty
               ? _buildHouseAd(title: sponsorName)
               : (widget.fit == BoxFit.contain
@@ -351,7 +368,9 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: const Color(0xFFC25F22).withValues(alpha: 0.5), width: 1.5),
+          border: Border.all(
+              color: const Color(0xFFC25F22).withValues(alpha: 0.5),
+              width: 1.5),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -366,10 +385,14 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                 ),
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: const Color(0xFFC25F22).withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(
+                      color: const Color(0xFFC25F22).withValues(alpha: 0.4),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4)),
                 ],
               ),
-              child: const FaIcon(FontAwesomeIcons.bullhorn, color: Colors.white, size: 24),
+              child: const FaIcon(FontAwesomeIcons.bullhorn,
+                  color: Colors.white, size: 24),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -379,12 +402,19 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                 children: [
                   Text(
                     title ?? "SUA MARCA AQUI",
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFC25F22), letterSpacing: 1.0),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: Color(0xFFC25F22),
+                        letterSpacing: 1.0),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  const Text("Anuncie no App Oficial e ganhe destaque", style: TextStyle(color: Colors.white70, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  const Text("Anuncie no App Oficial e ganhe destaque",
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
@@ -394,9 +424,18 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
               decoration: BoxDecoration(
                 color: const Color(0xFFC25F22),
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
+                boxShadow: const [
+                  BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 4,
+                      offset: Offset(0, 2))
+                ],
               ),
-              child: const Text("Saber Mais", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              child: const Text("Saber Mais",
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -409,19 +448,20 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
       onTap: () => _launchURL(null, title ?? "Seja Parceiro (House Ad)"),
       child: Container(
         decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF2A1110), Color(0xFF2A1110)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2A1110), Color(0xFF2A1110)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Stack(
           children: [
             Positioned(
               right: -20,
               bottom: -20,
-              child: Icon(Icons.all_inclusive, size: 100, color: Colors.white.withValues(alpha: 0.05)),
+              child: Icon(Icons.all_inclusive,
+                  size: 100, color: Colors.white.withValues(alpha: 0.05)),
             ),
             Center(
               child: Column(
@@ -430,9 +470,11 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                        color: const Color(0xFFFFCC00).withValues(alpha: 0.2), // AppTheme.yellowColor
+                        color: const Color(0xFFFFCC00)
+                            .withValues(alpha: 0.2), // AppTheme.yellowColor
                         shape: BoxShape.circle),
-                    child: const FaIcon(FontAwesomeIcons.handshake, color: Color(0xFFFFCC00), size: 24),
+                    child: const FaIcon(FontAwesomeIcons.handshake,
+                        color: Color(0xFFFFCC00), size: 24),
                   ),
                   const SizedBox(height: 8),
                   const Text("SEJA PARCEIRO",
@@ -442,7 +484,9 @@ class _SponsorBannerRotatorState extends State<SponsorBannerRotator> {
                           color: Color(0xFFC25F22),
                           letterSpacing: 0.5)),
                   const SizedBox(height: 2),
-                  const Text("Anuncie aqui", textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Colors.white70)),
+                  const Text("Anuncie aqui",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 10, color: Colors.white70)),
                 ],
               ),
             ),
@@ -501,12 +545,15 @@ class _ResilientBannerImageState extends State<_ResilientBannerImage> {
         fit: widget.fit,
         width: double.infinity,
         height: double.infinity,
+        cacheWidth: 640,
+        filterQuality: FilterQuality.low,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
           return widget.placeholderBuilder();
         },
         errorBuilder: (context, error, stackTrace) {
-          debugPrint("Falha ao carregar banner via Image.network (${widget.sponsorName}): $error");
+          debugPrint(
+              "Falha ao carregar banner via Image.network (${widget.sponsorName}): $error");
           return widget.errorAdBuilder(widget.sponsorName);
         },
       );
@@ -521,7 +568,8 @@ class _ResilientBannerImageState extends State<_ResilientBannerImage> {
       memCacheWidth: 800,
       placeholder: (c, u) => widget.placeholderBuilder(),
       errorWidget: (c, u, error) {
-        debugPrint("Falha no CachedNetworkImage do patrocinador ${widget.sponsorName}, acionando fallback nativo: $error");
+        debugPrint(
+            "Falha no CachedNetworkImage do patrocinador ${widget.sponsorName}, acionando fallback nativo: $error");
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_useFallback) {
             setState(() {
@@ -533,4 +581,4 @@ class _ResilientBannerImageState extends State<_ResilientBannerImage> {
       },
     );
   }
-}
+}

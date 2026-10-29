@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firestore_cache_service.dart';
 
 class AdminService {
   // --- CONFIGURAÇÕES GLOBAIS (Valores em Cache na Memória) ---
@@ -16,7 +17,7 @@ class AdminService {
   static bool resetYellowsOnRed = false;
 
   // REGRAS DE MATA-MATA
-  static String playoffTiebreaker = 'penalties'; // <-- NOVO: Regra para Playoffs (Quartas)
+  static String playoffTiebreaker = 'penalties';
   static String semifinalTiebreaker = 'extra_time_penalties';
   static String thirdPlaceTiebreaker = 'penalties';
   static String finalTiebreaker = 'extra_time_penalties';
@@ -48,10 +49,12 @@ class AdminService {
 
   static Future<void> loadAppSettings(String seasonId) async {
     try {
-      final doc = await _getConfigDocRef(seasonId, 'app_settings').get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        
+      final data = await FirestoreCacheService.getDocDataWithCache(
+        docRef: _getConfigDocRef(seasonId, 'app_settings'),
+        cacheKey: 'app_settings_$seasonId', // Unificado com ChampionshipService para evitar leitura duplicada
+        ttl: const Duration(hours: 12),
+      );
+      if (data != null) {
         defaultPhase = data['default_phase'] ?? 'first';
         defaultStage = data['default_stage'] ?? (data['default_fixtures_round']?.toString() ?? '1');
         tournamentFormat = data['tournament_format'] ?? 'model_1';
@@ -71,10 +74,13 @@ class AdminService {
   }
 
   static Future<void> loadDisciplinaryRules(String seasonId) async {
-     try {
-      final doc = await _getConfigDocRef(seasonId, 'disciplinary_rules').get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
+    try {
+      final data = await FirestoreCacheService.getDocDataWithCache(
+        docRef: _getConfigDocRef(seasonId, 'disciplinary_rules'),
+        cacheKey: 'admin_disciplinary_rules_$seasonId',
+        ttl: const Duration(hours: 12),
+      );
+      if (data != null) {
         pendingYellowCards = data['pending_yellow_cards'] ?? 2;
         suspensionYellowCards = data['suspension_yellow_cards'] ?? 3;
         suspensionOnRed = data['suspension_on_red'] ?? true;
@@ -93,11 +99,14 @@ class AdminService {
   }
 
   static Future<void> loadPlayoffRules(String seasonId) async {
-     try {
-      final doc = await _getConfigDocRef(seasonId, 'playoff_rules').get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        playoffTiebreaker = data['playoff_tiebreaker'] ?? 'penalties'; // <-- Carrega Playoff
+    try {
+      final data = await FirestoreCacheService.getDocDataWithCache(
+        docRef: _getConfigDocRef(seasonId, 'playoff_rules'),
+        cacheKey: 'admin_playoff_rules_$seasonId',
+        ttl: const Duration(hours: 12),
+      );
+      if (data != null) {
+        playoffTiebreaker = data['playoff_tiebreaker'] ?? 'penalties';
         semifinalTiebreaker = data['semifinal_tiebreaker'] ?? 'extra_time_penalties';
         thirdPlaceTiebreaker = data['third_place_tiebreaker'] ?? 'penalties';
         finalTiebreaker = data['final_tiebreaker'] ?? 'extra_time_penalties';
@@ -113,13 +122,14 @@ class AdminService {
   }
   
   static Future<void> loadTiebreakerOrder(String seasonId) async {
-     try {
-      final doc = await _getConfigDocRef(seasonId, 'tiebreaker_rules').get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data() as Map<String, dynamic>;
-        if (data['order'] != null) {
-          tiebreakerOrder = List<String>.from(data['order']);
-        }
+    try {
+      final data = await FirestoreCacheService.getDocDataWithCache(
+        docRef: _getConfigDocRef(seasonId, 'tiebreaker_rules'),
+        cacheKey: 'admin_tiebreaker_rules_$seasonId',
+        ttl: const Duration(hours: 12),
+      );
+      if (data != null && data['order'] != null) {
+        tiebreakerOrder = List<String>.from(data['order']);
       } else {
         tiebreakerOrder = [
           'head_to_head', 'disciplinary_points', 'wins', 'goal_difference', 'goals_against', 'draw_sort',

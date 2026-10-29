@@ -37,9 +37,12 @@ class FantasyPlayer {
     required this.history,
   });
 
-  factory FantasyPlayer.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    final historyList = List<Map<String, dynamic>>.from(data['history'] ?? []);
+  // Factory fromFirestore delega para fromMap
+  // Usa docId em fromMap
+  factory FantasyPlayer.fromFirestore(DocumentSnapshot doc) => FantasyPlayer.fromMap(doc.id, (doc.data() as Map<String, dynamic>?) ?? {});
+
+  factory FantasyPlayer.fromMap(String docId, Map<String, dynamic> data) {
+    final historyList = (data['history'] as List<dynamic>? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
     double lastScore = (data['last_score'] ?? 0).toDouble();
     double lastPriceChange = (data['last_price_change'] ?? 0).toDouble();
@@ -60,7 +63,7 @@ class FantasyPlayer {
     }
 
     return FantasyPlayer(
-      playerId: doc.id,
+      playerId: docId,
       name: data['name'] ?? '',
       position: data['position'] ?? '',
       secondaryPosition: data['secondary_position'],
@@ -141,18 +144,16 @@ class FantasyTeam {
     this.ownerPhone,
   });
 
-  factory FantasyTeam.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+  factory FantasyTeam.fromFirestore(DocumentSnapshot doc) => FantasyTeam.fromMap(doc.id, (doc.data() as Map<String, dynamic>?) ?? {});
+
+  factory FantasyTeam.fromMap(String docId, Map<String, dynamic> data) {
     final double totalPoints = (data['total_points'] ?? 0).toDouble();
-    double lastScore = (data['last_score'] ?? 0).toDouble();
-    if (lastScore == 0 && totalPoints > 0) {
-      lastScore = totalPoints;
-    }
+    final double lastScore = (data['last_score'] ?? 0).toDouble();
 
     return FantasyTeam(
-      id: doc.id,
-      userId: data['user_id'] ?? doc.id,
-      ownerId: data['owner_id'] ?? doc.id,
+      id: docId,
+      userId: data['user_id'] ?? docId,
+      ownerId: data['owner_id'] ?? docId,
       ownerName: data['owner_name'] ?? 'Cartoleiro',
       teamName: data['team_name'] ?? 'Time sem nome',
       totalPoints: totalPoints,
@@ -606,4 +607,3 @@ class FantasyRoundSummary {
     };
   }
 }
-

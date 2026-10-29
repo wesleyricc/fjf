@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../viewmodels/sponsor_viewmodel.dart';
 import '../../theme/app_theme.dart';
+import '../ui/optimized_network_image.dart';
 
 class HomeSponsorsGrid extends StatelessWidget {
   const HomeSponsorsGrid({super.key});
@@ -53,37 +53,28 @@ class HomeSponsorsGrid extends StatelessWidget {
           return priorityA.compareTo(priorityB);
         });
 
+        const gridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          childAspectRatio: 1.0,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+        );
+
         if (sponsors.isEmpty) {
-          return SliverToBoxAdapter(
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                childAspectRatio: 1.0,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: 4,
-              itemBuilder: (context, index) => _buildDefaultCard(),
+          return SliverGrid(
+            gridDelegate: gridDelegate,
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _buildDefaultCard(),
+              childCount: 4,
             ),
           );
         }
 
-        return SliverToBoxAdapter(
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 1.0,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemCount: sponsors.length,
-            itemBuilder: (context, index) {
-              return _buildSponsorCard(sponsors[index]);
-            },
+        return SliverGrid(
+          gridDelegate: gridDelegate,
+          delegate: SliverChildBuilderDelegate(
+            (context, index) => _buildSponsorCard(sponsors[index]),
+            childCount: sponsors.length,
           ),
         );
       },
@@ -102,51 +93,40 @@ class HomeSponsorsGrid extends StatelessWidget {
     Color borderColor = _getCategoryColor(categoryName);
     double borderWidth = categoryName == 'MASTER' ? 2.5 : ((categoryName == 'PREMIUM' || categoryName == 'PLATINUM') ? 2.0 : 1.5);
 
-    return InkWell(
-      onTap: () async {
-        if (targetUrl != null && targetUrl.isNotEmpty) {
-          final uri = Uri.parse(targetUrl);
-          if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-            debugPrint("Erro ao abrir: $targetUrl");
+    return RepaintBoundary(
+      child: InkWell(
+        onTap: () async {
+          if (targetUrl != null && targetUrl.isNotEmpty) {
+            final uri = Uri.parse(targetUrl);
+            if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+              debugPrint("Erro ao abrir: $targetUrl");
+            }
           }
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: borderColor, width: borderWidth),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 4,
-              offset: Offset(0, 2),
-            )
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: SizedBox.expand(
-            child: CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.cover,
-              memCacheWidth: 400,
-              placeholder: (context, url) => Container(
-                color: Colors.white,
-                child: const Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ),
-              errorWidget: (_, __, ___) => Container(
-                color: Colors.grey.shade200,
-                child: const Center(
-                  child: Icon(Icons.broken_image, color: Colors.grey),
-                ),
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor, width: borderWidth),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              )
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox.expand(
+              child: OptimizedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+                memCacheWidth: 240,
+                memCacheHeight: 240,
+                fallbackIcon: Icons.broken_image,
               ),
             ),
           ),
@@ -170,7 +150,7 @@ class HomeSponsorsGrid extends StatelessWidget {
             Positioned(
               right: -10,
               bottom: -10,
-              child: Icon(Icons.all_inclusive, size: 40, color: Colors.white.withOpacity(0.05)),
+              child: Icon(Icons.all_inclusive, size: 40, color: Colors.white.withValues(alpha: 0.05)),
             ),
             Center(
               child: Column(
@@ -179,7 +159,7 @@ class HomeSponsorsGrid extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                        color: AppTheme.yellowColor.withOpacity(0.2),
+                        color: AppTheme.yellowColor.withValues(alpha: 0.2),
                         shape: BoxShape.circle),
                     child: const FaIcon(FontAwesomeIcons.handshake, color: AppTheme.yellowColor, size: 12),
                   ),

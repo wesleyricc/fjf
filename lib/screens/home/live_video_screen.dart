@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../theme/app_theme.dart';
 import '../../services/championship_service.dart';
 import '../../widgets/main_bottom_nav_bar.dart';
 import '../../widgets/sponsor_banner_rotator.dart';
 import '../../widgets/live_stream_chat_widget.dart';
+import '../../widgets/youtube/universal_youtube_player.dart';
 
 class LiveVideoScreen extends StatefulWidget {
   const LiveVideoScreen({super.key});
@@ -17,22 +17,11 @@ class LiveVideoScreen extends StatefulWidget {
 }
 
 class _LiveVideoScreenState extends State<LiveVideoScreen> {
-  late YoutubePlayerController _ytController;
-  final String _defaultVideoId = 'ByBvdFS1jko';
+  String _videoId = 'ByBvdFS1jko';
   
   @override
   void initState() {
     super.initState();
-    _ytController = YoutubePlayerController.fromVideoId(
-      videoId: _defaultVideoId,
-      autoPlay: true,
-      params: const YoutubePlayerParams(
-        showControls: true,
-        mute: false,
-        showFullscreenButton: true,
-        enableCaption: false,
-      ),
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkLiveFromCache());
   }
 
@@ -44,17 +33,13 @@ class _LiveVideoScreenState extends State<LiveVideoScreen> {
       final Timestamp? timestamp = data['live_video_timestamp'];
       if (remoteId != null && remoteId.isNotEmpty && timestamp != null) {
         final diff = DateTime.now().difference(timestamp.toDate());
-        if (diff.inHours < 24) {
-          _ytController.loadVideoById(videoId: remoteId);
+        if (diff.inHours < 24 && remoteId != _videoId) {
+          setState(() {
+            _videoId = remoteId;
+          });
         }
       }
     }
-  }
-
-  @override
-  void dispose() {
-    _ytController.close();
-    super.dispose();
   }
 
   @override
@@ -81,8 +66,10 @@ class _LiveVideoScreenState extends State<LiveVideoScreen> {
       body: Column(
         children: [
           const SponsorBannerRotator(location: 'header_live'),
-          YoutubePlayer(
-            controller: _ytController,
+          UniversalYoutubePlayer(
+            key: ValueKey(_videoId),
+            videoId: _videoId,
+            autoPlay: true,
             aspectRatio: 16 / 9,
           ),
           const Expanded(

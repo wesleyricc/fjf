@@ -131,11 +131,11 @@
         ]
       },
       {
-        "source": "**/*.@(jpg|jpeg|gif|png|webp|svg|ico|woff|woff2)",
+        "source": "**/*.@(jpg|jpeg|gif|png|webp|svg|ico|woff|woff2|ttf|otf|wasm)",
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "max-age=86400"
+            "value": "public, max-age=604800, stale-while-revalidate=86400"
           }
         ]
       }

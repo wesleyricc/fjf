@@ -1,12 +1,16 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/portal_models.dart';
 
 class PortalAuthService with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  StreamSubscription<User?>? _authSub;
 
   PortalUser? _currentPortalUser;
   bool _isLoading = false;
@@ -16,9 +20,9 @@ class PortalAuthService with ChangeNotifier {
   bool get isAuthenticated => _currentPortalUser != null;
 
   PortalAuthService() {
-    _auth.authStateChanges().listen((User? user) {
+    _authSub = _auth.authStateChanges().listen((User? user) {
       if (user != null) {
-        _loadPortalUserProfile(user.uid);
+        _loadPortalUserProfile(user.uid, email: user.email, forceRefresh: false);
       } else {
         _currentPortalUser = null;
         notifyListeners();
@@ -26,16 +30,63 @@ class PortalAuthService with ChangeNotifier {
     });
   }
 
-  Future<void> _loadPortalUserProfile(String uid) async {
+  /// ⚡ FinOps PWA: Usuários do Portal utilizam o domínio @fjf.com.br e o estado de existência
+  /// é cacheado no localStorage por 2 horas para evitar leituras desnecessárias em portal_users/{uid}
+  /// quando usuários comuns (Google Auth do Fantasy/Bolão) abrem ou recarregam o PWA.
+  Future<void> _loadPortalUserProfile(String uid, {String? email, bool forceRefresh = false}) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'portal_profile_cache_$uid';
+      final tsKey = 'portal_profile_ts_$uid';
+
+      if (!forceRefresh) {
+        final lastTs = prefs.getInt(tsKey);
+        final cachedJson = prefs.getString(cacheKey);
+        if (lastTs != null &&
+            cachedJson != null &&
+            DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastTs)).inMinutes < 120) {
+          if (cachedJson == 'NONE') {
+            _currentPortalUser = null;
+            notifyListeners();
+            return;
+          }
+          try {
+            final map = jsonDecode(cachedJson) as Map<String, dynamic>;
+            _currentPortalUser = PortalUser(
+              id: uid,
+              username: map['username'] ?? '',
+              name: map['name'] ?? '',
+              role: map['role'] ?? 'athlete',
+              teamId: map['teamId'],
+              playerId: map['playerId'],
+              cpf: map['cpf'],
+              createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAtMs'] ?? DateTime.now().millisecondsSinceEpoch),
+            );
+            notifyListeners();
+            return;
+          } catch (_) {}
+        }
+      }
+
       final doc = await _firestore.collection('portal_users').doc(uid).get();
       if (doc.exists) {
         _currentPortalUser = PortalUser.fromFirestore(doc);
+        await prefs.setString(cacheKey, jsonEncode({
+          'username': _currentPortalUser!.username,
+          'name': _currentPortalUser!.name,
+          'role': _currentPortalUser!.role,
+          'teamId': _currentPortalUser!.teamId,
+          'playerId': _currentPortalUser!.playerId,
+          'cpf': _currentPortalUser!.cpf,
+          'createdAtMs': _currentPortalUser!.createdAt.millisecondsSinceEpoch,
+        }));
       } else {
         _currentPortalUser = null;
+        await prefs.setString(cacheKey, 'NONE');
       }
+      await prefs.setInt(tsKey, DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
-      print("Erro ao carregar perfil do portal: $e");
+      debugPrint("Erro ao carregar perfil do portal: $e");
       _currentPortalUser = null;
     }
     notifyListeners();
@@ -49,10 +100,13 @@ class PortalAuthService with ChangeNotifier {
       final cleanUsername = username.trim().toLowerCase().replaceAll(' ', '');
       final pseudoEmail = '$cleanUsername@fjf.com.br';
 
-      await _auth.signInWithEmailAndPassword(
+      final cred = await _auth.signInWithEmailAndPassword(
         email: pseudoEmail,
         password: password,
       );
+      if (cred.user != null) {
+        await _loadPortalUserProfile(cred.user!.uid, email: pseudoEmail, forceRefresh: true);
+      }
       
       _setLoading(false);
       return null; // Sucesso
@@ -108,6 +162,9 @@ class PortalAuthService with ChangeNotifier {
   Future<void> updatePortalUserCpf(String uid, String cpf) async {
     try {
       await _firestore.collection('portal_users').doc(uid).update({'cpf': cpf});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('portal_profile_cache_$uid');
+      await prefs.remove('portal_profile_ts_$uid');
       // Refresh current user
       if (_currentPortalUser?.id == uid) {
         _currentPortalUser = PortalUser(
@@ -128,11 +185,23 @@ class PortalAuthService with ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('portal_profile_cache_$uid');
+      await prefs.remove('portal_profile_ts_$uid');
+    }
     await _auth.signOut();
   }
 
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 }

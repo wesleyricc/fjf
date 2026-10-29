@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import '../services/firestore_cache_service.dart';
 
 class SponsorViewModel extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -20,31 +21,38 @@ class SponsorViewModel extends ChangeNotifier {
   final Set<String> _cachedDiskUrls = {};
   final Set<String> _precachedMemoryUrls = {};
 
-  StreamSubscription? _sub;
-
   SponsorViewModel() {
-    _listenSponsors();
+    loadSponsors();
   }
 
-  void _listenSponsors() {
-    _sub = _firestore
-        .collection('sponsors')
-        .where('isActive', isEqualTo: true)
-        .orderBy('order')
-        .snapshots()
-        .listen((snapshot) {
-      _sponsors = snapshot.docs.map((d) => d.data()).toList();
+  /// ⚡ FinOps PWA: Substitui listener .snapshots() permanente por leitura com cache persistente (TTL: 30 min),
+  /// eliminando conexões WebSocket ociosas e leituras repetidas a cada reload do PWA.
+  Future<void> loadSponsors({bool forceRefresh = false}) async {
+    try {
+      final query = _firestore
+          .collection('sponsors')
+          .where('isActive', isEqualTo: true)
+          .orderBy('order');
+
+      final docs = await FirestoreCacheService.getDocsDataWithCache(
+        query: query,
+        cacheKey: 'active_sponsors_list',
+        ttl: const Duration(minutes: 30),
+        forceRefresh: forceRefresh,
+      );
+
+      _sponsors = docs;
       _isLoading = false;
       _isInitialized = true;
       notifyListeners();
 
       _warmupDiskCache();
-    }, onError: (e) {
+    } catch (e) {
       debugPrint("Erro ao carregar patrocinadores: $e");
       _isLoading = false;
       _isInitialized = true;
       notifyListeners();
-    });
+    }
   }
 
   /// Baixa as imagens dos patrocinadores para o cache de disco em background
@@ -64,11 +72,11 @@ class SponsorViewModel extends ChangeNotifier {
   }
 
   /// Pré-carrega em memória (ImageCache) os banners prioritários com restrição
-  /// de resolução (maxWidth: 800) para garantir abertura instantânea sem OOM no iOS.
+  /// de resolução (maxWidth: 600) para garantir abertura instantânea sem OOM no iOS Safari.
   void precachePriorityBanners(BuildContext context) {
     if (_sponsors.isEmpty) return;
 
-    for (final sponsor in _sponsors.take(8)) {
+    for (final sponsor in _sponsors.take(6)) {
       final url = ((sponsor['imageUrl'] ??
               sponsor['image_url'] ??
               sponsor['bannerUrl'] ??
@@ -79,21 +87,18 @@ class SponsorViewModel extends ChangeNotifier {
         _precachedMemoryUrls.add(url);
         try {
           if (kIsWeb) {
-            precacheImage(NetworkImage(url), context).catchError((_) {});
+            precacheImage(
+              ResizeImage(NetworkImage(url), width: 600),
+              context,
+            ).catchError((_) {});
           } else {
             precacheImage(
-              CachedNetworkImageProvider(url, maxWidth: 800),
+              CachedNetworkImageProvider(url, maxWidth: 600),
               context,
             ).catchError((_) {});
           }
         } catch (_) {}
       }
     }
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
   }
 }

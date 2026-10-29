@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../utils/youtube_utils.dart';
+import 'youtube/universal_youtube_player.dart';
 
 class MatchMediaTab extends StatefulWidget {
   final List<Map<String, dynamic>> mediaLinks;
@@ -15,10 +16,12 @@ class MatchMediaTab extends StatefulWidget {
 }
 
 class _MatchMediaTabState extends State<MatchMediaTab> {
+  final ScrollController _scrollController = ScrollController();
+
   // YouTube State
-  YoutubePlayerController? _ytController;
   bool _isYoutube = false;
   String? _activeVideoId;
+  bool _autoPlay = false;
 
   // Fallback para vídeos legados do Storage (.mp4)
   VideoPlayerController? _activeVideoPlayerController;
@@ -57,32 +60,49 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _disposePlayers();
     super.dispose();
   }
 
   void _disposePlayers() {
-    _ytController?.close();
-    _ytController = null;
     _activeChewieController?.dispose();
     _activeChewieController = null;
     _activeVideoPlayerController?.dispose();
     _activeVideoPlayerController = null;
   }
 
+  void _scrollToPlayer() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   Future<void> _changeMediaVideo(String videoUrl, String title, {bool autoPlay = true}) async {
     if (videoUrl.isEmpty) return;
-    if (_currentVideoUrl == videoUrl && (_ytController != null || _activeChewieController != null)) {
+
+    final videoId = YoutubeUtils.extractVideoId(videoUrl);
+
+    // Se já é o vídeo atual, ativa autoplay se foi clicado
+    if (_currentVideoUrl == videoUrl) {
+      if (!_autoPlay && autoPlay) {
+        setState(() {
+          _autoPlay = true;
+        });
+      }
       return;
     }
 
     setState(() {
       _currentVideoUrl = videoUrl;
       _activeMediaTitle = title;
+      _autoPlay = autoPlay;
       _isLoading = true;
     });
-
-    final videoId = YoutubeUtils.extractVideoId(videoUrl);
 
     if (videoId != null) {
       // --- MODO YOUTUBE ---
@@ -94,26 +114,6 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
       _activeVideoId = videoId;
       _isYoutube = true;
 
-      if (_ytController == null) {
-        _ytController = YoutubePlayerController.fromVideoId(
-          videoId: videoId,
-          autoPlay: autoPlay,
-          params: const YoutubePlayerParams(
-            showControls: true,
-            mute: false,
-            showFullscreenButton: true,
-            loop: false,
-            enableCaption: false,
-          ),
-        );
-      } else {
-        if (autoPlay) {
-          _ytController!.loadVideoById(videoId: videoId);
-        } else {
-          _ytController!.cueVideoById(videoId: videoId);
-        }
-      }
-
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -121,8 +121,6 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
       }
     } else {
       // --- MODO LEGADO (Storage / MP4 direto) ---
-      _ytController?.close();
-      _ytController = null;
       _isYoutube = false;
       _activeVideoId = null;
 
@@ -223,6 +221,7 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
     }
 
     return CustomScrollView(
+      controller: _scrollController,
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
@@ -234,7 +233,6 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
                 Card(
                   elevation: 2,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  clipBehavior: Clip.antiAlias,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -243,7 +241,10 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
-                          color: Theme.of(context).cardColor,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                          ),
                           child: Row(
                             children: [
                               Icon(
@@ -262,7 +263,7 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              if (_isYoutube)
+                              if (_isYoutube && _activeVideoId != null) ...[
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
@@ -278,6 +279,25 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
                                     ),
                                   ),
                                 ),
+                                const SizedBox(width: 6),
+                                OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    visualDensity: VisualDensity.compact,
+                                    side: BorderSide(color: Colors.red.withOpacity(0.4)),
+                                    foregroundColor: Colors.red,
+                                  ),
+                                  icon: const Icon(Icons.open_in_new, size: 14),
+                                  label: const Text(
+                                    'Abrir no YouTube',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                  onPressed: () {
+                                    final url = 'https://www.youtube.com/watch?v=$_activeVideoId';
+                                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                                  },
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -286,7 +306,10 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
                       AspectRatio(
                         aspectRatio: 16 / 9,
                         child: Container(
-                          color: Colors.black,
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+                          ),
                           child: _buildPlayerContent(),
                         ),
                       ),
@@ -346,7 +369,10 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
                       : Theme.of(context).cardColor,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(10),
-                    onTap: () => _changeMediaVideo(videoUrl, title, autoPlay: true),
+                    onTap: () {
+                      _changeMediaVideo(videoUrl, title, autoPlay: true);
+                      _scrollToPlayer();
+                    },
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: Row(
@@ -482,9 +508,11 @@ class _MatchMediaTabState extends State<MatchMediaTab> {
       return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
 
-    if (_isYoutube && _ytController != null) {
-      return YoutubePlayer(
-        controller: _ytController!,
+    if (_isYoutube && _activeVideoId != null) {
+      return UniversalYoutubePlayer(
+        key: ValueKey('yt-$_activeVideoId'),
+        videoId: _activeVideoId!,
+        autoPlay: _autoPlay,
         aspectRatio: 16 / 9,
       );
     }

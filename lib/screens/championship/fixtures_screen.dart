@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 import '../../theme/app_theme.dart';
 import '../../services/championship_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/firestore_cache_service.dart';
 import '../../services/analytics_service.dart'; // 🚨 RASTREAMENTO
 import '../../models/match_model.dart';
 import '../../widgets/sponsor_banner_rotator.dart';
 import '../../widgets/main_bottom_nav_bar.dart';
 import '../../widgets/modern_fixtures_nav.dart';
-import '../../widgets/palpitometro_widget.dart';
 import '../../widgets/ui/shimmer_effect.dart';
 import '../../widgets/ui/custom_empty_state.dart';
 
@@ -65,15 +65,20 @@ class _FixturesScreenState extends State<FixturesScreen> {
   Future<void> _loadSeasonSettings(String seasonId) async {
     setState(() => _isLoadingSettings = true);
     try {
-      final doc = await FirebaseFirestore.instance
+      final docRef = FirebaseFirestore.instance
           .collection('championships')
           .doc(seasonId)
           .collection('settings')
           .doc('app_settings')
-          .get();
+          ;
+      final data = await FirestoreCacheService.getDocDataWithCache(
+        docRef: docRef,
+        cacheKey: 'app_settings_$seasonId',
+        ttl: const Duration(hours: 12),
+      );
 
-      if (doc.exists && mounted) {
-        final data = doc.data()!;
+      if (data != null && mounted) {
+        // Usa data retornado do cache/servidor
         final phase = data['default_phase'] ?? 'first';
         final stage = data['default_stage'] ?? '1';
         final format = data['tournament_format'] ?? 'model_1';
@@ -114,6 +119,15 @@ class _FixturesScreenState extends State<FixturesScreen> {
       itemName: '${match.homeTeamName} vs ${match.awayTeamName}',
     );
 
+    if (!isAdmin && !match.isFinished) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => MatchRosterScreen(
+            matchId: match.id, team1Id: match.homeTeamId, team2Id: match.awayTeamId,
+            team1Name: match.homeTeamName, team2Name: match.awayTeamName,
+            team1ShieldUrl: match.homeTeamShield, team2ShieldUrl: match.awayTeamShield,
+            datetime: match.datetime != null ? Timestamp.fromDate(match.datetime!) : null,
+            location: match.location)));
+      return;
+    }
     final matchRef = FirebaseFirestore.instance.collection('championships').doc(seasonId).collection('matches').doc(match.id);
     if (isAdmin || !match.isFinished) {
        final docSnap = await matchRef.get();
@@ -318,8 +332,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
               Expanded(child: Center(child: ShimmerEffect.circular(size: 45))),
             ],
           ),
-          const SizedBox(height: 16),
-          const ShimmerEffect.rectangular(height: 24, width: double.infinity),
         ],
       ),
     );
@@ -421,11 +433,6 @@ class _FixturesScreenState extends State<FixturesScreen> {
                 ],
               ),
             ),
-            if (seasonId.isNotEmpty) 
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: PalpitometroWidget(seasonId: seasonId, matchId: match.id, homeTeamName: match.homeTeamName, awayTeamName: match.awayTeamName, homeVotes: match.votesHome, awayVotes: match.votesAway, homeColor: Colors.blueAccent, awayColor: Colors.redAccent, isClosed: !match.isPending, barHeight: 24.0, compactView: false),
-              ),
           ],
         ),
       ),
@@ -437,10 +444,14 @@ class _FixturesScreenState extends State<FixturesScreen> {
     return Hero(
       tag: heroTag,
       child: SizedBox(
-        height: 45, width: 45,
+        height: 45,
+        width: 45,
         child: Image.network(
-          url, 
+          url,
           fit: BoxFit.contain,
+          alignment: Alignment.center,
+          cacheHeight: 135,
+          filterQuality: FilterQuality.medium,
           errorBuilder: (_, __, ___) => const Icon(Icons.shield, size: 40, color: Colors.grey),
         ),
       ),

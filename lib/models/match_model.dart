@@ -29,6 +29,7 @@ class MatchModel {
   
   final String? winnerTeamId;
   final String? sumulaUrl;
+  final List<String> lineupPlayed;
 
   MatchModel({
     required this.id,
@@ -53,11 +54,15 @@ class MatchModel {
     this.votesAway = 0,
     this.disciplinaryHome = 0,
     this.disciplinaryAway = 0,
+    this.lineupPlayed = const [],
   });
 
   factory MatchModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
+    return MatchModel.fromMap(doc.id, data);
+  }
 
+  factory MatchModel.fromMap(String id, Map<String, dynamic> data) {
     // Helper para converter números de forma segura (evita erro de null ou double)
     int toInt(dynamic value) {
       if (value == null) return 0;
@@ -67,9 +72,16 @@ class MatchModel {
     }
 
     try {
+      DateTime? parsedDate;
+      if (data['datetime'] is Timestamp) {
+        parsedDate = (data['datetime'] as Timestamp).toDate();
+      } else if (data['datetime'] is DateTime) {
+        parsedDate = data['datetime'] as DateTime;
+      }
+
       return MatchModel(
-        id: doc.id,
-        datetime: (data['datetime'] as Timestamp?)?.toDate(),
+        id: id,
+        datetime: parsedDate,
         location: data['location']?.toString() ?? 'Local a definir',
         round: toInt(data['round']),
         phase: data['phase']?.toString() ?? 'first',
@@ -87,8 +99,6 @@ class MatchModel {
         scoreAway: data['score_away'] != null ? toInt(data['score_away']) : null,
         penaltyScoreAway: data['penalty_score_away'] != null ? toInt(data['penalty_score_away']) : null,
         
-        // --- AQUI ESTAVA O ERRO ---
-        // Agora usamos a função toInt() que aceita null e retorna 0
         votesHome: toInt(data['votes_home']),
         votesAway: toInt(data['votes_away']),
 
@@ -97,12 +107,14 @@ class MatchModel {
         
         winnerTeamId: data['winner_team_id']?.toString(),
         sumulaUrl: data['sumula_url']?.toString(),
+        lineupPlayed: (data['lineup_played'] is List)
+            ? (data['lineup_played'] as List).map((e) => e.toString()).toList()
+            : const [],
       );
     } catch (e) {
-      print("🔥 ERRO FATAL AO LER JOGO ${doc.id}: $e");
-      // Retorna um objeto vazio para não travar o app
+      print("🔥 ERRO FATAL AO LER JOGO $id: $e");
       return MatchModel(
-        id: doc.id,
+        id: id,
         location: 'Erro de Leitura',
         round: 0, phase: 'first', status: 'pending',
         homeTeamId: '', homeTeamName: 'Erro', homeTeamShield: '',

@@ -20,11 +20,16 @@ class FantasyService {
     return result != ConnectivityResult.none;
   }
 
-  Future<FantasyGameConfig> getGameConfig() async {
+  Future<FantasyGameConfig> getGameConfig({bool forceRefresh = false}) async {
     try {
-      final doc = await _firestore.collection('fantasy_config').doc('rules').get();
-      if (doc.exists && doc.data() != null) {
-        return FantasyGameConfig.fromMap(doc.data() as Map<String, dynamic>);
+      final data = await FirestoreCacheService.getDocDataWithCache(
+        docRef: _firestore.collection('fantasy_config').doc('rules'),
+        cacheKey: 'fantasy_config_rules',
+        ttl: const Duration(hours: 1),
+        forceRefresh: forceRefresh,
+      );
+      if (data != null) {
+        return FantasyGameConfig.fromMap(data);
       }
     } catch (e) {
       debugPrint("Erro ao buscar config do fantasy (usando default): $e");
@@ -34,21 +39,22 @@ class FantasyService {
 
   Future<void> saveGameConfig(FantasyGameConfig config) async {
     await _firestore.collection('fantasy_config').doc('rules').set(config.toMap());
+    await FirestoreCacheService.invalidateCache('fantasy_config_rules');
   }
 
   // ---> OTIMIZAÇÃO DE CUSTO AQUI <---
   // Antes estava a buscar a coleção global inteira de 'players' (milhares de leituras)
-  // Agora busca apenas os jogadores instanciados no mercado do Fantasy!
+  // Agora busca apenas os jogadores instanciados no mercado do Fantasy com persistência local no PWA!
   Future<List<FantasyPlayer>> getAllPlayers({bool forceRefresh = false}) async {
     try {
-      final snapshot = await FirestoreCacheService.getWithCache(
+      final docs = await FirestoreCacheService.getDocsDataWithCache(
         query: _fantasyMarketRef,
         cacheKey: 'fantasy_market_players',
         ttl: const Duration(minutes: 5), // TTL morno (5 minutos)
         forceRefresh: forceRefresh,
       );
-      if (snapshot.docs.isEmpty) return [];
-      return snapshot.docs.map((doc) => FantasyPlayer.fromFirestore(doc)).toList();
+      if (docs.isEmpty) return [];
+      return docs.map((d) => FantasyPlayer.fromMap(d['_docId']?.toString() ?? '', d)).toList();
     } catch (e) {
       debugPrint("Erro ao buscar todos os jogadores do mercado: $e");
       return [];
@@ -81,13 +87,13 @@ class FantasyService {
     }
     final query = _fantasyTeamsRef.orderBy(orderByField, descending: true).limit(limit);
     try {
-      final snap = await FirestoreCacheService.getWithCache(
+      final docs = await FirestoreCacheService.getDocsDataWithCache(
         query: query,
         cacheKey: 'fantasy_ranking_${metric.name}_${isGlobal}_$limit',
         ttl: const Duration(minutes: 5),
         forceRefresh: forceRefresh,
       );
-      return snap.docs.map((doc) => FantasyTeam.fromFirestore(doc)).toList();
+      return docs.map((d) => FantasyTeam.fromMap(d['_docId']?.toString() ?? '', d)).toList();
     } catch (e) {
       debugPrint("Erro ao buscar ranking ($metric, isGlobal: $isGlobal): $e");
       return [];
@@ -103,14 +109,14 @@ class FantasyService {
           : _firestore.collection('fantasy_stats').doc('last_round_summary');
       final cacheKey = round != null ? 'round_${round}_summary' : 'last_round_summary';
 
-      final snap = await FirestoreCacheService.getDocumentWithCache(
+      final data = await FirestoreCacheService.getDocDataWithCache(
         docRef: docRef,
         cacheKey: cacheKey,
         ttl: const Duration(minutes: 30),
         forceRefresh: forceRefresh,
       );
-      if (!snap.exists || snap.data() == null) return null;
-      return FantasyRoundSummary.fromFirestore(snap);
+      if (data == null) return null;
+      return FantasyRoundSummary.fromMap(data);
     } catch (e) {
       debugPrint("Erro ao buscar resumo da rodada: $e");
       return null;
@@ -241,20 +247,49 @@ class FantasyService {
         if (benchIds.length > 5) {
           return "Erro: O banco de reservas não pode ter mais de 5 atletas.";
         }
+        if (playerIds.toSet().length != playerIds.length) {
+          return "Erro: Não é permitido escalar o mesmo atleta mais de uma vez.";
+        }
+        if (benchIds.toSet().length != benchIds.length) {
+          return "Erro: Não é permitido repetir atletas no banco de reservas.";
+        }
+        if (playerIds.any((id) => benchIds.contains(id))) {
+          return "Erro: Um atleta titular não pode estar simultaneamente no banco.";
+        }
+        if (captainId != null &&
+            (!playerIds.contains(captainId) || lineupSlots?['6'] == captainId)) {
+          return "Erro: O Capitão deve ser um atleta titular de linha ou goleiro (Técnico não permitido).";
+        }
+        if (luxuryReserveId != null &&
+            (!benchIds.contains(luxuryReserveId) ||
+                benchSlots?['16'] == luxuryReserveId)) {
+          return "Erro: O Reserva de Luxo deve ser um suplente de linha ou goleiro (Técnico não permitido).";
+        }
 
         final teamRef = _fantasyTeamsRef.doc(userId);
         final teamSnap = await transaction.get(teamRef);
         
         if (!teamSnap.exists) return "Erro: Time inexistente.";
+
+        double verifiedTeamCost = 0.0;
+        for (final pid in playerIds) {
+          final pSnap = await transaction.get(_fantasyMarketRef.doc(pid));
+          if (!pSnap.exists) {
+            return "Erro: Atleta ($pid) não encontrado no mercado.";
+          }
+          final pData = pSnap.data() as Map<String, dynamic>?;
+          verifiedTeamCost += ((pData?['current_price'] ?? 0.0) as num).toDouble();
+        }
+        final double effectiveCost = playerIds.isEmpty ? 0.0 : verifiedTeamCost;
         
-        final double serverPatrimony = (teamSnap.data() as Map<String, dynamic>)['team_value'] ?? 0.0;
-        final double actualNewBalance = serverPatrimony - newTeamCost;
+        final double serverPatrimony = ((teamSnap.data() as Map<String, dynamic>)['team_value'] ?? 0.0).toDouble();
+        final double actualNewBalance = serverPatrimony - effectiveCost;
         
         if (actualNewBalance < -0.01) { 
-          return "Saldo insuficiente! Patrimônio: C\$${serverPatrimony.toStringAsFixed(2)} | Time: C\$${newTeamCost.toStringAsFixed(2)}";
+          return "Saldo insuficiente! Patrimônio: C\$${serverPatrimony.toStringAsFixed(2)} | Time: C\$${effectiveCost.toStringAsFixed(2)}";
         }
 
-        final double safeBalance = double.parse(actualNewBalance.toStringAsFixed(2));
+        final double safeBalance = double.parse((actualNewBalance < 0 ? 0.0 : actualNewBalance).toStringAsFixed(2));
 
         transaction.update(teamRef, {
           'lineup_player_ids': playerIds, 

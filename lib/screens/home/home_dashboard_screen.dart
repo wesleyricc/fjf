@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 
 import '../../services/championship_service.dart';
-import '../../services/fantasy_preload_service.dart';
 import '../../services/analytics_service.dart';
 
 import '../../theme/app_theme.dart';
@@ -76,7 +75,8 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           _checkAndShowStartupAds();
         }
       });
-      FantasyPreloadService().warmUp(context);
+      // ⚡ FinOps PWA: Removido FantasyPreloadService().warmUp(context) do boot da Home.
+      // O carregamento do Fantasy e abertura de streams ocorre apenas quando o usuário entra no módulo Fantasy.
     });
 
     Future.delayed(const Duration(milliseconds: 2500), () {
@@ -121,7 +121,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         blurRadius: 20,
                         offset: const Offset(0, 10))
                   ]),
@@ -194,8 +194,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       }
     }
   }
-
-
 
   Future<void> _showSeasonSelectionDialog(BuildContext context) async {
     final championshipService =
@@ -297,6 +295,15 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
     final primaryColor = theme.primaryColor;
     final int displayYear = championshipService.currentSeasonYear;
 
+    final cardDecoration = BoxDecoration(
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+      boxShadow: const [
+        BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))
+      ],
+      border: Border.all(color: Colors.grey.shade200),
+    );
+
     return Scaffold(
       bottomNavigationBar: const MainBottomNavBar(currentRoute: '/'),
       body: Stack(
@@ -327,7 +334,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                             fontSize: 12),
                       ),
                       style: TextButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.15),
+                        backgroundColor: Colors.white.withValues(alpha: 0.15),
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
@@ -404,7 +411,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 24, vertical: 4),
                               decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.95),
+                                  color: Colors.white.withValues(alpha: 0.95),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
                                       color: const Color(0xFFC25F22),
@@ -449,10 +456,10 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                                   colors: [Colors.blue.shade50, Colors.white]),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                  color: Colors.blue.withOpacity(0.3)),
+                                  color: Colors.blue.withValues(alpha: 0.3)),
                               boxShadow: [
                                 BoxShadow(
-                                    color: Colors.blue.withOpacity(0.05),
+                                    color: Colors.blue.withValues(alpha: 0.05),
                                     blurRadius: 5,
                                     offset: const Offset(0, 2))
                               ]),
@@ -510,7 +517,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.6),
+                                    color: Colors.black.withValues(alpha: 0.6),
                                     borderRadius: const BorderRadius.vertical(
                                         bottom: Radius.circular(4)),
                                   ),
@@ -526,7 +533,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                           ),
                         ),
                       ),
-                      //const SizedBox(height: 5),
                       Consumer<ChampionshipService>(
                         builder: (context, service, child) {
                           if (service.isLoading && !_isCacheResolved) {
@@ -551,33 +557,18 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                   ),
                 ),
               ),
+              // ⚡ Performance PWA: SliverGrid nativo com DecoratedSliver (sem CustomScrollView(shrinkWrap: true) aninhado!)
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-                sliver: SliverToBoxAdapter(
-                  child: Container(
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(12)),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 6,
-                              offset: Offset(0, 3))
-                        ],
-                        border: Border.all(color: Colors.grey.shade200)),
-                    padding: const EdgeInsets.all(12),
-                    child: const CustomScrollView(
-                      shrinkWrap: true,
-                      physics: NeverScrollableScrollPhysics(),
-                      slivers: [
-                        HomeSponsorsGrid(),
-                      ],
-                    ),
+                sliver: DecoratedSliver(
+                  decoration: cardDecoration,
+                  sliver: const SliverPadding(
+                    padding: EdgeInsets.all(12),
+                    sliver: HomeSponsorsGrid(),
                   ),
                 ),
               ),
-              // EQUPE PARTICIPANTES (Movido para baixo)
+              // EQUIPES PARTICIPANTES
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10.0),
@@ -601,27 +592,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
               ),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-                sliver: SliverToBoxAdapter(
-                  child: Container(
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(12)),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 6,
-                              offset: Offset(0, 3))
-                        ],
-                        border: Border.all(color: Colors.grey.shade200)),
+                sliver: DecoratedSliver(
+                  decoration: cardDecoration,
+                  sliver: SliverPadding(
                     padding: const EdgeInsets.all(12),
-                    child: CustomScrollView(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      slivers: [
-                        HomeTeamsGrid(isCacheResolved: _isCacheResolved),
-                      ],
-                    ),
+                    sliver: HomeTeamsGrid(isCacheResolved: _isCacheResolved),
                   ),
                 ),
               ),
@@ -637,6 +612,4 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
       ),
     );
   }
-
-  // Métodos de construção movidos para MainBottomNavBar
 }

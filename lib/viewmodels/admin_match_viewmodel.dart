@@ -239,7 +239,7 @@ class AdminMatchViewModel extends ChangeNotifier {
       final lpDb = data['lineup_played'];
 
       if (isPending) {
-        // Partidas pendentes (ainda não iniciadas) sempre vêm com presença 100% preenchida
+        // Partidas pendentes (ainda não iniciadas) sempre vêm com presença 100% preenchida em memória
         lineupPlayed = allPlayerIds;
       } else if (lpDb == null || (lpDb is List && lpDb.isEmpty)) {
         // Se no banco estiver nulo ou vazio (devido ao bug anterior de salvar vazio), inicializa com todos presentes
@@ -397,6 +397,10 @@ class AdminMatchViewModel extends ChangeNotifier {
       } catch (_) {}
     }
 
+    // Não persiste lineup_played preenchido no banco enquanto a partida ainda estiver 'pending'
+    final List<String> lineupToSave =
+        selectedStatus == 'pending' ? const <String>[] : lineupPlayed;
+
     final result = await matchService.updateMatchStats(
       seasonId: seasonId,
       matchSnapshot: matchSnap,
@@ -414,7 +418,7 @@ class AdminMatchViewModel extends ChangeNotifier {
       winnerTeamId: winnerId,
       newSumulaUrl: finalSumulaUrl,
       newMediaLinks: mediaLinks,
-      newLineupPlayed: lineupPlayed,
+      newLineupPlayed: lineupToSave,
     );
 
     isSaving = false;

@@ -39,6 +39,10 @@ class OptimizedNetworkImage extends StatelessWidget {
       return _buildErrorWidget();
     }
 
+    // Passar apenas uma dimensão (cacheHeight) preserva a proporção original da imagem
+    // no decodificador nativo/Web do Flutter, evitando distorção (esticamento) em escudos e fotos.
+    final int targetCacheHeight = memCacheHeight > 0 ? memCacheHeight : memCacheWidth;
+
     if (kIsWeb) {
       return Image.network(
         imageUrl,
@@ -46,8 +50,7 @@ class OptimizedNetworkImage extends StatelessWidget {
         height: height,
         fit: fit,
         alignment: alignment,
-        cacheWidth: memCacheWidth,
-        cacheHeight: memCacheHeight,
+        cacheHeight: targetCacheHeight,
         filterQuality: FilterQuality.low,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
@@ -71,10 +74,8 @@ class OptimizedNetworkImage extends StatelessWidget {
       height: height,
       fit: fit,
       alignment: alignment,
-      memCacheWidth: memCacheWidth,
-      memCacheHeight: memCacheHeight,
-      maxWidthDiskCache: memCacheWidth * 2,
-      maxHeightDiskCache: memCacheHeight * 2,
+      memCacheHeight: targetCacheHeight,
+      maxHeightDiskCache: targetCacheHeight * 2,
       filterQuality: FilterQuality.low,
       placeholder: (context, url) =>
           placeholder ??

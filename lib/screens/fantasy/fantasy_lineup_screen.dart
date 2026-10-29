@@ -6,7 +6,7 @@ import '../../services/championship_service.dart';
 import '../../models/fantasy_models.dart';
 import '../../services/fantasy_scout_service.dart';
 import '../../widgets/fantasy/live_scouts_widget.dart';
-import '../../services/analytics_service.dart'; // ðŸš¨ RASTREAMENTO
+import '../../services/analytics_service.dart';
 import '../../viewmodels/fantasy_lineup_viewmodel.dart';
 import 'fantasy_market_screen.dart';
 import '../../utils/app_feedback.dart';
@@ -54,10 +54,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
 
     double? budget;
     if (isBench) {
-      final starters = vm.lineup.values
-          .where((p) => FantasyLineupViewModel.matchesPosition(
-              p.position, p.secondaryPosition, position))
-          .toList();
+      final starters = vm.getStartersForPosition(position);
       if (starters.isEmpty) {
         AppFeedback.showWarning(
             context, "Escale um titular de $position primeiro!");
@@ -161,14 +158,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
               body: Center(child: CircularProgressIndicator()));
         }
 
-        double totalLiveScore = 0.0;
-        if (!vm.isMarketOpen) {
-          for (var p in vm.lineup.values) {
-            double s = vm.liveScores[p.playerId]?.totalScore ?? 0.0;
-            if (vm.captainId == p.playerId) s *= 2;
-            totalLiveScore += s;
-          }
-        }
+        final double totalLiveScore = !vm.isMarketOpen ? vm.partialScore : 0.0;
 
         return Scaffold(
           backgroundColor: Colors.grey[100],
@@ -325,7 +315,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                 isMarketOpen: vm.isMarketOpen,
                 isReady: vm.lineup.length == 6 &&
                     vm.captainId != null &&
-                    (vm.bench.isEmpty || vm.luxuryReserveId != null),
+                    (!vm.hasEligibleLuxuryBench || vm.luxuryReserveId != null),
               ),
               if (vm.isMarketOpen && vm.lineup.length < 6)
                 const WarningBanner(
@@ -340,7 +330,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                     icon: Icons.star,
                     color: Colors.red),
               if (vm.isMarketOpen &&
-                  vm.bench.isNotEmpty &&
+                  vm.hasEligibleLuxuryBench &&
                   vm.luxuryReserveId == null)
                 const WarningBanner(
                     text:
@@ -358,7 +348,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
               if (vm.isMarketOpen &&
                   vm.lineup.length == 6 &&
                   vm.captainId != null &&
-                  (vm.bench.isEmpty || vm.luxuryReserveId != null) &&
+                  (!vm.hasEligibleLuxuryBench || vm.luxuryReserveId != null) &&
                   vm.bench.length == vm.benchSlotsConfig.length)
                 ReadyBanner(
                   title: "TIME 100% PRONTO!",
@@ -369,7 +359,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
               else if (vm.isMarketOpen &&
                   vm.lineup.length == 6 &&
                   vm.captainId != null &&
-                  (vm.bench.isEmpty || vm.luxuryReserveId != null))
+                  (!vm.hasEligibleLuxuryBench || vm.luxuryReserveId != null))
                 ReadyBanner(
                   title: "TIME ESCALADO COM SUCESSO!",
                   subtitle: "Titulares e Capitão definidos para pontuar.",
@@ -406,51 +396,6 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                           _showPlayerActionSheet(vm, player, slot);
                         },
                       ),
-                      /*
-                        final int slotIndex = config['index'];
-                        final String posLabel = config['pos'];
-                        IconData icon = Icons.person;
-
-                        if (posLabel == 'Goleiro')
-                          icon = Icons.sports_handball;
-                        else if (posLabel == 'Fixo')
-                          icon = Icons.shield;
-                        else if (posLabel == 'Ala')
-                          icon = Icons.flash_on;
-                        else if (posLabel == 'PivÃ´')
-                          icon = Icons.sports_soccer;
-                        else if (posLabel == 'TÃ©cnico') icon = Icons.psychology;
-
-                        final player = vm.lineup[slotIndex];
-
-                        if (player == null) {
-                          return EmptySlotCard(
-                            label: posLabel,
-                            icon: icon,
-                            isMarketOpen: vm.isMarketOpen,
-                            onTap: () =>
-                                _openMarketForSlot(vm, slotIndex, posLabel),
-                          );
-                        } else {
-                          double displayScore = (!vm.isMarketOpen)
-                              ? (vm.liveScores[player.playerId]?.totalScore ??
-                                  0.0)
-                              : player.lastScore;
-                          return PlayerCard(
-                            player: player,
-                            score: displayScore,
-                            isCaptain: vm.captainId == player.playerId,
-                            isLuxury: vm.luxuryReserveId == player.playerId,
-                            isMarketOpen: vm.isMarketOpen,
-                            liveScouts: vm.liveScores[player.playerId],
-                            isBench: false,
-                            onSetCaptain: () => vm.setCaptain(player.playerId),
-                            onSetLuxury: () =>
-                                vm.setLuxuryReserve(player.playerId),
-                            onRemove: () => vm.removePlayer(slotIndex),
-                          );
-                        }
-                      */
                       const Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -591,6 +536,10 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
       }
     }
 
+    final bool isCoachSlot = slotIndex == 6 ||
+        slotIndex == 16 ||
+        FantasyLineupViewModel.normalizePosition(player.position) == 'tecnico';
+
     showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -618,7 +567,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                 actionButton: vm.isMarketOpen
                     ? Row(
                         children: [
-                          if (!isBench && player.position != 'Técnico')
+                          if (!isBench && !isCoachSlot)
                             Expanded(
                               child: OutlinedButton.icon(
                                 icon: Icon(Icons.star,
@@ -634,7 +583,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                                 },
                               ),
                             ),
-                          if (isBench && player.position != 'Técnico')
+                          if (isBench && !isCoachSlot)
                             Expanded(
                               child: OutlinedButton.icon(
                                 icon: Icon(Icons.diamond,
@@ -649,7 +598,7 @@ class _FantasyLineupScreenState extends State<FantasyLineupScreen> {
                                 },
                               ),
                             ),
-                          if (player.position != 'Técnico')
+                          if (!isCoachSlot)
                             const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton.icon(
@@ -1174,16 +1123,22 @@ class PlayerCard extends StatelessWidget {
                     if (isMarketOpen) ...[
                       const Divider(),
                       Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                        if (!isBench && player.position != 'TÃ©cnico')
+                        if (!isBench &&
+                            FantasyLineupViewModel.normalizePosition(
+                                    player.position) !=
+                                'tecnico')
                           TextButton.icon(
                             icon: Icon(Icons.star,
                                 color: isCaptain ? Colors.grey : Colors.orange),
                             label: Text(isCaptain
-                                ? "Remover CapitÃ£o"
-                                : "Tornar CapitÃ£o"),
+                                ? "Remover Capitão"
+                                : "Tornar Capitão"),
                             onPressed: onSetCaptain,
                           ),
-                        if (isBench && player.position != 'TÃ©cnico')
+                        if (isBench &&
+                            FantasyLineupViewModel.normalizePosition(
+                                    player.position) !=
+                                'tecnico')
                           TextButton.icon(
                             icon: Icon(Icons.diamond,
                                 color: isLuxury ? Colors.grey : Colors.amber),

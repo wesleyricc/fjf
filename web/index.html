@@ -2,11 +2,11 @@
 <html>
 <head>
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-analytics-compat.js"></script>
   <script>
-    self.FIREBASE_APPCHECK_DEBUG_TOKEN = "CA6668E1-026D-49E8-9AB2-6ED92C955076";
+    // ⚡ Segurança & FinOps: Restringe o token de debug do AppCheck exclusivamente ao ambiente local
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = "CA6668E1-026D-49E8-9AB2-6ED92C955076";
+    }
   </script>
 
   <base href="$FLUTTER_BASE_HREF">
@@ -17,14 +17,13 @@
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default"> <!-- Alterado para default para combinar com fundo branco -->
-  <meta name="apple-mobile-web-app-title" content="fjf_app">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FJF">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Meta tag para forçar a barra de status do navegador a ficar branca -->
   <meta name="theme-color" content="#FFFFFF">
-
-  <title>fjf_app</title>
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png">
@@ -39,7 +38,7 @@
     body {
       margin: 0;
       min-height: 100%;
-      background-color: #FFFFFF; /* Alterado para Branco Sólido */
+      background-color: #FFFFFF;
       background-size: 100% 100%;
     }
 
@@ -107,46 +106,35 @@
   <script src="flutter_bootstrap.js" async=""></script>
 
   <script>
-    // Cole os valores da sua 'FirebaseOptions web' (do firebase_options.dart)
-    var firebaseConfig = {
-      apiKey: 'AIzaSyAI3SJkOCdY5Z5lC5hiSiXPeKUwsYu-u2w',
-      authDomain: 'fjfapp.firebaseapp.com',
-      projectId: 'fjfapp',
-      storageBucket: 'fjfapp.firebasestorage.app',
-      messagingSenderId: '211551139323',
-      appId: '1:211551139323:web:f583360c18907986adc75e',
-      measurementId: 'G-GNBBWGHX3G',
-    };
-    
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    // Initialize Analytics
-    firebase.analytics();
-  </script>
-
-  <script>
     // Registra o service worker do Firebase Messaging para Push Notifications
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('firebase-messaging-sw.js').catch(function(e) {
-        console.warn('[FCM] Registro do service worker em background:', e);
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('firebase-messaging-sw.js').catch(function(e) {
+          console.warn('[FCM] Registro do service worker em background:', e);
+        });
       });
     }
   </script>
 
   <script>
     // =========================================================================
-    // AUTO-ATUALIZAÇÃO INSTANTÂNEA DO PWA (iOS Safari, Android Chrome e Desktop)
-    // Garante que o app baixe a versão nova SEMPRE ao abrir, sem limpar histórico.
+    // AUTO-ATUALIZAÇÃO OTIMIZADA DO PWA (iOS Safari, Android Chrome e Desktop)
+    // Inclui cooldown de 10 min para evitar spam de rede ao alternar abas (WhatsApp <-> App)
+    // e preserva o service worker de Push Notifications (firebase-messaging-sw.js).
     // =========================================================================
     window.pwaUpdateAvailable = false;
+    let lastUpdateCheckMs = 0;
+    const UPDATE_CHECK_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutos
 
-    // Função de limpeza forçada compatível com botões/banners manuais existentes
     window.forcePwaUpdate = async function() {
       try {
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
           for (const reg of registrations) {
-            await reg.unregister();
+            const scriptUrl = (reg.active && reg.active.scriptURL) || '';
+            if (!scriptUrl.includes('firebase-messaging-sw.js')) {
+              await reg.unregister();
+            }
           }
         }
         if ('caches' in window) {
@@ -158,16 +146,23 @@
       } catch (e) {
         console.error('[PWA] Erro na limpeza forçada:', e);
       }
-      window.location.reload(true);
+      window.location.reload();
     };
 
     let isCheckingUpdate = false;
-    async function checkAppUpdates() {
+    async function checkAppUpdates(force = false) {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return;
+      }
+      const now = Date.now();
+      if (!force && (now - lastUpdateCheckMs) < UPDATE_CHECK_COOLDOWN_MS) {
+        return;
+      }
       if (isCheckingUpdate) return;
       isCheckingUpdate = true;
+      lastUpdateCheckMs = now;
 
       try {
-        // 1. Notifica os service workers registrados para buscarem atualizações no servidor
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.getRegistrations().then(function(registrations) {
             for (const reg of registrations) {
@@ -176,10 +171,7 @@
           }).catch(function() {});
         }
 
-        const timestamp = Date.now();
-
-        // 2. Checa o arquivo version.json gerado pelo build com cache desativado
-        const res = await fetch('version.json?t=' + timestamp, {
+        const res = await fetch('version.json?t=' + now, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
         });
@@ -199,8 +191,7 @@
           }
         }
 
-        // 3. Checa o ETag / Last-Modified do flutter_bootstrap.js (detecta qualquer novo deploy mesmo sem alteração em pubspec)
-        const headRes = await fetch('flutter_bootstrap.js?t=' + timestamp, {
+        const headRes = await fetch('flutter_bootstrap.js?t=' + now, {
           method: 'HEAD',
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
@@ -227,26 +218,26 @@
 
     async function applyAppUpdate() {
       try {
-        // Limpa CacheStorage (arquivos estáticos em cache)
         if ('caches' in window) {
           const keys = await caches.keys();
           await Promise.all(keys.map(k => caches.delete(k)));
         }
-        // Desregistra Service Workers obsoletos
         if ('serviceWorker' in navigator) {
           const registrations = await navigator.serviceWorker.getRegistrations();
           for (const reg of registrations) {
-            await reg.unregister();
+            const scriptUrl = (reg.active && reg.active.scriptURL) || '';
+            if (!scriptUrl.includes('firebase-messaging-sw.js')) {
+              await reg.unregister();
+            }
           }
         }
       } catch (e) {
         console.warn('[PWA] Erro ao limpar caches:', e);
       }
       console.log('[PWA] Reiniciando aplicação atualizada...');
-      window.location.reload(true);
+      window.location.reload();
     }
 
-    // Monitora ativação de novos Service Workers
     if ('serviceWorker' in navigator) {
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', function() {
@@ -258,20 +249,19 @@
       });
     }
 
-    // Checa atualização no carregamento inicial da página
-    window.addEventListener('load', checkAppUpdates);
+    window.addEventListener('load', function() {
+      checkAppUpdates(true);
+    });
 
-    // Checa atualização sempre que o usuário reabre ou desbloqueia o PWA no celular
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') {
-        checkAppUpdates();
+        checkAppUpdates(false);
       }
     });
 
-    // Trata bfcache (Back-Forward Cache) típico do Safari/WebKit iOS
     window.addEventListener('pageshow', function(event) {
       if (event.persisted) {
-        checkAppUpdates();
+        checkAppUpdates(false);
       }
     });
   </script>

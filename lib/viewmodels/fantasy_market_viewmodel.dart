@@ -9,6 +9,8 @@ class FantasyMarketViewModel extends ChangeNotifier {
   final FantasyRepository _repository = FantasyRepository();
 
   List<FantasyPlayer> _allPlayers = [];
+  List<FantasyPlayer> _cachedFilteredPlayers = [];
+  bool _isFilterDirty = true;
   List<Map<String, String>> _teamOptions = [];
   bool _isLoading = true;
   Set<String> _favoriteIds = {};
@@ -54,7 +56,10 @@ class FantasyMarketViewModel extends ChangeNotifier {
   bool get hideFielded => _hideFielded;
   Set<String> get fieldedPlayerIds => _fieldedPlayerIds;
   int get displayLimit => _displayLimit;
-  int get totalMatchingCount => _totalMatchingCount;
+  int get totalMatchingCount {
+    if (_isFilterDirty) _recomputeFilteredPlayers();
+    return _totalMatchingCount;
+  }
 
   double get priceBoundsMin => _priceBoundsMin;
   double get priceBoundsMax => _priceBoundsMax;
@@ -67,6 +72,11 @@ class FantasyMarketViewModel extends ChangeNotifier {
   int get lineupCount => _myTeam?.lineupPlayerIds.length ?? 0;
   bool _isInitialized = false;
 
+  void _markDirtyAndNotify() {
+    _isFilterDirty = true;
+    if (!_isDisposed) notifyListeners();
+  }
+
   Future<void> init(List<Team> teams,
       {String? requiredPosition, String? userId, String? seasonId}) async {
     if (_isInitialized) return;
@@ -74,6 +84,7 @@ class FantasyMarketViewModel extends ChangeNotifier {
 
     if (requiredPosition != null) {
       _selectedPosition = requiredPosition;
+      _isFilterDirty = true;
     }
     _marketSub?.cancel();
     _marketSub = _repository.streamMarketStatus().listen((status) {
@@ -117,10 +128,11 @@ class FantasyMarketViewModel extends ChangeNotifier {
           ...team.lineupPlayerIds,
           ...team.benchPlayerIds,
         };
+        _isFilterDirty = true;
       }
       if (!_isDisposed) notifyListeners();
     }, onError: (e) {
-      print("Error streaming user team: $e");
+      debugPrint("Error streaming user team: $e");
     });
   }
 
@@ -169,12 +181,13 @@ class FantasyMarketViewModel extends ChangeNotifier {
 
       _allPlayers = players;
       _teamOptions = options;
+      _isFilterDirty = true;
       _updatePriceBounds();
     } catch (e) {
-      print("Error loading market data: $e");
+      debugPrint("Error loading market data: $e");
     } finally {
       _isLoading = false;
-      notifyListeners();
+      _markDirtyAndNotify();
     }
   }
 
@@ -208,20 +221,20 @@ class FantasyMarketViewModel extends ChangeNotifier {
     final coversAll =
         range.start <= _priceBoundsMin && range.end >= _priceBoundsMax;
     _priceRange = coversAll ? null : range;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void clearPriceRange() {
     _displayLimit = 20;
     _priceRange = null;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   Future<void> _loadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
     final favs = prefs.getStringList('fantasy_favorites') ?? [];
     _favoriteIds = favs.toSet();
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   Future<void> toggleFavorite(String playerId) async {
@@ -230,7 +243,7 @@ class FantasyMarketViewModel extends ChangeNotifier {
     } else {
       _favoriteIds.add(playerId);
     }
-    notifyListeners();
+    _markDirtyAndNotify();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('fantasy_favorites', _favoriteIds.toList());
@@ -239,53 +252,53 @@ class FantasyMarketViewModel extends ChangeNotifier {
   void setPosition(String position) {
     _displayLimit = 20;
     _selectedPosition = position;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void setTeamId(String teamId) {
     _displayLimit = 20;
     _selectedTeamId = teamId;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void setSort(String sort) {
     _displayLimit = 20;
     _selectedSort = sort;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void setSearchTerm(String term) {
     _displayLimit = 20;
     _searchTerm = term;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void setOnlyProbable(bool value) {
     _displayLimit = 20;
     _onlyProbable = value;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void loadMore() {
     _displayLimit += 20;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
   }
 
   void setOnlyFavorites(bool value) {
     _displayLimit = 20;
     _onlyFavorites = value;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void setHideFielded(bool value) {
     _displayLimit = 20;
     _hideFielded = value;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   void setFieldedPlayerIds(Set<String> ids) {
     _fieldedPlayerIds = ids;
-    notifyListeners();
+    _markDirtyAndNotify();
   }
 
   static String normalizePosition(String pos) {
@@ -305,59 +318,53 @@ class FantasyMarketViewModel extends ChangeNotifier {
     return false;
   }
 
-  List<FantasyPlayer> get filteredPlayers {
-    List<FantasyPlayer> players = List.from(_allPlayers);
+  void _recomputeFilteredPlayers() {
+    final targetNorm = normalizePosition(_selectedPosition);
+    final bool filterTeam = _selectedTeamId != 'Todos';
+    final String termLower = _searchTerm.trim().toLowerCase();
+    final bool filterSearch = termLower.isNotEmpty;
+    final RangeValues? range = _priceRange;
+    final bool filterFielded = _hideFielded && _fieldedPlayerIds.isNotEmpty;
 
-    // Filter by position (robusto contra variações de acentuação e posições secundárias)
-    final targetPos = _selectedPosition;
-    players = players.where((p) => matchesPosition(p.position, p.secondaryPosition, targetPos)).toList();
+    final List<FantasyPlayer> players = [];
+    for (final p in _allPlayers) {
+      // 1. Position
+      final bool posMatch = normalizePosition(p.position) == targetNorm ||
+          (p.secondaryPosition != null &&
+              p.secondaryPosition!.isNotEmpty &&
+              normalizePosition(p.secondaryPosition!) == targetNorm);
+      if (!posMatch) continue;
 
-    // Filter by team
-    if (_selectedTeamId != 'Todos') {
-      players = players.where((p) => p.teamId == _selectedTeamId).toList();
+      // 2. Team
+      if (filterTeam && p.teamId != _selectedTeamId) continue;
+
+      // 3. Search
+      if (filterSearch && !p.name.toLowerCase().contains(termLower)) continue;
+
+      // 4. Status
+      if (_onlyProbable &&
+          p.status != 'provável' &&
+          p.status != 'confirmed' &&
+          p.status != 'probable') {
+        continue;
+      }
+
+      // 5. Price range
+      if (range != null &&
+          (p.currentPrice < range.start - 0.005 ||
+              p.currentPrice > range.end + 0.005)) {
+        continue;
+      }
+
+      // 6. Favorites
+      if (_onlyFavorites && !_favoriteIds.contains(p.playerId)) continue;
+
+      // 7. Fielded
+      if (filterFielded && _fieldedPlayerIds.contains(p.playerId)) continue;
+
+      players.add(p);
     }
 
-    // Filter by search
-    if (_searchTerm.isNotEmpty) {
-      final term = _searchTerm.toLowerCase();
-      players =
-          players.where((p) => p.name.toLowerCase().contains(term)).toList();
-    }
-
-    // Filter by status (Probable)
-    if (_onlyProbable) {
-      players = players
-          .where((p) =>
-              p.status == 'provável' ||
-              p.status == 'confirmed' ||
-              p.status == 'probable')
-          .toList();
-    }
-
-    // Filter by price range
-    if (_priceRange != null) {
-      final range = _priceRange!;
-      players = players
-          .where((p) =>
-              p.currentPrice >= range.start - 0.005 &&
-              p.currentPrice <= range.end + 0.005)
-          .toList();
-    }
-
-    // Filter by favorites
-    if (_onlyFavorites) {
-      players =
-          players.where((p) => _favoriteIds.contains(p.playerId)).toList();
-    }
-
-    // Filter by already fielded
-    if (_hideFielded && _fieldedPlayerIds.isNotEmpty) {
-      players = players
-          .where((p) => !_fieldedPlayerIds.contains(p.playerId))
-          .toList();
-    }
-
-    // Sort
     if (_selectedSort == 'Preço') {
       players.sort((a, b) => b.currentPrice.compareTo(a.currentPrice));
     } else if (_selectedSort == 'Média') {
@@ -368,7 +375,15 @@ class FantasyMarketViewModel extends ChangeNotifier {
       players.sort((a, b) => b.lastPriceChange.compareTo(a.lastPriceChange));
     }
 
+    _cachedFilteredPlayers = players;
     _totalMatchingCount = players.length;
-    return players.take(_displayLimit).toList();
+    _isFilterDirty = false;
+  }
+
+  List<FantasyPlayer> get filteredPlayers {
+    if (_isFilterDirty) {
+      _recomputeFilteredPlayers();
+    }
+    return _cachedFilteredPlayers.take(_displayLimit).toList();
   }
 }

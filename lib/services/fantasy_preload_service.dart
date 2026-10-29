@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'fantasy_service.dart';
 import 'fantasy_auth_service.dart';
 import 'championship_service.dart';
@@ -49,14 +50,20 @@ class FantasyPreloadService {
             Provider.of<FantasyAuthService>(context, listen: false);
         userId = authService.user?.uid;
       } catch (_) {}
+      
+      // Fallback para FirebaseAuth nativo se o AuthService ainda estiver em transição
+      userId ??= FirebaseAuth.instance.currentUser?.uid;
 
       try {
         final champService =
             Provider.of<ChampionshipService>(context, listen: false);
+        if (champService.currentSeasonId.isEmpty) {
+          await champService.ensureInitialized();
+        }
         seasonId = champService.currentSeasonId;
       } catch (_) {}
 
-      // 2. Dispara aquecimento em paralelo com timeout de segurança
+      // 2. Dispara aquecimento em paralelo com timeout generoso (aproveitando os 5 segundos de Splash)
       await Future.wait([
         // Carrega jogadores do mercado para a memória RAM
         repo.getAllPlayers(),
@@ -68,12 +75,12 @@ class FantasyPreloadService {
 
       // 3. Se temos o ViewModel do Fantasy registrado globalmente e usuário autenticado,
       // já inicializa o ViewModel para que quando o usuário abrir a tela, esteja 100% pronto
-      if (context.mounted && userId != null && userId.isNotEmpty) {
+      if (context.mounted && userId != null && userId.isNotEmpty && seasonId != null && seasonId.isNotEmpty) {
         try {
           final vm =
               Provider.of<FantasyHomeViewModel>(context, listen: false);
           if (!vm.isDisposed && vm.team == null) {
-            vm.init(userId, seasonId ?? '');
+            vm.init(userId, seasonId);
           }
         } catch (_) {}
       }

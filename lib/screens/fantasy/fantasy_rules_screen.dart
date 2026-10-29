@@ -296,14 +296,28 @@ class FantasyRulesScreen extends StatelessWidget {
         _buildRuleCard(
           Icons.star_rounded,
           "Faixa de Capitão",
-          "O jogador escolhido como Capitão terá a sua pontuação multiplicada por 2x (seja ela positiva ou negativa). Escolha com sabedoria!",
+          "O atleta de linha ou goleiro escolhido como Capitão (Técnico não pode ser Capitão) terá sua pontuação multiplicada por 2x (positiva ou negativa). Caso o Capitão titular seja substituído por um reserva (por ausência ou Reserva de Luxo), o substituto herda a braçadeira e pontua 2x!",
           Colors.amber[600]!,
+        ),
+        const SizedBox(height: 16),
+        _buildRuleCard(
+          Icons.event_seat_rounded,
+          "Banco de Reservas",
+          "O banco é gratuito (não desconta das cartoletas), mas o reserva de cada posição deve custar igual ou menos que o titular mais barato daquela posição. Se um titular não entrar em quadra na rodada e o reserva da mesma posição jogar, o reserva entra automaticamente.",
+          Colors.indigo[600]!,
+        ),
+        const SizedBox(height: 16),
+        _buildRuleCard(
+          Icons.diamond_rounded,
+          "Reserva de Luxo",
+          "Você pode escolher 1 jogador do banco (exceto Técnico) como Reserva de Luxo. Se TODOS os titulares da posição dele entrarem em quadra e o Reserva de Luxo fizer uma pontuação estritamente maior que o pior titular da posição, ele substitui esse titular (e herda o 2x caso substitua o Capitão).",
+          Colors.purple[600]!,
         ),
         const SizedBox(height: 16),
         _buildRuleCard(
           Icons.store_rounded,
           "Fechamento do Mercado",
-          "O mercado fecha exatamente 20 minutos antes do primeiro jogo da rodada e só reabre após o término de todos os jogos.",
+          "O mercado fecha exatamente 20 minutos antes do primeiro jogo da rodada e só reabre após o término e apuração de todos os jogos concluídos.",
           Colors.blue[700]!,
         ),
         const SizedBox(height: 16),
@@ -357,7 +371,7 @@ class FantasyRulesScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 18,
                         color: Colors.black87)),

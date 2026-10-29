@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
+import '../../widgets/youtube/universal_youtube_player.dart';
+import '../../utils/youtube_utils.dart';
 
 import '../../models/poll_model.dart';
 import '../../models/player_model.dart';
@@ -21,7 +22,7 @@ class VotingScreen extends StatefulWidget {
 }
 
 class _VotingScreenState extends State<VotingScreen> {
-  YoutubePlayerController? _ytController;
+  String? _videoId;
   bool _hasVoted = false;
   bool _isCheckingVote = true;
   String? _userVotedNomineeId;
@@ -59,19 +60,7 @@ class _VotingScreenState extends State<VotingScreen> {
 
   void _initializeVideo() {
     if (widget.poll.videoUrl != null && widget.poll.videoUrl!.isNotEmpty) {
-      final videoId = YoutubePlayerController.convertUrlToId(widget.poll.videoUrl!);
-      if (videoId != null) {
-        _ytController = YoutubePlayerController.fromVideoId(
-          videoId: videoId,
-          autoPlay: false,
-          params: const YoutubePlayerParams(
-            showControls: true,
-            mute: false,
-            showFullscreenButton: true,
-            loop: false,
-          ),
-        );
-      }
+      _videoId = YoutubeUtils.extractVideoId(widget.poll.videoUrl!);
     }
   }
 
@@ -175,7 +164,6 @@ class _VotingScreenState extends State<VotingScreen> {
 
   @override
   void dispose() {
-    _ytController?.close();
     super.dispose();
   }
 
@@ -217,7 +205,7 @@ class _VotingScreenState extends State<VotingScreen> {
               ],
             ),
           ),
-          if (_ytController != null)
+          if (_videoId != null)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
@@ -226,7 +214,12 @@ class _VotingScreenState extends State<VotingScreen> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: YoutubePlayer(controller: _ytController!),
+                child: UniversalYoutubePlayer(
+                  key: ValueKey(_videoId),
+                  videoId: _videoId!,
+                  autoPlay: false,
+                  aspectRatio: 16 / 9,
+                ),
               ),
             ),
           const SizedBox(height: 8),

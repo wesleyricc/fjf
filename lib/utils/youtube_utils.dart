@@ -12,9 +12,9 @@ class YoutubeUtils {
       return idFromPkg;
     }
 
-    // 2. Regex abrangente para cobrir Shorts, Live, Embeds e query strings variadas
+    // 2. Regex abrangente para cobrir Shorts, Live, Embeds, parâmetros si= e query strings variadas
     final RegExp regExp = RegExp(
-      r'^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[?&].*)?$',
+      r'^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|shorts\/|live\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[/?&].*)?$',
       caseSensitive: false,
     );
 
@@ -23,7 +23,27 @@ class YoutubeUtils {
       return match.group(1);
     }
 
-    // 3. Fallback: Se o usuário colou diretamente o ID de 11 caracteres
+    // 3. Fallback inteligente usando Uri
+    try {
+      final uri = Uri.parse(cleanUrl.startsWith('http') ? cleanUrl : 'https://$cleanUrl');
+      if (uri.queryParameters.containsKey('v')) {
+        final v = uri.queryParameters['v'];
+        if (v != null && v.length == 11) return v;
+      }
+      if (uri.host.contains('youtu.be') && uri.pathSegments.isNotEmpty) {
+        final firstSeg = uri.pathSegments.first;
+        if (firstSeg.length == 11) return firstSeg;
+      }
+      for (final type in ['shorts', 'live', 'embed', 'v']) {
+        final idx = uri.pathSegments.indexOf(type);
+        if (idx != -1 && idx + 1 < uri.pathSegments.length) {
+          final seg = uri.pathSegments[idx + 1];
+          if (seg.length == 11) return seg;
+        }
+      }
+    } catch (_) {}
+
+    // 4. Fallback: Se o usuário colou diretamente o ID de 11 caracteres
     if (RegExp(r'^[a-zA-Z0-9_-]{11}$').hasMatch(cleanUrl)) {
       return cleanUrl;
     }

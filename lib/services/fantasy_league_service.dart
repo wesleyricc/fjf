@@ -302,7 +302,7 @@ class FantasyLeagueService {
 
       if (kIsWeb) {
         final bytes = await imageFile.readAsBytes();
-        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg', cacheControl: 'public, max-age=31536000'));
       } else {
         await ref.putFile(File(imageFile.path), SettableMetadata(contentType: 'image/jpeg'));
       }

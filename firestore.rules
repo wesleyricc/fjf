@@ -73,18 +73,33 @@ service cloud.firestore {
       // 🚨 DEVSECOPS: Validação Estrita do Mercado (Blindagem Total e Whitelist)
       // 1. Patrimônio (team_value), pontuação e identificadores NUNCA podem ser alterados pelo cliente comum.
       // 2. Saldo (current_balance) deve ser >= 0 e nunca superior ao team_value cadastrado no servidor.
-      // 3. Limite estrito de no máximo 6 titulares e 5 reservas.
-      // 4. Quando o mercado está FECHADO, o usuário SÓ PODE alterar dados visuais/cadastrais (whitelist estrita).
-      // 5. Quando o mercado está ABERTO (e dentro do horário limite), pode escalar titulares, reservas, capitão e saldo.
+      // 3. Limite estrito de no máximo 6 titulares e 5 reservas, sem IDs duplicados ou sobrepostos.
+      // 4. Capitão deve ser um titular (exceto Técnico - slot 6) e Reserva de Luxo deve estar no banco (exceto Técnico - slot 16).
+      // 5. Quando o mercado está FECHADO, o usuário SÓ PODE alterar dados visuais/cadastrais (whitelist estrita).
       allow update: if isAdmin() || (
         isOwner(userId) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-          'team_value', 'total_points', 'last_score', 'owner_id', 'user_id', 'id'
+          'team_value', 'total_points', 'last_score', 'last_variation', 'owner_id', 'user_id', 'id'
         ]) &&
         request.resource.data.get('current_balance', 0) >= 0 &&
         request.resource.data.get('current_balance', 0) <= resource.data.get('team_value', 50) &&
         request.resource.data.get('lineup_player_ids', []).size() <= 6 &&
-        request.resource.data.get('bench_player_ids', []).size() <= 5 && (
+        request.resource.data.get('bench_player_ids', []).size() <= 5 &&
+        request.resource.data.get('lineup_player_ids', []).toSet().size() == request.resource.data.get('lineup_player_ids', []).size() &&
+        request.resource.data.get('bench_player_ids', []).toSet().size() == request.resource.data.get('bench_player_ids', []).size() &&
+        !request.resource.data.get('lineup_player_ids', []).hasAny(request.resource.data.get('bench_player_ids', [])) &&
+        (
+          request.resource.data.get('captain_id', null) == null || (
+            request.resource.data.get('captain_id', null) in request.resource.data.get('lineup_player_ids', []) &&
+            request.resource.data.get('lineup_slots', {}).get('6', '') != request.resource.data.get('captain_id', '')
+          )
+        ) &&
+        (
+          request.resource.data.get('luxury_reserve_id', null) == null || (
+            request.resource.data.get('luxury_reserve_id', null) in request.resource.data.get('bench_player_ids', []) &&
+            request.resource.data.get('bench_slots', {}).get('16', '') != request.resource.data.get('luxury_reserve_id', '')
+          )
+        ) && (
           isFantasyMarketOpen() ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'team_name', 'shield_type', 'custom_logo_url', 'owner_name', 'owner_cpf', 'owner_phone', 'updated_at'

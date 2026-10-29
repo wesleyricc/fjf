@@ -80,9 +80,12 @@ class Team {
 
   factory Team.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
+    return Team.fromMap(doc.id, data);
+  }
 
+  factory Team.fromMap(String id, Map<String, dynamic> data) {
     return Team(
-      id: doc.id,
+      id: id,
       name: data['name'] ?? 'Time Desconhecido',
       shortName: data['short_name'] ?? '',
       shieldUrl: (data['shield_url'] ??
@@ -94,7 +97,9 @@ class Team {
               data['shield'] ??
               '')
           .toString(),
-      championshipHistory: List<Map<String, dynamic>>.from(data['championship_history'] ?? []),
+      championshipHistory: (data['championship_history'] as List<dynamic>? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
       
       // 1ª Fase
       points: (data['points'] as num?)?.toInt() ?? 0,

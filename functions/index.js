@@ -430,21 +430,30 @@ exports.closeRound = onCall({
       throw new HttpsError('failed-precondition', `Nenhuma partida encontrada para a rodada ${round}.`);
     }
 
-    const hasAnyScouts = matchesSnap.docs.some(doc => {
+    // Regra Oficial: Considerar apenas partidas com status = finished no fechamento da rodada
+    const finishedMatches = matchesSnap.docs.filter(doc => doc.data().status === 'finished');
+
+    if (finishedMatches.length === 0) {
+      throw new HttpsError('failed-precondition', `A rodada ${round} não possui partidas encerradas (status = finished).`);
+    }
+
+    const hasAnyScouts = finishedMatches.some(doc => {
       const d = doc.data();
       return (d.lineup_played && Array.isArray(d.lineup_played) && d.lineup_played.length > 0) ||
              (d.stats_applied && d.stats_applied.player_stats);
     });
 
     if (!hasAnyScouts) {
-      throw new HttpsError('failed-precondition', `A rodada ${round} não possui partidas com súmula ou atletas confirmados.`);
+      throw new HttpsError('failed-precondition', `A rodada ${round} não possui partidas encerradas com súmula ou atletas confirmados.`);
     }
 
     const scoresMap = {};
     const teamCleanSheets = {};
+    const teamPlayedMatch = {};
+    const teamGoalsAgainst = {};
     const playersPlayedSet = new Set();
 
-    matchesSnap.forEach(doc => {
+    finishedMatches.forEach(doc => {
       const data = doc.data();
 
       // Mapeamento de Presença (quem jogou)
@@ -452,16 +461,23 @@ exports.closeRound = onCall({
         data.lineup_played.forEach(pid => playersPlayedSet.add(pid.toString()));
       }
 
-      const scoreHome = data.score_home || 0;
-      const scoreAway = data.score_away || 0;
-      if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
-      if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
+      const scoreHome = Number(data.score_home) || 0;
+      const scoreAway = Number(data.score_away) || 0;
+      if (data.team_home_id) {
+        teamPlayedMatch[data.team_home_id] = true;
+        teamGoalsAgainst[data.team_home_id] = (teamGoalsAgainst[data.team_home_id] || 0) + scoreAway;
+      }
+      if (data.team_away_id) {
+        teamPlayedMatch[data.team_away_id] = true;
+        teamGoalsAgainst[data.team_away_id] = (teamGoalsAgainst[data.team_away_id] || 0) + scoreHome;
+      }
 
       // Craque do Jogo (MOTM) pontua independentemente de stats_applied.player_stats
       const motmPid = data.stats_applied?.man_of_the_match || data.man_of_the_match;
       if (motmPid) {
         const strMotm = motmPid.toString();
         scoresMap[strMotm] = (scoresMap[strMotm] || 0) + ptsMotm;
+        playersPlayedSet.add(strMotm);
       }
 
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
@@ -480,14 +496,28 @@ exports.closeRound = onCall({
         difficult_saves: config.ptsDifficultSave
       };
 
+      if (stats.goals_conceded) {
+        Object.keys(stats.goals_conceded).forEach(pid => playersPlayedSet.add(pid.toString()));
+      }
+
       ['goals', 'assists', 'yellows', 'reds', 'penalties_saved', 'penalties_missed', 'shots_on_post', 'own_goals', 'direct_free_kicks_missed', 'difficult_saves'].forEach(cat => {
         if (stats[cat]) {
           Object.entries(stats[cat]).forEach(([pid, val]) => {
-            const points = (Number(val) || 0) * (ptsRules[cat] || 0);
+            const count = Number(val) || 0;
+            const points = count * (ptsRules[cat] || 0);
             scoresMap[pid] = (scoresMap[pid] || 0) + points;
+            if (count > 0) {
+              playersPlayedSet.add(pid.toString());
+            }
           });
         }
       });
+    });
+
+    Object.keys(teamPlayedMatch).forEach(tId => {
+      if (teamGoalsAgainst[tId] === 0) {
+        teamCleanSheets[tId] = true;
+      }
     });
 
     const allPlayersSnap = await db.collection('fantasy_market_players').get();
@@ -613,10 +643,13 @@ exports.closeRound = onCall({
 
     const oldTeamHistoriesSnap = await db.collectionGroup('history').where('round', '==', round).get();
     const oldTeamPointsMap = {};
+    const oldTeamHistoriesMap = {};
     oldTeamHistoriesSnap.forEach(doc => {
       // O caminho é fantasy_teams/{teamId}/history/{round}
       const teamId = doc.ref.parent.parent.id;
-      oldTeamPointsMap[teamId] = doc.data().points || 0;
+      const hData = doc.data();
+      oldTeamPointsMap[teamId] = hData.points || 0;
+      oldTeamHistoriesMap[teamId] = hData;
     });
 
     // 🏆 FinOps: Busca o patrimônio da rodada anterior para cálculo exato da valorização da rodada
@@ -633,8 +666,9 @@ exports.closeRound = onCall({
 
     const playerPickedCount = {};
     const teamRoundScores = {};
-    const teamPatrimony = {}; // NOVO
-    const teamVariations = {}; // NOVO: Variação de cartoletas da rodada
+    const teamPatrimony = {};
+    const teamTotalPointsMap = {};
+    const teamVariations = {};
 
     // 📊 FinOps: Métricas consolidadas da rodada para tela inicial (Média, Mito, Menor pontuação, Maior/Menor valorização)
     let totalTeamsCount = 0;
@@ -647,10 +681,21 @@ exports.closeRound = onCall({
 
     userTeamsSnap.forEach(doc => {
       const team = doc.data();
-      const originalLineup = team.lineup_player_ids || [];
-      const benchIds = team.bench_player_ids || [];
-      const captainId = team.captain_id || null;
-      const luxuryReserveId = team.luxury_reserve_id || null;
+      const oldHistory = oldTeamHistoriesMap[doc.id] || null;
+
+      // No reprocessamento de rodada já encerrada, preserva o snapshot da escalação daquela rodada
+      const originalLineup = (oldHistory && Array.isArray(oldHistory.lineup_snapshot))
+        ? oldHistory.lineup_snapshot
+        : (team.lineup_player_ids || []);
+      const benchIds = (oldHistory && Array.isArray(oldHistory.bench_snapshot))
+        ? oldHistory.bench_snapshot
+        : (team.bench_player_ids || []);
+      const captainId = (oldHistory && oldHistory.original_captain_id !== undefined)
+        ? oldHistory.original_captain_id
+        : (team.captain_id || null);
+      const luxuryReserveId = (oldHistory && oldHistory.luxury_reserve_snapshot !== undefined)
+        ? oldHistory.luxury_reserve_snapshot
+        : (team.luxury_reserve_id || null);
 
       // Conta para Mais Escalados
       originalLineup.forEach(pid => {
@@ -661,8 +706,12 @@ exports.closeRound = onCall({
       let substitutedList = [];
       let activeCaptainId = captainId;
 
-      const lineupSlots = team.lineup_slots || {};
-      const benchSlots = team.bench_slots || {};
+      const lineupSlots = (oldHistory && oldHistory.lineup_slots_snapshot)
+        ? oldHistory.lineup_slots_snapshot
+        : (team.lineup_slots || {});
+      const benchSlots = (oldHistory && oldHistory.bench_slots_snapshot)
+        ? oldHistory.bench_slots_snapshot
+        : (team.bench_slots || {});
 
       // Mapeia os titulares para as posições com base estritamente no SLOT onde foram escalados
       const startersByPos = {
@@ -806,9 +855,10 @@ exports.closeRound = onCall({
 
       const rawBalance = team.current_balance !== undefined ? team.current_balance : (team.balance || 0);
       const teamValue = team.team_value || 50.0;
-      // O saldo em caixa nunca pode ser maior do que (team_value - custo inicial dos atletas escalados)
-      const maxPossibleBalance = Math.max(0, Number((teamValue - playersInitialCost).toFixed(2)));
-      const safeBalance = Math.min(rawBalance, maxPossibleBalance);
+      // No reprocessamento, recupera o saldo livre que o time tinha na rodada para não somar valorização em dobro
+      const safeBalance = (oldHistory && oldHistory.balance !== undefined)
+        ? Number(oldHistory.balance)
+        : Math.min(rawBalance, Math.max(0, Number((teamValue - playersInitialCost).toFixed(2))));
 
       const totalPatrimony = Number((safeBalance + playersCurrentValue).toFixed(2));
       teamPatrimony[doc.id] = totalPatrimony;
@@ -816,7 +866,11 @@ exports.closeRound = onCall({
       // 💰 Cálculo da variação de patrimônio da rodada (Cartoletas)
       const prevPatrimony = round === 1
         ? 50.0
-        : (prevRoundHistoriesMap[doc.id] !== undefined ? prevRoundHistoriesMap[doc.id] : (team.team_value || 50.0));
+        : (prevRoundHistoriesMap[doc.id] !== undefined
+          ? prevRoundHistoriesMap[doc.id]
+          : (oldHistory && oldHistory.patrimony !== undefined && oldHistory.variation !== undefined
+            ? Number((oldHistory.patrimony - oldHistory.variation).toFixed(2))
+            : (team.team_value || 50.0)));
       const roundVariation = Number((totalPatrimony - prevPatrimony).toFixed(2));
       teamVariations[doc.id] = roundVariation;
 
@@ -831,7 +885,11 @@ exports.closeRound = onCall({
         processed_at: admin.firestore.Timestamp.now(),
         captain_id: activeCaptainId,
         original_captain_id: captainId,
+        luxury_reserve_snapshot: luxuryReserveId,
         lineup_snapshot: originalLineup,
+        bench_snapshot: benchIds,
+        lineup_slots_snapshot: lineupSlots,
+        bench_slots_snapshot: benchSlots,
         final_lineup: finalLineup,
         substitutions: substitutedList
       });
@@ -841,13 +899,25 @@ exports.closeRound = onCall({
         baseTotalPoints -= oldTeamPointsMap[doc.id]; // Subtrai a pontuação anterior para não duplicar no reprocessamento
       }
       const newTotalPoints = Number((baseTotalPoints + roundPoints).toFixed(2));
+      teamTotalPointsMap[doc.id] = newTotalPoints;
+
+      // Se for reprocessamento e o usuário já tiver alterado o time para a rodada seguinte, ajusta apenas o delta de patrimônio
+      const currentLineupIds = team.lineup_player_ids || [];
+      const lineupUnchanged = JSON.stringify(currentLineupIds) === JSON.stringify(originalLineup);
+      let updatedTeamValue = totalPatrimony;
+      let updatedBalance = safeBalance;
+      if (oldHistory && !lineupUnchanged && oldHistory.patrimony !== undefined) {
+        const patrimonyDelta = Number((totalPatrimony - oldHistory.patrimony).toFixed(2));
+        updatedTeamValue = Math.max(config.minPrice, Number((teamValue + patrimonyDelta).toFixed(2)));
+        updatedBalance = Math.max(0, Number((rawBalance + patrimonyDelta).toFixed(2)));
+      }
 
       batchHandler.update(doc.ref, {
         total_points: newTotalPoints,
         last_score: roundPoints,
-        team_value: totalPatrimony,
+        team_value: updatedTeamValue,
         last_variation: roundVariation,
-        current_balance: safeBalance,
+        current_balance: updatedBalance,
         balance: admin.firestore.FieldValue.delete(), // Limpa campo legado
         updated_at: admin.firestore.Timestamp.now()
       });
@@ -1006,31 +1076,48 @@ exports.closeRound = onCall({
 
       for (let kMatchDoc of kMatchesSnap.docs) {
         const kMatch = kMatchDoc.data();
-        const scoreA = teamRoundScores[kMatch.teamAId] || 0;
-        const scoreB = teamRoundScores[kMatch.teamBId] || 0;
+        const teamAId = kMatch.team_a_id || kMatch.teamAId || null;
+        const teamBId = kMatch.team_b_id || kMatch.teamBId || null;
+        const matchIndex = kMatch.match_index !== undefined
+          ? Number(kMatch.match_index)
+          : (kMatch.matchIndex !== undefined ? Number(kMatch.matchIndex) : 0);
+
+        const scoreA = teamAId ? (teamRoundScores[teamAId] || 0) : 0;
+        const scoreB = teamBId ? (teamRoundScores[teamBId] || 0) : 0;
 
         let winnerId = null;
-        let loserId = null;
 
-        if (scoreA > scoreB) {
-          winnerId = kMatch.teamAId; loserId = kMatch.teamBId;
+        if (!teamAId && teamBId) {
+          winnerId = teamBId;
+        } else if (teamAId && !teamBId) {
+          winnerId = teamAId;
+        } else if (scoreA > scoreB) {
+          winnerId = teamAId;
         } else if (scoreB > scoreA) {
-          winnerId = kMatch.teamBId; loserId = kMatch.teamAId;
+          winnerId = teamBId;
         } else {
-          // Desempate por patrimônio
-          const patA = teamPatrimony[kMatch.teamAId] || 0;
-          const patB = teamPatrimony[kMatch.teamBId] || 0;
-          if (patA !== patB) {
-            winnerId = patA > patB ? kMatch.teamAId : kMatch.teamBId;
-            loserId = patA > patB ? kMatch.teamBId : kMatch.teamAId;
+          // 1º Desempate: Pontuação geral do campeonato (total_points)
+          const totalA = teamTotalPointsMap[teamAId] || 0;
+          const totalB = teamTotalPointsMap[teamBId] || 0;
+          if (totalA !== totalB) {
+            winnerId = totalA > totalB ? teamAId : teamBId;
           } else {
-            // Sorteio em caso de empate total
-            winnerId = Math.random() > 0.5 ? kMatch.teamAId : kMatch.teamBId;
-            loserId = winnerId === kMatch.teamAId ? kMatch.teamBId : kMatch.teamAId;
+            // 2º Desempate: Patrimônio
+            const patA = teamPatrimony[teamAId] || 0;
+            const patB = teamPatrimony[teamBId] || 0;
+            if (patA !== patB) {
+              winnerId = patA > patB ? teamAId : teamBId;
+            } else {
+              // 3º Desempate determinístico (evita inversão em reprocessamento)
+              winnerId = String(teamAId || '').localeCompare(String(teamBId || '')) <= 0 ? teamAId : teamBId;
+            }
           }
         }
 
         batchHandler.update(kMatchDoc.ref, {
+          team_a_score: scoreA,
+          team_b_score: scoreB,
+          winner_id: winnerId,
           scoreA: scoreA,
           scoreB: scoreB,
           winnerId: winnerId
@@ -1038,8 +1125,8 @@ exports.closeRound = onCall({
 
         // Promove o vencedor
         if (totalMatchesInRound > 1) {
-          const nextMatchIndex = Math.floor(kMatch.matchIndex / 2);
-          const isTeamAForNext = kMatch.matchIndex % 2 === 0;
+          const nextMatchIndex = Math.floor(matchIndex / 2);
+          const isTeamAForNext = matchIndex % 2 === 0;
 
           const nextPhase = totalMatchesInRound === 2 ? 'Final' :
             totalMatchesInRound === 4 ? 'Semi' :
@@ -1048,11 +1135,16 @@ exports.closeRound = onCall({
           const nextMatchId = `match_${round + 1}_${nextMatchIndex}`;
           const nextMatchRef = db.collection('fantasy_leagues').doc(leagueId).collection('matches').doc(nextMatchId);
 
+          const nextTeamField = isTeamAForNext ? 'team_a_id' : 'team_b_id';
+          const nextTeamLegacyField = isTeamAForNext ? 'teamAId' : 'teamBId';
+
           batchHandler.set(nextMatchRef, {
             phase: nextPhase,
             round: round + 1,
+            match_index: nextMatchIndex,
             matchIndex: nextMatchIndex,
-            [`team${isTeamAForNext ? 'A' : 'B'}Id`]: winnerId
+            [nextTeamField]: winnerId,
+            [nextTeamLegacyField]: winnerId
           }, { merge: true });
         } else {
           // É a Final, temos um Campeão!
@@ -1141,8 +1233,25 @@ exports.updateLiveScouts = onDocumentWritten({
   }
 
   try {
+    // 🔒 Se uma partida da rodada atual entrou em andamento (ou finalizou) e o mercado ainda estava aberto, fecha imediatamente
+    if (matchData.status === 'in_progress' || matchData.status === 'finished') {
+      const statusRef = db.collection('fantasy_config').doc('status');
+      const statusSnap = await statusRef.get();
+      if (statusSnap.exists) {
+        const sData = statusSnap.data();
+        if (sData.is_open === true && Number(sData.current_round || 1) === Number(round)) {
+          await statusRef.update({
+            is_open: false,
+            updated_at: admin.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`🔒 Mercado fechado automaticamente ao iniciar partida da rodada ${round}.`);
+        }
+      }
+    }
+
     const liveDocRef = db.collection('championships').doc(seasonId).collection('fantasy_live').doc(`round_${round}`);
     const liveDocSnap = await liveDocRef.get();
+    const wasAlreadyFinal = liveDocSnap.exists && liveDocSnap.data().is_final === true;
 
     let scoresMap = liveDocSnap.exists ? (liveDocSnap.data().scores || {}) : {};
 
@@ -1177,31 +1286,36 @@ exports.updateLiveScouts = onDocumentWritten({
     });
 
     const teamCleanSheets = {};
+    const teamPlayedMatch = {};
+    const teamGoalsAgainst = {};
     const playersPlayedSet = new Set();
 
     matchesSnap.forEach(doc => {
       const data = doc.data();
 
+      // Apenas partidas iniciadas ou encerradas contabilizam presença, SG e scouts ao vivo
       const isMatchStarted = data.status === 'in_progress' || data.status === 'finished';
-      const hasLineup = Array.isArray(data.lineup_played) && data.lineup_played.length > 0;
+      if (!isMatchStarted) return;
 
-      if (isMatchStarted || hasLineup) {
-        if (isMatchStarted) {
-          const scoreHome = data.score_home || 0;
-          const scoreAway = data.score_away || 0;
-          if (scoreAway === 0) teamCleanSheets[data.team_home_id] = true;
-          if (scoreHome === 0) teamCleanSheets[data.team_away_id] = true;
-        }
-
-        const lineups = data.lineup_played || [];
-        lineups.forEach(pid => {
-          const strPid = pid.toString();
-          playersPlayedSet.add(strPid);
-          if (!scoresMap[strPid]) {
-            scoresMap[strPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
-          }
-        });
+      const scoreHome = Number(data.score_home) || 0;
+      const scoreAway = Number(data.score_away) || 0;
+      if (data.team_home_id) {
+        teamPlayedMatch[data.team_home_id] = true;
+        teamGoalsAgainst[data.team_home_id] = (teamGoalsAgainst[data.team_home_id] || 0) + scoreAway;
       }
+      if (data.team_away_id) {
+        teamPlayedMatch[data.team_away_id] = true;
+        teamGoalsAgainst[data.team_away_id] = (teamGoalsAgainst[data.team_away_id] || 0) + scoreHome;
+      }
+
+      const lineups = Array.isArray(data.lineup_played) ? data.lineup_played : [];
+      lineups.forEach(pid => {
+        const strPid = pid.toString();
+        playersPlayedSet.add(strPid);
+        if (!scoresMap[strPid]) {
+          scoresMap[strPid] = { totalScore: 0, goals: 0, assists: 0, yellows: 0, reds: 0, goals_conceded: 0, penalties_saved: 0, penalties_missed: 0, shots_on_post: 0, clean_sheets: 0, own_goals: 0, direct_free_kicks_missed: 0, motm: 0, difficult_saves: 0 };
+        }
+      });
 
       const motmPid = data.stats_applied?.man_of_the_match || data.man_of_the_match;
       if (motmPid) {
@@ -1216,18 +1330,6 @@ exports.updateLiveScouts = onDocumentWritten({
       if (!data.stats_applied || !data.stats_applied.player_stats) return;
 
       const stats = data.stats_applied.player_stats;
-      const ptsRules = {
-        goals: config.ptsGoal,
-        assists: config.ptsAssist,
-        yellows: config.ptsYellowCard,
-        reds: config.ptsRedCard,
-        penalties_saved: config.ptsPenaltySaved,
-        penalties_missed: config.ptsPenaltyMissed,
-        shots_on_post: config.ptsShotOnPost,
-        own_goals: config.ptsOwnGoal,
-        direct_free_kicks_missed: config.ptsDirectFreeKickMissed,
-        difficult_saves: config.ptsDifficultSave
-      };
 
       ['goals', 'assists', 'yellows', 'reds', 'goals_conceded', 'penalties_saved', 'penalties_missed', 'shots_on_post', 'own_goals', 'direct_free_kicks_missed', 'difficult_saves'].forEach(cat => {
         if (stats[cat]) {
@@ -1244,6 +1346,12 @@ exports.updateLiveScouts = onDocumentWritten({
           });
         }
       });
+    });
+
+    Object.keys(teamPlayedMatch).forEach(tId => {
+      if (teamGoalsAgainst[tId] === 0) {
+        teamCleanSheets[tId] = true;
+      }
     });
 
     const teamScores = {};
@@ -1303,8 +1411,8 @@ exports.updateLiveScouts = onDocumentWritten({
       players_played: Array.from(playersPlayedSet)
     }, { merge: true });
 
-    // 🏆 FinOps: Atualiza o Leaderboard Consolidado em tempo real
-    await updateLiveLeaderboard(seasonId, round, scoresMap, playersPlayedSet, playersInfo, false);
+    // 🏆 FinOps: Atualiza o Leaderboard Consolidado em tempo real (preservando is_final caso a rodada já tenha sido fechada)
+    await updateLiveLeaderboard(seasonId, round, scoresMap, playersPlayedSet, playersInfo, wasAlreadyFinal);
 
   } catch (error) {
     console.error("🔥 Erro ao atualizar Live Scouts:", error);
@@ -1330,16 +1438,39 @@ async function updateLiveLeaderboard(seasonId, round, scoresMap, playersPlayedSe
     const userTeamsSnap = await db.collection('fantasy_teams').get();
     if (userTeamsSnap.empty) return;
 
+    const oldTeamHistoriesMap = {};
+    if (isFinal) {
+      const oldHistSnap = await db.collectionGroup('history').where('round', '==', Number(round)).get();
+      oldHistSnap.forEach(hDoc => {
+        const teamId = hDoc.ref.parent.parent.id;
+        oldTeamHistoriesMap[teamId] = hDoc.data();
+      });
+    }
+
     const leaderboard = [];
 
     userTeamsSnap.forEach(doc => {
       const team = doc.data();
-      const originalLineup = team.lineup_player_ids || [];
-      const benchIds = team.bench_player_ids || [];
-      const captainId = team.captain_id || null;
-      const luxuryReserveId = team.luxury_reserve_id || null;
-      const lineupSlots = team.lineup_slots || {};
-      const benchSlots = team.bench_slots || {};
+      const oldHistory = oldTeamHistoriesMap[doc.id] || null;
+
+      const originalLineup = (oldHistory && Array.isArray(oldHistory.lineup_snapshot))
+        ? oldHistory.lineup_snapshot
+        : (team.lineup_player_ids || []);
+      const benchIds = (oldHistory && Array.isArray(oldHistory.bench_snapshot))
+        ? oldHistory.bench_snapshot
+        : (team.bench_player_ids || []);
+      const captainId = (oldHistory && oldHistory.original_captain_id !== undefined)
+        ? oldHistory.original_captain_id
+        : (team.captain_id || null);
+      const luxuryReserveId = (oldHistory && oldHistory.luxury_reserve_snapshot !== undefined)
+        ? oldHistory.luxury_reserve_snapshot
+        : (team.luxury_reserve_id || null);
+      const lineupSlots = (oldHistory && oldHistory.lineup_slots_snapshot)
+        ? oldHistory.lineup_slots_snapshot
+        : (team.lineup_slots || {});
+      const benchSlots = (oldHistory && oldHistory.bench_slots_snapshot)
+        ? oldHistory.bench_slots_snapshot
+        : (team.bench_slots || {});
 
       let finalLineup = [...originalLineup];
       let activeCaptainId = captainId;
@@ -1474,8 +1605,12 @@ async function updateLiveLeaderboard(seasonId, round, scoresMap, playersPlayedSe
 
       roundPoints = Number(roundPoints.toFixed(2));
 
+      const alreadyCreditedPoints = oldHistory && oldHistory.points !== undefined
+        ? Number(oldHistory.points)
+        : (team.last_score !== undefined ? Number(team.last_score) : roundPoints);
+
       const baseTotalPoints = isFinal
-        ? ((team.total_points || 0) - (team.last_score || roundPoints))
+        ? ((team.total_points || 0) - alreadyCreditedPoints)
         : (team.total_points || 0);
       const liveTotalPoints = Number((baseTotalPoints + roundPoints).toFixed(2));
 
@@ -1555,9 +1690,16 @@ exports.recalculateLiveLeaderboard = onCall({
   const playersPlayedSet = new Set();
   matchesSnap.forEach(doc => {
     const data = doc.data();
+    const isValidStatus = isFinal
+      ? data.status === 'finished'
+      : (data.status === 'in_progress' || data.status === 'finished');
+    if (!isValidStatus) return;
+
     if (data.lineup_played && Array.isArray(data.lineup_played)) {
       data.lineup_played.forEach(pid => playersPlayedSet.add(pid.toString()));
     }
+    const motmPid = data.stats_applied?.man_of_the_match || data.man_of_the_match;
+    if (motmPid) playersPlayedSet.add(motmPid.toString());
   });
 
   const allPlayersSnap = await db.collection('fantasy_market_players').get();
@@ -1591,6 +1733,27 @@ exports.autoCloseMarket = onSchedule({
     }
 
     const currentRound = statusData.current_round || 1;
+    const nowEarlyMs = Date.now();
+    const cachedClosingMs = statusData.closing_time ? statusData.closing_time.toMillis() : null;
+
+    // ⚡ FinOps: Se closing_time já foi calculado e atingido, fecha imediatamente sem consultar championships/matches
+    if (cachedClosingMs !== null && nowEarlyMs >= cachedClosingMs) {
+      await statusRef.update({
+        is_open: false,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO (via closing_time em cache) para a rodada ${currentRound}.`);
+      return;
+    }
+
+    // ⚡ FinOps: Se ainda falta mais de 30 minutos para o fechamento já agendado,
+    // só revalida a agenda de jogos a cada 30 minutos (economiza ~93% das leituras de championships e matches)
+    if (cachedClosingMs !== null && (cachedClosingMs - nowEarlyMs) > 30 * 60 * 1000) {
+      const currentMinute = new Date(nowEarlyMs).getMinutes();
+      if (currentMinute % 30 >= 2) {
+        return;
+      }
+    }
 
     const seasonsSnap = await db.collection('championships')
       .where('is_active', '==', true)
@@ -1600,20 +1763,35 @@ exports.autoCloseMarket = onSchedule({
     if (seasonsSnap.empty) return;
     const seasonId = seasonsSnap.docs[0].id;
 
-    const nextMatchSnap = await db.collection('championships').doc(seasonId)
+    // Busca todas as partidas da rodada atual (evita ignorar 1º jogo que já tenha mudado de status para in_progress)
+    const roundMatchesSnap = await db.collection('championships').doc(seasonId)
       .collection('matches')
       .where('round', '==', currentRound)
-      .where('status', '==', 'pending')
-      .orderBy('datetime', 'asc')
-      .limit(1)
       .get();
 
-    if (nextMatchSnap.empty) return;
+    if (roundMatchesSnap.empty) return;
 
-    const nextMatch = nextMatchSnap.docs[0].data();
-    if (!nextMatch.datetime) return;
+    const roundMatches = roundMatchesSnap.docs.map(d => d.data());
 
-    const matchTimeMs = nextMatch.datetime.toDate().getTime();
+    // Se qualquer partida da rodada já estiver em andamento ou finalizada, fecha o mercado imediatamente
+    const anyMatchAlreadyStarted = roundMatches.some(m => m.status === 'in_progress' || m.status === 'finished');
+    if (anyMatchAlreadyStarted) {
+      await statusRef.update({
+        is_open: false,
+        updated_at: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`🛑 PILOTO AUTOMÁTICO: Mercado FECHADO imediatamente (partida da R${currentRound} já iniciada).`);
+      return;
+    }
+
+    // Filtra partidas com datetime definido e pega a mais próxima (1º jogo da rodada)
+    const matchesWithDate = roundMatches.filter(m => m.datetime && typeof m.datetime.toDate === 'function');
+    if (matchesWithDate.length === 0) return;
+
+    matchesWithDate.sort((a, b) => a.datetime.toDate().getTime() - b.datetime.toDate().getTime());
+    const firstMatch = matchesWithDate[0];
+
+    const matchTimeMs = firstMatch.datetime.toDate().getTime();
     const nowMs = Date.now();
 
     // Fechamento exato: 20 minutos antes do início do primeiro jogo da rodada
@@ -1811,7 +1989,13 @@ exports.calculateBolaoMatchPoints = onCall({ cors: true, timeoutSeconds: 540 }, 
 
     for (const userDoc of usersSnap.docs) {
       const userId = userDoc.id;
-      const predDoc = await db.collection('bolao_users').doc(userId).collection('predictions').doc(matchId).get();
+      if (!batchHandler.predByUserId) {
+        const predRefs = usersSnap.docs.map(u => db.collection('bolao_users').doc(u.id).collection('predictions').doc(matchId));
+        const predSnaps = predRefs.length > 0 ? await db.getAll(...predRefs) : [];
+        batchHandler.predByUserId = {};
+        predSnaps.forEach((snap, idx) => { batchHandler.predByUserId[usersSnap.docs[idx].id] = snap; });
+      }
+      const predDoc = batchHandler.predByUserId[userId];
 
       if (predDoc.exists) {
         const predData = predDoc.data();
@@ -2100,9 +2284,18 @@ exports.calculateBonusPoints = onCall({ cors: true, timeoutSeconds: 540 }, async
 exports.updateLiveBolaoRanking = onDocumentWritten({
   document: "bolao_matches/{matchId}",
 }, async (event) => {
-  const triggeringMatchData = event.data.after.data();
+  const beforeMatchData = event.data.before ? event.data.before.data() : null;
+  const triggeringMatchData = event.data.after ? event.data.after.data() : null;
 
   if (!triggeringMatchData || triggeringMatchData.status !== 'in_progress') {
+    return;
+  }
+
+  // ⚡ FinOps: Evita recalcular todo o ranking se o placar e o status da partida não mudaram
+  if (beforeMatchData &&
+      beforeMatchData.status === triggeringMatchData.status &&
+      beforeMatchData.real_score_home === triggeringMatchData.real_score_home &&
+      beforeMatchData.real_score_away === triggeringMatchData.real_score_away) {
     return;
   }
 

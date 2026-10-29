@@ -20,6 +20,13 @@ class BolaoService {
   List<BolaoPrediction>? _cachedPredictions;
   DateTime? _lastPredictionsFetch;
 
+  // ⚡ FinOps PWA: Cache em memória para dados privados (LGPD) evitando releitura a cada atualização de placar ao vivo
+  static final Map<String, Map<String, dynamic>> _privateInfoCache = {};
+
+  // ⚡ FinOps PWA: Cache de "Palpites da Galera" por partida (evita explosão de 2*N leituras a cada abertura de card)
+  static final Map<String, List<Map<String, dynamic>>> _matchPredictionsMemCache = {};
+  static final Map<String, DateTime> _matchPredictionsFetchTime = {};
+
   // ===========================================================================
   //   ARQUITETURA DE FILA RESILIENTE (OFFLINE / BACKGROUND)
   // ===========================================================================
@@ -118,6 +125,7 @@ class BolaoService {
           debugPrint("✅ $matchId guardado com sucesso na nuvem!");
           // SUCESSO: Removemos da fila em memória
           _pendingSaves.remove(matchId);
+          _matchPredictionsMemCache.remove(matchId);
         }).catchError((e) {
           // FALHA: Mantemos na fila em memória para tentar de novo depois
           debugPrint("❌ Erro em $matchId (Será mantido na fila local): $e");
@@ -150,9 +158,15 @@ class BolaoService {
       final Map<String, dynamic> mergedData = Map<String, dynamic>.from(publicSnap.data() as Map<String, dynamic>);
       
       try {
-        final privateSnap = await privateRef.get();
-        if (privateSnap.exists && privateSnap.data() != null) {
-          mergedData.addAll(privateSnap.data() as Map<String, dynamic>);
+        if (_privateInfoCache.containsKey(userId)) {
+          mergedData.addAll(_privateInfoCache[userId]!);
+        } else {
+          final privateSnap = await privateRef.get();
+          if (privateSnap.exists && privateSnap.data() != null) {
+            final privData = Map<String, dynamic>.from(privateSnap.data() as Map<String, dynamic>);
+            _privateInfoCache[userId] = privData;
+            mergedData.addAll(privData);
+          }
         }
       } catch (e) {
         debugPrint("LGPD: Leitura privada restrita.");
@@ -191,7 +205,12 @@ class BolaoService {
       if (DateTime.now().difference(_lastMatchesFetch!).inMinutes < 15) return _cachedMatches!;
     }
     
-    final snap = await _firestore.collection('bolao_matches').orderBy('date').get();
+    final snap = await FirestoreCacheService.getWithCache(
+      query: _firestore.collection('bolao_matches').orderBy('date'),
+      cacheKey: 'bolao_matches_list',
+      ttl: const Duration(minutes: 15),
+      forceRefresh: forceRefresh,
+    );
     _cachedMatches = snap.docs.map((d) => BolaoMatch.fromFirestore(d)).toList();
     _lastMatchesFetch = DateTime.now();
     return _cachedMatches!;
@@ -202,8 +221,13 @@ class BolaoService {
       if (DateTime.now().difference(_lastPredictionsFetch!).inMinutes < 15) return _cachedPredictions!;
     }
     
-    final snap = await _firestore.collection('bolao_users').doc(userId).collection('predictions').get();
-    _cachedPredictions = snap.docs.map((d) => BolaoPrediction.fromMap(d.id, d.data())).toList();
+    final docs = await FirestoreCacheService.getDocsDataWithCache(
+      query: _firestore.collection('bolao_users').doc(userId).collection('predictions'),
+      cacheKey: 'bolao_my_preds_$userId',
+      ttl: const Duration(minutes: 15),
+      forceRefresh: forceRefresh,
+    );
+    _cachedPredictions = docs.map((d) => BolaoPrediction.fromMap(d['_docId']?.toString() ?? '', d)).toList();
     _lastPredictionsFetch = DateTime.now();
     return _cachedPredictions!;
   }
@@ -233,6 +257,7 @@ class BolaoService {
     batch.set(privateDocRef, privateData, SetOptions(merge: true));
     
     await batch.commit();
+    _privateInfoCache[userId] = {'cpf': cpf, 'phone': phone};
   }
 
   Future<void> saveBonusPrediction(String userId, String field, String value) async {
@@ -240,10 +265,10 @@ class BolaoService {
   }
 
   Stream<List<BolaoUser>> streamLeaderboard() async* {
-    List<BolaoUser> mapUsers(QuerySnapshot snap) {
-      final users = snap.docs.map((d) {
-        final data = d.data() as Map<String, dynamic>?;
-        return BolaoUser.fromFirestore(d, data?['name'] ?? 'Participante');
+    List<BolaoUser> mapUsers(List<Map<String, dynamic>> docs) {
+      final users = docs.map((data) {
+        final uid = data['_docId']?.toString() ?? '';
+        return BolaoUser.fromMap(uid, data);
       }).toList();
       
       users.sort((a, b) {
@@ -264,23 +289,23 @@ class BolaoService {
     const cacheKey = 'bolao_users_leaderboard';
     const ttl = Duration(minutes: 5);
 
-    // 1. Emite o dado imediatamente via Cache (TTL: 5 min)
-    final initialSnap = await FirestoreCacheService.getWithCache(
+    // 1. Emite o dado imediatamente via Cache persistente (TTL: 5 min)
+    final initialDocs = await FirestoreCacheService.getDocsDataWithCache(
       query: query,
       cacheKey: cacheKey,
       ttl: ttl,
     );
-    yield mapUsers(initialSnap);
+    yield mapUsers(initialDocs);
 
     // 2. Continua emitindo atualizações a cada 5 minutos
     yield* Stream.periodic(ttl).asyncMap((_) async {
-      final snap = await FirestoreCacheService.getWithCache(
+      final docs = await FirestoreCacheService.getDocsDataWithCache(
         query: query,
         cacheKey: cacheKey,
         ttl: ttl,
         forceRefresh: true, 
       );
-      return mapUsers(snap);
+      return mapUsers(docs);
     });
   }
 
@@ -288,8 +313,7 @@ class BolaoService {
     await _firestore.collection('bolao_users').doc(userId).set({'name': name, 'updated_at': FieldValue.serverTimestamp()}, SetOptions(merge: true));
   }
 
-  
-   // ===========================================================================
+  // ===========================================================================
   //   CHAT DA RESENHA E PALPITES DA GALERA (RTDB e FIRESTORE)
   // ===========================================================================
 
@@ -301,7 +325,7 @@ class BolaoService {
   /// Envia mensagem (RTDB) - Com suporte a Respostas (Reply)
   Future<void> sendChatMessage(
     String matchId, String userId, String userName, String photoUrl, String text,
-    {String? replyToUserName, String? replyToText} // 🚨 NOVOS PARÂMETROS
+    {String? replyToUserName, String? replyToText}
   ) async {
     if (text.trim().isEmpty || text.length > 50) return;
     
@@ -313,7 +337,6 @@ class BolaoService {
       'timestamp': ServerValue.timestamp,
     };
 
-    // Só adiciona os campos de resposta se existirem
     if (replyToUserName != null && replyToText != null) {
       payload['replyToUserName'] = replyToUserName;
       payload['replyToText'] = replyToText;
@@ -332,40 +355,85 @@ class BolaoService {
     final ref = _rtdb.ref('match_reactions/$matchId/$targetUserId/$reactorUserId');
     final snap = await ref.get();
     if (snap.exists && snap.value == emoji) {
-      await ref.remove(); // Desmarca se já tinha clicado
+      await ref.remove();
     } else {
-      await ref.set(emoji); // Marca
+      await ref.set(emoji);
     }
   }
 
-  /// Puxa do Firestore todos os palpites dos usuários para uma partida
-  Future<List<Map<String, dynamic>>> getMatchPredictions(String matchId) async {
+  /// ⚡ FinOps PWA: Puxa os palpites dos usuários para uma partida reutilizando o cache de usuários
+  /// e cacheando o resultado da partida em RAM + localStorage por 5 minutos.
+  Future<List<Map<String, dynamic>>> getMatchPredictions(String matchId, {bool forceRefresh = false}) async {
     try {
-      // 1. Busca todos os usuários do Bolão de uma vez
-      final usersSnap = await _firestore.collection('bolao_users').get();
+      final now = DateTime.now();
+      const ttl = Duration(minutes: 5);
+
+      // 1. Verifica cache em memória RAM
+      if (!forceRefresh &&
+          _matchPredictionsMemCache.containsKey(matchId) &&
+          _matchPredictionsFetchTime.containsKey(matchId) &&
+          now.difference(_matchPredictionsFetchTime[matchId]!) < ttl) {
+        return _matchPredictionsMemCache[matchId]!;
+      }
+
+      // 2. Verifica cache persistente no localStorage (sobrevive a F5 no PWA)
+      final prefs = await SharedPreferences.getInstance();
+      final tsKey = 'bolao_mp_ts_$matchId';
+      final dataKey = 'bolao_mp_data_$matchId';
+      if (!forceRefresh) {
+        final lastMs = prefs.getInt(tsKey);
+        final cachedJson = prefs.getString(dataKey);
+        if (lastMs != null &&
+            cachedJson != null &&
+            now.difference(DateTime.fromMillisecondsSinceEpoch(lastMs)) < ttl) {
+          final List<dynamic> decoded = jsonDecode(cachedJson);
+          final cachedList = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          _matchPredictionsMemCache[matchId] = cachedList;
+          _matchPredictionsFetchTime[matchId] = DateTime.fromMillisecondsSinceEpoch(lastMs);
+          return cachedList;
+        }
+      }
+
+      // 3. Reaproveita o cache de usuários do leaderboard (elimina N leituras repetidas de bolao_users)
+      final usersDocs = await FirestoreCacheService.getDocsDataWithCache(
+        query: _firestore.collection('bolao_users'),
+        cacheKey: 'bolao_users_leaderboard',
+        ttl: ttl,
+      );
       
-      List<Map<String, dynamic>> results = [];
+      final List<Map<String, dynamic>> results = [];
       
-      // 2. Dispara a busca do palpite específico desse jogo para cada usuário SIMULTANEAMENTE.
-      // O Future.wait faz as requisições acontecerem em paralelo, deixando a leitura ultra-rápida.
-      await Future.wait(usersSnap.docs.map((userDoc) async {
-        final predDoc = await userDoc.reference.collection('predictions').doc(matchId).get();
+      await Future.wait(usersDocs.map((userData) async {
+        final uid = userData['_docId']?.toString() ?? '';
+        if (uid.isEmpty) return;
+
+        final predDoc = await _firestore
+            .collection('bolao_users')
+            .doc(uid)
+            .collection('predictions')
+            .doc(matchId)
+            .get();
         
-        if (predDoc.exists) {
-          final userData = userDoc.data();
+        if (predDoc.exists && predDoc.data() != null) {
           final predData = predDoc.data()!;
-          
           results.add({
-            'userId': userDoc.id,
+            'userId': uid,
             'userName': userData['name'] ?? 'Treinador',
             'photoUrl': userData['photo_url'] ?? '',
             'scoreHome': predData['score_home'],
             'scoreAway': predData['score_away'],
-            // 🚨 AQUI ESTÁ A CORREÇÃO! Repassando os pontos para a UI
             'points_earned': predData['points_earned'] ?? 0, 
           });
         }
       }));
+
+      _matchPredictionsMemCache[matchId] = results;
+      _matchPredictionsFetchTime[matchId] = now;
+
+      try {
+        await prefs.setString(dataKey, jsonEncode(results));
+        await prefs.setInt(tsKey, now.millisecondsSinceEpoch);
+      } catch (_) {}
 
       return results;
     } catch (e) {
@@ -379,7 +447,6 @@ class BolaoService {
   // ===========================================================================
 
   Future<void> sendDuelChallenge(String challengerId, String challengerName, String challengerPhoto, String challengedId, String challengedName, String challengedPhoto) async {
-    // 1. Verifica se já existe duelo entre eles (ida ou volta) para não duplicar
     final query1 = await _firestore.collection('bolao_duels').where('challengerId', isEqualTo: challengerId).where('challengedId', isEqualTo: challengedId).get();
     final query2 = await _firestore.collection('bolao_duels').where('challengerId', isEqualTo: challengedId).where('challengedId', isEqualTo: challengerId).get();
     
@@ -388,7 +455,6 @@ class BolaoService {
       throw Exception("Já existe um duelo ativo ou pendente com este treinador!");
     }
 
-    // 2. Grava o desafio
     await _firestore.collection('bolao_duels').add({
       'challengerId': challengerId,
       'challengerName': challengerName,
@@ -396,7 +462,7 @@ class BolaoService {
       'challengedId': challengedId,
       'challengedName': challengedName,
       'challengedPhoto': challengedPhoto,
-      'status': 'pending', // pending, accepted, declined
+      'status': 'pending',
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -405,7 +471,6 @@ class BolaoService {
     await _firestore.collection('bolao_duels').doc(duelId).update({'status': status});
   }
 
-  // Lemos separadamente para garantir compatibilidade com qualquer versão do Flutter
   Stream<List<Map<String, dynamic>>> streamMySentDuels(String userId) {
     return _firestore.collection('bolao_duels').where('challengerId', isEqualTo: userId).snapshots().map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
   }
@@ -413,5 +478,4 @@ class BolaoService {
   Stream<List<Map<String, dynamic>>> streamMyReceivedDuels(String userId) {
     return _firestore.collection('bolao_duels').where('challengedId', isEqualTo: userId).snapshots().map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
   }
-
 }

@@ -130,18 +130,18 @@ class KnockoutMatch {
   });
 
   factory KnockoutMatch.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
     return KnockoutMatch(
       id: doc.id,
       phase: data['phase'] ?? '',
       round: data['round'] ?? 0,
-      teamAId: data['team_a_id'],
-      teamBId: data['team_b_id'],
-      teamAScore: (data['team_a_score'] ?? 0.0).toDouble(),
-      teamBScore: (data['team_b_score'] ?? 0.0).toDouble(),
-      winnerId: data['winner_id'],
-      nextMatchId: data['next_match_id'],
-      matchIndex: data['match_index'] ?? 0,
+      teamAId: data['team_a_id'] ?? data['teamAId'],
+      teamBId: data['team_b_id'] ?? data['teamBId'],
+      teamAScore: (data['team_a_score'] ?? data['scoreA'] ?? 0.0).toDouble(),
+      teamBScore: (data['team_b_score'] ?? data['scoreB'] ?? 0.0).toDouble(),
+      winnerId: data['winner_id'] ?? data['winnerId'],
+      nextMatchId: data['next_match_id'] ?? data['nextMatchId'],
+      matchIndex: data['match_index'] ?? data['matchIndex'] ?? 0,
     );
   }
 

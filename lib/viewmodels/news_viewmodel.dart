@@ -29,7 +29,7 @@ class NewsViewModel extends ChangeNotifier {
           
       final snapshot = await FirestoreCacheService.getWithCache(
         query: query,
-        cacheKey: 'news_',
+        cacheKey: 'news_$seasonId',
         ttl: const Duration(hours: 1),
         forceRefresh: force,
       );

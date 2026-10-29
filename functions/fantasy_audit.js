@@ -183,6 +183,8 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
     const timelineEvidenceByPlayer = {}; // pid -> [evidence items]
     const playersPlayedSet = new Set(); // Jogadores confirmados em súmula de presença
     const teamCleanSheets = {}; // teamId -> bool
+    const teamPlayedMatch = {};
+    const teamGoalsAgainst = {};
     const matchAuditList = [];
 
     for (const matchDoc of matchesSnap.docs) {
@@ -198,20 +200,21 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
       const scoreAway = Number(mData.score_away || 0);
       const lineupPlayed = Array.isArray(mData.lineup_played) ? mData.lineup_played.map(String) : [];
 
-      lineupPlayed.forEach(pid => playersPlayedSet.add(pid));
-
-      // Limpeza de Clean Sheet (apenas para jogos em andamento ou finalizados)
+      // Limpeza de Clean Sheet e presença (apenas para jogos em andamento ou finalizados)
       const isMatchUnderwayOrDone = (status === 'in_progress' || status === 'finished');
       let homeKeptClean = false;
       let awayKeptClean = false;
       if (isMatchUnderwayOrDone) {
-        if (scoreAway === 0 && homeId) {
-          teamCleanSheets[homeId] = true;
-          homeKeptClean = true;
+        lineupPlayed.forEach(pid => playersPlayedSet.add(pid));
+        if (homeId) {
+          teamPlayedMatch[homeId] = true;
+          teamGoalsAgainst[homeId] = (teamGoalsAgainst[homeId] || 0) + scoreAway;
+          if (scoreAway === 0) homeKeptClean = true;
         }
-        if (scoreHome === 0 && awayId) {
-          teamCleanSheets[awayId] = true;
-          awayKeptClean = true;
+        if (awayId) {
+          teamPlayedMatch[awayId] = true;
+          teamGoalsAgainst[awayId] = (teamGoalsAgainst[awayId] || 0) + scoreHome;
+          if (scoreHome === 0) awayKeptClean = true;
         }
       }
 
@@ -260,7 +263,8 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
 
         matchEvents.push(eventItem);
 
-        if (pid) {
+        if (isMatchUnderwayOrDone && pid) {
+          playersPlayedSet.add(pid);
           if (!timelineEventsByPlayer[pid]) timelineEventsByPlayer[pid] = [];
           timelineEventsByPlayer[pid].push(eventItem);
 
@@ -312,6 +316,9 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
       }
 
       const motmId = mData.stats_applied?.man_of_the_match || mData.man_of_the_match || null;
+      if (isMatchUnderwayOrDone && motmId) {
+        playersPlayedSet.add(String(motmId).trim());
+      }
       if (status === 'finished' && !motmId) {
         matchDiscrepancies.push("Partida finalizada sem Craque do Jogo (MOTM) definido.");
       }
@@ -333,13 +340,21 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
         discrepancies: matchDiscrepancies
       });
 
-      matchesList.push({
-        id: mId,
-        data: mData,
-        events: matchEvents,
-        motmId
-      });
+      if (isMatchUnderwayOrDone) {
+        matchesList.push({
+          id: mId,
+          data: mData,
+          events: matchEvents,
+          motmId
+        });
+      }
     }
+
+    Object.keys(teamPlayedMatch).forEach(tId => {
+      if (teamGoalsAgainst[tId] === 0) {
+        teamCleanSheets[tId] = true;
+      }
+    });
 
     // 4. Buscar Pontuações Publicadas Ao Vivo
     const liveDocSnap = await db.collection('championships').doc(seasonId)
@@ -793,4 +808,3 @@ async function executeAuditLogic(db, seasonId, roundNum, includeTeams, callerUid
 }
 
 exports.executeAuditLogic = executeAuditLogic;
-

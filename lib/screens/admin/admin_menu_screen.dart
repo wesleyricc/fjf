@@ -11,7 +11,6 @@ import '../fantasy/fantasy_admin_control_screen.dart';
 import '../institutional/disciplinary_rules_screen.dart';
 import '../institutional/tiebreaker_rules_screen.dart';
 import '../institutional/playoff_rules_screen.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'admin_media_screen.dart';
 import 'manage_seasons_screen.dart';
 import 'admin_upload_photo_screen.dart';
@@ -19,6 +18,7 @@ import '../championship/tournament_format_screen.dart';
 import 'admin_polls_screen.dart';
 import 'admin_sponsors_screen.dart';
 import 'admin_raffles_screen.dart';
+import '../../utils/youtube_utils.dart';
 
 class AdminMenuScreen extends StatefulWidget {
   const AdminMenuScreen({super.key});
@@ -131,7 +131,7 @@ class _AdminMenuScreenState extends State<AdminMenuScreen> {
 
                     try {
                       final extractedId =
-                          YoutubePlayerController.convertUrlToId(input);
+                          YoutubeUtils.extractVideoId(input);
                       if (extractedId == null) throw Exception('ID inválido');
 
                       // ESCRITA: Salva na temporada específica

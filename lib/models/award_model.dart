@@ -20,9 +20,13 @@ class Award {
   });
 
   factory Award.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return Award.fromMap(doc.id, data);
+  }
+
+  factory Award.fromMap(String id, Map<String, dynamic> data) {
     return Award(
-      id: doc.id,
+      id: id,
       title: data['title'] ?? 'Prêmio',
       winnerName: data['winner_name'] ?? 'Vencedor',
       subtitle: data['subtitle'],
